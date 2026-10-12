@@ -157,12 +157,17 @@ class AnalystChatEngine: ObservableObject {
         - Calendar and temporal grounding:
           • Check "Current Date (Today)" vs "Workout Date" on the data sheet carefully. This workout may have taken place days ago.
           • NEVER refer to this workout as "today", "today's run", or "today's workout" unless the Workout Date is literally today. If the workout is from the past, refer to it accurately (e.g. "in your \(analysis.workoutWeekday) run" or "in your last session").
-          • When I ask about "today", "tomorrow", or "how hard should I push?", evaluate my current status today. If I haven't run today or yesterday, recognize my rest days and recovery clearance.
+          • When I ask about future runs (e.g., "how long should I run?", "can I do intervals?", "should I ease up?"):
+            - If Recovery Status is FULLY RECOVERED, my legs are fresh! Do not claim I am in a "recovery window" or carrying "residual strain" from a past workout.
+            - Never contradict yourself (e.g. do not say "easing up is not the right approach" while also saying "you're not ready for intensity").
+            - Past fatigue markers (cardiac drift, cadence drop) from days ago describe pacing execution during that past workout, NOT active fatigue preventing me from running today.
           • If I state or clarify that I didn't run today or yesterday, immediately acknowledge that fact and ground your advice in my current rest days.
         - When I ask about splits or intervals, cite and evaluate the actual reps, pacing, and cadence stability.
         - When I ask what a concept means (like threshold), explain the concept simply, then connect it to how I ran.
         - When I ask for insights or what to improve, give me the coaching story: what happened, why my body reacted that way, and what to adjust next time.
-        - Keep your replies concise and conversational (typically 2 to 3 short paragraphs). Use clean rich text formatting with bullet points (•) and bold text (**) for key metrics. Do not format your answers as formal academic reports with markdown header hashes (###) or observation checklists.
+        - Speak like an experienced, objective running coach in natural conversation (typically 1 to 3 short paragraphs).
+          • Do NOT force bullet points into every response. Use bullet points ONLY when listing multiple splits, intervals, or distinct workout options. For regular coaching advice, write natural conversational sentences.
+          • Do NOT repeat the same metrics or recommend the same drill in every turn. Only mention technique drills when directly relevant.
         - Only discuss future training, recovery timelines, or readiness when I specifically ask about them. Do not append unasked readiness sign-offs or disclaimers about unrecorded sensors.
         Respond in \(language).
         """
@@ -737,14 +742,14 @@ class AnalystChatEngine: ObservableObject {
 
     private func caloriesAnswer(timeline: RecoveryTimeline) -> String {
         guard let cap = timeline.easyCap else {
-            return "Calorie burn tracks mostly with duration and distance, not intensity—so a longer easy run burns more than a short hard one. You're recovered, so if burning more is the goal, extend today's easy run rather than speeding it up."
+            return "Calorie burn tracks mostly with duration and distance, not intensity—so a longer easy run burns more than a short hard one. You're recovered, so if burning more is the goal, extend your easy run rather than speeding it up."
         }
-        return "You're right—an easy recovery jog burns less energy than a long hard session, because calorie burn tracks mostly with duration and distance. But recovery days aren't about burning calories: they let your body repair so your next hard session, \(timeline.earliestHardPhrase), is high quality. If you want more movement today, add an easy walk—it burns energy without adding running fatigue."
+        return "You're right—an easy recovery jog burns less energy than a long hard session, because calorie burn tracks mostly with duration and distance. But recovery days aren't about burning calories: they let your body repair so your next hard session, \(timeline.earliestHardPhrase), is high quality. If you want more movement, add an easy walk—it burns energy without adding running fatigue."
     }
 
     private func motivationAnswer(timeline: RecoveryTimeline) -> String {
         if timeline.readyForHard {
-            return "That drive is a real asset, and good news: you're recovered, so today is a good day to put it into a quality session. Go hard on the reps and truly easy on the recoveries—that contrast is where the speed comes from."
+            return "That drive is a real asset, and good news: you're recovered, so your next run is a great time to put it into a quality session. Go hard on the reps and truly easy on the recoveries—that contrast is where the speed comes from."
         }
         return "That drive is a real asset—hard efforts are where you sharpen your speed. But the fitness from those pushes is built while you recover; stack hard days back-to-back and you just dig a deeper hole. Your next chance to go hard is \(timeline.earliestHardPhrase)—save that energy for it."
     }
@@ -760,9 +765,9 @@ class AnalystChatEngine: ObservableObject {
 
     private func crossTrainingAnswer(activity: String, timeline: RecoveryTimeline) -> String {
         guard timeline.easyCap != nil else {
-            return "Yes, a \(activity) is a great option today. Your recovery markers look good, so keeping the effort easy to moderate gives you a solid aerobic session while giving your running joints a break."
+            return "Yes, a \(activity) is a great option. Your recovery markers look good, so keeping the effort easy to moderate gives you a solid aerobic session while giving your running joints a break."
         }
-        return "Yes, a light \(activity) is an excellent choice today. It gives your legs an active recovery flush without the ground impact of running, letting your body absorb your recent hard session. Keep the resistance and intensity light in Zone 1 or 2."
+        return "Yes, a light \(activity) is an excellent choice. It gives your legs an active recovery flush without the ground impact of running, letting your body absorb your recent hard session. Keep the resistance and intensity light in Zone 1 or 2."
     }
 
     private func restDayAnswer(timeline: RecoveryTimeline) -> String {

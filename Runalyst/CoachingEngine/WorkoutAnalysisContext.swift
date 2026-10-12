@@ -398,7 +398,7 @@ struct WorkoutAnalysisContext {
         } else {
             let todayStatus = hasRunToday ? "Logged another run today." : "Did NOT run today."
             let yesterdayStatus = hasRunYesterday ? "Logged a run yesterday." : "Did NOT run yesterday."
-            let restNote = daysSinceWorkout > 1 ? "\(daysSinceWorkout) days of rest/recovery accumulated since this workout." : "1 day of rest since this workout."
+            let restNote = daysSinceWorkout > 1 ? "\(daysSinceWorkout) days of rest since this session (fully rested and fresh)." : "1 day of rest since this session."
             lines.append("- Recent Activity: \(todayStatus) \(yesterdayStatus) (\(restNote))")
         }
 
@@ -461,15 +461,15 @@ struct WorkoutAnalysisContext {
 
         // Future Training & Recovery
         lines.append("")
-        lines.append("[FUTURE TRAINING & RECOVERY - Reference ONLY if asked about next run, readiness, recovery, or drills]:")
+        lines.append("[FUTURE TRAINING & READINESS - Reference ONLY if the runner asks about their next run, readiness, recovery, or drills]:")
         lines.append("- Current Readiness: \(recoveryTimeline.state.rawValue)")
         if recoveryTimeline.readyForHard {
-            lines.append("- Recovery Clearance: Cleared for hard efforts (last hard effort was \(Int(hoursSinceWorkout))h ago; required was \(Int(recoveryTimeline.requiredHours))h)")
+            lines.append("- Recovery Status: FULLY RECOVERED and fresh. Cleared for any workout including speed, tempo, or intervals (last hard session was \(Int(hoursSinceWorkout))h ago; required was only \(Int(recoveryTimeline.requiredHours))h). Zero residual fatigue remains.")
         } else if let cap = recoveryTimeline.easyCap {
-            lines.append("- Recovery Clearance: In recovery window until \(recoveryTimeline.earliestHardPhrase). Active recovery cap: \(cap.lowerBound)–\(cap.upperBound) min")
+            lines.append("- Recovery Status: In active recovery window until \(recoveryTimeline.earliestHardPhrase). Keep next run easy (cap: \(cap.lowerBound)–\(cap.upperBound) min).")
         }
         if let drill = runRecord.insight?.drillRecommendations?.first ?? runRecord.insight?.drillRecommendation {
-            lines.append("- Recommended Technique Drill: \(drill.drillTitle)")
+            lines.append("- Technique Cue / Drill: Warm up with \(drill.drillTitle) before the next run (to work on turnover, not as mandatory rehab).")
         }
 
         return lines.joined(separator: "\n")
