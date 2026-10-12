@@ -782,4 +782,98 @@ final class IndoorIntelligenceTests: XCTestCase {
         XCTAssertEqual(indoorRecord.isIndoor, true, "Indoor run must persist as true on first analysis")
         XCTAssertEqual(indoorRecord.detectedTypeRaw, "Steady Effort", "Classification must persist on first analysis")
     }
+
+    // MARK: - 11. Data-Driven Analyst Queries
+
+    @MainActor
+    func testAnalystChatUnrecordedVerticalOscillationExplainsSensors() async {
+        let runRecord = makeTestRunRecord(isIndoor: true)
+        runRecord.workingAvgVerticalOscillation = nil
+        let chatEngine = AnalystChatEngine(runRecord: runRecord)
+
+        await chatEngine.sendMessage("What was my vertical oscillation?")
+        let response = chatEngine.messages.last?.text ?? ""
+
+        XCTAssertTrue(
+            response.localizedCaseInsensitiveContains("wasn't recorded") || response.localizedCaseInsensitiveContains("not recorded"),
+            "Must state that vertical oscillation was not recorded"
+        )
+        XCTAssertTrue(
+            response.localizedCaseInsensitiveContains("treadmill") || response.localizedCaseInsensitiveContains("footpod") || response.localizedCaseInsensitiveContains("indoor"),
+            "Must explain indoor treadmill / footpod sensor dependency"
+        )
+        XCTAssertFalse(response.localizedCaseInsensitiveContains("solid, steady rhythm"), "Must not fall back to generic rhythm copy")
+    }
+
+    @MainActor
+    func testAnalystChatClassificationExplanationExplainsPhysiology() async {
+        let runRecord = makeTestRunRecord(isIndoor: true)
+        runRecord.detectedTypeRaw = "Mixed Effort (Review)"
+        runRecord.needsInclineReview = false
+        let chatEngine = AnalystChatEngine(runRecord: runRecord)
+
+        await chatEngine.sendMessage("Why did you label my run today as a 'Mixed Effort'?")
+        let response = chatEngine.messages.last?.text ?? ""
+
+        XCTAssertTrue(
+            response.localizedCaseInsensitiveContains("Mixed Effort"),
+            "Must cite the Mixed Effort classification"
+        )
+        XCTAssertTrue(
+            response.localizedCaseInsensitiveContains("surges") || response.localizedCaseInsensitiveContains("irregular") || response.localizedCaseInsensitiveContains("variability") || response.localizedCaseInsensitiveContains("review"),
+            "Must explain the reason for the classification"
+        )
+    }
+
+    @MainActor
+    func testAnalystChatGranularSplitsCitesExactSegments() async {
+        let runRecord = makeTestRunRecord(isIndoor: true)
+        let signature = RunSignature(
+            classification: "Intervals",
+            confidence: 0.95,
+            probabilities: ["Intervals": 0.95],
+            anomalies: [],
+            cadenceFloor: 150.0,
+            phaseSegments: [
+                PhaseSegment(startSeconds: 0, endSeconds: 240, kind: "work", avgPace: 270, avgCadence: 172, avgHR: 165),
+                PhaseSegment(startSeconds: 240, endSeconds: 360, kind: "recovery", avgPace: 380, avgCadence: 148, avgHR: 150),
+                PhaseSegment(startSeconds: 360, endSeconds: 600, kind: "work", avgPace: 255, avgCadence: 175, avgHR: 170),
+                PhaseSegment(startSeconds: 600, endSeconds: 720, kind: "recovery", avgPace: 390, avgCadence: 146, avgHR: 152),
+                PhaseSegment(startSeconds: 720, endSeconds: 960, kind: "work", avgPace: 285, avgCadence: 170, avgHR: 175)
+            ],
+            dataSource: "wrist",
+            isIndoor: true,
+            needsInclineReview: false
+        )
+        let chatEngine = AnalystChatEngine(runRecord: runRecord, runSignature: signature, macroProfile: nil)
+
+        await chatEngine.sendMessage("My best split and my worst split")
+        let response = chatEngine.messages.last?.text ?? ""
+
+        XCTAssertTrue(
+            response.localizedCaseInsensitiveContains("fastest") && response.localizedCaseInsensitiveContains("slowest"),
+            "Must cite both fastest and slowest segments"
+        )
+        XCTAssertTrue(
+            response.localizedCaseInsensitiveContains("Rep") || response.localizedCaseInsensitiveContains("min"),
+            "Must cite specific rep or minute markers"
+        )
+    }
+
+    @MainActor
+    func testAnalystChatDidNotRunYesterdayAcknowledgesDate() async {
+        let runRecord = makeTestRunRecord(isIndoor: true)
+        // Run logged 2 days ago
+        runRecord.date = Date().addingTimeInterval(-48 * 3600)
+        let chatEngine = AnalystChatEngine(runRecord: runRecord)
+
+        await chatEngine.sendMessage("I didn't run yesterday...")
+        let response = chatEngine.messages.last?.text ?? ""
+
+        XCTAssertTrue(
+            response.localizedCaseInsensitiveContains("didn't run yesterday") || response.localizedCaseInsensitiveContains("haven't run yesterday"),
+            "Must acknowledge runner did not run yesterday"
+        )
+        XCTAssertFalse(response.localizedCaseInsensitiveContains("yesterday's hard sessions"), "Must not claim hard session was yesterday when it was 2 days ago")
+    }
 }

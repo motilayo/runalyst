@@ -917,4 +917,114 @@ actor FramboiseEngine {
         // HR increased by >= 6 BPM while pace stayed roughly steady (within 8%)
         return (lateHR - earlyHR) >= 6.0 && paceRatio >= 0.92 && paceRatio <= 1.08
     }
+
+    /// Computes authentic distance splits (e.g. 1-kilometer splits) from continuous time-series buckets.
+    func calculateSplits(from buckets: [BucketData], splitDistanceMeters: Double = 1000.0) -> [RunSplit] {
+        guard !buckets.isEmpty, splitDistanceMeters > 0 else { return [] }
+
+        var splits: [RunSplit] = []
+        var currentSplitIndex = 1
+
+        var accumulatedDistance: Double = 0.0
+        var accumulatedDuration: Double = 0.0
+        var accumulatedWeightedHR: Double = 0.0
+        var accumulatedWeightedCadence: Double = 0.0
+        var accumulatedElevation: Double = 0.0
+
+        for bucket in buckets {
+            var bucketDistance = bucket.distanceMeters
+            var bucketDuration = bucket.durationSeconds
+            guard bucketDistance > 0 || bucketDuration > 0 else { continue }
+
+            let bucketHR = bucket.meanHR
+            let bucketCadence = bucket.meanCadence
+            var bucketElevation = bucket.elevationGainMeters
+
+            while bucketDistance > 0 {
+                let distanceNeeded = splitDistanceMeters - accumulatedDistance
+
+                if bucketDistance <= distanceNeeded {
+                    accumulatedDistance += bucketDistance
+                    accumulatedDuration += bucketDuration
+                    accumulatedWeightedHR += bucketHR * bucketDuration
+                    accumulatedWeightedCadence += bucketCadence * bucketDuration
+                    accumulatedElevation += bucketElevation
+
+                    if accumulatedDistance >= splitDistanceMeters {
+                        let pace = accumulatedDistance > 0 ? (accumulatedDuration / (accumulatedDistance / 1000.0)) : 0.0
+                        let hr = accumulatedDuration > 0 ? (accumulatedWeightedHR / accumulatedDuration) : 0.0
+                        let cad = accumulatedDuration > 0 ? (accumulatedWeightedCadence / accumulatedDuration) : 0.0
+                        splits.append(RunSplit(
+                            index: currentSplitIndex,
+                            distanceMeters: accumulatedDistance,
+                            durationSeconds: accumulatedDuration,
+                            paceSecondsPerKm: pace,
+                            avgHeartRate: hr,
+                            avgCadence: cad,
+                            elevationGainMeters: accumulatedElevation
+                        ))
+                        currentSplitIndex += 1
+                        accumulatedDistance = 0.0
+                        accumulatedDuration = 0.0
+                        accumulatedWeightedHR = 0.0
+                        accumulatedWeightedCadence = 0.0
+                        accumulatedElevation = 0.0
+                    }
+                    break
+                } else {
+                    let fraction = distanceNeeded / bucketDistance
+                    let splitDurationPart = bucketDuration * fraction
+                    let splitElevationPart = bucketElevation * fraction
+
+                    accumulatedDistance += distanceNeeded
+                    accumulatedDuration += splitDurationPart
+                    accumulatedWeightedHR += bucketHR * splitDurationPart
+                    accumulatedWeightedCadence += bucketCadence * splitDurationPart
+                    accumulatedElevation += splitElevationPart
+
+                    let pace = accumulatedDistance > 0 ? (accumulatedDuration / (accumulatedDistance / 1000.0)) : 0.0
+                    let hr = accumulatedDuration > 0 ? (accumulatedWeightedHR / accumulatedDuration) : 0.0
+                    let cad = accumulatedDuration > 0 ? (accumulatedWeightedCadence / accumulatedDuration) : 0.0
+
+                    splits.append(RunSplit(
+                        index: currentSplitIndex,
+                        distanceMeters: accumulatedDistance,
+                        durationSeconds: accumulatedDuration,
+                        paceSecondsPerKm: pace,
+                        avgHeartRate: hr,
+                        avgCadence: cad,
+                        elevationGainMeters: accumulatedElevation
+                    ))
+                    currentSplitIndex += 1
+
+                    bucketDistance -= distanceNeeded
+                    bucketDuration -= splitDurationPart
+                    bucketElevation -= splitElevationPart
+
+                    accumulatedDistance = 0.0
+                    accumulatedDuration = 0.0
+                    accumulatedWeightedHR = 0.0
+                    accumulatedWeightedCadence = 0.0
+                    accumulatedElevation = 0.0
+                }
+            }
+        }
+
+        if accumulatedDistance >= 100.0 {
+            let pace = accumulatedDistance > 0 ? (accumulatedDuration / (accumulatedDistance / 1000.0)) : 0.0
+            let hr = accumulatedDuration > 0 ? (accumulatedWeightedHR / accumulatedDuration) : 0.0
+            let cad = accumulatedDuration > 0 ? (accumulatedWeightedCadence / accumulatedDuration) : 0.0
+            splits.append(RunSplit(
+                index: currentSplitIndex,
+                distanceMeters: accumulatedDistance,
+                durationSeconds: accumulatedDuration,
+                paceSecondsPerKm: pace,
+                avgHeartRate: hr,
+                avgCadence: cad,
+                elevationGainMeters: accumulatedElevation
+            ))
+        }
+
+        return splits
+    }
 }

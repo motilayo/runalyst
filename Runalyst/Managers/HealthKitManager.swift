@@ -807,6 +807,7 @@ struct RunBaselineData: Sendable {
 
         // Build and persist RunSignature for Workout Rhythm and RAG Analyst Chat
         let phaseSegments = await engine.generatePhaseSegments(from: trimmed, cadenceFloor: 150.0)
+        let splits = await engine.calculateSplits(from: trimmed)
         let anomalies: [String] = (cv > 0.12 ? ["High Pace Variability"] : []) + (hrCV > 0.10 ? ["High Cardiac Strain"] : [])
         let signature = RunSignature(
             classification: classification,
@@ -817,7 +818,8 @@ struct RunBaselineData: Sendable {
             phaseSegments: phaseSegments,
             dataSource: dataSource,
             isIndoor: isIndoor,
-            needsInclineReview: classificationResult?.needsInclineReview ?? false
+            needsInclineReview: classificationResult?.needsInclineReview ?? false,
+            splits: splits
         )
         let signatureData = try? JSONEncoder().encode(signature)
         let probData = classificationResult.flatMap { try? JSONEncoder().encode($0.probabilities) }
