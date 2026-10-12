@@ -139,19 +139,13 @@ class AnalystChatEngine: ObservableObject {
         let dataSheet = telemetryLines().joined(separator: "\n")
 
         let systemInstructions = """
-        You are the Runalyst AI Running Analyst. You are chatting with the runner about the workout specified in the Workout Data below.
-
-        WORKOUT DATA:
+        WORKOUT DATA SHEET:
         \(dataSheet)
 
-        GUIDELINES:
-        1. ANSWER DIRECTLY FROM THE DATA: Answer the runner's questions directly using the specific metrics, kilometer splits, interval segments, and reasons provided in the Workout Data.
-        2. BE PRECISE WITH NUMBERS: When asked about best/worst splits, interval performance, pace, cadence, or heart rate, give the exact numbers and segment details from the data.
-        3. EXPLAIN UNRECORDED DATA: If asked about a metric marked as 'Not recorded' (like vertical oscillation or GPS indoors), explain that it was not recorded for this treadmill workout because Apple Watch requires an outdoor run or an authentic footpod.
-        4. EXPLAIN CLASSIFICATIONS: If asked why a workout was classified as Mixed Effort, Intervals, or Steady Effort, explain the specific physiological and pacing reasons in the data.
-        5. NO UNSOLICITED RECOVERY LECTURES: Do NOT append recovery advice, rest suggestions, or mentions of upcoming days unless the runner specifically asks about readiness, fatigue, recovery, or future workout planning.
-        6. TEMPORAL ACCURACY: The workout was run on the date specified in the data. Do not confuse it with today unless it was run today.
-        7. TONE: Direct, objective, knowledgeable running analyst. Be clear, analytical, and conversational. Never speak in generic motivational platitudes.
+        You are the running analyst. You have access to the runner's workout data sheet above.
+        Answer what the runner asks directly, using the data. If they ask about splits, cite the splits. If they ask about intervals, evaluate the reps. If a metric is unrecorded, state that clearly.
+        Do not lecture. Only discuss future training, recovery, or readiness when the runner explicitly asks about them.
+        Speak like an experienced, objective running coach—clear, direct, and data-backed, with no generic motivational platitudes.
         Respond in \(language).
         """
 
@@ -185,6 +179,78 @@ class AnalystChatEngine: ObservableObject {
     }
     #endif
 
+    /// Synthesizes 1,000-meter splits from phase segments if physical splits were not persisted.
+    static func synthesizeSplitsFromSegments(_ segments: [PhaseSegment], splitDistanceMeters: Double = 1000.0) -> [RunSplit] {
+        guard !segments.isEmpty else { return [] }
+        var splits: [RunSplit] = []
+        var currentSplitIndex = 1
+        var accumulatedDist: Double = 0
+        var splitDuration: Double = 0
+        var splitHRSum: Double = 0
+        var splitCadenceSum: Double = 0
+        var splitWeight: Double = 0
+
+        for seg in segments where seg.avgPace > 0 && seg.durationSeconds > 0 {
+            let segDist = (seg.durationSeconds / seg.avgPace) * 1000.0
+            var remainingDist = segDist
+
+            while remainingDist > 0 {
+                let needed = splitDistanceMeters - accumulatedDist
+                let takeDist = min(remainingDist, needed)
+                let fraction = takeDist / segDist
+                let takeDur = fraction * seg.durationSeconds
+
+                accumulatedDist += takeDist
+                splitDuration += takeDur
+                splitHRSum += seg.avgHR * takeDur
+                splitCadenceSum += seg.avgCadence * takeDur
+                splitWeight += takeDur
+
+                remainingDist -= takeDist
+
+                if accumulatedDist >= splitDistanceMeters {
+                    let avgPace = (splitDuration / splitDistanceMeters) * 1000.0
+                    let avgHR = splitWeight > 0 ? (splitHRSum / splitWeight) : seg.avgHR
+                    let avgCad = splitWeight > 0 ? (splitCadenceSum / splitWeight) : seg.avgCadence
+
+                    splits.append(RunSplit(
+                        index: currentSplitIndex,
+                        distanceMeters: splitDistanceMeters,
+                        durationSeconds: splitDuration,
+                        paceSecondsPerKm: avgPace,
+                        avgHeartRate: avgHR,
+                        avgCadence: avgCad,
+                        elevationGainMeters: 0
+                    ))
+
+                    currentSplitIndex += 1
+                    accumulatedDist = 0
+                    splitDuration = 0
+                    splitHRSum = 0
+                    splitCadenceSum = 0
+                    splitWeight = 0
+                }
+            }
+        }
+
+        if accumulatedDist >= 500.0 {
+            let avgPace = (splitDuration / accumulatedDist) * 1000.0
+            let avgHR = splitWeight > 0 ? (splitHRSum / splitWeight) : 0
+            let avgCad = splitWeight > 0 ? (splitCadenceSum / splitWeight) : 0
+            splits.append(RunSplit(
+                index: currentSplitIndex,
+                distanceMeters: accumulatedDist,
+                durationSeconds: splitDuration,
+                paceSecondsPerKm: avgPace,
+                avgHeartRate: avgHR,
+                avgCadence: avgCad,
+                elevationGainMeters: 0
+            ))
+        }
+
+        return splits
+    }
+
     /// Structured workout telemetry and segment breakdown for the analyst (TN3193 token budget).
     private func telemetryLines() -> [String] {
         let env = (runRecord.isIndoor == true) ? "Indoor Treadmill" : "Outdoor Road/Trail"
@@ -207,11 +273,14 @@ class AnalystChatEngine: ObservableObject {
         let workoutDateStr = dateFormatter.string(from: runRecord.date)
         let todayDateStr = dateFormatter.string(from: now)
 
+        let rawConf = runRecord.classificationConfidence ?? 0.85
+        let confPct = rawConf > 1.0 ? Int(rawConf.rounded()) : Int((rawConf * 100).rounded())
+
         var lines = [
             "Workout Date: \(workoutDay), \(workoutDateStr) (\(pastPhrase), \(RecoveryTimeline.durationPhrase(hours: hoursAgo)) ago)",
             "Today's Date: \(todayWeekday), \(todayDateStr) (\(isToday ? "This workout was logged today" : "No workouts logged today; this workout is from \(pastPhrase)"))",
             "Environment: \(env) (Sensor: \(runRecord.dataSourceRaw?.capitalized ?? "Wrist accelerometer"))",
-            "Classification: \(type) (confidence: \(Int(((runRecord.classificationConfidence ?? 0.85) * 100).rounded()))%)"
+            "Classification: \(type) (confidence: \(confPct)%)"
         ]
 
         let classificationRationale: String = {
@@ -256,7 +325,10 @@ class AnalystChatEngine: ObservableObject {
         let signature = runSignature ?? runRecord.signature
 
         // Kilometer Splits Breakdown
-        let splits = signature?.splits ?? []
+        var splits = signature?.splits ?? []
+        if splits.isEmpty, let segments = signature?.phaseSegments, !segments.isEmpty {
+            splits = Self.synthesizeSplitsFromSegments(segments)
+        }
         if !splits.isEmpty {
             lines.append("Kilometer Splits (\(splits.count) splits):")
             let fastestSplit = splits.min(by: { $0.paceSecondsPerKm < $1.paceSecondsPerKm })
@@ -347,9 +419,9 @@ class AnalystChatEngine: ObservableObject {
 
         let timeline = recoveryTimeline
         if timeline.readyForHard {
-            lines.append("Recovery Timeline: Cleared for hard efforts now.")
+            lines.append("Recovery Timeline: Cleared for hard efforts.")
         } else if let cap = timeline.easyCap {
-            lines.append("Recovery Timeline: Hard efforts cleared \(timeline.earliestHardPhrase); until then keep runs easy (\(cap.lowerBound)–\(cap.upperBound) min) or rest.")
+            lines.append("Recovery Timeline: Hard efforts cleared \(timeline.earliestHardPhrase). Easy run cap: \(cap.lowerBound)–\(cap.upperBound) min.")
         }
 
         if let drill = runRecord.insight?.drillRecommendations?.first ?? runRecord.insight?.drillRecommendation {
@@ -378,12 +450,17 @@ class AnalystChatEngine: ObservableObject {
             return classificationExplanationAnswer()
         }
 
-        // 4. Splits, intervals, and best/worst segments
+        // 4. Grade / rate my performance (prioritized over general split stats)
+        if q.contains("grade") || q.contains("rate my") || q.contains("score my") || q.contains("evaluate my") || q.contains("how did i do") || q.contains("how did my run go") {
+            return gradeAnswer()
+        }
+
+        // 5. Splits, intervals, and best/worst segments
         if q.contains("split") || q.contains("interval") || q.contains("rep") || q.contains("segment") || q.contains("fastest") || q.contains("slowest") || q.contains("best") || q.contains("worst") {
             return splitPerformanceAnswer()
         }
 
-        // 5. Unrecorded biometrics (vertical oscillation, stride length)
+        // 6. Unrecorded biometrics (vertical oscillation, stride length)
         if q.contains("vertical") || q.contains("oscillation") || q.contains("bounce") {
             return verticalOscillationAnswer()
         }
@@ -391,14 +468,9 @@ class AnalystChatEngine: ObservableObject {
             return strideLengthAnswer()
         }
 
-        // 6. Readiness adjustment explanation
+        // 7. Readiness adjustment explanation
         if q.contains("readiness") && (q.contains("why") || q.contains("adjust") || q.contains("optimal") || q.contains("lower") || q.contains("drop")) {
             return readinessExplanationAnswer()
-        }
-
-        // 7. Grade / rate my run
-        if q.contains("grade") || q.contains("rate my") || q.contains("score my") || q.contains("evaluate my") || q.contains("how did i do") || q.contains("how did my run go") {
-            return gradeAnswer()
         }
 
         // 8. Calorie inquiry
@@ -519,7 +591,10 @@ class AnalystChatEngine: ObservableObject {
 
     private func splitPerformanceAnswer() -> String {
         let signature = runSignature ?? runRecord.signature
-        let splits = signature?.splits ?? []
+        var splits = signature?.splits ?? []
+        if splits.isEmpty, let segments = signature?.phaseSegments, !segments.isEmpty {
+            splits = Self.synthesizeSplitsFromSegments(segments)
+        }
 
         if !splits.isEmpty {
             guard let fastest = splits.min(by: { $0.paceSecondsPerKm < $1.paceSecondsPerKm }),
