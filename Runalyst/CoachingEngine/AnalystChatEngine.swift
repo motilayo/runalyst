@@ -150,7 +150,7 @@ class AnalystChatEngine: ObservableObject {
         - When I ask about splits or intervals, cite and evaluate the actual reps, pacing, and cadence stability.
         - When I ask what a concept means (like threshold), explain the concept simply, then connect it to how I ran.
         - When I ask for insights or what to improve, give me the coaching story: what happened, why my body reacted that way, and what to adjust next time.
-        - Keep your replies concise and conversational (typically 2 to 3 short paragraphs). Do not format your answers as formal academic reports with nested headers or observation checklists.
+        - Keep your replies concise and conversational (typically 2 to 3 short paragraphs). Use clean rich text formatting with bullet points (•) and bold text (**) for key metrics. Do not format your answers as formal academic reports with markdown header hashes (###) or observation checklists.
         - Only discuss future training, recovery timelines, or readiness when I specifically ask about them. Do not append unasked readiness sign-offs or disclaimers about unrecorded sensors.
         Respond in \(language).
         """

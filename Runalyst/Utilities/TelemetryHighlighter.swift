@@ -1,35 +1,80 @@
 import SwiftUI
 
-/// Utility for rendering telemetry citations (SPM, BPM, pace, biomechanics) in bold, app-accent color via AttributedString.
+/// Utility for rendering telemetry citations (SPM, BPM, pace, biomechanics) and markdown formatted text into rich text via AttributedString.
 enum TelemetryHighlighter {
 
-    /// Highlights numbers and biomechanical units with bold weight and accent styling.
+    /// Highlights numbers and biomechanical units with bold weight and accent styling, while rendering markdown elements as rich text formatting.
     static func highlight(_ text: String, accentColor: Color = Color(red: 0.0, green: 0.75, blue: 0.65)) -> AttributedString {
-        var attributed = AttributedString(text)
+        let preprocessed = convertMarkdownToRichText(text)
+        let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+        var attributed = (try? AttributedString(markdown: preprocessed, options: options)) ?? AttributedString(text)
 
-        // Patterns covering cadence, heart rate, pace strings, percentages, and metrics
+        let plainText = String(attributed.characters)
         let patterns = [
             #"\b\d{2,3}\s?(?:SPM|spm)\b"#,
             #"\b\d{2,3}\s?(?:BPM|bpm)\b"#,
             #"\b\d{1,2}:\d{2}(?:\s?(?:/km|/mi|min/km|min/mi))?\b"#,
-            #"\b\d+(?:\.\d+)?\s?(?:cm|m|km|mi|%)\b"#
+            #"\b\d+(?:\.\d+)?\s?(?:cm|m|km|mi|ms|%)\b"#
         ]
 
         for pattern in patterns {
-            if let regex = try? NSRegularExpression(pattern: pattern, options: []) {
-                let nsString = text as NSString
-                let matches = regex.matches(in: text, options: [], range: NSRange(location: 0, length: nsString.length))
+            guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else { continue }
+            let nsString = plainText as NSString
+            let matches = regex.matches(in: plainText, options: [], range: NSRange(location: 0, length: nsString.length))
 
-                for match in matches {
-                    if let stringRange = Range(match.range, in: text),
-                       let attrRange = Range(stringRange, in: attributed) {
-                        attributed[attrRange].font = .system(size: 15, weight: .bold, design: .rounded)
-                        attributed[attrRange].foregroundColor = accentColor
-                    }
+            for match in matches {
+                if let stringRange = Range(match.range, in: plainText),
+                   let attrRange = Range(stringRange, in: attributed) {
+                    attributed[attrRange].font = .system(size: 15, weight: .bold, design: .rounded)
+                    attributed[attrRange].foregroundColor = accentColor
                 }
             }
         }
 
         return attributed
+    }
+
+    private static func convertMarkdownToRichText(_ text: String) -> String {
+        let lines = text.components(separatedBy: "\n")
+        var processedLines: [String] = []
+
+        for line in lines {
+            // Check for horizontal rules (---, ***, ___)
+            if line.range(of: #"^[\-\*_]{3,}\s*$"#, options: .regularExpression) != nil {
+                processedLines.append("")
+                continue
+            }
+
+            // Check for markdown headers (# Title, ## Title, ### Title)
+            if let match = line.range(of: #"^#{1,6}\s+(.+)$"#, options: .regularExpression) {
+                var headerContent = line[match].replacingOccurrences(of: #"^#{1,6}\s+"#, with: "", options: .regularExpression)
+                headerContent = headerContent.replacingOccurrences(of: #"\s*#+$"#, with: "", options: .regularExpression).trimmingCharacters(in: .whitespaces)
+                if headerContent.hasPrefix("**") && headerContent.hasSuffix("**") {
+                    processedLines.append(headerContent)
+                } else {
+                    processedLines.append("**\(headerContent)**")
+                }
+                continue
+            }
+
+            // Check for unordered list bullets (-, *, +)
+            if line.range(of: #"^(\s*)[\-\*\+]\s+(.+)$"#, options: .regularExpression) != nil {
+                let indent = line.replacingOccurrences(of: #"^(\s*).*$"#, with: "$1", options: .regularExpression)
+                let bulletContent = line.replacingOccurrences(of: #"^\s*[\-\*\+]\s+"#, with: "", options: .regularExpression)
+                processedLines.append("\(indent)• \(bulletContent)")
+                continue
+            }
+
+            // Check for blockquotes (> Quote)
+            if line.range(of: #"^>\s+(.+)$"#, options: .regularExpression) != nil {
+                let quoteContent = line.replacingOccurrences(of: #"^>\s+"#, with: "", options: .regularExpression)
+                processedLines.append("*\(quoteContent)*")
+                continue
+            }
+
+            processedLines.append(line)
+        }
+
+        return processedLines.joined(separator: "\n")
     }
 }

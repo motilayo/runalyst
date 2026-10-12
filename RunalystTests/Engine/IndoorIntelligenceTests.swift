@@ -152,6 +152,50 @@ final class IndoorIntelligenceTests: XCTestCase {
         XCTAssertEqual(String(attributed.characters), text)
     }
 
+    func testTelemetryHighlighterRendersMarkdownRichText() {
+        let markdown = """
+        ### Split Analysis
+        Here is your breakdown:
+        - **km 1** (5:25/km, 161 SPM, 140 BPM): *slowest split*, pacing eased back
+        - **km 2** (4:30/km, 174 SPM, 168 BPM): *fastest split* with sharp pace control
+        """
+
+        let attributed = TelemetryHighlighter.highlight(markdown)
+        let plainCharacters = String(attributed.characters)
+
+        // Raw markdown syntax characters must not leak into characters
+        XCTAssertFalse(plainCharacters.contains("###"), "Headers must not contain raw ### characters")
+        XCTAssertFalse(plainCharacters.contains("**km"), "Bold markup must not contain raw ** characters")
+        XCTAssertFalse(plainCharacters.contains("- km"), "Dashes must be converted to clean bullets")
+
+        // Clean rich text characters must be present
+        XCTAssertTrue(plainCharacters.contains("Split Analysis"), "Header title must be preserved")
+        XCTAssertTrue(plainCharacters.contains("• km 1"), "Bullet must be converted to •")
+        XCTAssertTrue(plainCharacters.contains("• km 2"), "Bullet must be converted to •")
+        XCTAssertTrue(plainCharacters.contains("slowest split"), "Italic text must be preserved")
+
+        // Verify rich text presentation intents and styling runs
+        var foundBoldRun = false
+        var foundItalicRun = false
+        var foundAccentTelemetryRun = false
+
+        for run in attributed.runs {
+            if run.inlinePresentationIntent?.contains(.stronglyEmphasized) == true {
+                foundBoldRun = true
+            }
+            if run.inlinePresentationIntent?.contains(.emphasized) == true {
+                foundItalicRun = true
+            }
+            if run.foregroundColor != nil {
+                foundAccentTelemetryRun = true
+            }
+        }
+
+        XCTAssertTrue(foundBoldRun, "Should have strongly emphasized (bold) rich text runs")
+        XCTAssertTrue(foundItalicRun, "Should have emphasized (italic) rich text runs")
+        XCTAssertTrue(foundAccentTelemetryRun, "Should have styled telemetry citation runs")
+    }
+
     // MARK: - 4. Analyst Chat Guardrails
 
     @MainActor
