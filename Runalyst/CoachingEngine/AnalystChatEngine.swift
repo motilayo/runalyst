@@ -154,6 +154,11 @@ class AnalystChatEngine: ObservableObject {
 
         How to answer:
         - Answer what I ask directly, using the data sheet to back up your points.
+        - Calendar and temporal grounding:
+          • Check "Current Date (Today)" vs "Workout Date" on the data sheet carefully. This workout may have taken place days ago.
+          • NEVER refer to this workout as "today", "today's run", or "today's workout" unless the Workout Date is literally today. If the workout is from the past, refer to it accurately (e.g. "in your \(analysis.workoutWeekday) run" or "in your last session").
+          • When I ask about "today", "tomorrow", or "how hard should I push?", evaluate my current status today. If I haven't run today or yesterday, recognize my rest days and recovery clearance.
+          • If I state or clarify that I didn't run today or yesterday, immediately acknowledge that fact and ground your advice in my current rest days.
         - When I ask about splits or intervals, cite and evaluate the actual reps, pacing, and cadence stability.
         - When I ask what a concept means (like threshold), explain the concept simply, then connect it to how I ran.
         - When I ask for insights or what to improve, give me the coaching story: what happened, why my body reacted that way, and what to adjust next time.
@@ -572,8 +577,23 @@ class AnalystChatEngine: ObservableObject {
         let timeline = recoveryTimeline
         let when = RecoveryTimeline.pastPhrase(for: runRecord.date, relativeTo: timeline.now)
         let dayName = RecoveryTimeline.weekday(runRecord.date)
-        let timeframe = lower.contains("yesterday") ? "yesterday" : "today"
-        return "Understood—you haven't run \(timeframe). The session being analyzed was logged \(when). Taking \(timeframe) off gives your body time to stay fresh and rebuild after that \(dayName) workout."
+        let timeframe: String = {
+            if lower.contains("yesterday") && lower.contains("today") {
+                return "today or yesterday"
+            } else if lower.contains("yesterday") {
+                return "yesterday"
+            } else {
+                return "today"
+            }
+        }()
+        let now = timeline.now
+        let currentDayName = RecoveryTimeline.weekday(now)
+        let dateFormatter = DateFormatter()
+        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+        dateFormatter.dateFormat = "MMMM d"
+        let currentDateStr = dateFormatter.string(from: now)
+
+        return "Understood—today is \(currentDayName), \(currentDateStr), and you haven't run \(timeframe). The session on screen was logged \(when). Taking that rest gives your body time to stay fresh and rebuild after that \(dayName) workout."
     }
 
     private func classificationExplanationAnswer() -> String {
@@ -749,14 +769,16 @@ class AnalystChatEngine: ObservableObject {
         if timeline.readyForHard {
             return "A complete rest day is always a safe choice if you're feeling sluggish. You're recovered and ready to run when you want, but taking the day off will keep your legs fresh."
         }
-        return "Yes, taking a full rest day is a smart call today. That hard session took a real toll on your body, and complete rest gives you the downtime you need to repair and absorb that training."
+        return "Yes, taking a full rest day is a smart call. That hard session took a real toll on your body, and complete rest gives you the downtime you need to repair and absorb that training."
     }
 
     private func pushIntensityAnswer(timeline: RecoveryTimeline) -> String {
+        let isToday = Calendar.current.isDateInToday(runRecord.date)
+        let timeframe = isToday ? "today" : "on your next run"
         if timeline.readyForHard {
-            return "You're recovered, so a controlled hard effort is fine today. Aim for comfortably hard rather than all-out, focusing on a crisp turnover so the effort comes from rhythm, not overstriding."
+            return "You're recovered, so a controlled hard effort is fine \(timeframe). Aim for comfortably hard rather than all-out, focusing on a crisp turnover so the effort comes from rhythm, not overstriding."
         }
-        return "Keep your effort very light today—do not push hard. Your body needs active recovery, so stay conversational in Zone 2 or below until \(timeline.earliestHardPhrase)."
+        return "Keep your effort very light \(timeframe)—do not push hard. Your body needs active recovery, so stay conversational in Zone 2 or below until \(timeline.earliestHardPhrase)."
     }
 
     private func focusStrategyAnswer(timeframe: String, dist: (km: Double, label: String)?) -> String {

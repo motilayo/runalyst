@@ -65,6 +65,20 @@ struct WorkoutAnalysisContext {
     let baselineCadenceDelta: Int?
     let longitudinalDiagnosis: String?
 
+    // Date & Temporal Awareness
+    let currentDate: Date
+    let currentDateFormatted: String
+    let currentWeekday: String
+    let workoutDate: Date
+    let workoutDateFormatted: String
+    let workoutWeekday: String
+    let daysSinceWorkout: Int
+    let hoursSinceWorkout: Double
+    let isWorkoutToday: Bool
+    let isWorkoutYesterday: Bool
+    let hasRunToday: Bool
+    let hasRunYesterday: Bool
+
     // Overall Grade
     let overallGradeReport: RunGradeReport
 
@@ -78,6 +92,46 @@ struct WorkoutAnalysisContext {
         self.runRecord = runRecord
         self.macroProfile = macroProfile
         self.recoveryTimeline = recoveryTimeline
+
+        let now = recoveryTimeline.now
+        let cal = Calendar.current
+        self.currentDate = now
+        self.workoutDate = runRecord.date
+
+        self.isWorkoutToday = cal.isDateInToday(runRecord.date)
+        self.isWorkoutYesterday = cal.isDateInYesterday(runRecord.date)
+        let daysDiff = cal.dateComponents([.day], from: cal.startOfDay(for: runRecord.date), to: cal.startOfDay(for: now)).day ?? 0
+        self.daysSinceWorkout = max(0, daysDiff)
+        self.hoursSinceWorkout = max(0, now.timeIntervalSince(runRecord.date) / 3600.0)
+
+        let weekdayFormatter = DateFormatter()
+        weekdayFormatter.locale = Locale(identifier: "en_US_POSIX")
+        weekdayFormatter.dateFormat = "EEEE"
+        self.currentWeekday = weekdayFormatter.string(from: now)
+        self.workoutWeekday = weekdayFormatter.string(from: runRecord.date)
+
+        let dateFormatter = DateFormatter()
+        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+        dateFormatter.dateFormat = "MMM d, yyyy"
+        self.currentDateFormatted = dateFormatter.string(from: now)
+        self.workoutDateFormatted = dateFormatter.string(from: runRecord.date)
+
+        var todayRuns = 0
+        var yesterdayRuns = 0
+        if let context = runRecord.modelContext {
+            let startOfYesterday = cal.date(byAdding: .day, value: -1, to: cal.startOfDay(for: now)) ?? now
+            let desc = FetchDescriptor<RunRecord>(predicate: #Predicate<RunRecord> { $0.date >= startOfYesterday })
+            if let fetched = try? context.fetch(desc) {
+                todayRuns = fetched.filter { cal.isDateInToday($0.date) }.count
+                yesterdayRuns = fetched.filter { cal.isDateInYesterday($0.date) }.count
+            }
+        } else {
+            if self.isWorkoutToday { todayRuns = 1 }
+            if self.isWorkoutYesterday { yesterdayRuns = 1 }
+        }
+        self.hasRunToday = todayRuns > 0
+        self.hasRunYesterday = yesterdayRuns > 0
+
         if let base = baselineStats {
             self.baselineStats = BaselineStats(avgPace: base.avgPace, avgCadence: base.avgCadence, avgHR: base.avgHR, avgOscillation: 0)
         } else if let pace = macroProfile?.baselinePace,
@@ -330,10 +384,29 @@ struct WorkoutAnalysisContext {
     func groundedPromptSummary() -> String {
         var lines: [String] = []
 
+        // Calendar & Temporal Grounding
+        lines.append("CALENDAR & TEMPORAL CONTEXT:")
+        lines.append("- Current Date (Today): \(currentWeekday), \(currentDateFormatted)")
+        let elapsedNote: String = {
+            if isWorkoutToday { return "logged earlier today" }
+            if isWorkoutYesterday { return "logged yesterday" }
+            return "\(daysSinceWorkout) days ago on \(workoutWeekday), \(workoutDateFormatted)"
+        }()
+        lines.append("- Workout Date: \(workoutWeekday), \(workoutDateFormatted) (\(elapsedNote))")
+        if isWorkoutToday {
+            lines.append("- Activity Status: This workout took place today.")
+        } else {
+            let todayStatus = hasRunToday ? "Logged another run today." : "Did NOT run today."
+            let yesterdayStatus = hasRunYesterday ? "Logged a run yesterday." : "Did NOT run yesterday."
+            let restNote = daysSinceWorkout > 1 ? "\(daysSinceWorkout) days of rest/recovery accumulated since this workout." : "1 day of rest since this workout."
+            lines.append("- Recent Activity: \(todayStatus) \(yesterdayStatus) (\(restNote))")
+        }
+
         let durationMin = max(1, Int((runRecord.duration / 60.0).rounded()))
         let distKm = String(format: "%.1f km", runRecord.totalDistanceMeters / 1000.0)
 
-        lines.append("WORKOUT PROFILE:")
+        lines.append("")
+        lines.append("WORKOUT PROFILE (\(workoutWeekday), \(workoutDateFormatted)):")
         lines.append("- Type: \(detectedType) (\(isIndoor ? "Treadmill" : "Outdoors"))")
         lines.append("- Volume: \(distKm) in \(durationMin) min (Working Pace: \(workingPaceFormatted))")
         lines.append("- Biomechanics: Cadence \(workingCadence) SPM (\(isSubFloorCadence ? "BELOW 150 floor" : "healthy turnover above floor"))")
@@ -389,11 +462,11 @@ struct WorkoutAnalysisContext {
         // Future Training & Recovery
         lines.append("")
         lines.append("[FUTURE TRAINING & RECOVERY - Reference ONLY if asked about next run, readiness, recovery, or drills]:")
-        lines.append("- Readiness: \(recoveryTimeline.state.rawValue)")
+        lines.append("- Current Readiness: \(recoveryTimeline.state.rawValue)")
         if recoveryTimeline.readyForHard {
-            lines.append("- Recovery Clearance: Cleared for hard efforts")
+            lines.append("- Recovery Clearance: Cleared for hard efforts (last hard effort was \(Int(hoursSinceWorkout))h ago; required was \(Int(recoveryTimeline.requiredHours))h)")
         } else if let cap = recoveryTimeline.easyCap {
-            lines.append("- Recovery Clearance: Hard efforts cleared \(recoveryTimeline.earliestHardPhrase). Active recovery cap: \(cap.lowerBound)–\(cap.upperBound) min")
+            lines.append("- Recovery Clearance: In recovery window until \(recoveryTimeline.earliestHardPhrase). Active recovery cap: \(cap.lowerBound)–\(cap.upperBound) min")
         }
         if let drill = runRecord.insight?.drillRecommendations?.first ?? runRecord.insight?.drillRecommendation {
             lines.append("- Recommended Technique Drill: \(drill.drillTitle)")
