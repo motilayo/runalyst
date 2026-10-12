@@ -125,7 +125,7 @@ struct ContentView: View {
                         }
                         .navigationTitle("Cadence Progression")
                     }
-                case "ANALYST", "ANALYST_ACTIVE", "ANALYST_READ", "ANALYST_EFFORT", "ANALYST_IMPROVE", "ANALYST_MULTI", "ANALYST_ARM_DRIVE", "ANALYST_DEGRADATION", "ANALYST_WEAKNESS":
+                case "ANALYST", "ANALYST_ACTIVE", "ANALYST_READ", "ANALYST_EFFORT", "ANALYST_IMPROVE", "ANALYST_MULTI", "ANALYST_ARM_DRIVE", "ANALYST_DEGRADATION", "ANALYST_WEAKNESS", "ANALYST_SPLIT_GRADE":
                     if let run = existingRuns.first {
                         AnalystChatView(runRecord: run)
                     } else {

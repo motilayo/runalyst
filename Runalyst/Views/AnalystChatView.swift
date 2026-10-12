@@ -196,6 +196,11 @@ struct AnalystChatView: View {
                     await engine.sendMessage("What's my weak point?")
                     try? await Task.sleep(nanoseconds: 300_000_000)
                     dismissKeyboard()
+                } else if ProcessInfo.processInfo.environment["RUNALYST_PREVIEW_SCREEN"] == "ANALYST_SPLIT_GRADE" {
+                    try? await Task.sleep(nanoseconds: 400_000_000)
+                    await engine.sendMessage("Grade my performance in each split of this run")
+                    try? await Task.sleep(nanoseconds: 300_000_000)
+                    dismissKeyboard()
                 }
             }
         }
