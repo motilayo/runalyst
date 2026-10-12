@@ -632,4 +632,45 @@ final class FramboiseEngineTests: XCTestCase {
         )
         XCTAssertNotEqual(classification, "Progression Run", "High pace CV (>= 0.09) must prevent Progression Run classification")
     }
+
+    func testCalculateSplits_ContinuousRunPartitionsExactKilometers() async {
+        var buckets: [BucketData] = []
+        var now = Date()
+
+        // 12 buckets: each 200 meters in 60s (300 s/km = 5:00/km) -> 2,400 meters total
+        for i in 1...12 {
+            buckets.append(BucketData(
+                startTime: now,
+                distanceMeters: 200.0,
+                durationSeconds: 60.0,
+                meanPaceSecPerKm: 300.0,
+                meanCadence: 160.0 + Double(i),
+                meanHR: 140.0 + Double(i),
+                elevationGainMeters: 2.0
+            ))
+            now = now.addingTimeInterval(60.0)
+        }
+
+        let splits = await engine.calculateSplits(from: buckets, splitDistanceMeters: 1000.0)
+        // 2,400 meters -> km 1 (1000m), km 2 (1000m), km 3 (400m partial)
+        XCTAssertEqual(splits.count, 3)
+
+        // Split 1: 1000 meters in 300 seconds
+        XCTAssertEqual(splits[0].index, 1)
+        XCTAssertEqual(splits[0].distanceMeters, 1000.0, accuracy: 0.01)
+        XCTAssertEqual(splits[0].durationSeconds, 300.0, accuracy: 0.01)
+        XCTAssertEqual(splits[0].paceSecondsPerKm, 300.0, accuracy: 0.01)
+        XCTAssertEqual(splits[0].elevationGainMeters, 10.0, accuracy: 0.01)
+
+        // Split 2: 1000 meters in 300 seconds
+        XCTAssertEqual(splits[1].index, 2)
+        XCTAssertEqual(splits[1].distanceMeters, 1000.0, accuracy: 0.01)
+        XCTAssertEqual(splits[1].durationSeconds, 300.0, accuracy: 0.01)
+
+        // Split 3: 400 meters in 120 seconds (pace is still 120 / 0.4 = 300 s/km)
+        XCTAssertEqual(splits[2].index, 3)
+        XCTAssertEqual(splits[2].distanceMeters, 400.0, accuracy: 0.01)
+        XCTAssertEqual(splits[2].durationSeconds, 120.0, accuracy: 0.01)
+        XCTAssertEqual(splits[2].paceSecondsPerKm, 300.0, accuracy: 0.01)
+    }
 }
