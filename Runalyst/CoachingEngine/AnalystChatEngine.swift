@@ -39,6 +39,11 @@ class AnalystChatEngine: ObservableObject {
     private var modelSession: Any? // LanguageModelSession on iOS 26+
     #endif
 
+    #if DEBUG
+    /// Optional closure allowing unit tests to simulate model free-speech responses and inspect system instructions.
+    var modelResponder: ((_ systemInstructions: String, _ userQuestion: String) async throws -> String)?
+    #endif
+
     private var baselineStats: (avgPace: Double, avgCadence: Double, avgHR: Double)? {
         guard let context = runRecord.modelContext,
               let thirtyDaysAgo = Calendar.current.date(byAdding: .day, value: -30, to: runRecord.date) else {
@@ -110,6 +115,20 @@ class AnalystChatEngine: ObservableObject {
             return
         }
 
+        // Test responder hook (for unit tests / mock free speak)
+        #if DEBUG
+        if let responder = modelResponder {
+            do {
+                let systemInstructions = buildSystemInstructions()
+                let responseText = try await responder(systemInstructions, trimmed)
+                messages.append(AnalystChatMessage(sender: .analyst, text: responseText))
+                return
+            } catch {
+                print("Model responder error: \(error)")
+            }
+        }
+        #endif
+
         // FoundationModels on-device generation with rich Workout Data Sheet
         #if canImport(FoundationModels)
         if #available(iOS 26.0, *) {
@@ -125,16 +144,14 @@ class AnalystChatEngine: ObservableObject {
         }
         #endif
 
-        // Clean, data-grounded fallback response
-        let fallbackResponse = generateDeterministicResponse(for: trimmed)
+        // Clean, data-grounded fallback response (offline / non-AI hardware)
+        let fallbackResponse = generateDataGroundedFallback(for: trimmed)
         messages.append(AnalystChatMessage(sender: .analyst, text: fallbackResponse))
     }
 
-    // MARK: - FoundationModels
+    // MARK: - FoundationModels Prompt Construction
 
-    #if canImport(FoundationModels)
-    @available(iOS 26.0, *)
-    private func generateFoundationModelResponse(for userQuestion: String) async throws -> String {
+    func buildSystemInstructions() -> String {
         let language = Locale.current.language.languageCode?.identifier ?? "en"
         let analysis = WorkoutAnalysisContext(
             runRecord: runRecord,
@@ -145,7 +162,7 @@ class AnalystChatEngine: ObservableObject {
         )
         let dataSheet = analysis.groundedPromptSummary()
 
-        let systemInstructions = """
+        return """
         WORKOUT DATA SHEET:
         \(dataSheet)
 
@@ -171,6 +188,12 @@ class AnalystChatEngine: ObservableObject {
         - Only discuss future training, recovery timelines, or readiness when I specifically ask about them. Do not append unasked readiness sign-offs or disclaimers about unrecorded sensors.
         Respond in \(language).
         """
+    }
+
+    #if canImport(FoundationModels)
+    @available(iOS 26.0, *)
+    private func generateFoundationModelResponse(for userQuestion: String) async throws -> String {
+        let systemInstructions = buildSystemInstructions()
 
         let session: LanguageModelSession
         if let existing = modelSession as? LanguageModelSession {
@@ -274,181 +297,10 @@ class AnalystChatEngine: ObservableObject {
         return splits
     }
 
-    // MARK: - Deterministic Fallback Response
+    // MARK: - Data-Grounded Fallback Response (Offline / Non-AI Hardware)
 
-    private func generateDeterministicResponse(for userQuestion: String) -> String {
+    private func generateDataGroundedFallback(for userQuestion: String) -> String {
         let q = userQuestion.lowercased().replacingOccurrences(of: "’", with: "'")
-
-        // 1. Calendar / Day-of-week questions
-        if q.contains("what day is") || q.contains("what is today's date") || q.contains("what is today") || q.contains("what is tomorrow") || q.contains("what date is") {
-            return dayQueryAnswer(for: q)
-        }
-
-        // 2. Runner clarification about not running today or yesterday
-        if q.contains("didn't run") || q.contains("didnt run") || q.contains("haven't run") || q.contains("havent run") || q.contains("didn't do an easy run") || q.contains("didnt do an easy run") {
-            return didNotRunAnswer(for: q)
-        }
-
-        // 3. Classification explanations ("why mixed effort", "why intervals", "why steady")
-        if (q.contains("why") && (q.contains("label") || q.contains("classif"))) || q.contains("why 'mixed effort'") || q.contains("why mixed effort") {
-            return classificationExplanationAnswer()
-        }
-
-        // 4. Grade / rate my performance (prioritized over general split stats)
-        if q.contains("grade") || q.contains("rate my") || q.contains("score my") || q.contains("evaluate my") || q.contains("how did i do") || q.contains("how did my run go") {
-            return gradeAnswer(for: q)
-        }
-
-        // 5. Splits, intervals, and best/worst segments
-        if q.contains("split") || q.contains("interval") || q.contains("rep") || q.contains("segment") || q.contains("fastest") || q.contains("slowest") || q.contains("best") || q.contains("worst") {
-            return splitPerformanceAnswer()
-        }
-
-        // 6. Unrecorded biometrics (vertical oscillation, stride length)
-        if q.contains("vertical") || q.contains("oscillation") || q.contains("bounce") {
-            return verticalOscillationAnswer()
-        }
-        if q.contains("stride") || q.contains("overstride") {
-            return strideLengthAnswer()
-        }
-
-        // 7. Readiness adjustment explanation
-        if q.contains("readiness") && (q.contains("why") || q.contains("adjust") || q.contains("optimal") || q.contains("lower") || q.contains("drop")) {
-            return readinessExplanationAnswer()
-        }
-
-        // 8. Calorie inquiry
-        if q.contains("calorie") || q.contains("kcal") || q.contains("burn") {
-            return caloriesAnswer(timeline: recoveryTimeline)
-        }
-
-        // 9. Motivation / adrenaline / love pushing hard
-        if (q.contains("push") || q.contains("hard")) && (q.contains("like") || q.contains("love") || q.contains("enjoy") || q.contains("exhilarat")) {
-            return motivationAnswer(timeline: recoveryTimeline)
-        }
-
-        // 10. Base fitness / 5k or 10k transition
-        if q.contains("base") || (q.contains("5k") || q.contains("10k")) && (q.contains("ready") || q.contains("transition") || q.contains("shift gear") || q.contains("built")) {
-            return baseFitnessAnswer()
-        }
-
-        // 11. Cross-training (bike, swim, elliptical, walk)
-        if let activity = parseCrossTraining(q) {
-            return crossTrainingAnswer(activity: activity, timeline: recoveryTimeline)
-        }
-
-        // 12. Rest day
-        if (q.contains("rest day") || q.contains("day off") || q.contains("just rest") || q.contains("take a rest")) && !q.contains("can i run") {
-            return restDayAnswer(timeline: recoveryTimeline)
-        }
-
-        // 13. How hard to push
-        if q.contains("how hard") || (q.contains("push") && q.contains("should")) {
-            return pushIntensityAnswer(timeline: recoveryTimeline)
-        }
-
-        // 14. Planning runs / Can I run / Focus day
-        let timeframe = parseTimeframe(q)
-        let dist = parseDistance(q)
-        let mins = parseMinutes(q)
-
-        let asksWhatToFocusOn = q.contains("focus on") || q.contains("focused on") || q.contains("focusing on") || q.contains("what should i focus") || q.contains("what to focus") || q.contains("keep in mind") || q.contains("pacing strategy")
-
-        if asksWhatToFocusOn {
-            return focusStrategyAnswer(timeframe: timeframe, dist: dist)
-        }
-
-        let planningKeywords = [
-            "can i run", "should i run", "good for", "run tomorrow", "run today",
-            "go for a", "another run", "plan", "ready for", "could i", "how soon",
-            "attempt", "what if", "zone 2", "zone2", "session today"
-        ]
-        if planningKeywords.contains(where: { q.contains($0) }) || dist != nil || mins != nil {
-            let target = RunPlanTarget(minutes: mins, distanceKm: dist?.km, distanceLabel: dist?.label, timeframe: timeframe, mentionsZone2: q.contains("zone 2") || q.contains("zone2"))
-            return runPlanningAnswer(for: target, timeline: recoveryTimeline)
-        }
-
-        // 15. Form / technique / conceptual / cues
-        return generalCoachingAnswer(for: q)
-    }
-
-    // MARK: - Data-Driven Answer Handlers
-
-    private func dayQueryAnswer(for lower: String) -> String {
-        let cal = Calendar.current
-        let now = Date()
-        let weekdayFormatter = DateFormatter()
-        weekdayFormatter.locale = Locale(identifier: "en_US_POSIX")
-        weekdayFormatter.dateFormat = "EEEE"
-
-        let dateFormatter = DateFormatter()
-        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
-        dateFormatter.dateFormat = "MMMM d"
-
-        if lower.contains("tomorrow") {
-            let tomorrow = cal.date(byAdding: .day, value: 1, to: now) ?? now
-            let dayName = weekdayFormatter.string(from: tomorrow)
-            let dateStr = dateFormatter.string(from: tomorrow)
-            return "Tomorrow is \(dayName), \(dateStr)."
-        } else if lower.contains("yesterday") || lower.contains("was") {
-            let yesterday = cal.date(byAdding: .day, value: -1, to: now) ?? now
-            let dayName = weekdayFormatter.string(from: yesterday)
-            let dateStr = dateFormatter.string(from: yesterday)
-            return "Yesterday was \(dayName), \(dateStr)."
-        } else {
-            let dayName = weekdayFormatter.string(from: now)
-            let dateStr = dateFormatter.string(from: now)
-            return "Today is \(dayName), \(dateStr)."
-        }
-    }
-
-    private func didNotRunAnswer(for lower: String) -> String {
-        let timeline = recoveryTimeline
-        let when = RecoveryTimeline.pastPhrase(for: runRecord.date, relativeTo: timeline.now)
-        let dayName = RecoveryTimeline.weekday(runRecord.date)
-        let timeframe: String = {
-            if lower.contains("yesterday") && lower.contains("today") {
-                return "today or yesterday"
-            } else if lower.contains("yesterday") {
-                return "yesterday"
-            } else {
-                return "today"
-            }
-        }()
-        let now = timeline.now
-        let currentDayName = RecoveryTimeline.weekday(now)
-        let dateFormatter = DateFormatter()
-        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
-        dateFormatter.dateFormat = "MMMM d"
-        let currentDateStr = dateFormatter.string(from: now)
-
-        return "Understood—today is \(currentDayName), \(currentDateStr), and you haven't run \(timeframe). The session on screen was logged \(when). Taking that rest gives your body time to stay fresh and rebuild after that \(dayName) workout."
-    }
-
-    private func classificationExplanationAnswer() -> String {
-        let type = runRecord.detectedTypeRaw.isEmpty ? "Run" : runRecord.detectedTypeRaw
-        let rationale: String = {
-            if runRecord.needsInclineReview == true {
-                return "Your heart rate surged and cadence dropped while treadmill speed stayed flat, indicating incline intervals or hill work on the belt."
-            }
-            if type.contains("Mixed") {
-                return "Your run showed repeated pace surges and elevated heart rate spikes, but the work and recovery durations were irregular rather than structured intervals. It was labeled Mixed Effort so you can review and refine how it was tagged."
-            }
-            if type.contains("Interval") {
-                return "The session showed distinct, alternating phases of fast work intervals and recovery periods."
-            }
-            if type.contains("Steady") {
-                return "Your pacing and heart rate stayed consistent throughout the run with low pace variability."
-            }
-            if type.contains("Progression") {
-                return "Your pace accelerated steadily from the early miles to the final stretch."
-            }
-            return "Based on your pace variability and heart rate response throughout the session."
-        }()
-        return "This session was classified as \(type). \(rationale)"
-    }
-
-    private func splitPerformanceAnswer() -> String {
         let analysis = WorkoutAnalysisContext(
             runRecord: runRecord,
             runSignature: runSignature,
@@ -456,455 +308,67 @@ class AnalystChatEngine: ObservableObject {
             recoveryTimeline: recoveryTimeline,
             baselineStats: baselineStats
         )
-        if !analysis.splitEvaluations.isEmpty {
+
+        // 1. Splits, intervals, and pacing segments
+        if q.contains("split") || q.contains("interval") || q.contains("rep") || q.contains("segment") || q.contains("fastest") || q.contains("slowest") {
             return analysis.formatSplitReport()
         }
+
+        // 2. Grade and performance evaluation
+        if q.contains("grade") || q.contains("rate") || q.contains("score") || q.contains("how did i do") {
+            return analysis.overallGradeReport.sentence
+        }
+
+        // 3. Sensor queries (vertical oscillation, stride length)
+        if q.contains("vertical") || q.contains("bounce") || q.contains("oscillation") {
+            if let osc = runRecord.workingAvgVerticalOscillation {
+                return "Your vertical bounce was \(String(format: "%.1f", osc)) cm."
+            } else {
+                return "Vertical oscillation wasn't recorded for this workout because it was an indoor treadmill run. Apple Watch measures vertical bounce outdoors or when paired with an authentic footpod."
+            }
+        }
+        if q.contains("stride") {
+            if let stride = runRecord.workingAvgStrideLength {
+                return "Your average stride length was \(String(format: "%.2f", stride)) m."
+            } else {
+                return "Stride length wasn't recorded for this workout because it was an indoor treadmill run without a footpod."
+            }
+        }
+
+        // 4. Classification explanations
+        if q.contains("why") && (q.contains("label") || q.contains("classif") || q.contains("mixed")) {
+            let type = runRecord.detectedTypeRaw.isEmpty ? "Run" : runRecord.detectedTypeRaw
+            let reason = runRecord.needsInclineReview == true
+                ? "surges and cadence drops on the treadmill indicated incline intervals."
+                : "repeated pace surges and irregular work/recovery intervals."
+            return "This session was classified as \(type) due to \(reason)"
+        }
+
+        // 5. Calendar / Day queries
+        if q.contains("what day is") || q.contains("what is today") || q.contains("what date is") {
+            return "Today is \(analysis.currentWeekday), \(analysis.currentDateFormatted)."
+        }
+
+        // 6. Runner clarification (didn't run today / yesterday)
+        if q.contains("didn't run") || q.contains("didnt run") || q.contains("haven't run") || q.contains("havent run") {
+            let timeframe = q.contains("yesterday") ? "yesterday" : "today"
+            return "Understood—today is \(analysis.currentWeekday), and you haven't run \(timeframe). You have \(analysis.daysSinceWorkout) days of rest since your last session on \(analysis.workoutWeekday)."
+        }
+
+        // 7. Future training, recovery, and readiness
+        if q.contains("can i run") || q.contains("ready") || q.contains("recovery") || q.contains("rest") || q.contains("tomorrow") || q.contains("today") || q.contains("push") || q.contains("hard") {
+            if analysis.recoveryTimeline.readyForHard {
+                return "Your recovery status is \(analysis.recoveryTimeline.state.rawValue): fully recovered and cleared for your next workout."
+            } else {
+                return "Your recovery status is \(analysis.recoveryTimeline.state.rawValue): in active recovery until \(analysis.recoveryTimeline.earliestHardPhrase)."
+            }
+        }
+
+        // 8. Direct data summary
         let pace = PaceFormatter.formatPace(secondsPerKilometer: runRecord.workingAvgPace)
-        return "Your pace averaged \(pace) throughout this workout with steady execution."
-    }
-
-    private func verticalOscillationAnswer() -> String {
-        if let osc = runRecord.workingAvgVerticalOscillation {
-            return "Your vertical bounce was \(String(format: "%.1f", osc)) cm. Keeping that below 9 cm ensures your energy propels you forward rather than bounding upward into the air."
-        } else {
-            return "Vertical oscillation wasn't recorded for this workout because it was an indoor treadmill run. Apple Watch measures vertical bounce outdoors or when paired with an authentic footpod."
-        }
-    }
-
-    private func strideLengthAnswer() -> String {
-        if let stride = runRecord.workingAvgStrideLength {
-            return "Your average stride length was \(String(format: "%.2f", stride)) m. Focus on landing directly beneath your hips to keep impact light."
-        } else {
-            return "Stride length wasn't recorded for this workout because it was an indoor treadmill run without a footpod. Focus on landing your feet directly under your hips rather than reaching forward."
-        }
-    }
-
-    private func readinessExplanationAnswer() -> String {
-        let readiness = currentReadiness
-        let ratio = readiness.acwr.map { "ACWR \(String(format: "%.2f", $0))" } ?? "not enough history yet for a reliable ACWR"
-        let reason = triggerPhrase(readiness.triggers) ?? "the acute fatigue from your most recent hard workout"
-        return "Your 4-week training load looks balanced (\(ratio)), but your readiness was adjusted because of \(reason). Training load measures how this week compares with the last month, while readiness looks at immediate recovery—so a hard session in the last couple of days lowers readiness even when your monthly balance is fine."
-    }
-
-    private func gradeAnswer(for userQuestion: String = "") -> String {
-        let q = userQuestion.lowercased()
-        let analysis = WorkoutAnalysisContext(
-            runRecord: runRecord,
-            runSignature: runSignature,
-            macroProfile: macroProfile,
-            recoveryTimeline: recoveryTimeline,
-            baselineStats: baselineStats
-        )
-
-        if q.contains("split") && !analysis.splitEvaluations.isEmpty {
-            return analysis.formatSplitReport()
-        }
-
-        if (q.contains("rep") || q.contains("interval")) && !analysis.workSegments.isEmpty {
-            return repByRepGrade(segments: analysis.phaseSegments)
-        }
-
-        return analysis.overallGradeReport.sentence
-    }
-
-    private func splitBySplitGrade(splits: [RunSplit]) -> String {
-        let analysis = WorkoutAnalysisContext(
-            runRecord: runRecord,
-            runSignature: runSignature,
-            macroProfile: macroProfile,
-            recoveryTimeline: recoveryTimeline,
-            baselineStats: baselineStats
-        )
-        return analysis.formatSplitReport()
-    }
-
-    private func repByRepGrade(segments: [PhaseSegment]) -> String {
-        let workReps = segments.filter { $0.kind == "work" && $0.avgPace > 0 }
-        guard !workReps.isEmpty else { return gradeAnswer() }
-        let fastest = workReps.min(by: { $0.avgPace < $1.avgPace })
-        let slowest = workReps.max(by: { $0.avgPace < $1.avgPace })
-        let avgPace = workReps.reduce(0.0) { $0 + $1.avgPace } / Double(workReps.count)
-
-        var breakdown: [String] = []
-        for (idx, rep) in workReps.prefix(6).enumerated() {
-            let sMin = Int(rep.startSeconds / 60)
-            let sSec = Int(rep.startSeconds.truncatingRemainder(dividingBy: 60))
-            let eMin = Int(rep.endSeconds / 60)
-            let eSec = Int(rep.endSeconds.truncatingRemainder(dividingBy: 60))
-            let timeStr = String(format: "%d:%02d–%d:%02d", sMin, sSec, eMin, eSec)
-            let paceStr = PaceFormatter.formatPace(secondsPerKilometer: rep.avgPace)
-            let paceDelta = Int(avgPace - rep.avgPace)
-
-            let letter: String
-            let note: String
-            if rep.id == fastest?.id {
-                letter = "A"
-                note = "fastest rep (\(paceStr)) with sharp turnover at \(Int(rep.avgCadence)) SPM"
-            } else if rep.avgCadence < 150 {
-                letter = "B-"
-                note = "cadence dipped to \(Int(rep.avgCadence)) SPM below floor"
-            } else if rep.id == slowest?.id {
-                letter = "B"
-                note = "slowest rep (\(paceStr)), fatigue showed as pace eased back"
-            } else if paceDelta >= 4 {
-                letter = "A-"
-                note = "strong sustained surge (\(paceDelta)s/km faster than work average)"
-            } else {
-                letter = "A-"
-                note = "controlled effort at \(paceStr) with steady \(Int(rep.avgCadence)) SPM turnover"
-            }
-            breakdown.append("• Work Rep \(idx + 1) (\(timeStr), \(paceStr), \(Int(rep.avgCadence)) SPM): \(letter) — \(note)")
-        }
-
-        var result = "Here is how your work intervals graded:\n" + breakdown.joined(separator: "\n")
-        if let f = fastest, workReps.count >= 2 {
-            let idx = (workReps.firstIndex(where: { $0.id == f.id }) ?? 0) + 1
-            result += "\n\nOverall interval execution: A-. Strongest surge was Rep \(idx) at \(PaceFormatter.formatPace(secondsPerKilometer: f.avgPace))."
-        }
-        return result
-    }
-
-    private func caloriesAnswer(timeline: RecoveryTimeline) -> String {
-        guard let cap = timeline.easyCap else {
-            return "Calorie burn tracks mostly with duration and distance, not intensity—so a longer easy run burns more than a short hard one. You're recovered, so if burning more is the goal, extend your easy run rather than speeding it up."
-        }
-        return "You're right—an easy recovery jog burns less energy than a long hard session, because calorie burn tracks mostly with duration and distance. But recovery days aren't about burning calories: they let your body repair so your next hard session, \(timeline.earliestHardPhrase), is high quality. If you want more movement, add an easy walk—it burns energy without adding running fatigue."
-    }
-
-    private func motivationAnswer(timeline: RecoveryTimeline) -> String {
-        if timeline.readyForHard {
-            return "That drive is a real asset, and good news: you're recovered, so your next run is a great time to put it into a quality session. Go hard on the reps and truly easy on the recoveries—that contrast is where the speed comes from."
-        }
-        return "That drive is a real asset—hard efforts are where you sharpen your speed. But the fitness from those pushes is built while you recover; stack hard days back-to-back and you just dig a deeper hole. Your next chance to go hard is \(timeline.earliestHardPhrase)—save that energy for it."
-    }
-
-    private func baseFitnessAnswer() -> String {
-        let cad = Int(runRecord.workingAvgCadence)
-        if cad >= 150 {
-            return "Yes, you have built a solid base to begin 5k and 10k training. Your cadence turnover of \(cad) SPM and steady pacing show good aerobic efficiency. As you shift gears, introduce faster intervals gradually—about one workout a week—while keeping the majority of your weekly volume easy and conversational so your body absorbs the work."
-        } else {
-            return "You're building solid endurance, but quickening your foot turnover from \(cad) SPM will strengthen your base before shifting gears to 5k and 10k workouts. Bringing your cadence up toward a lighter step rhythm will make faster intervals feel easier and protect your legs as training demands increase."
-        }
-    }
-
-    private func crossTrainingAnswer(activity: String, timeline: RecoveryTimeline) -> String {
-        guard timeline.easyCap != nil else {
-            return "Yes, a \(activity) is a great option. Your recovery markers look good, so keeping the effort easy to moderate gives you a solid aerobic session while giving your running joints a break."
-        }
-        return "Yes, a light \(activity) is an excellent choice. It gives your legs an active recovery flush without the ground impact of running, letting your body absorb your recent hard session. Keep the resistance and intensity light in Zone 1 or 2."
-    }
-
-    private func restDayAnswer(timeline: RecoveryTimeline) -> String {
-        if timeline.readyForHard {
-            return "A complete rest day is always a safe choice if you're feeling sluggish. You're recovered and ready to run when you want, but taking the day off will keep your legs fresh."
-        }
-        return "Yes, taking a full rest day is a smart call. That hard session took a real toll on your body, and complete rest gives you the downtime you need to repair and absorb that training."
-    }
-
-    private func pushIntensityAnswer(timeline: RecoveryTimeline) -> String {
-        let isToday = Calendar.current.isDateInToday(runRecord.date)
-        let timeframe = isToday ? "today" : "on your next run"
-        if timeline.readyForHard {
-            return "You're recovered, so a controlled hard effort is fine \(timeframe). Aim for comfortably hard rather than all-out, focusing on a crisp turnover so the effort comes from rhythm, not overstriding."
-        }
-        return "Keep your effort very light \(timeframe)—do not push hard. Your body needs active recovery, so stay conversational in Zone 2 or below until \(timeline.earliestHardPhrase)."
-    }
-
-    private func focusStrategyAnswer(timeframe: String, dist: (km: Double, label: String)?) -> String {
-        let isCleared = recoveryTimeline.isCleared(for: timeframe)
-
-        if let dist = dist {
-            if !isCleared && timeframe != "today" {
-                let cap = recoveryTimeline.easyCap?.upperBound ?? 40
-                return "A \(dist.label) \(timeframe) would conflict with your recovery clock after your recent hard session. If you do run \(timeframe), focus strictly on keeping it an easy, conversational recovery jog under \(cap) minutes, and save the \(dist.label) for \(recoveryTimeline.earliestHardPhrase)."
-            } else if dist.label.contains("10k") || (dist.km >= 9.0 && dist.km <= 11.0) {
-                let dayContext = timeframe != "today" ? "For your 10k on \(timeframe), " : "For a 10k, "
-                return "\(dayContext)focus on settling into a relaxed, controlled rhythm through the first half rather than chasing pace early. Keep your cadence light and snappy, and let the effort build naturally so you finish strong."
-            } else if dist.label.contains("5k") || (dist.km >= 4.5 && dist.km <= 6.0) {
-                let dayContext = timeframe != "today" ? "For your 5k on \(timeframe), " : "For a 5k, "
-                return "\(dayContext)focus on finding a crisp, light turnover right from the start without overstriding, keeping your shoulders relaxed and driving your elbows straight back to maintain momentum."
-            }
-        }
-
-        if timeframe != "today" {
-            if isCleared {
-                return "For \(timeframe), your recovery clock is cleared and you're good to go. A normal easy or steady run fits well, focusing on a relaxed rhythm and steady pacing."
-            } else {
-                let cap = recoveryTimeline.easyCap?.upperBound ?? 40
-                return "For \(timeframe), keep your effort light: an easy jog under \(cap) minutes in Zone 2 or complete rest to let your body repair."
-            }
-        }
-
-        return "Focus on maintaining a crisp, light foot turnover landing softly under your hips, keeping your upper body relaxed and breathing rhythmically."
-    }
-
-    private func runPlanningAnswer(for target: RunPlanTarget, timeline: RecoveryTimeline) -> String {
-        let readiness = currentReadiness
-        let avgPace = runRecord.workingAvgPace > 0 ? runRecord.workingAvgPace : 360.0
-        let effectiveMinutes: Int? = {
-            if let mins = target.minutes { return mins }
-            if let km = target.distanceKm {
-                return Int((km * avgPace / 60.0).rounded())
-            }
-            return nil
-        }()
-
-        let isTimeframeCleared = timeline.isCleared(for: target.timeframe)
-        let activeCap: ClosedRange<Int>? = isTimeframeCleared ? nil : timeline.easyCap
-
-        guard let cap = activeCap else {
-            if readiness.state == .deload {
-                let note = target.distanceLabel.map { " for your \($0)" } ?? ""
-                return "Yes, you can run \(target.timeframe)\(note)—keep it light. You're in a deload week, so a relaxed, conversational effort lets your body absorb the recent training."
-            }
-            let distPhrase = target.distanceLabel.map { "for a \($0) run" } ?? "to run"
-            let minutesNote = effectiveMinutes.map { " \($0) minutes is fine." } ?? ""
-            return "Yes, you're good \(distPhrase) \(target.timeframe). Your recovery markers look solid, so a normal effort fits.\(minutesNote)"
-        }
-
-        let range = "\(cap.lowerBound)–\(cap.upperBound)"
-
-        if let minutes = effectiveMinutes, minutes > cap.upperBound {
-            let label = target.distanceLabel ?? "\(minutes) minutes"
-            if target.mentionsZone2 {
-                return "Zone 2 is the right intensity, but a \(label) (around \(minutes) minutes) is too long for \(target.timeframe). Cap it at \(range) minutes of easy running or a brisk walk, and save the longer Zone 2 run for \(timeline.earliestHardPhrase)."
-            }
-            return "A \(label) is too long for \(target.timeframe)—at your pace that's about \(minutes) minutes, and while recovering, your cap is \(range) easy minutes. Save longer runs for \(timeline.earliestHardPhrase) once your recovery clock clears; if you run \(target.timeframe), keep it to a light \(range)-minute jog."
-        }
-
-        if let label = target.distanceLabel {
-            return "Yes, an easy \(label) fits \(target.timeframe): keep it to \(range) minutes, conversational in Zone 2 or below. Skip any fast surges until \(timeline.earliestHardPhrase)."
-        }
-
-        return "Yes—an easy run fits \(target.timeframe): \(range) minutes, conversational, in Zone 2 or below. Skip any fast surges until \(timeline.earliestHardPhrase)."
-    }
-
-    private func generalCoachingAnswer(for q: String) -> String {
         let cad = Int(runRecord.workingAvgCadence)
         let hr = Int(runRecord.workingAvgHeartRate)
-        let pace = PaceFormatter.formatPace(secondsPerKilometer: runRecord.workingAvgPace)
-        let isIndoor = runRecord.isIndoor ?? false
-        let signature = runSignature ?? runRecord.signature
-        let workSegments = signature?.phaseSegments.filter { $0.kind == "work" } ?? []
-        let recoverySegments = signature?.phaseSegments.filter { $0.kind == "recovery" } ?? []
-
-        // Arm Drive / Arm Swing
-        if q.contains("arm drive") || q.contains("arm swing") || (q.contains("arm") && (q.contains("help") || q.contains("do") || q.contains("why") || q.contains("how"))) {
-            return "Your arms act like a metronome for your legs—your feet naturally follow the tempo of your arm swing. Keeping your elbows bent around 90 degrees and driving them straight back helps you turn your feet over quicker without straining your legs, while preventing you from overreaching your stride."
-        }
-
-        // Breathing
-        if q.contains("breath") || q.contains("breathe") {
-            return "Rhythmic breathing helps keep your heart rate calm and spreads landing impact across both legs. Try inhaling for 3 footstrikes and exhaling for 2—this odd-count pattern prevents you from always exhaling on the same foot strike, keeping your rhythm steady."
-        }
-
-        // Posture
-        if q.contains("posture") || q.contains("tall") || q.contains("head") || q.contains("shoulder") {
-            return "Good running posture starts from the crown of your head: run tall with an open chest, keep your shoulders down and relaxed, and look 10 to 15 meters ahead rather than down at your feet. This opens up your airways and takes unnecessary tension out of your neck."
-        }
-
-        // Performance: Degradation / Fading
-        if q.contains("degrad") || q.contains("fade") || q.contains("tiring") || q.contains("tired") || q.contains("end of") || q.contains("late") || q.contains("later") {
-            if !workSegments.isEmpty {
-                return "Your interval pacing held steady across your work reps without significant drop-off. Your heart rate climbed slightly during the later intervals, which is natural cardiac drift as fatigue builds—focusing on taking lighter, quicker steps late in the workout helps take stress off tired legs."
-            } else {
-                return "Your pace stayed consistent right through the later miles. Your heart rate rose slightly near the finish, which is normal aerobic fatigue, but you maintained your form and avoided any sudden slowdown."
-            }
-        }
-
-        // Weak point / Least Improved
-        if q.contains("least") || q.contains("weak") || q.contains("struggle") || q.contains("hardest") || q.contains("room to grow") {
-            if !recoverySegments.isEmpty {
-                return "The biggest area for growth was your recovery between intervals. Your heart rate stayed elevated during rest breaks—slowing down to an easy walk or very gentle jog will let your pulse drop more so you have more pop on the work reps."
-            } else if let osc = runRecord.workingAvgVerticalOscillation, osc > 9.5 {
-                return "The main area with room to grow is vertical bounce. Directing more energy forward rather than bounding upward will soften ground impact and save leg fatigue."
-            } else if cad < 160 {
-                return "The clearest area with room to grow is foot turnover. Your feet are spending a bit longer on the ground each stride—gently quickening your step rhythm will make your effort feel lighter and take stress off your joints."
-            } else {
-                return "Your metrics were remarkably solid throughout this run. The main area to keep an eye on is late-run heart rate drift, keeping your early pace relaxed so you finish with plenty of energy in reserve."
-            }
-        }
-
-        // Most Improved / Strongest / Biggest Win
-        if q.contains("most improve") || q.contains("biggest win") || q.contains("best part") || q.contains("strongest") || (q.contains("most") && q.contains("improve")) {
-            if !workSegments.isEmpty {
-                return "Your biggest win was your pacing control during work intervals. Holding a consistent, controlled rhythm on the fast segments showed great discipline and confidence."
-            } else if hr <= 150 {
-                return "Your standout strength was cardiovascular control—holding a steady aerobic effort showed great discipline and smart energy management."
-            } else if cad >= 165 {
-                return "Your standout strength was your sharp foot turnover. That quick rhythm keeps your feet landing softly under your hips, protecting your knees and shins."
-            } else {
-                return "Your biggest win was pacing consistency. Holding a steady rhythm without fading shows solid stamina and endurance control."
-            }
-        }
-
-        // Heart Rate / Effort / Intensity
-        if q.contains("effort") || q.contains("heart rate") || q.contains("hr") || q.contains("intensity") || q.contains("hard") {
-            let envDetail = isIndoor
-                ? " On the treadmill, where the belt enforces your speed, this shows steady cardiovascular control even without outdoor airflow."
-                : " Your pacing was well-matched to your aerobic engine."
-            return "Your effort was smooth and controlled.\(envDetail) You kept your intensity in a productive training zone without straining your engine."
-        }
-
-        // Next Run / Tip / Focus / Technique / Form
-        if q.contains("tip") || q.contains("cue") || q.contains("focus") || q.contains("next run") || q.contains("improve") || q.contains("technique") || q.contains("form") {
-            if cad < 150 {
-                return "The best area to focus on is quickening your foot turnover. Aiming for lighter, quicker steps landing directly under your hips will take impact off your joints and improve your rhythm."
-            }
-
-            let coachTurnIndex = messages.filter { $0.sender == .analyst }.count % 4
-
-            if coachTurnIndex == 0 {
-                if let drill = runRecord.insight?.drillRecommendations?.first ?? runRecord.insight?.drillRecommendation {
-                    let purpose = drill.drillPurpose?.lowercased() ?? "cadence efficiency"
-                    return "Your foot turnover is in a healthy groove. Before your next run, warm up with \(drill.drillTitle) to build \(purpose) and get your legs feeling springy."
-                } else {
-                    return "Your foot turnover is in a healthy groove. Before your next run, warm up with a few light 15-second Strides to wake up your fast-twitch muscle fibers and get your legs used to quick, effortless steps."
-                }
-            } else if coachTurnIndex == 1 {
-                return "Your cadence turnover provides a solid foundation. Focus on landing softly with your feet directly under your hips rather than reaching forward—it keeps impact light on your knees and keeps your momentum moving ahead."
-            } else if coachTurnIndex == 2 {
-                return "With your turnover rhythm steady, try rhythmic breathing on your next run: inhale for 3 footstrikes and exhale for 2. This steady breathing pattern keeps your heart rate calm and balances landing impact across both legs."
-            } else {
-                return "Your foot turnover is steady. Focus on your posture: run tall with an open chest, keep your shoulders down and relaxed, and look 10 to 15 meters ahead instead of down at your feet."
-            }
-        }
-
-        // Cadence / Turnover specifically
-        if q.contains("cadence") || q.contains("turnover") || q.contains("rhythm") || q.contains("spm") {
-            let signature = runSignature ?? runRecord.signature
-            var splits = signature?.splits ?? []
-            if splits.isEmpty, let segments = signature?.phaseSegments, !segments.isEmpty {
-                splits = Self.synthesizeSplitsFromSegments(segments)
-            }
-            let workSegments = signature?.phaseSegments.filter { $0.kind == "work" && $0.avgPace > 0 } ?? []
-
-            if let slowestSplit = splits.max(by: { $0.paceSecondsPerKm < $1.paceSecondsPerKm }),
-               let fastestSplit = splits.min(by: { $0.paceSecondsPerKm < $1.paceSecondsPerKm }),
-               splits.count >= 2,
-               fastestSplit.avgCadence - slowestSplit.avgCadence >= 8 {
-                let fCad = Int(fastestSplit.avgCadence)
-                let sCad = Int(slowestSplit.avgCadence)
-                return "Your rhythm was sharp during your faster work—holding around \(fCad) SPM on km \(fastestSplit.index). However, on km \(slowestSplit.index), your cadence dropped to \(sCad) SPM as fatigue built. That drop shows your stride lengthened and your feet spent more time on the ground. In your next session, focus on keeping that turnover light and quick even when your legs get tired."
-            }
-
-            if !workSegments.isEmpty {
-                let workCad = Int(workSegments.map(\.avgCadence).reduce(0, +) / Double(workSegments.count))
-                return "Your cadence averaged \(cad) SPM, with your work intervals holding a steady \(workCad) SPM. Maintaining that crisp rhythm during faster surges protects your joints and keeps your momentum fluid."
-            }
-
-            if cad >= 168 {
-                return "Your cadence averaged a sharp \(cad) SPM. That quick turnover keeps your feet landing softly under your hips, protecting your knees and keeping your stride light."
-            } else if cad >= 150 {
-                return "Your cadence averaged \(cad) SPM—a solid baseline above the 150 floor. Building that rhythm toward 165–170 SPM over time will shorten your ground contact and make your stride feel lighter."
-            } else {
-                return "Your cadence averaged \(cad) SPM, which is below the 150 floor. Taking shorter, quicker steps will reduce ground impact forces and protect your joints."
-            }
-        }
-
-        // Pace / Speed specifically
-        if q.contains("pace") || q.contains("speed") || q.contains("fast") || q.contains("slow") {
-            if isIndoor {
-                return "You held a steady pace of \(pace) on the treadmill. Since the treadmill belt sets your speed, your true effort is best reflected in your heart rate and cadence turnover."
-            } else {
-                return "Your pace averaged \(pace), showing consistent, well-managed speed across the session."
-            }
-        }
-
-        return "You held a solid, steady rhythm throughout this run. Focusing on quick, relaxed steps beneath your hips will keep your running smooth and injury-free."
-    }
-
-    // MARK: - Parsing Helpers
-
-    private func parseDistance(_ text: String) -> (km: Double, label: String)? {
-        let lower = text.lowercased()
-        if lower.contains("half marathon") || lower.contains("half-marathon") {
-            return (21.1, "half marathon")
-        }
-        if lower.contains("marathon") {
-            return (42.2, "marathon")
-        }
-        if let match = matchRegex(in: lower, pattern: #"\b(\d+(?:\.\d+)?)\s*(?:k|km|kilometers?)\b"#) {
-            let val = Double(match) ?? 10.0
-            return (val, "\(match)k")
-        }
-        if let match = matchRegex(in: lower, pattern: #"\b(\d+(?:\.\d+)?)\s*(?:miles?|mi)\b"#) {
-            let val = (Double(match) ?? 1.0) * 1.60934
-            return (val, "\(match) miles")
-        }
-        return nil
-    }
-
-    private func parseTimeframe(_ text: String) -> String {
-        let lower = text.lowercased()
-        let days = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
-
-        for day in days {
-            if lower.contains("on \(day)") || lower.contains("for \(day)") || lower.contains("this \(day)") || lower.contains("next \(day)") || lower.contains("focused on \(day)") || lower.contains("tomorrow, \(day)") {
-                return day.capitalized
-            }
-        }
-
-        let affirmativeDays = days.filter { day in
-            guard lower.contains(day) else { return false }
-            let isNegated = lower.contains("don't worry about \(day)")
-                || lower.contains("dont worry about \(day)")
-                || lower.contains("not \(day)")
-                || lower.contains("skip \(day)")
-                || lower.contains("without \(day)")
-            return !isNegated
-        }
-
-        if let affirmativeDay = affirmativeDays.last?.capitalized {
-            return affirmativeDay
-        }
-
-        if lower.contains("tomorrow") { return "tomorrow" }
-        return "today"
-    }
-
-    private func parseCrossTraining(_ text: String) -> String? {
-        let lower = text.lowercased()
-        if lower.contains("bike") || lower.contains("cycling") || lower.contains("cycle") || lower.contains("spin") {
-            return "bike ride"
-        }
-        if lower.contains("swim") {
-            return "swim"
-        }
-        if lower.contains("elliptical") {
-            return "elliptical session"
-        }
-        if lower.contains("rowing") || lower.contains("rower") {
-            return "rowing session"
-        }
-        if (lower.contains("walk") || lower.contains("walking") || lower.contains("hike")) &&
-            (lower.contains("today") || lower.contains("tomorrow") || lower.contains("instead") || lower.contains("just walk") || lower.contains("go for a walk")) {
-            return "walk"
-        }
-        if lower.contains("cross train") || lower.contains("cross-train") || lower.contains("crosstrain") {
-            return "cross-training session"
-        }
-        return nil
-    }
-
-    private func parseMinutes(_ text: String) -> Int? {
-        let lower = text.lowercased()
-        if lower.contains("an hour") || lower.contains("1 hour") || lower.contains("one hour") {
-            return 60
-        }
-        if let match = matchRegex(in: lower, pattern: #"\b(\d+)\s*(?:minutes|minute|mins|min)\b"#),
-           let val = Int(match) {
-            return val
-        }
-        return nil
-    }
-
-    private func matchRegex(in text: String, pattern: String) -> String? {
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
-        let range = NSRange(text.startIndex..., in: text)
-        guard let match = regex.firstMatch(in: text, range: range),
-              let group = Range(match.range(at: 1), in: text) else { return nil }
-        return String(text[group])
+        return "Workout data: \(analysis.detectedType) (\(analysis.workoutWeekday), \(analysis.workoutDateFormatted)). Pace: \(pace), Cadence: \(cad) SPM, HR: \(hr) BPM."
     }
 
     // MARK: - Readiness & Recovery Timeline
@@ -958,31 +422,9 @@ class AnalystChatEngine: ObservableObject {
     var recoveryTimeline: RecoveryTimeline {
         RecoveryTimeline.build(runs: recentSnapshots, readiness: currentReadiness, now: Date())
     }
-
-    private func triggerPhrase(_ triggers: [ReadinessTrigger]) -> String? {
-        let phrases = triggers.compactMap { trigger -> String? in
-            switch trigger {
-            case .consecutiveHardDays: return "hard sessions on back-to-back days"
-            case .cardiacDrift: return "heart rate drifting up at a steady pace"
-            case .cadenceFade: return "cadence fading late in your recent runs"
-            case .acwrSpike(let ratio): return "a workload spike (\(String(format: "%.1f", ratio))× your monthly average)"
-            case .mileageDeload: return nil
-            }
-        }
-        return phrases.isEmpty ? nil : phrases.joined(separator: " and ")
-    }
 }
 
 // MARK: - Supporting Models
-
-/// User's requested session parameters (e.g. "45 mins today", "10k tomorrow").
-struct RunPlanTarget: Equatable, Sendable {
-    let minutes: Int?
-    let distanceKm: Double?
-    let distanceLabel: String?
-    let timeframe: String
-    let mentionsZone2: Bool
-}
 
 /// Deterministic recovery clock: when the runner can absorb another hard session.
 struct RecoveryTimeline: Equatable, Sendable {
