@@ -136,7 +136,14 @@ class AnalystChatEngine: ObservableObject {
     @available(iOS 26.0, *)
     private func generateFoundationModelResponse(for userQuestion: String) async throws -> String {
         let language = Locale.current.language.languageCode?.identifier ?? "en"
-        let dataSheet = telemetryLines().joined(separator: "\n")
+        let analysis = WorkoutAnalysisContext(
+            runRecord: runRecord,
+            runSignature: runSignature,
+            macroProfile: macroProfile,
+            recoveryTimeline: recoveryTimeline,
+            baselineStats: baselineStats
+        )
+        let dataSheet = analysis.groundedPromptSummary()
 
         let systemInstructions = """
         WORKOUT DATA SHEET:
@@ -593,74 +600,18 @@ class AnalystChatEngine: ObservableObject {
     }
 
     private func splitPerformanceAnswer() -> String {
-        let signature = runSignature ?? runRecord.signature
-        var splits = signature?.splits ?? []
-        if splits.isEmpty, let segments = signature?.phaseSegments, !segments.isEmpty {
-            splits = Self.synthesizeSplitsFromSegments(segments)
+        let analysis = WorkoutAnalysisContext(
+            runRecord: runRecord,
+            runSignature: runSignature,
+            macroProfile: macroProfile,
+            recoveryTimeline: recoveryTimeline,
+            baselineStats: baselineStats
+        )
+        if !analysis.splitEvaluations.isEmpty {
+            return analysis.formatSplitReport()
         }
-
-        if !splits.isEmpty {
-            guard let fastest = splits.min(by: { $0.paceSecondsPerKm < $1.paceSecondsPerKm }),
-                  let slowest = splits.max(by: { $0.paceSecondsPerKm < $1.paceSecondsPerKm }) else {
-                let pace = PaceFormatter.formatPace(secondsPerKilometer: runRecord.workingAvgPace)
-                return "Your pace averaged \(pace) throughout this workout with steady execution."
-            }
-
-            var startSec: Double = 0
-            for s in splits.prefix(while: { $0.index < fastest.index }) {
-                startSec += s.durationSeconds
-            }
-            let fStart = Int(startSec / 60)
-            let fEnd = Int((startSec + fastest.durationSeconds) / 60)
-
-            var slowStartSec: Double = 0
-            for s in splits.prefix(while: { $0.index < slowest.index }) {
-                slowStartSec += s.durationSeconds
-            }
-            let sStart = Int(slowStartSec / 60)
-            let sEnd = Int((slowStartSec + slowest.durationSeconds) / 60)
-
-            let fastestPace = PaceFormatter.formatPace(secondsPerKilometer: fastest.paceSecondsPerKm)
-            let slowestPace = PaceFormatter.formatPace(secondsPerKilometer: slowest.paceSecondsPerKm)
-
-            if splits.count >= 2 {
-                return "Your fastest split was km \(fastest.index) (min \(fStart)–\(fEnd)) at \(fastestPace) with \(Int(fastest.avgCadence)) SPM cadence. Your slowest split was km \(slowest.index) (min \(sStart)–\(sEnd)) at \(slowestPace) with \(Int(slowest.avgHeartRate)) BPM heart rate."
-            } else {
-                return "Your split was km 1 (min \(fStart)–\(fEnd)) at \(fastestPace) with \(Int(fastest.avgCadence)) SPM."
-            }
-        }
-
-        let segments = signature?.phaseSegments ?? []
-        let movingSegments = segments.filter { $0.avgPace > 0 }
-        let workSegments = segments.filter { $0.kind == "work" && $0.avgPace > 0 }
-
-        let targetSegments = !workSegments.isEmpty ? workSegments : movingSegments
-        guard !targetSegments.isEmpty else {
-            let pace = PaceFormatter.formatPace(secondsPerKilometer: runRecord.workingAvgPace)
-            return "Your pace averaged \(pace) throughout this workout with steady execution."
-        }
-
-        guard let fastest = targetSegments.min(by: { $0.avgPace < $1.avgPace }),
-              let slowest = targetSegments.max(by: { $0.avgPace < $1.avgPace }) else {
-            let pace = PaceFormatter.formatPace(secondsPerKilometer: runRecord.workingAvgPace)
-            return "Your pace averaged \(pace) throughout this workout with steady execution."
-        }
-
-        let fStart = Int(fastest.startSeconds / 60)
-        let fEnd = Int(fastest.endSeconds / 60)
-        let sStart = Int(slowest.startSeconds / 60)
-        let sEnd = Int(slowest.endSeconds / 60)
-
-        let fastestPace = PaceFormatter.formatPace(secondsPerKilometer: fastest.avgPace)
-        let slowestPace = PaceFormatter.formatPace(secondsPerKilometer: slowest.avgPace)
-
-        if workSegments.count >= 2 {
-            let fastestIndex = (workSegments.firstIndex(where: { $0.id == fastest.id }) ?? 0) + 1
-            let slowestIndex = (workSegments.firstIndex(where: { $0.id == slowest.id }) ?? 0) + 1
-            return "Your fastest work rep was Rep \(fastestIndex) (min \(fStart)–\(fEnd)) at \(fastestPace) with \(Int(fastest.avgCadence)) SPM cadence. Your slowest work rep was Rep \(slowestIndex) (min \(sStart)–\(sEnd)) at \(slowestPace) with \(Int(slowest.avgHR)) BPM heart rate."
-        } else {
-            return "Your fastest stretch was at minutes \(fStart)–\(fEnd) at \(fastestPace). Your slowest stretch was at minutes \(sStart)–\(sEnd) at \(slowestPace)."
-        }
+        let pace = PaceFormatter.formatPace(secondsPerKilometer: runRecord.workingAvgPace)
+        return "Your pace averaged \(pace) throughout this workout with steady execution."
     }
 
     private func verticalOscillationAnswer() -> String {
@@ -688,78 +639,34 @@ class AnalystChatEngine: ObservableObject {
 
     private func gradeAnswer(for userQuestion: String = "") -> String {
         let q = userQuestion.lowercased()
-        let signature = runSignature ?? runRecord.signature
-
-        if q.contains("split") {
-            var splits = signature?.splits ?? []
-            if splits.isEmpty, let segments = signature?.phaseSegments, !segments.isEmpty {
-                splits = Self.synthesizeSplitsFromSegments(segments)
-            }
-            if !splits.isEmpty {
-                return splitBySplitGrade(splits: splits)
-            }
-        }
-
-        if (q.contains("rep") || q.contains("interval")) && !(signature?.phaseSegments ?? []).isEmpty {
-            return repByRepGrade(segments: signature?.phaseSegments ?? [])
-        }
-
-        let workPaces = signature?.phaseSegments.filter { $0.kind == "work" }.map(\.avgPace) ?? []
-        let report = RunGrade.evaluate(
-            RunGradeInput(
-                type: runRecord.detectedTypeRaw.isEmpty ? "run" : runRecord.detectedTypeRaw,
-                isHard: isHeavySession,
-                percentZone4: runRecord.percentZone4,
-                cadence: Int(runRecord.workingAvgCadence),
-                workPaces: workPaces,
-                paceDeltaVsBaseline: baselineStats.map { $0.avgPace - runRecord.workingAvgPace },
-                hrDeltaVsBaseline: baselineStats.map { runRecord.workingAvgHeartRate - $0.avgHR },
-                cadenceFade: readinessAssessment.triggers.contains(.cadenceFade),
-                cardiacDrift: readinessAssessment.triggers.contains(.cardiacDrift)
-            )
+        let analysis = WorkoutAnalysisContext(
+            runRecord: runRecord,
+            runSignature: runSignature,
+            macroProfile: macroProfile,
+            recoveryTimeline: recoveryTimeline,
+            baselineStats: baselineStats
         )
-        return report.sentence
+
+        if q.contains("split") && !analysis.splitEvaluations.isEmpty {
+            return analysis.formatSplitReport()
+        }
+
+        if (q.contains("rep") || q.contains("interval")) && !analysis.workSegments.isEmpty {
+            return repByRepGrade(segments: analysis.phaseSegments)
+        }
+
+        return analysis.overallGradeReport.sentence
     }
 
     private func splitBySplitGrade(splits: [RunSplit]) -> String {
-        guard !splits.isEmpty else { return gradeAnswer() }
-        let workingPace = runRecord.workingAvgPace
-        let fastest = splits.min(by: { $0.paceSecondsPerKm < $1.paceSecondsPerKm })
-        let slowest = splits.max(by: { $0.paceSecondsPerKm < $1.paceSecondsPerKm })
-
-        var breakdown: [String] = []
-        for s in splits.prefix(8) {
-            let paceStr = PaceFormatter.formatPace(secondsPerKilometer: s.paceSecondsPerKm)
-            let paceDiff = workingPace - s.paceSecondsPerKm
-            let letter: String
-            let note: String
-
-            if s.paceSecondsPerKm == fastest?.paceSecondsPerKm {
-                letter = "A"
-                note = "fastest split with sharp pace control"
-            } else if s.avgCadence < 150 {
-                letter = "B-"
-                note = "cadence dipped to \(Int(s.avgCadence)) SPM below floor"
-            } else if paceDiff >= 5 {
-                letter = "A-"
-                note = "strong sustained surge"
-            } else if s.paceSecondsPerKm == slowest?.paceSecondsPerKm {
-                letter = "B"
-                note = "slowest split, pacing eased back"
-            } else {
-                letter = "A-"
-                note = "even metronomic pacing and steady turnover"
-            }
-            breakdown.append("• km \(s.index) (\(paceStr), \(Int(s.avgCadence)) SPM, \(Int(s.avgHeartRate)) BPM): \(letter) — \(note)")
-        }
-
-        var result = "Here is a breakdown of your splits:\n" + breakdown.joined(separator: "\n")
-        if let f = fastest, let s = slowest, splits.count >= 2 {
-            let fPace = PaceFormatter.formatPace(secondsPerKilometer: f.paceSecondsPerKm)
-            let sPace = PaceFormatter.formatPace(secondsPerKilometer: s.paceSecondsPerKm)
-            result += "\n\nOverall split execution: A-. Fastest was km \(f.index) at \(fPace); slowest was km \(s.index) at \(sPace). Pacing discipline was disciplined across the session."
-        }
-        return result
+        let analysis = WorkoutAnalysisContext(
+            runRecord: runRecord,
+            runSignature: runSignature,
+            macroProfile: macroProfile,
+            recoveryTimeline: recoveryTimeline,
+            baselineStats: baselineStats
+        )
+        return analysis.formatSplitReport()
     }
 
     private func repByRepGrade(segments: [PhaseSegment]) -> String {
@@ -767,6 +674,7 @@ class AnalystChatEngine: ObservableObject {
         guard !workReps.isEmpty else { return gradeAnswer() }
         let fastest = workReps.min(by: { $0.avgPace < $1.avgPace })
         let slowest = workReps.max(by: { $0.avgPace < $1.avgPace })
+        let avgPace = workReps.reduce(0.0) { $0 + $1.avgPace } / Double(workReps.count)
 
         var breakdown: [String] = []
         for (idx, rep) in workReps.prefix(6).enumerated() {
@@ -776,21 +684,25 @@ class AnalystChatEngine: ObservableObject {
             let eSec = Int(rep.endSeconds.truncatingRemainder(dividingBy: 60))
             let timeStr = String(format: "%d:%02d–%d:%02d", sMin, sSec, eMin, eSec)
             let paceStr = PaceFormatter.formatPace(secondsPerKilometer: rep.avgPace)
+            let paceDelta = Int(avgPace - rep.avgPace)
 
             let letter: String
             let note: String
             if rep.id == fastest?.id {
                 letter = "A"
-                note = "fastest rep, powerful pace pickup"
+                note = "fastest rep (\(paceStr)) with sharp turnover at \(Int(rep.avgCadence)) SPM"
             } else if rep.avgCadence < 150 {
                 letter = "B-"
-                note = "cadence dipped to \(Int(rep.avgCadence)) SPM"
+                note = "cadence dipped to \(Int(rep.avgCadence)) SPM below floor"
             } else if rep.id == slowest?.id {
                 letter = "B"
-                note = "slowest rep, fatigue showed in pace"
+                note = "slowest rep (\(paceStr)), fatigue showed as pace eased back"
+            } else if paceDelta >= 4 {
+                letter = "A-"
+                note = "strong sustained surge (\(paceDelta)s/km faster than work average)"
             } else {
                 letter = "A-"
-                note = "controlled effort with steady cadence"
+                note = "controlled effort at \(paceStr) with steady \(Int(rep.avgCadence)) SPM turnover"
             }
             breakdown.append("• Work Rep \(idx + 1) (\(timeStr), \(paceStr), \(Int(rep.avgCadence)) SPM): \(letter) — \(note)")
         }
