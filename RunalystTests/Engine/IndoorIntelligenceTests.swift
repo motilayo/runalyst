@@ -623,6 +623,27 @@ final class IndoorIntelligenceTests: XCTestCase {
         XCTAssertTrue(isClearedSunday, "Sunday must be cleared for running after 3+ days: \(timeline.earliestHardPhrase)")
     }
 
+    @MainActor
+    func testAnalystChatPhysiologicalDecouplingAndDrillBoundariesInPrompt() async {
+        let runRecord = makeTestRunRecord(isIndoor: true)
+        runRecord.detectedTypeRaw = "Intervals"
+        let chatEngine = AnalystChatEngine(runRecord: runRecord)
+        let instructions = chatEngine.buildSystemInstructions()
+
+        XCTAssertTrue(
+            instructions.contains("Cardiac drift (+BPM in second half) is cardiovascular fatigue"),
+            "Prompt must define cardiac drift as fatigue/heat and prohibit calling it acceleration"
+        )
+        XCTAssertTrue(
+            instructions.contains("Do NOT invent or prescribe custom structured workout routines"),
+            "Prompt must enforce referencing existing drill library instead of inventing custom interval workouts"
+        )
+        XCTAssertTrue(
+            instructions.contains("Never describe a wide pace spread spanning tens of seconds"),
+            "Prompt must prohibit calling wide historical spreads tight or metronomic"
+        )
+    }
+
     // MARK: - 5. RAG Payloads
 
     func testRunSignatureAndMacroProfileCompactRAGSummary() {

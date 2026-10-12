@@ -430,7 +430,7 @@ struct WorkoutAnalysisContext {
                 lines.append("- Slowest Split: km \(s.index) at \(PaceFormatter.formatPace(secondsPerKilometer: s.paceSecondsPerKm)) (\(Int(s.avgCadence)) SPM, \(Int(s.avgHeartRate)) BPM)")
             }
             if hasCardiacDrift {
-                lines.append("- Physiological Decoupling: Cardiac drift detected (+\(cardiacDriftMagnitudeBPM) BPM HR rise in second half)")
+                lines.append("- Physiological Decoupling: Cardiac drift detected (+\(cardiacDriftMagnitudeBPM) BPM HR rise in second half despite steady/fading pace; indicates fatigue or thermal drift, not acceleration)")
             }
             lines.append("Split Details:")
             for s in splitEvaluations.prefix(8) {
@@ -448,7 +448,7 @@ struct WorkoutAnalysisContext {
             if workRepPaceSpreadSec <= 8.0 {
                 lines.append("- Rep Repeatability: Disciplined, tightly controlled interval pacing")
             } else {
-                lines.append("- Rep Repeatability: High pace spread between reps; fatigue decay on late reps")
+                lines.append("- Rep Repeatability: Wide pace spread (\(Int(workRepPaceSpreadSec))s/km difference between fastest and slowest reps; indicates pacing inconsistency or late-rep fatigue)")
             }
         }
 
