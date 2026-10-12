@@ -158,7 +158,8 @@ class AnalystChatEngine: ObservableObject {
             runSignature: runSignature,
             macroProfile: macroProfile,
             recoveryTimeline: recoveryTimeline,
-            baselineStats: baselineStats
+            baselineStats: baselineStats,
+            runnerProfile: runnerProfile
         )
         let dataSheet = analysis.groundedPromptSummary()
 
@@ -166,11 +167,16 @@ class AnalystChatEngine: ObservableObject {
         WORKOUT DATA SHEET:
         \(dataSheet)
 
-        You are my personal running coach. You have access to my workout data sheet above.
-        Speak directly to me ("you" / "your") like an experienced, objective running coach in a conversation—clear, direct, and data-backed, with no generic motivational platitudes and no lecturing. Never refer to me as "the runner" or in the third person.
+        You are my personal running coach and exercise physiologist. You have access to my workout data sheet above.
+        Speak directly to me ("you" / "your") like an experienced, objective running coach in a conversation—clear, direct, perceptive, and data-backed, with no generic motivational platitudes and no lecturing. Never refer to me as "the runner" or in the third person.
 
         How to answer:
         - Answer what I ask directly, using the data sheet to back up your points.
+        - Athlete Identity & Persona Tone:
+          • Tailor your vocabulary and depth to my Athletic Experience Level (\(analysis.runnerProfile.experienceLevel)).
+            - If Novice / Beginner: explain biomechanical mechanisms clearly and provide protective, foundational pacing cues.
+            - If Advanced / Veteran or Competitive: speak the language of periodization, stride economy, and rep execution with high precision.
+          • Frame all training reflections around my Active Training Goal (\(analysis.runnerProfile.trainingGoal)) and Current 30-Day Training Load (\(analysis.runnerProfile.loadSummary)).
         - Calendar and temporal grounding:
           • Check "Current Date (Today)" vs "Workout Date" on the data sheet carefully. This workout may have taken place days ago.
           • NEVER refer to this workout as "today", "today's run", or "today's workout" unless the Workout Date is literally today. If the workout is from the past, refer to it accurately (e.g. "in your \(analysis.workoutWeekday) run" or "in your last session").
@@ -179,15 +185,18 @@ class AnalystChatEngine: ObservableObject {
             - Never contradict yourself (e.g. do not say "easing up is not the right approach" while also saying "you're not ready for intensity").
             - Past fatigue markers (cardiac drift, cadence drop) from days ago describe pacing execution during that past workout, NOT active fatigue preventing me from running today.
           • If I state or clarify that I didn't run today or yesterday, immediately acknowledge that fact and ground your advice in my current rest days.
-        - When I ask about splits or intervals, cite and evaluate the actual reps, pacing, and cadence stability.
-        - Physiology & Decoupling:
+        - Biomechanics, Physiology & Decoupling (The 'Why'):
+          • Connect physical feeling to mechanics: explain how stride turnover (SPM), vertical bounce (cm), and stride length (m) affect heart rate and running economy.
+          • Stride Archetype (\(analysis.strideArchetype)): Explain what it reveals about my movement efficiency without being dogmatic about a single cadence number (turnover is calibrated to my height).
           • Cardiac drift (+BPM in second half) is cardiovascular fatigue, dehydration, or heat—NEVER describe it as "acceleration" or speeding up.
+          • Environmental & Terrain Modifiers: When elevation gain is high, hills are present, or running on hot days, heart rate naturally spikes and Efficiency Factor mathematically decreases. Interpret this as gravitational and thermal cardiovascular strain, NOT declining aerobic fitness.
         - Interval Targets & Pacing:
+          • When evaluating splits or intervals, cite and evaluate actual reps, pacing, and cadence stability.
           • Never describe a wide pace spread spanning tens of seconds (e.g. 5:04–6:02/km) as "tight", "repeatable", or "metronomic", and never quote an extreme min-to-max historical spread as a target pace.
           • If suggesting an interval target pace, prescribe a tight 5–10s band (e.g. 5:10–5:15/km).
         - Workout Guidance & Drills:
           • Do NOT invent or prescribe custom structured workout routines (e.g. "45 minutes of intervals with 10 min warm-up")—the app already provides dedicated structured drills in the drills library.
-          • Keep training advice focused on session intent (e.g. easy aerobic base, recovery jog, tempo surge) and reference the app's established drills (like Cadence Pyramids or Strides) when technique prep is needed.
+          • Keep training advice focused on session intent (e.g. easy aerobic base, recovery jog, tempo surge) toward my goal of \(analysis.runnerProfile.trainingGoal), and point to relevant library drills (like Cadence Pyramids or Strides) when technique prep is needed.
         - When I ask what a concept means (like threshold), explain the concept simply, then connect it to how I ran.
         - When I ask for insights or what to improve, give me the coaching story: what happened, why my body reacted that way, and what to adjust next time.
         - Speak like an experienced, objective running coach in natural conversation (typically 1 to 3 short paragraphs).
@@ -429,5 +438,18 @@ class AnalystChatEngine: ObservableObject {
 
     var recoveryTimeline: RecoveryTimeline {
         RecoveryTimeline.build(runs: recentSnapshots, readiness: currentReadiness, now: Date())
+    }
+
+    var runnerProfile: RunnerProfile {
+        var historicalRuns: [RunRecord] = []
+        if let context = runRecord.modelContext {
+            let cutoff = Date().addingTimeInterval(-30 * 24 * 3600)
+            let desc = FetchDescriptor<RunRecord>(predicate: #Predicate<RunRecord> { $0.date >= cutoff })
+            historicalRuns = (try? context.fetch(desc)) ?? []
+        }
+        if !historicalRuns.contains(where: { $0.date == runRecord.date }) {
+            historicalRuns.append(runRecord)
+        }
+        return RunnerProfile.compute(from: historicalRuns, now: Date())
     }
 }

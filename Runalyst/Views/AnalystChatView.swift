@@ -261,12 +261,20 @@ struct AnalystChatView: View {
     private var quickPromptChips: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                chipButton("Cadence & Rhythm") {
-                    inputText = "How was my cadence and rhythm during this run?"
+                chipButton("Why It Felt Challenging") {
+                    inputText = "Why did this run feel challenging, and did my mechanics break down?"
                     submitQuestion()
                 }
-                chipButton("Heart Rate & Effort") {
-                    inputText = "Did my heart rate stay steady, or did I start tiring out?"
+                chipButton("Running Economy") {
+                    inputText = "How was my running economy and stride efficiency during this run?"
+                    submitQuestion()
+                }
+                chipButton("Should I Run Tomorrow?") {
+                    inputText = "Should I run tomorrow, and what kind of session should I focus on?"
+                    submitQuestion()
+                }
+                chipButton("Goal Progress") {
+                    inputText = "How does this workout build toward my current training goal?"
                     submitQuestion()
                 }
                 if runRecord.isIndoor == true {
@@ -274,10 +282,6 @@ struct AnalystChatView: View {
                         inputText = "Did I overstride or reach too far on the treadmill?"
                         submitQuestion()
                     }
-                }
-                chipButton("Effort & Efficiency") {
-                    inputText = "How smooth and efficient was my effort on this run?"
-                    submitQuestion()
                 }
             }
             .padding(.horizontal, 16)

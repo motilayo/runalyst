@@ -644,6 +644,154 @@ final class IndoorIntelligenceTests: XCTestCase {
         )
     }
 
+    @MainActor
+    func testRunnerProfileHeightCalibrationAndLoad() {
+        let tallProfile = RunnerProfile(
+            experienceLevel: "Advanced / Veteran",
+            trainingGoal: "5K Race",
+            userHeightCm: 195.0,
+            current30DayDistanceKm: 60.0,
+            weeklyAverageKm: 14.0,
+            runsPerWeek: 3.5
+        )
+        // 195 cm runner has longer limbs; cadence floor must be lower than 150
+        XCTAssertLessThan(tallProfile.heightAdjustedCadenceFloor, 150)
+        XCTAssertEqual(tallProfile.heightAdjustedCadenceFloor, 135)
+
+        let shortProfile = RunnerProfile(
+            experienceLevel: "Novice / Beginner",
+            trainingGoal: "Base Building",
+            userHeightCm: 155.0,
+            current30DayDistanceKm: 40.0,
+            weeklyAverageKm: 9.3,
+            runsPerWeek: 2.0
+        )
+        // 155 cm runner has shorter limbs; cadence floor must be higher than 150
+        XCTAssertGreaterThan(shortProfile.heightAdjustedCadenceFloor, 150)
+        XCTAssertEqual(shortProfile.heightAdjustedCadenceFloor, 169)
+
+        let standardProfile = RunnerProfile(
+            experienceLevel: "Intermediate / Enthusiast",
+            trainingGoal: "Half Marathon",
+            userHeightCm: 175.0,
+            current30DayDistanceKm: 100.0,
+            weeklyAverageKm: 23.3,
+            runsPerWeek: 3.0
+        )
+        XCTAssertEqual(standardProfile.heightAdjustedCadenceFloor, 150)
+    }
+
+    @MainActor
+    func testWorkoutAnalysisContextHeightCalibratedArchetypeAndIndoorFallback() {
+        // Outdoor run with vertical oscillation and stride length
+        let outdoorRun = makeTestRunRecord(isIndoor: false)
+        outdoorRun.workingAvgCadence = 146
+        outdoorRun.workingAvgVerticalOscillation = 10.4
+        outdoorRun.workingAvgStrideLength = 1.15
+
+        let analysisOutdoor = WorkoutAnalysisContext(
+            runRecord: outdoorRun,
+            runSignature: nil,
+            macroProfile: nil,
+            recoveryTimeline: RecoveryTimeline.build(runs: [], readiness: .productive, now: Date()),
+            runnerProfile: RunnerProfile(
+                experienceLevel: "Intermediate / Enthusiast",
+                trainingGoal: "Base Building",
+                userHeightCm: 175.0,
+                current30DayDistanceKm: 40.0,
+                weeklyAverageKm: 9.3,
+                runsPerWeek: 2.5
+            )
+        )
+        XCTAssertTrue(
+            analysisOutdoor.strideArchetype.contains("High-Bounce Overstrider"),
+            "146 cadence with 10.4cm bounce at 175cm should classify as High-Bounce Overstrider: \(analysisOutdoor.strideArchetype)"
+        )
+
+        // Indoor treadmill run without vertical oscillation (watchOS indoor limitation)
+        let indoorRun = makeTestRunRecord(isIndoor: true)
+        indoorRun.workingAvgCadence = 168
+        indoorRun.workingAvgVerticalOscillation = nil
+        indoorRun.workingAvgStrideLength = nil
+
+        let analysisIndoor = WorkoutAnalysisContext(
+            runRecord: indoorRun,
+            runSignature: nil,
+            macroProfile: nil,
+            recoveryTimeline: RecoveryTimeline.build(runs: [], readiness: .productive, now: Date()),
+            runnerProfile: RunnerProfile(
+                experienceLevel: "Advanced / Veteran",
+                trainingGoal: "5K Race",
+                userHeightCm: 175.0,
+                current30DayDistanceKm: 80.0,
+                weeklyAverageKm: 18.6,
+                runsPerWeek: 4.0
+            )
+        )
+        XCTAssertTrue(
+            analysisIndoor.strideArchetype.contains("Treadmill"),
+            "Indoor treadmill run must use 2D indoor fallback without nil collapse: \(analysisIndoor.strideArchetype)"
+        )
+    }
+
+    @MainActor
+    func testWorkoutAnalysisContextEnvironmentalModifierHighElevation() {
+        let runRecord = makeTestRunRecord(isIndoor: false)
+        let split = RunSplit(
+            index: 1,
+            distanceMeters: 1000,
+            durationSeconds: 300,
+            paceSecondsPerKm: 300,
+            avgHeartRate: 155,
+            avgCadence: 160,
+            elevationGainMeters: 65.0
+        )
+        let signature = RunSignature(
+            classification: "Steady Effort",
+            confidence: 0.90,
+            probabilities: ["Steady Effort": 0.90],
+            anomalies: [],
+            cadenceFloor: 150.0,
+            phaseSegments: [],
+            dataSource: "wrist",
+            isIndoor: false,
+            needsInclineReview: false,
+            splits: [split]
+        )
+
+        let analysis = WorkoutAnalysisContext(
+            runRecord: runRecord,
+            runSignature: signature,
+            macroProfile: nil,
+            recoveryTimeline: RecoveryTimeline.build(runs: [], readiness: .productive, now: Date())
+        )
+        XCTAssertNotNil(analysis.environmentModifier)
+        XCTAssertTrue(
+            analysis.environmentModifier?.contains("High Elevation Gain (+65 m)") == true,
+            "Must tag high elevation gain: \(String(describing: analysis.environmentModifier))"
+        )
+    }
+
+    @MainActor
+    func testAnalystChatAthleteIdentityAndCoachingPrinciplesInPrompt() async {
+        let runRecord = makeTestRunRecord(isIndoor: false)
+        let chatEngine = AnalystChatEngine(runRecord: runRecord)
+        let instructions = chatEngine.buildSystemInstructions()
+
+        XCTAssertTrue(
+            instructions.contains("ATHLETE IDENTITY & CURRENT LOAD:"),
+            "Prompt must include Athlete Identity & Current Load header"
+        )
+        XCTAssertTrue(
+            instructions.contains("Stride Archetype:"),
+            "Prompt must supply stride archetype analysis"
+        )
+        XCTAssertTrue(
+            instructions.contains("Tailor your vocabulary and depth to my Athletic Experience Level"),
+            "Prompt must enforce matching depth to experience level"
+        )
+    }
+
     // MARK: - 5. RAG Payloads
 
     func testRunSignatureAndMacroProfileCompactRAGSummary() {

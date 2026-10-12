@@ -45,6 +45,16 @@ struct WorkoutAnalysisContext {
     let firstHalfPaceSec: Double
     let secondHalfPaceSec: Double
 
+    // Athlete Profile & Terrain
+    let runnerProfile: RunnerProfile
+    let elevationGainMeters: Double
+    let environmentModifier: String?
+    let verticalRatio: Double?
+    let efficiencyFactor: Double?
+    let baselineEfficiencyFactor: Double?
+    let efficiencyFactorDeltaPercent: Double?
+    let strideArchetype: String
+
     // Biomechanical & Physiological Markers
     let isSubFloorCadence: Bool
     let hasCardiacDrift: Bool
@@ -87,11 +97,13 @@ struct WorkoutAnalysisContext {
         runSignature: RunSignature?,
         macroProfile: MacroProfile?,
         recoveryTimeline: RecoveryTimeline,
-        baselineStats: (avgPace: Double, avgCadence: Double, avgHR: Double)? = nil
+        baselineStats: (avgPace: Double, avgCadence: Double, avgHR: Double)? = nil,
+        runnerProfile: RunnerProfile? = nil
     ) {
         self.runRecord = runRecord
         self.macroProfile = macroProfile
         self.recoveryTimeline = recoveryTimeline
+        self.runnerProfile = runnerProfile ?? RunnerProfile.compute(from: [runRecord], now: recoveryTimeline.now)
 
         let now = recoveryTimeline.now
         let cal = Calendar.current
@@ -160,10 +172,38 @@ struct WorkoutAnalysisContext {
         self.isIndoor = runRecord.isIndoor ?? false
         self.detectedType = runRecord.detectedTypeRaw.isEmpty ? "Run" : runRecord.detectedTypeRaw
 
-        // Biomechanics
-        self.isSubFloorCadence = self.workingCadence < 150
+        // Biomechanics & Height Calibration
+        self.isSubFloorCadence = self.workingCadence < self.runnerProfile.heightAdjustedCadenceFloor
         self.verticalOscillationCM = runRecord.workingAvgVerticalOscillation
         self.strideLengthM = runRecord.workingAvgStrideLength
+        self.verticalRatio = runRecord.verticalRatio
+
+        // Environmental & Terrain Modifiers
+        let splitElevation = self.splits.reduce(0.0) { $0 + $1.elevationGainMeters }
+        self.elevationGainMeters = splitElevation
+        if self.elevationGainMeters >= 40.0 {
+            self.environmentModifier = "High Elevation Gain (+\(Int(self.elevationGainMeters)) m) — cardiac drift expected from hill climbs"
+        } else if self.isIndoor {
+            self.environmentModifier = "Indoor Treadmill — flat deck pacing with zero wind resistance"
+        } else {
+            self.environmentModifier = nil
+        }
+
+        // Efficiency Factor (Speed in m/min / HR in BPM)
+        self.efficiencyFactor = runRecord.efficiencyFactor
+        if let base = self.baselineStats, base.avgPace > 0 && base.avgHR > 0 {
+            let baseSpeed = 60_000.0 / base.avgPace
+            let baseEF = baseSpeed / base.avgHR
+            self.baselineEfficiencyFactor = baseEF
+            if let ef = self.efficiencyFactor, baseEF > 0 {
+                self.efficiencyFactorDeltaPercent = ((ef - baseEF) / baseEF) * 100.0
+            } else {
+                self.efficiencyFactorDeltaPercent = nil
+            }
+        } else {
+            self.baselineEfficiencyFactor = nil
+            self.efficiencyFactorDeltaPercent = nil
+        }
 
         // Interval Segments
         let work = self.phaseSegments.filter { $0.kind == "work" && $0.avgPace > 0 }
@@ -228,6 +268,33 @@ struct WorkoutAnalysisContext {
         } else {
             self.hasCardiacDrift = false
             self.cardiacDriftMagnitudeBPM = 0
+        }
+
+        // Stride Archetype Evaluation (Outdoor 3D vs Indoor 2D Fallback)
+        let scale = self.runnerProfile.heightScaleFactor
+        let floor = Double(self.runnerProfile.heightAdjustedCadenceFloor)
+        let highCadence = Double(self.runnerProfile.heightAdjustedHighCadenceThreshold)
+        let maxOsc = self.runnerProfile.heightAdjustedMaxOscillationCM
+
+        if !self.isIndoor, let osc = self.verticalOscillationCM, let stride = self.strideLengthM, stride > 0 {
+            let cad = Double(self.workingCadence)
+            if cad >= highCadence && osc <= 8.2 * scale {
+                self.strideArchetype = "Compact High-Turnover (Economical)"
+            } else if cad < floor && osc >= maxOsc {
+                self.strideArchetype = "High-Bounce Overstrider (Elevated Impact Shock)"
+            } else {
+                self.strideArchetype = "Balanced Stride (Sustainable Rhythm)"
+            }
+        } else {
+            // Indoor / Treadmill 2D Fallback
+            let cad = Double(self.workingCadence)
+            if cad >= floor && !self.hasCardiacDrift {
+                self.strideArchetype = "High-Cadence Sustained (Treadmill Rhythm)"
+            } else if cad < floor && self.hasCardiacDrift {
+                self.strideArchetype = "Low-Cadence Straining (Treadmill Deck Braking)"
+            } else {
+                self.strideArchetype = "Balanced Treadmill Cruising"
+            }
         }
 
         // Longitudinal Contrast
@@ -384,6 +451,14 @@ struct WorkoutAnalysisContext {
     func groundedPromptSummary() -> String {
         var lines: [String] = []
 
+        // Athlete Identity & Current Load
+        lines.append("ATHLETE IDENTITY & CURRENT LOAD:")
+        lines.append("- Athletic Experience Level: \(runnerProfile.experienceLevel)")
+        lines.append("- Active Training Goal: \(runnerProfile.trainingGoal)")
+        lines.append("- Current 30-Day Training Load: \(runnerProfile.loadSummary)")
+        lines.append("- Runner Height: \(Int(runnerProfile.userHeightCm)) cm (Height-calibrated cadence floor: \(runnerProfile.heightAdjustedCadenceFloor) SPM)")
+        lines.append("")
+
         // Calendar & Temporal Grounding
         lines.append("CALENDAR & TEMPORAL CONTEXT:")
         lines.append("- Current Date (Today): \(currentWeekday), \(currentDateFormatted)")
@@ -409,12 +484,28 @@ struct WorkoutAnalysisContext {
         lines.append("WORKOUT PROFILE (\(workoutWeekday), \(workoutDateFormatted)):")
         lines.append("- Type: \(detectedType) (\(isIndoor ? "Treadmill" : "Outdoors"))")
         lines.append("- Volume: \(distKm) in \(durationMin) min (Working Pace: \(workingPaceFormatted))")
-        lines.append("- Biomechanics: Cadence \(workingCadence) SPM (\(isSubFloorCadence ? "BELOW 150 floor" : "healthy turnover above floor"))")
+        let floorStr = runnerProfile.heightAdjustedCadenceFloor == 150 ? "150 floor" : "\(runnerProfile.heightAdjustedCadenceFloor) floor (height-adjusted)"
+        lines.append("- Biomechanics: Cadence \(workingCadence) SPM (\(isSubFloorCadence ? "BELOW \(floorStr)" : "healthy turnover above floor"))")
         if let osc = verticalOscillationCM {
             lines.append("- Vertical Oscillation: \(String(format: "%.1f", osc)) cm")
         }
         if let str = strideLengthM {
             lines.append("- Stride Length: \(String(format: "%.2f", str)) m")
+        }
+        if let vr = verticalRatio {
+            lines.append("- Vertical Ratio: \(String(format: "%.1f", vr))% (vertical bounce relative to stride length; ideal: 6–8%)")
+        }
+        lines.append("- Stride Archetype: \(strideArchetype)")
+        if let ef = efficiencyFactor {
+            var efDeltaText = ""
+            if let delta = efficiencyFactorDeltaPercent {
+                let sign = delta >= 0 ? "+" : ""
+                efDeltaText = String(format: " (%@%.1f%% vs 30-day baseline)", sign, delta)
+            }
+            lines.append("- Aerobic Efficiency Factor: \(String(format: "%.2f", ef)) m/heartbeat\(efDeltaText)")
+        }
+        if let env = environmentModifier {
+            lines.append("- Terrain & Environment Modifier: \(env)")
         }
         lines.append("- Cardiovascular Strain: Working HR \(workingHR) BPM; \(percentZone4)% in Zone 4 (Threshold)")
 
