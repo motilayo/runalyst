@@ -142,16 +142,16 @@ class AnalystChatEngine: ObservableObject {
         WORKOUT DATA SHEET:
         \(dataSheet)
 
-        You are my personal running coach in a 1-on-1 chat.
-        You speak directly to me ("you" / "your") in a clear, conversational, and knowledgeable coaching tone. Never refer to me as "the runner" or speak in the third person.
+        You are my personal running coach. You have access to my workout data sheet above.
+        Speak directly to me ("you" / "your") like an experienced, objective running coach in a conversation—clear, direct, and data-backed, with no generic motivational platitudes and no lecturing. Never refer to me as "the runner" or in the third person.
 
-        Rules:
-        1. Keep answers concise and natural (typically 2 to 3 short paragraphs). Never format your responses like a formal audit report, laboratory breakdown, or multi-level outline. Do NOT use nested markdown headers (no "###", no "Observation / Recommendation / Execution" checklists).
-        2. Deliver real coaching insight over raw data: explain what happened, why my body reacted that way, and what to do differently next time, rather than reciting timestamps or numbers.
-        3. When asked a conceptual question (e.g., "what does threshold mean?"), explain the concept simply in one short paragraph, then connect it briefly to my workout.
-        4. When asked what to improve, give 2 or 3 specific, memorable coaching takeaways (like pacing discipline or holding cadence when tired).
-        5. Discuss future training, recovery, or drills ONLY when I specifically ask about them. Never append unprompted readiness sign-offs or ACWR stats to your answers.
-        6. If a metric is not recorded in the data sheet (e.g. indoor treadmill metrics), do not mention or apologize for it unless I specifically ask about that metric.
+        How to answer:
+        - Answer what I ask directly, using the data sheet to back up your points.
+        - When I ask about splits or intervals, cite and evaluate the actual reps, pacing, and cadence stability.
+        - When I ask what a concept means (like threshold), explain the concept simply, then connect it to how I ran.
+        - When I ask for insights or what to improve, give me the coaching story: what happened, why my body reacted that way, and what to adjust next time.
+        - Keep your replies concise and conversational (typically 2 to 3 short paragraphs). Do not format your answers as formal academic reports with nested headers or observation checklists.
+        - Only discuss future training, recovery timelines, or readiness when I specifically ask about them. Do not append unasked readiness sign-offs or disclaimers about unrecorded sensors.
         Respond in \(language).
         """
 
@@ -448,23 +448,7 @@ class AnalystChatEngine: ObservableObject {
             return didNotRunAnswer(for: q)
         }
 
-        // 3. Conceptual threshold queries ("what does threshold mean", "threshold execution")
-        if q.contains("threshold") && (q.contains("mean") || q.contains("what does") || q.contains("what is") || q.contains("execution") || q.contains("explain")) {
-            return thresholdExplanationAnswer()
-        }
-
-        // 4. Coaching narrative / Valuable insights ("I don't want numbers I want valuable insight", "what insights can you provide")
-        if (q.contains("insight") || q.contains("valuable") || q.contains("story") || q.contains("tell me about") || q.contains("summary") || q.contains("takeaway") || q.contains("how did it go")) && !q.contains("grade") && !q.contains("split") {
-            let noNumbers = q.contains("don't want numbers") || q.contains("dont want numbers") || q.contains("no numbers")
-            return coachingInsightAnswer(noNumbers: noNumbers)
-        }
-
-        // 5. Improvement coaching ("what can I do to improve", "how to get better")
-        if (q.contains("improve") || q.contains("get better")) && (q.contains("what can") || q.contains("how can") || q.contains("how to") || q.contains("where to") || q.contains("do to")) {
-            return improveAnswer()
-        }
-
-        // 6. Classification explanations ("why mixed effort", "why intervals", "why steady")
+        // 3. Classification explanations ("why mixed effort", "why intervals", "why steady")
         if (q.contains("why") && (q.contains("label") || q.contains("classif"))) || q.contains("why 'mixed effort'") || q.contains("why mixed effort") {
             return classificationExplanationAnswer()
         }
@@ -856,97 +840,7 @@ class AnalystChatEngine: ObservableObject {
         return "Yes, taking a full rest day is a smart call today. That hard session took a real toll on your body, and complete rest gives you the downtime you need to repair and absorb that training."
     }
 
-    private func thresholdExplanationAnswer() -> String {
-        let pctZone4 = Int((runRecord.percentZone4 * 100).rounded())
-        let cad = Int(runRecord.workingAvgCadence)
-        var answer = "Threshold execution refers to running right at your lactate threshold (Zone 4)—often called 'comfortably hard'. It's the highest intensity where your body can clear lactate as fast as it produces it, usually a pace you could sustain in a race for 45 to 60 minutes.\n\n"
-        if pctZone4 > 0 {
-            answer += "In this workout, you spent \(pctZone4)% of your session in that threshold zone. "
-        }
-        let signature = runSignature ?? runRecord.signature
-        var splits = signature?.splits ?? []
-        if splits.isEmpty, let segments = signature?.phaseSegments, !segments.isEmpty {
-            splits = Self.synthesizeSplitsFromSegments(segments)
-        }
-        if let bestSplit = splits.min(by: { $0.paceSecondsPerKm < $1.paceSecondsPerKm }), splits.count >= 2 {
-            let bestPace = PaceFormatter.formatPace(secondsPerKilometer: bestSplit.paceSecondsPerKm)
-            answer += "You locked in nicely on km \(bestSplit.index) (\(bestPace) at \(Int(bestSplit.avgCadence)) SPM), showing great control. "
-            if let slowestSplit = splits.max(by: { $0.paceSecondsPerKm < $1.paceSecondsPerKm }), slowestSplit.index > bestSplit.index {
-                let slowPace = PaceFormatter.formatPace(secondsPerKilometer: slowestSplit.paceSecondsPerKm)
-                answer += "Toward the finish on km \(slowestSplit.index), your pace slowed to \(slowPace) and cadence dipped, which shows late fatigue setting in. Overall, it was a strong threshold stimulus, but pacing early reps slightly more conservatively will help you hold that rhythm all the way to the line."
-            } else {
-                answer += "You held that effort steadily without falling off."
-            }
-        } else {
-            answer += "Your turnover was \(cad) SPM. Focus on keeping your cadence quick and light when running at threshold so you don't overstride as the effort builds."
-        }
-        return answer
-    }
-
-    private func coachingInsightAnswer(noNumbers: Bool) -> String {
-        let pctZone4 = Int((runRecord.percentZone4 * 100).rounded())
-        let signature = runSignature ?? runRecord.signature
-        var splits = signature?.splits ?? []
-        if splits.isEmpty, let segments = signature?.phaseSegments, !segments.isEmpty {
-            splits = Self.synthesizeSplitsFromSegments(segments)
-        }
-        let hasCadenceFade = readinessAssessment.triggers.contains(.cadenceFade)
-        let type = runRecord.detectedTypeRaw.isEmpty ? "workout" : runRecord.detectedTypeRaw.lowercased()
-
-        if noNumbers {
-            var insight = "Here is the real coaching takeaway: You put in a serious, high-quality \(type) session with great aerobic commitment. Your opening and middle stretches were crisp and disciplined, showing that your engine is in a great place.\n\n"
-            if hasCadenceFade || pctZone4 >= 50 {
-                insight += "However, as the workout wore on, late fatigue set in and your rhythm slowed down in the closing stretch. You were grinding rather than floating to the finish.\n\n"
-                insight += "The lesson for next time is pacing patience: hold back just a touch on your early work. If you save that gear early, you'll finish your last segment with snappy, relaxed turnover instead of fighting heavy legs."
-            } else {
-                insight += "You held your form and effort steady all the way through without fading. That kind of rhythm control builds long-term aerobic efficiency."
-            }
-            return insight
-        }
-
-        var insight = "The big takeaway from this \(type) is strong threshold engagement with late fatigue. You spent \(pctZone4)% of your session in Zone 4, showing high cardiovascular drive.\n\n"
-        if let fastest = splits.min(by: { $0.paceSecondsPerKm < $1.paceSecondsPerKm }),
-           let slowest = splits.max(by: { $0.paceSecondsPerKm < $1.paceSecondsPerKm }), splits.count >= 2 {
-            let fPace = PaceFormatter.formatPace(secondsPerKilometer: fastest.paceSecondsPerKm)
-            let sPace = PaceFormatter.formatPace(secondsPerKilometer: slowest.paceSecondsPerKm)
-            insight += "Your best execution was km \(fastest.index) (\(fPace) at \(Int(fastest.avgCadence)) SPM). Towards the end on km \(slowest.index), your pace slipped to \(sPace) and turnover slowed as fatigue set in.\n\n"
-            insight += "Next time, cap your opening pace so you don't burn matches early. When fatigue hits, think 'quick, light steps' under your hips to keep speed without overstriding."
-        } else {
-            insight += "Focus on maintaining an even effort early so your turnover stays crisp through the final stretch."
-        }
-        return insight
-    }
-
-    private func improveAnswer() -> String {
-        let cad = Int(runRecord.workingAvgCadence)
-        let hasCadenceFade = readinessAssessment.triggers.contains(.cadenceFade)
-        let pctZone4 = Int((runRecord.percentZone4 * 100).rounded())
-
-        var points: [String] = []
-
-        if pctZone4 >= 50 || hasCadenceFade {
-            points.append("1. **Pacing discipline on early reps:** Don't chase your fastest split on rep 1 or 2. Start at a sustainable target pace so you have the legs to finish as fast as you started.")
-            points.append("2. **Hold cadence when fatigued:** In the final stretch, fatigue caused your turnover to drop. When your legs feel heavy, think 'quick, light steps' under your hips to maintain momentum without overstriding.")
-        } else if cad < 150 {
-            points.append("1. **Quicken foot turnover:** Your cadence averaged \(cad) SPM, below the 150 floor. Aiming for 155–160 SPM will shorten ground contact and take impact off your knees.")
-            points.append("2. **Shorten stride slightly:** Land with your feet directly below your hips rather than reaching forward.")
-        } else {
-            points.append("1. **Cadence turnover efficiency:** Your working cadence of \(cad) SPM is a solid baseline. Building toward 165–170 SPM over time with quick steps will keep your turnover light and efficient.")
-            points.append("2. **Pacing control:** Start the first half of your workout slightly conservative, then hold your rhythm steady through the second half.")
-        }
-
-        return "Focus on these key areas to get more out of your sessions:\n\n" + points.joined(separator: "\n\n")
-    }
-
     private func pushIntensityAnswer(timeline: RecoveryTimeline) -> String {
-        let isHeavySession = runRecord.percentZone4 >= 0.50 || (runRecord.detectedTypeRaw.contains("Interval") && runRecord.duration >= 1800)
-        let hasCadenceFade = readinessAssessment.triggers.contains(.cadenceFade)
-
-        if isHeavySession || hasCadenceFade {
-            let zone4Pct = Int((runRecord.percentZone4 * 100).rounded())
-            return "Keep your next run strictly easy (Zone 2). You spent \(zone4Pct)% of your last workout pushing at threshold intensity with late-run fatigue, so your legs and aerobic system need active recovery. Take 30 to 40 minutes at a relaxed, conversational pace before your next hard push."
-        }
-
         if timeline.readyForHard {
             return "You're recovered, so a controlled hard effort is fine today. Aim for comfortably hard rather than all-out, focusing on a crisp turnover so the effort comes from rhythm, not overstriding."
         }
