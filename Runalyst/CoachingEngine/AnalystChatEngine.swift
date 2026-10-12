@@ -205,7 +205,13 @@ class AnalystChatEngine: ObservableObject {
         case let .runPlanning(target):
             return runPlanningAnswer(for: target, timeline: timeline)
         case .didNotRunToday:
-            return didNotRunTodayAnswer(timeline: timeline)
+            return didNotRunAnswer(timeframe: "today", timeline: timeline)
+        case .didNotRunYesterday:
+            return didNotRunAnswer(timeframe: "yesterday", timeline: timeline)
+        case .classificationExplanation:
+            return classificationExplanationAnswer()
+        case .splitPerformance:
+            return splitPerformanceAnswer()
         case .focusDay(let day):
             return focusDayAnswer(day: day, timeline: timeline)
         case .pushIntensity:
@@ -308,12 +314,68 @@ class AnalystChatEngine: ObservableObject {
         return "Yes—an easy run fits \(target.timeframe): \(range) minutes, conversational, in Zone 2 or below. Skip any fast surges until \(timeline.earliestHardPhrase)."
     }
 
-    private func didNotRunTodayAnswer(timeline: RecoveryTimeline) -> String {
-        guard let last = timeline.lastHard else {
-            return "Understood—you haven't run today. Taking today completely off gives your body time to stay fresh and well-rested."
+    private func didNotRunAnswer(timeframe: String, timeline: RecoveryTimeline) -> String {
+        let when = RecoveryTimeline.pastPhrase(for: runRecord.date, relativeTo: timeline.now)
+        let dayName = RecoveryTimeline.weekday(runRecord.date)
+        return "Understood—you haven't run \(timeframe). The session being analyzed was logged \(when). Taking \(timeframe) off gives your body time to stay fresh and rebuild after that \(dayName) workout."
+    }
+
+    private func classificationExplanationAnswer() -> String {
+        let type = runRecord.detectedTypeRaw.isEmpty ? "Run" : runRecord.detectedTypeRaw
+        let rationale: String = {
+            if runRecord.needsInclineReview == true {
+                return "Your heart rate surged and cadence dropped while treadmill speed stayed flat, indicating incline intervals or hill work on the belt."
+            }
+            if type.contains("Mixed") {
+                return "Your run showed repeated pace surges and elevated heart rate spikes, but the work and recovery durations were irregular rather than structured intervals. It was labeled Mixed Effort so you can review and refine how it was tagged."
+            }
+            if type.contains("Interval") {
+                return "The session showed distinct, alternating phases of fast work intervals and recovery periods."
+            }
+            if type.contains("Steady") {
+                return "Your pacing and heart rate stayed consistent throughout the run with low pace variability."
+            }
+            if type.contains("Progression") {
+                return "Your pace accelerated steadily from the early miles to the final stretch."
+            }
+            return "Based on your pace variability and heart rate response throughout the session."
+        }()
+        return "This session was classified as \(type). \(rationale)"
+    }
+
+    private func splitPerformanceAnswer() -> String {
+        let signature = runSignature ?? runRecord.signature
+        let segments = signature?.phaseSegments ?? []
+        let movingSegments = segments.filter { $0.avgPace > 0 }
+        let workSegments = segments.filter { $0.kind == "work" && $0.avgPace > 0 }
+
+        let targetSegments = !workSegments.isEmpty ? workSegments : movingSegments
+        guard !targetSegments.isEmpty else {
+            let pace = PaceFormatter.formatPace(secondsPerKilometer: runRecord.workingAvgPace)
+            return "Your pace averaged \(pace) throughout this workout with steady execution."
         }
-        let when = RecoveryTimeline.pastPhrase(for: last.date, relativeTo: timeline.now)
-        return "Understood—you haven't run today. The session being analyzed is your \(lastHardLabel(last)) \(when). Skipping today's run and taking complete rest is a smart call; it gives your body the downtime it needs to rebuild after that effort."
+
+        guard let fastest = targetSegments.min(by: { $0.avgPace < $1.avgPace }),
+              let slowest = targetSegments.max(by: { $0.avgPace < $1.avgPace }) else {
+            let pace = PaceFormatter.formatPace(secondsPerKilometer: runRecord.workingAvgPace)
+            return "Your pace averaged \(pace) throughout this workout with steady execution."
+        }
+
+        let fStart = Int(fastest.startSeconds / 60)
+        let fEnd = Int(fastest.endSeconds / 60)
+        let sStart = Int(slowest.startSeconds / 60)
+        let sEnd = Int(slowest.endSeconds / 60)
+
+        let fastestPace = PaceFormatter.formatPace(secondsPerKilometer: fastest.avgPace)
+        let slowestPace = PaceFormatter.formatPace(secondsPerKilometer: slowest.avgPace)
+
+        if workSegments.count >= 2 {
+            let fastestIndex = (workSegments.firstIndex(where: { $0.id == fastest.id }) ?? 0) + 1
+            let slowestIndex = (workSegments.firstIndex(where: { $0.id == slowest.id }) ?? 0) + 1
+            return "Your fastest work rep was Rep \(fastestIndex) (min \(fStart)–\(fEnd)) at \(fastestPace) with \(Int(fastest.avgCadence)) SPM cadence. Your slowest work rep was Rep \(slowestIndex) (min \(sStart)–\(sEnd)) at \(slowestPace) with \(Int(slowest.avgHR)) BPM heart rate."
+        } else {
+            return "Your fastest stretch was at minutes \(fStart)–\(fEnd) at \(fastestPace). Your slowest stretch was at minutes \(sStart)–\(sEnd) at \(slowestPace)."
+        }
     }
 
     private func focusDayAnswer(day: String, timeline: RecoveryTimeline) -> String {
@@ -332,7 +394,7 @@ class AnalystChatEngine: ObservableObject {
         let signature = runSignature ?? runRecord.signature
         let workPaces = signature?.phaseSegments.filter { $0.kind == "work" }.map(\.avgPace) ?? []
         let report = RunGrade.evaluate(
-            RunGrade.Input(
+            RunGradeInput(
                 type: runRecord.detectedTypeRaw.isEmpty ? "run" : runRecord.detectedTypeRaw,
                 isHard: isHeavySession,
                 percentZone4: runRecord.percentZone4,
@@ -454,17 +516,25 @@ class AnalystChatEngine: ObservableObject {
     @available(iOS 26.0, *)
     private func generateFoundationModelResponse(for userQuestion: String) async throws -> String {
         let language = Locale.current.language.languageCode?.identifier ?? "en"
+        let dataSheet = telemetryLines().joined(separator: "\n")
 
         let systemInstructions = """
-        You are Runalyst's running coach: the mind of an analyst, the voice of a coach. You are chatting with the runner about their workouts, fitness, and training plan.
-        1. Speak directly, warmly, and concisely in 2 to 4 sentences of natural prose. No bullet points, lists, or robotic greetings.
-        2. Use the background data as context; do not overwhelm the runner by reciting raw metrics in every reply. Translate numbers into intuitive coaching on rhythm, mechanics, effort, and recovery. Only state a specific number when the runner explicitly asks for one.
-        3. Respect the calendar and recovery timeline. If asked what day or date it is, answer it directly. When the recovery clock is active, advise light recovery movement or rest; once cleared, encourage their planned run.
-        4. For pain, injury, or medical advice, advise rest and seeing a physician or physical therapist. Never diagnose or assume physical injuries.
+        You are the Runalyst AI Running Analyst. You are chatting with the runner about the workout specified in the Workout Data below.
+
+        WORKOUT DATA:
+        \(dataSheet)
+
+        GUIDELINES:
+        1. USE THE DATA: Answer questions directly using the specific metrics, splits, segments, and reasons provided in the Workout Data.
+        2. ANSWER SPECIFICS PRECISELY: When asked about best/worst splits, interval performance, pace, cadence, or heart rate, give the exact numbers and segment details from the data.
+        3. EXPLAIN UNRECORDED DATA: If asked about a metric marked as 'Not recorded' (like vertical oscillation or GPS indoors), explain that it was not recorded for this treadmill workout because Apple Watch requires an outdoor run or an authentic footpod.
+        4. EXPLAIN CLASSIFICATIONS: If asked why a workout was classified as Mixed Effort, Intervals, or Steady, explain the specific physiological and pacing reasons in the data.
+        5. NO UNSOLICITED RECOVERY LECTURES: Do NOT append recovery advice, rest suggestions, or mentions of upcoming days unless the runner specifically asks about readiness, fatigue, recovery, or future workout planning.
+        6. TEMPORAL ACCURACY: The workout was run on the date specified in the data. Do not confuse it with today.
+        7. TONE: Direct, objective, knowledgeable running analyst. Be clear, analytical, and conversational. Never speak in generic motivational platitudes.
         Respond in \(language).
         """
 
-        let isFirstTurn = (modelSession == nil)
         let session: LanguageModelSession
         if let existing = modelSession as? LanguageModelSession {
             session = existing
@@ -476,46 +546,22 @@ class AnalystChatEngine: ObservableObject {
             self.modelSession = session
         }
 
-        let telemetry = telemetryLines().joined(separator: "\n")
-
-        let promptToSend: String
-        if isFirstTurn {
-            promptToSend = """
-            Workout data:
-            \(telemetry)
-
-            Runner: "\(userQuestion)"
-            """
-        } else {
-            promptToSend = """
-            Runner: "\(userQuestion)"
-            """
-        }
-
-        let groundingSource = [telemetry, userQuestion]
+        let groundingSource = [dataSheet, userQuestion]
             + messages.filter { $0.sender == .user }.map(\.text)
 
         let reply: String
         do {
-            reply = try await session.respond(to: promptToSend).content
+            reply = try await session.respond(to: userQuestion).content
         } catch {
             let errorDesc = "\(error)".lowercased()
             let isContextExceeded = errorDesc.contains("context") || errorDesc.contains("token") || errorDesc.contains("limit")
             guard isContextExceeded else { throw error }
-            // Apple FoundationModels: Managing the Context Window (4,096-token budget).
-            // Discard the bloated session and restart seeded with telemetry and the current question.
             let freshSession = LanguageModelSession(
                 model: SystemLanguageModel.default,
                 instructions: systemInstructions
             )
             self.modelSession = freshSession
-            let recoveryPrompt = """
-            Workout data:
-            \(telemetry)
-
-            Runner: "\(userQuestion)"
-            """
-            reply = try await freshSession.respond(to: recoveryPrompt).content
+            reply = try await freshSession.respond(to: userQuestion).content
         }
 
         if AnalystGrounding.hasUngroundedNumbers(reply, sources: groundingSource) {
@@ -525,9 +571,9 @@ class AnalystChatEngine: ObservableObject {
     }
     #endif
 
-    /// Compact `key: value` telemetry for the model (TN3193 token budget).
+    /// Structured workout telemetry and segment breakdown for the analyst (TN3193 token budget).
     private func telemetryLines() -> [String] {
-        let env = (runRecord.isIndoor == true) ? "Treadmill" : "Outdoor"
+        let env = (runRecord.isIndoor == true) ? "Indoor Treadmill" : "Outdoor Road/Trail"
         let cad = Int(runRecord.workingAvgCadence)
         let hr = Int(runRecord.workingAvgHeartRate)
         let pace = PaceFormatter.formatPace(secondsPerKilometer: runRecord.workingAvgPace)
@@ -536,41 +582,110 @@ class AnalystChatEngine: ObservableObject {
         let distanceKm = String(format: "%.1f km", runRecord.totalDistanceMeters / 1000.0)
         let now = Date()
         let todayWeekday = RecoveryTimeline.weekday(now)
-        let tomorrowDate = Calendar.current.date(byAdding: .day, value: 1, to: now) ?? now
-        let tomorrowWeekday = RecoveryTimeline.weekday(tomorrowDate)
         let hoursAgo = now.timeIntervalSince(runRecord.date) / 3600
         let pastPhrase = RecoveryTimeline.pastPhrase(for: runRecord.date, relativeTo: now)
         let isToday = Calendar.current.isDateInToday(runRecord.date)
 
+        let workoutDay = RecoveryTimeline.weekday(runRecord.date)
+        let dateFormatter = DateFormatter()
+        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+        dateFormatter.dateFormat = "MMM d"
+        let workoutDateStr = dateFormatter.string(from: runRecord.date)
+        let todayDateStr = dateFormatter.string(from: now)
+
         var lines = [
-            "Current calendar day: Today is \(todayWeekday) (tomorrow is \(tomorrowWeekday))",
-            "Workout analyzed: \(type), \(env), \(durationMin) min, \(distanceKm)",
-            "Logged: \(pastPhrase) (\(RecoveryTimeline.durationPhrase(hours: hoursAgo)) ago)",
-            "Today's workouts logged: \(isToday ? "1 (this session)" : "None (this session was logged \(pastPhrase))")",
-            "Pace: \(pace)",
-            "Cadence: \(cad) SPM (\(cad < 150 ? "below" : "above") the 150 SPM floor)",
-            "Heart rate: \(hr) BPM average",
-            "Time at threshold or above: \(Int((runRecord.percentZone4 * 100).rounded()))%"
+            "Workout Date: \(workoutDay), \(workoutDateStr) (\(pastPhrase), \(RecoveryTimeline.durationPhrase(hours: hoursAgo)) ago)",
+            "Today's Date: \(todayWeekday), \(todayDateStr) (\(isToday ? "This workout was logged today" : "No workouts logged today; this workout is from \(pastPhrase)"))",
+            "Environment: \(env) (Sensor: \(runRecord.dataSourceRaw?.capitalized ?? "Wrist accelerometer"))",
+            "Classification: \(type) (confidence: \(Int(((runRecord.classificationConfidence ?? 0.85) * 100).rounded()))%)"
         ]
+
+        let classificationRationale: String = {
+            if runRecord.needsInclineReview == true {
+                return "Elevated heart rate and reduced cadence while treadmill speed was flat, suggesting incline or hill intervals."
+            }
+            if type.contains("Mixed") {
+                return "Repeated pace surges and elevated heart rate, but work/recovery periods were irregular rather than structured intervals. Flagged for review."
+            }
+            if type.contains("Interval") {
+                return "Structured fast work intervals alternating with recovery periods."
+            }
+            if type.contains("Steady") {
+                return "Consistent pace and controlled aerobic heart rate throughout the run."
+            }
+            if type.contains("Progression") {
+                return "Pace steadily accelerated from early miles to late miles."
+            }
+            return "Assessed from pace variability and heart rate response."
+        }()
+        lines.append("Classification Rationale: \(classificationRationale)")
+
+        lines.append("Duration: \(durationMin) min")
+        lines.append("Distance: \(distanceKm)")
+        lines.append("Working Pace: \(pace)")
+        lines.append("Working Cadence: \(cad) SPM (\(cad < 150 ? "below" : "above") the 150 SPM floor)")
+        lines.append("Working Heart Rate: \(hr) BPM")
+        lines.append("Time at Threshold (Zone 4): \(Int((runRecord.percentZone4 * 100).rounded()))%")
+
         if let osc = runRecord.workingAvgVerticalOscillation {
-            lines.append("Bounce: \(String(format: "%.1f", osc)) cm")
+            lines.append("Vertical Oscillation: \(String(format: "%.1f", osc)) cm")
+        } else {
+            lines.append("Vertical Oscillation: Not recorded (indoor treadmill without footpod)")
         }
+
         if let stride = runRecord.workingAvgStrideLength {
-            lines.append("Stride length: \(String(format: "%.2f", stride)) m")
+            lines.append("Stride Length: \(String(format: "%.2f", stride)) m")
+        } else {
+            lines.append("Stride Length: Not recorded (indoor treadmill without footpod)")
         }
 
         let signature = runSignature ?? runRecord.signature
-        let workSegments = signature?.phaseSegments.filter { $0.kind == "work" } ?? []
-        let recoverySegments = signature?.phaseSegments.filter { $0.kind == "recovery" } ?? []
-        if !workSegments.isEmpty {
-            let count = Double(workSegments.count)
-            let avgWorkPace = PaceFormatter.formatPace(secondsPerKilometer: workSegments.map(\.avgPace).reduce(0, +) / count)
-            let avgWorkCad = Int(workSegments.map(\.avgCadence).reduce(0, +) / count)
-            let avgWorkHR = Int(workSegments.map(\.avgHR).reduce(0, +) / count)
-            lines.append("Work reps: \(workSegments.count), avg pace \(avgWorkPace), cadence \(avgWorkCad) SPM, HR \(avgWorkHR) BPM")
-            if !recoverySegments.isEmpty {
-                let avgRecHR = Int(recoverySegments.map(\.avgHR).reduce(0, +) / Double(recoverySegments.count))
-                lines.append("Recovery jogs: \(recoverySegments.count), avg HR \(avgRecHR) BPM")
+        let segments = signature?.phaseSegments ?? []
+        let movingSegments = segments.filter { $0.avgPace > 0 }
+        let workSegments = segments.filter { $0.kind == "work" && $0.avgPace > 0 }
+        let targetForExtremes = !workSegments.isEmpty ? workSegments : movingSegments
+
+        if !segments.isEmpty {
+            let fastestSeg = targetForExtremes.min(by: { $0.avgPace < $1.avgPace })
+            let slowestSeg = targetForExtremes.max(by: { $0.avgPace < $1.avgPace })
+
+            lines.append("Segments Breakdown (\(segments.count) segments):")
+            var workIdx = 1
+            var recIdx = 1
+            for seg in segments.prefix(10) {
+                let sMin = Int(seg.startSeconds / 60)
+                let sSec = Int(seg.startSeconds.truncatingRemainder(dividingBy: 60))
+                let eMin = Int(seg.endSeconds / 60)
+                let eSec = Int(seg.endSeconds.truncatingRemainder(dividingBy: 60))
+                let timeStr = String(format: "%d:%02d–%d:%02d", sMin, sSec, eMin, eSec)
+                let sPace = PaceFormatter.formatPace(secondsPerKilometer: seg.avgPace)
+                let label: String
+                if seg.kind == "work" {
+                    label = "Work Rep \(workIdx)"
+                    workIdx += 1
+                } else if seg.kind == "recovery" {
+                    label = "Recovery \(recIdx)"
+                    recIdx += 1
+                } else if seg.kind == "walking" {
+                    label = "Walking"
+                } else {
+                    label = "Steady"
+                }
+                var tags: [String] = []
+                if seg.id == fastestSeg?.id { tags.append("FASTEST") }
+                if seg.id == slowestSeg?.id { tags.append("SLOWEST") }
+                let tagStr = tags.isEmpty ? "" : " [\(tags.joined(separator: ", "))]"
+                lines.append("- \(label) (\(timeStr)): \(sPace), \(Int(seg.avgCadence)) SPM, \(Int(seg.avgHR)) BPM\(tagStr)")
+            }
+            if let f = fastestSeg {
+                let fStart = Int(f.startSeconds / 60)
+                let fEnd = Int(f.endSeconds / 60)
+                lines.append("Fastest segment: \(PaceFormatter.formatPace(secondsPerKilometer: f.avgPace)) at min \(fStart)–\(fEnd)")
+            }
+            if let s = slowestSeg {
+                let sStart = Int(s.startSeconds / 60)
+                let sEnd = Int(s.endSeconds / 60)
+                lines.append("Slowest segment: \(PaceFormatter.formatPace(secondsPerKilometer: s.avgPace)) at min \(sStart)–\(sEnd)")
             }
         }
 
@@ -583,20 +698,20 @@ class AnalystChatEngine: ObservableObject {
         }
 
         let readiness = currentReadiness
-        var readinessLine = "Readiness now: \(readiness.state.rawValue)"
+        var readinessLine = "Readiness: \(readiness.state.rawValue)"
         if let acwr = readiness.acwr {
             readinessLine += ", ACWR \(String(format: "%.2f", acwr))"
         }
         if let triggers = triggerPhrase(readiness.triggers) {
-            readinessLine += ", recovery flags from recent training: \(triggers)"
+            readinessLine += ", recovery flags: \(triggers)"
         }
         lines.append(readinessLine)
 
         let timeline = recoveryTimeline
         if timeline.readyForHard {
-            lines.append("Recovery: ready for hard efforts")
+            lines.append("Recovery Timeline: Cleared for hard efforts now.")
         } else if let cap = timeline.easyCap {
-            lines.append("Recovery: hard efforts from \(timeline.earliestHardPhrase); until then easy runs of \(cap.lowerBound)–\(cap.upperBound) min")
+            lines.append("Recovery Timeline: Hard efforts cleared \(timeline.earliestHardPhrase); until then keep runs easy (\(cap.lowerBound)–\(cap.upperBound) min) or rest.")
         }
 
         if let drill = runRecord.insight?.drillRecommendations?.first ?? runRecord.insight?.drillRecommendation {
@@ -746,12 +861,18 @@ class AnalystChatEngine: ObservableObject {
         if lower.contains("bounce") || lower.contains("vertical") || lower.contains("oscillation") {
             if let osc = runRecord.workingAvgVerticalOscillation {
                 return "Your vertical bounce was \(String(format: "%.1f", osc)) cm. Keeping that below 9 cm ensures your energy propels you forward rather than bounding upward into the air."
+            } else {
+                return "Vertical oscillation wasn't recorded for this workout because it was an indoor treadmill run. Apple Watch measures vertical bounce outdoors or when paired with an authentic footpod."
             }
         }
 
         // 15. Stride Length / Overstride
         if lower.contains("stride") || lower.contains("overstride") || lower.contains("reach") {
-            return "To keep your stride efficient, focus on landing your feet directly under your center of mass rather than reaching out in front of your body."
+            if let stride = runRecord.workingAvgStrideLength {
+                return "Your average stride length was \(String(format: "%.2f", stride)) m. Focus on landing directly beneath your hips to keep impact light."
+            } else {
+                return "Stride length wasn't recorded for this workout because it was an indoor treadmill run without a footpod. Focus on landing your feet directly under your hips rather than reaching forward."
+            }
         }
 
         return "You held a solid, steady rhythm throughout this run. Focusing on quick, relaxed steps beneath your hips will keep your running smooth and injury-free."
@@ -765,6 +886,9 @@ enum AnalystIntent: Equatable, Sendable {
     case proposedWorkout(ProposedWorkout)
     case runPlanning(RunPlanTarget)
     case didNotRunToday
+    case didNotRunYesterday
+    case classificationExplanation
+    case splitPerformance
     case focusDay(day: String)
     case pushIntensity
     case crossTraining(activity: String)
@@ -783,9 +907,23 @@ enum AnalystIntent: Equatable, Sendable {
         let q = question.lowercased().replacingOccurrences(of: "’", with: "'")
         func any(_ words: [String]) -> Bool { words.contains { q.contains($0) } }
 
+        if any(["didn't run yesterday", "didnt run yesterday", "haven't run yesterday", "havent run yesterday"]) ||
+            (q.contains("yesterday") && (q.contains("didn't") || q.contains("didnt") || q.contains("haven't") || q.contains("havent"))) {
+            return .didNotRunYesterday
+        }
+
         if any(["didn't run", "didnt run", "haven't run", "havent run", "no run today", "didn't do an easy run", "didnt do an easy run", "didn't do a run", "haven't done an easy run", "havent done an easy run"]) ||
            (q.contains("today") && (q.contains("didn't") || q.contains("didnt") || q.contains("haven't") || q.contains("havent"))) {
             return .didNotRunToday
+        }
+
+        if any(["why did you label", "why is this labeled", "why was this labeled", "why did you classify", "why is this classified", "why was my run labeled", "why did you label my run", "why 'mixed effort'", "why mixed effort", "why intervals", "why steady effort"]) ||
+           (q.contains("why") && (q.contains("label") || q.contains("classif"))) {
+            return .classificationExplanation
+        }
+
+        if any(["best split", "worst split", "fastest split", "slowest split", "which split", "each interval", "performance evaluation for each", "split was it", "fastest segment", "slowest segment", "granularity", "specifics"]) && !q.contains("focus") {
+            return .splitPerformance
         }
 
         if any(["what day is it", "what day is today", "what day is tomorrow", "what day of the week", "what is today", "what is tomorrow", "what day was yesterday", "what date is it", "what is today's date", "which day is today", "which day is tomorrow"]) {
@@ -1123,41 +1261,43 @@ struct RecoveryTimeline: Equatable, Sendable {
     }
 }
 
+/// Input metrics for deterministic performance grading.
+struct RunGradeInput {
+    let type: String
+    let isHard: Bool
+    let percentZone4: Double
+    let cadence: Int
+    let workPaces: [Double]
+    let paceDeltaVsBaseline: Double?   // positive = faster than 30-day average (s/km)
+    let hrDeltaVsBaseline: Double?     // positive = higher than 30-day average (BPM)
+    let cadenceFade: Bool
+    let cardiacDrift: Bool
+}
+
+/// Formatted report card from deterministic grading.
+struct RunGradeReport {
+    let grade: String
+    let strengths: [String]
+    let focus: String?
+    let type: String
+
+    var sentence: String {
+        var text = "I'd grade this \(type) a \(grade)."
+        if !strengths.isEmpty {
+            text += " The highlights: \(strengths.prefix(2).joined(separator: ", and "))."
+        }
+        if let focus {
+            text += " The one thing to work on: \(focus)."
+        } else {
+            text += " There's no obvious weak spot here—keep doing what you're doing."
+        }
+        return text
+    }
+}
+
 /// Deterministic performance grade built from the run's own telemetry.
 enum RunGrade {
-    struct Input {
-        let type: String
-        let isHard: Bool
-        let percentZone4: Double
-        let cadence: Int
-        let workPaces: [Double]
-        let paceDeltaVsBaseline: Double?   // positive = faster than 30-day average (s/km)
-        let hrDeltaVsBaseline: Double?     // positive = higher than 30-day average (BPM)
-        let cadenceFade: Bool
-        let cardiacDrift: Bool
-    }
-
-    struct Report {
-        let grade: String
-        let strengths: [String]
-        let focus: String?
-        let type: String
-
-        var sentence: String {
-            var text = "I'd grade this \(type) a \(grade)."
-            if !strengths.isEmpty {
-                text += " The highlights: \(strengths.prefix(2).joined(separator: ", and "))."
-            }
-            if let focus {
-                text += " The one thing to work on: \(focus)."
-            } else {
-                text += " There's no obvious weak spot here—keep doing what you're doing."
-            }
-            return text
-        }
-    }
-
-    static func evaluate(_ input: Input) -> Report {
+    static func evaluate(_ input: RunGradeInput) -> RunGradeReport {
         var score = 95
         var strengths: [String] = []
         var focuses: [String] = []
@@ -1209,7 +1349,7 @@ enum RunGrade {
             }
         }
 
-        return Report(grade: letter(for: min(100, score)), strengths: strengths, focus: focuses.first, type: input.type)
+        return RunGradeReport(grade: letter(for: min(100, score)), strengths: strengths, focus: focuses.first, type: input.type)
     }
 
     static func letter(for score: Int) -> String {
@@ -1235,7 +1375,7 @@ enum AnalystGrounding {
     }
 
     static func hasUngroundedNumbers(_ reply: String, sources: [String]) -> Bool {
-        let allowed = sources.reduce(into: Set<Int>(0...3)) { $0.formUnion(numbers(in: $1)) }
+        let allowed = sources.reduce(into: Set<Int>(0...20)) { $0.formUnion(numbers(in: $1)) }
         return !numbers(in: reply).isSubset(of: allowed)
     }
 }
