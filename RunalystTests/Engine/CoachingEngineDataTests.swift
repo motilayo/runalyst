@@ -336,4 +336,90 @@ final class CoachingEngineDataTests: XCTestCase {
         XCTAssertTrue(report.contains("Here is the breakdown of your Zone 2 aerobic splits:"))
         XCTAssertTrue(report.contains("disciplined aerobic rhythm"))
     }
+
+    func testUnprescribedTenIntervalSetsGradingAndNoTruncation() {
+        let run = RunRecord(
+            hkWorkoutID: UUID(),
+            date: Date(),
+            totalDistanceMeters: 6000,
+            duration: 2400,
+            rawAvgPace: 280,
+            rawAvgHeartRate: 155,
+            rawAvgCadence: 168,
+            workingAvgPace: 280,
+            workingAvgCadence: 168,
+            workingAvgHeartRate: 155,
+            workingAvgVerticalOscillation: 8.0,
+            rawAvgVerticalOscillation: 8.0,
+            workingDistanceMeters: 6000,
+            workingDurationSeconds: 2400,
+            paceCV: 0.15,
+            paceSlope: 0.0,
+            percentZone4: 0.40,
+            detectedTypeRaw: "Intervals",
+            framboiseTags: []
+        )
+
+        var phases: [PhaseSegment] = []
+        for i in 1...10 {
+            let startW = Double((i - 1) * 240)
+            let endW = startW + 120.0
+            let pace = 235.0 + Double(i * 2) // small variance
+            phases.append(PhaseSegment(startSeconds: startW, endSeconds: endW, kind: "work", avgPace: pace, avgCadence: 176, avgHR: 168))
+
+            let startR = endW
+            let endR = startR + 120.0
+            phases.append(PhaseSegment(startSeconds: startR, endSeconds: endR, kind: "recovery", avgPace: 380, avgCadence: 148, avgHR: 140))
+        }
+
+        let sig = RunSignature(
+            classification: "Intervals",
+            confidence: 0.95,
+            probabilities: ["Intervals": 0.95],
+            anomalies: [],
+            cadenceFloor: 150,
+            phaseSegments: phases,
+            dataSource: "wrist",
+            isIndoor: false,
+            needsInclineReview: false,
+            splits: []
+        )
+
+        let timeline = RecoveryTimeline(
+            now: Date(),
+            lastHard: nil,
+            hardSessionsLast72h: 0,
+            requiredHours: 48,
+            state: .productive
+        )
+
+        let ctx = WorkoutAnalysisContext(
+            runRecord: run,
+            runSignature: sig,
+            macroProfile: nil,
+            recoveryTimeline: timeline
+        )
+
+        XCTAssertEqual(ctx.evaluationModality, WorkoutEvaluationModality.intervals)
+        XCTAssertEqual(ctx.intervalEvaluations.count, 10)
+
+        // Verify each rep is individually graded
+        for rep in ctx.intervalEvaluations {
+            XCTAssertFalse(rep.letterGrade.isEmpty)
+            XCTAssertEqual(rep.recoveryHeartRateDrop, 28) // 168 - 140 = 28 BPM drop
+            XCTAssertFalse(rep.observation.isEmpty)
+        }
+
+        // Verify formatting includes all 10 reps (no cutoff at 8)
+        let report = ctx.formatPerformanceReport()
+        XCTAssertTrue(report.contains("Rep 1 "))
+        XCTAssertTrue(report.contains("Rep 9 "))
+        XCTAssertTrue(report.contains("Rep 10 "))
+        XCTAssertTrue(report.contains("Recovery 10"))
+
+        let promptSummary = ctx.groundedPromptSummary(turnContext: nil)
+        XCTAssertTrue(promptSummary.contains("Rep 1 "))
+        XCTAssertTrue(promptSummary.contains("Rep 9 "))
+        XCTAssertTrue(promptSummary.contains("Rep 10 "))
+    }
 }

@@ -7,7 +7,7 @@ extension WorkoutAnalysisContext {
     func formatPerformanceReport() -> String {
         if evaluationModality == .intervals && !intervalEvaluations.isEmpty {
             var lines = ["Here is the breakdown of your intervals:"]
-            for rep in intervalEvaluations.prefix(8) {
+            for rep in intervalEvaluations.prefix(24) {
                 var repLine = "• Rep \(rep.repIndex) (\(rep.workPaceFormatted), \(rep.workCadence) SPM, \(rep.workHeartRate) BPM): \(rep.letterGrade) — \(rep.observation)"
                 if let rPace = rep.recoveryPaceFormatted, let rDrop = rep.recoveryHeartRateDrop, rDrop > 0 {
                     repLine += "\n  Recovery \(rep.repIndex) (\(rPace)): HR dropped -\(rDrop) BPM into recovery zone"
@@ -218,7 +218,7 @@ extension WorkoutAnalysisContext {
                 lines.append("- Rep Repeatability: Wide pace spread (\(Int(workRepPaceSpreadSec))s/km difference between fastest and slowest reps; indicates late-rep fatigue)")
             }
             lines.append("Interval Rep Details (Evaluate by these reps, NOT arbitrary distance splits):")
-            for rep in intervalEvaluations.prefix(8) {
+            for rep in intervalEvaluations.prefix(24) {
                 var detail = "  • Rep \(rep.repIndex) (\(rep.workPaceFormatted), \(rep.workCadence) SPM, \(rep.workHeartRate) BPM): Grade \(rep.letterGrade) — \(rep.observation)"
                 if let rPace = rep.recoveryPaceFormatted, let rDrop = rep.recoveryHeartRateDrop, rDrop > 0 {
                     detail += " [Recovery: \(rPace), -\(rDrop) BPM HR drop]"

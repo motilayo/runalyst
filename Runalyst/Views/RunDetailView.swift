@@ -138,23 +138,12 @@ struct RunDetailView: View {
     }
 
     private var effectiveScorecardDrillId: PreRunDrillId? {
-        if let drillName = prescribedDrillName,
-           let drillId = PreRunDrillId.allCases.first(where: { $0.title == drillName || $0.rawValue == drillName }) {
-            return drillId
-        }
-        let norm = runRecord.normalizedClassification
-        if (norm == "Intervals" || norm == "Pyramids") && (runRecord.signature?.phaseSegments.contains(where: { $0.kind == "work" }) == true) {
-            return .rhythmIntervals
-        } else if norm == "Tempo Run" {
-            return .tempoSurges
-        } else if norm == "Fartlek" {
-            return .fartlekPrimer
-        } else if norm == "Hill Repeats" {
-            return .hillBounds
-        } else if norm == "Easy Run" || norm == "Recovery Run" {
-            return norm == "Recovery Run" ? .recoveryJog : .zone2Run
-        }
-        return nil
+        guard let drillName = prescribedDrillName else { return nil }
+        return PreRunDrillId.allCases.first(where: { $0.title == drillName || $0.rawValue == drillName })
+    }
+
+    private var hasIntervalWorkReps: Bool {
+        runRecord.signature?.phaseSegments.contains(where: { $0.kind == "work" && $0.avgPace > 0 }) ?? false
     }
 
     private func normalizeDrillClassification() {
@@ -300,6 +289,45 @@ struct RunDetailView: View {
             prescribedDrillName: prescribedDrillName,
             baselineCadence: baselineCadence
         )
+    }
+
+    @ViewBuilder
+    private var performanceAndAnalysisSection: some View {
+        if let drillId = effectiveScorecardDrillId {
+            let scorecard = DrillExecutionScorecard(
+                runRecord: runRecord,
+                drillId: drillId,
+                baselineCadence: baselineCadence,
+                baselineOscillation: baselineOscillation,
+                customTitle: "Drill Performance"
+            )
+            renderDualCardLayout(primary: scorecard, secondary: aiRunAnalysisCard)
+        } else if runRecord.evaluationModality == .intervals && hasIntervalWorkReps {
+            let scorecard = IntervalPerformanceCard(
+                runRecord: runRecord,
+                baselineCadence: baselineCadence
+            )
+            renderDualCardLayout(primary: scorecard, secondary: aiRunAnalysisCard)
+        } else {
+            aiRunAnalysisCard
+                .padding(.horizontal)
+        }
+    }
+
+    @ViewBuilder
+    private func renderDualCardLayout<P: View, S: View>(primary: P, secondary: S) -> some View {
+        if horizontalSizeClass == .regular {
+            HStack(alignment: .top, spacing: 16) {
+                primary
+                secondary
+            }
+            .padding(.horizontal)
+        } else {
+            primary
+                .padding(.horizontal)
+            secondary
+                .padding(.horizontal)
+        }
     }
 
     var body: some View {
@@ -588,36 +616,8 @@ struct RunDetailView: View {
                     Text("Link this workout to a drill (like Cadence Pyramids, Strides, or Zone 2 Run) to track your form adherence against coaching targets in Drill Performance.")
                 }
 
-                // MARK: Drill Scorecard & AI Run Analysis
-                if let drillId = effectiveScorecardDrillId {
-                    if horizontalSizeClass == .regular {
-                        HStack(alignment: .top, spacing: 16) {
-                            DrillExecutionScorecard(
-                                runRecord: runRecord,
-                                drillId: drillId,
-                                baselineCadence: baselineCadence,
-                                baselineOscillation: baselineOscillation,
-                                customTitle: prescribedDrillName != nil ? "Drill Performance" : "Workout Performance"
-                            )
-                            aiRunAnalysisCard
-                        }
-                        .padding(.horizontal)
-                    } else {
-                        DrillExecutionScorecard(
-                            runRecord: runRecord,
-                            drillId: drillId,
-                            baselineCadence: baselineCadence,
-                            baselineOscillation: baselineOscillation,
-                            customTitle: prescribedDrillName != nil ? "Drill Performance" : "Workout Performance"
-                        )
-                        .padding(.horizontal)
-                        aiRunAnalysisCard
-                            .padding(.horizontal)
-                    }
-                } else {
-                    aiRunAnalysisCard
-                        .padding(.horizontal)
-                }
+                // MARK: Scorecard & AI Run Analysis
+                performanceAndAnalysisSection
 
                 // MARK: Data Toggle
                 HStack(spacing: 8) {
