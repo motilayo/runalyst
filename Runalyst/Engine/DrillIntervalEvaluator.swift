@@ -591,6 +591,28 @@ enum DrillIntervalEvaluator {
             segments.append(WaveformSegment(isWork: currentIsWork, duration: dur, buckets: currentBuckets))
         }
 
+        // Debounce / gap bridge: merge work segments separated by brief dip (<= 30s)
+        var debounced: [WaveformSegment] = []
+        for seg in segments {
+            if let last = debounced.last, last.isWork == seg.isWork {
+                debounced[debounced.count - 1].duration += seg.duration
+                debounced[debounced.count - 1].buckets.append(contentsOf: seg.buckets)
+            } else if debounced.count >= 2,
+                      seg.isWork,
+                      let gap = debounced.last,
+                      !gap.isWork,
+                      gap.duration <= 30.0,
+                      debounced[debounced.count - 2].isWork {
+                let removedGap = debounced.removeLast()
+                debounced[debounced.count - 1].duration += (removedGap.duration + seg.duration)
+                debounced[debounced.count - 1].buckets.append(contentsOf: removedGap.buckets)
+                debounced[debounced.count - 1].buckets.append(contentsOf: seg.buckets)
+            } else {
+                debounced.append(seg)
+            }
+        }
+        segments = debounced
+
         // Filter valid interval work segments (duration >= 15s and <= 300s)
         var reps: [DrillIntervalRep] = []
         var repIndex = 1

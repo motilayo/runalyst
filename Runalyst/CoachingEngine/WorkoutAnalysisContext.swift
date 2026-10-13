@@ -194,7 +194,8 @@ struct WorkoutAnalysisContext {
         }
 
         let sig = runSignature ?? runRecord.signature
-        self.phaseSegments = sig?.phaseSegments ?? []
+        let rawSegments = sig?.phaseSegments ?? []
+        self.phaseSegments = FramboiseEngine.consolidatePhaseSegments(rawSegments)
 
         // Resolve Splits
         var resolvedSplits = sig?.splits ?? []
