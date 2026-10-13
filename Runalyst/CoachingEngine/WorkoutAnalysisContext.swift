@@ -655,20 +655,23 @@ struct WorkoutAnalysisContext {
             lines.append("- \(diag)")
         }
 
-        // Future Training & Recovery
-        lines.append("")
-        lines.append("[FUTURE TRAINING & READINESS - Reference ONLY if the runner asks about their next run, readiness, recovery, or drills]:")
-        lines.append("- Current Readiness: \(recoveryTimeline.state.rawValue)")
-        if recoveryTimeline.readyForHard {
-            lines.append("- Recovery Status: FULLY RECOVERED and fresh. Cleared for any workout including speed, tempo, or intervals (last hard session was \(Int(hoursSinceWorkout))h ago; required was only \(Int(recoveryTimeline.requiredHours))h). Zero residual fatigue remains.")
-        } else if let cap = recoveryTimeline.easyCap {
-            lines.append("- Recovery Status: In active recovery window until \(recoveryTimeline.earliestHardPhrase). Keep next run easy (cap: \(cap.lowerBound)–\(cap.upperBound) min).")
-        }
-        lines.append("")
-        lines.append(lockedPrescription.promptDescription)
+        // Future Training & Recovery (Included only when runner asks about upcoming runs or readiness)
+        let isFutureTurn = turnContext?.turnDomain == .futureSessionPlanning || turnContext?.turnDomain == .compositeWorkoutAndPlanning
+        if isFutureTurn || turnContext == nil {
+            lines.append("")
+            lines.append("[FUTURE TRAINING & READINESS]:")
+            lines.append("- Current Readiness: \(recoveryTimeline.state.rawValue)")
+            if recoveryTimeline.readyForHard {
+                lines.append("- Recovery Status: FULLY RECOVERED and fresh. Cleared for any workout including speed, tempo, or intervals (last hard session was \(Int(hoursSinceWorkout))h ago; required was only \(Int(recoveryTimeline.requiredHours))h). Zero residual fatigue remains.")
+            } else if let cap = recoveryTimeline.easyCap {
+                lines.append("- Recovery Status: In active recovery window until \(recoveryTimeline.earliestHardPhrase). Keep next run easy (cap: \(cap.lowerBound)–\(cap.upperBound) min).")
+            }
+            lines.append("")
+            lines.append(lockedPrescription.promptDescription)
 
-        if let drill = runRecord.insight?.drillRecommendations?.first ?? runRecord.insight?.drillRecommendation {
-            lines.append("- Pre-Run Technique Drill Option: \(drill.drillTitle) (warm-up turnover prep, not mandatory rehab)")
+            if let drill = runRecord.insight?.drillRecommendations?.first ?? runRecord.insight?.drillRecommendation {
+                lines.append("- Pre-Run Technique Drill Option: \(drill.drillTitle) (warm-up turnover prep, not mandatory rehab)")
+            }
         }
 
         if let tc = turnContext {

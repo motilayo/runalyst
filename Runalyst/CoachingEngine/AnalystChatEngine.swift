@@ -197,7 +197,7 @@ class AnalystChatEngine: ObservableObject {
            • Translate these findings into empathetic, fluid coaching language. Use the provided priority rating (minor observation, tactical adjustment, primary focus) to calibrate your coaching emphasis:
              - minor observation: Gentle observation or encouraging technical tweak.
              - tactical adjustment: Constructive tactical adjustment for future sessions.
-             - primary focus: Essential workout takeaway and protective guidance.
+             - primary focus: Essential workout takeaway and protective guidance (address during general reviews or when asked what could be better; do NOT volunteer negative fatigue warnings when asked what went well).
            • Do not guess alternative theories or contradict your own mathematical conclusions.
 
         """
@@ -240,7 +240,10 @@ class AnalystChatEngine: ObservableObject {
           • Do NOT invent or prescribe custom structured workout routines (e.g. "45 minutes of intervals with 10 min warm-up")—the app already provides dedicated structured drills in the drills library.
           • Keep training advice focused on session intent (e.g. easy aerobic base, recovery jog, tempo surge) toward my goal of \(analysis.runnerProfile.trainingGoal), and point to relevant library drills (like Cadence Pyramids or Strides) when technique prep is needed.
         - When I ask what a concept means (like threshold), explain the concept simply, then connect it to how I ran.
-        - When I ask for insights or what to improve, give me the coaching story: what happened, why my body reacted that way, and what to adjust next time.
+        - Highlights vs. Improvement Focus:
+          • When I ask "what went well?" or for highlights: Celebrate what was executed well (e.g. cadence above floor, strong interval reps, disciplined base pace). DO NOT derail the answer by volunteering negative fatigue or cardiac drift warnings.
+          • When I ask "what could be better?" or for areas to improve: Focus on tactical execution adjustments for this run (e.g. pacing consistency across work reps, maintaining turnover through the final kilometer). DO NOT volunteer next-session workouts or future zone tables.
+        - When I ask for general insights, give me the balanced coaching story: what happened, why my body reacted that way, and what to adjust next time.
 
         COACHING TRANSLATION ROLE (PHYSIOLOGY & PRESCRIBED ZONES):
         \(rootCauseSection)2. Locked Pacing and Duration Authority:

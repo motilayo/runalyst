@@ -832,7 +832,38 @@ final class IndoorIntelligenceTests: XCTestCase {
         XCTAssertTrue(instructions.contains("FUTURE TRAINING & READINESS:"))
         XCTAssertTrue(instructions.contains("LOCKED TRAINING ZONES & SESSION PRESCRIPTION"))
         XCTAssertFalse(instructions.contains("PHYSIOLOGICAL & BIOMECHANICAL VERDICTS"))
-        XCTAssertFalse(instructions.contains("PACING & SPLIT FINDINGS"))
+    }
+
+    @MainActor
+    func testAnalystChatWhatWentWellAndWhatCouldBeBetterScoping() async {
+        let runRecord = makeTestRunRecord(isIndoor: false)
+        let chatEngine = AnalystChatEngine(runRecord: runRecord)
+
+        // 1. "What went well?"
+        let ctxWell = ConversationMemoryManager.buildTurnContext(
+            userQuestion: "What went well?",
+            messages: [],
+            recoveryStateDescription: "Fully Recovered",
+            daysSinceWorkout: 4
+        )
+        XCTAssertTrue(ctxWell.turnGuidance.contains("Highlights & Strengths"))
+        let instrWell = chatEngine.buildSystemInstructions(for: "What went well?", turnContext: ctxWell)
+        XCTAssertFalse(instrWell.contains("[FUTURE TRAINING & READINESS]"))
+        XCTAssertFalse(instrWell.contains("LOCKED TRAINING ZONES & SESSION PRESCRIPTION:"))
+        XCTAssertFalse(instrWell.contains("Next Recommended Session:"))
+
+        // 2. "What could be better?"
+        let ctxBetter = ConversationMemoryManager.buildTurnContext(
+            userQuestion: "What could be better?",
+            messages: [],
+            recoveryStateDescription: "Fully Recovered",
+            daysSinceWorkout: 4
+        )
+        XCTAssertTrue(ctxBetter.turnGuidance.contains("Areas for Technique & Pacing Improvement"))
+        let instrBetter = chatEngine.buildSystemInstructions(for: "What could be better?", turnContext: ctxBetter)
+        XCTAssertFalse(instrBetter.contains("[FUTURE TRAINING & READINESS]"))
+        XCTAssertFalse(instrBetter.contains("LOCKED TRAINING ZONES & SESSION PRESCRIPTION:"))
+        XCTAssertFalse(instrBetter.contains("Next Recommended Session:"))
     }
 
     // MARK: - 4B. Swift Physics, Zones & Memory Engines

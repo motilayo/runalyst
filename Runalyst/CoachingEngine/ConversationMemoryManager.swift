@@ -154,7 +154,37 @@ enum ConversationMemoryManager {
             )
         }
 
-        // 6. Default: Workout Telemetry Analysis
+        // 6. Positive Highlights Focus ("What went well?")
+        let positiveMarkers = ["went well", "what went well", "highlights", "positives", "good about", "did well", "strengths"]
+        if positiveMarkers.contains(where: { lower.contains($0) }) {
+            let guidance = "TURN FOCUS: Workout Highlights & Strengths. Focus exclusively on what was executed well (e.g. cadence stability above floor, strong work reps, base-building alignment). DO NOT volunteer unsolicited criticisms, cardiac drift, or fatigue warnings."
+            return ManagedTurnContext(
+                turnDomain: .workoutTelemetryAnalysis,
+                turnIndex: userTurnIndex,
+                isSubjectiveDistress: false,
+                cleanConversationDigest: summarizeHistory(messages),
+                turnGuidance: guidance,
+                stripWorkoutPayload: false,
+                prunePhysiologicalVerdicts: false
+            )
+        }
+
+        // 7. Tactical Improvement Focus ("What could be better?")
+        let improvementMarkers = ["could be better", "what went wrong", "what to improve", "how to improve", "areas to improve", "critique", "weaknesses"]
+        if improvementMarkers.contains(where: { lower.contains($0) }) {
+            let guidance = "TURN FOCUS: Areas for Technique & Pacing Improvement. Explain tactical execution adjustments for this workout (e.g. pacing consistency across work reps, maintaining cadence turnover late in the run). DO NOT volunteer next-session workouts or future zone tables."
+            return ManagedTurnContext(
+                turnDomain: .workoutTelemetryAnalysis,
+                turnIndex: userTurnIndex,
+                isSubjectiveDistress: false,
+                cleanConversationDigest: summarizeHistory(messages),
+                turnGuidance: guidance,
+                stripWorkoutPayload: false,
+                prunePhysiologicalVerdicts: false
+            )
+        }
+
+        // 8. Default: Workout Telemetry Analysis
         return ManagedTurnContext(
             turnDomain: .workoutTelemetryAnalysis,
             turnIndex: userTurnIndex,
