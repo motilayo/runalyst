@@ -791,13 +791,36 @@ final class IndoorIntelligenceTests: XCTestCase {
             "Prompt must enforce matching depth to experience level"
         )
         XCTAssertTrue(
-            instructions.contains("SWIFT CAUSAL VERDICTS"),
-            "Prompt must include Swift Causal Verdicts"
+            instructions.contains("PHYSIOLOGICAL & BIOMECHANICAL VERDICTS"),
+            "Prompt must include Physiological Causal Verdicts"
         )
         XCTAssertTrue(
             instructions.contains("LOCKED TRAINING ZONES & SESSION PRESCRIPTION"),
             "Prompt must include Locked Training Prescription table"
         )
+        XCTAssertFalse(
+            instructions.contains("Swift flagged this") || instructions.contains("Swift's analysis") || instructions.contains("Swift is the Physicist"),
+            "Prompt must not contain 4th-wall leaking references attributing coaching to Swift"
+        )
+    }
+
+    @MainActor
+    func testAnalystChatFutureSessionPlanningScopingPrunesPastRetrospectiveData() async {
+        let runRecord = makeTestRunRecord(isIndoor: false)
+        let chatEngine = AnalystChatEngine(runRecord: runRecord)
+        let turnContext = ManagedTurnContext(
+            turnDomain: .futureSessionPlanning,
+            isSubjectiveDistress: false,
+            cleanConversationDigest: "",
+            turnGuidance: "Future planning",
+            stripWorkoutPayload: false
+        )
+        let instructions = chatEngine.buildSystemInstructions(userQuestion: "Can I run tomorrow?", turnContext: turnContext)
+
+        XCTAssertTrue(instructions.contains("FUTURE TRAINING & READINESS:"))
+        XCTAssertTrue(instructions.contains("LOCKED TRAINING ZONES & SESSION PRESCRIPTION"))
+        XCTAssertFalse(instructions.contains("PHYSIOLOGICAL & BIOMECHANICAL VERDICTS"))
+        XCTAssertFalse(instructions.contains("PACING & SPLIT FINDINGS"))
     }
 
     // MARK: - 4B. Swift Physics, Zones & Memory Engines

@@ -20,7 +20,7 @@ struct ManagedTurnContext: Sendable, Equatable {
 
     var promptHeader: String {
         var lines: [String] = []
-        lines.append("TURN CONTEXT & SCOPE (MANAGED BY SWIFT):")
+        lines.append("TURN CONTEXT & DIRECTIVE:")
         lines.append("- Domain: \(turnDomain)")
         lines.append("- Memory Guidance: \(turnGuidance)")
         if !cleanConversationDigest.isEmpty {
@@ -86,7 +86,7 @@ enum ConversationMemoryManager {
         let hasFutureIntent = futureMarkers.contains(where: { lower.contains($0) })
 
         if hasWorkoutIntent && hasFutureIntent {
-            let guidance = "COMPOSITE BRIDGING DIRECTIVE: Answer sequentially: First, explain the root cause of the past workout exertion using Swift's Causal Verdicts. Second, evaluate tomorrow's readiness using strictly the Current Recovery Status (\(recoveryStateDescription)) and the Locked Training Prescription Table. Do not assume past exertion from a previous session prohibits running tomorrow unless the recovery timeline explicitly requires active recovery."
+            let guidance = "COMPOSITE BRIDGING DIRECTIVE: Answer sequentially: First, explain the root cause of the past workout exertion using the physiological verdicts. Second, evaluate tomorrow's readiness using strictly the Current Recovery Status (\(recoveryStateDescription)) and the Locked Training Prescription Table. Do not assume past exertion from a previous session prohibits running tomorrow unless the recovery timeline explicitly requires active recovery."
             return ManagedTurnContext(
                 turnDomain: .compositeWorkoutAndPlanning,
                 isSubjectiveDistress: false,
@@ -99,7 +99,7 @@ enum ConversationMemoryManager {
         // 4. Future Session Planning Only
         if hasFutureIntent || lower.contains("ready") || lower.contains("rest day") || lower.contains("push hard") {
             let restNote = daysSinceWorkout > 0 ? "You have had \(daysSinceWorkout) days of rest since your last session." : "This workout was today."
-            let guidance = "TURN FOCUS: Future Training & Readiness. Ground your response strictly in the Current Recovery Status (\(recoveryStateDescription)) and Locked Prescription Table. \(restNote) Do NOT treat past workout fatigue as active recovery debt."
+            let guidance = "TURN FOCUS: Future Training & Readiness. Ground your response strictly in the Current Recovery Status (\(recoveryStateDescription)) and Locked Prescription Table. \(restNote) Answer whether I can run and detail the prescribed next session. DO NOT volunteer an unprompted retrospective review of past workouts or splits. Focus 100% on the upcoming session."
             return ManagedTurnContext(
                 turnDomain: .futureSessionPlanning,
                 isSubjectiveDistress: false,
@@ -127,7 +127,7 @@ enum ConversationMemoryManager {
             turnDomain: .workoutTelemetryAnalysis,
             isSubjectiveDistress: false,
             cleanConversationDigest: summarizeHistory(messages),
-            turnGuidance: "TURN FOCUS: Workout Telemetry & Biomechanics. Explain what happened during this specific workout using Swift's Causal Verdicts.",
+            turnGuidance: "TURN FOCUS: Workout Telemetry & Biomechanics. Explain what happened during this specific workout using the physiological verdicts.",
             stripWorkoutPayload: false
         )
     }

@@ -6,9 +6,9 @@ import Foundation
 /// - moderate: Constructive tactical training focus
 /// - critical: Primary protective warning or urgent coaching cue
 enum DeviationSeverity: String, Sendable, Codable, Equatable {
-    case minor
-    case moderate
-    case critical
+    case minor = "minor observation"
+    case moderate = "tactical adjustment"
+    case critical = "primary focus"
 }
 
 /// Deterministic root-cause evaluation of stride turnover and cadence mechanics.
@@ -22,15 +22,15 @@ enum CadenceCausalVerdict: Sendable, Equatable {
     var summary: String {
         switch self {
         case .gradeResistance(let drop, let elev, let severity):
-            return "Grade resistance deceleration (dropped \(drop) SPM over +\(Int(elev))m elevation climb; severity: \(severity.rawValue))"
+            return "Grade resistance deceleration (dropped \(drop) SPM over +\(Int(elev))m elevation climb; priority: \(severity.rawValue))"
         case .lateNeuromuscularFatigue(let decay, let pace, let severity):
-            return "Late neuromuscular turnover fatigue (cadence decayed by \(decay) SPM while pace faded by \(pace)s/km; severity: \(severity.rawValue))"
+            return "Late neuromuscular turnover fatigue (turnover slowed by \(decay) SPM while pace faded by \(pace)s/km; priority: \(severity.rawValue))"
         case .subFloorStridePattern(let working, let floor, let severity):
-            return "Sub-floor cadence pattern (\(working) SPM vs \(floor) SPM height floor; severity: \(severity.rawValue))"
+            return "Sub-floor cadence pattern (\(working) SPM vs \(floor) SPM height floor; priority: \(severity.rawValue))"
         case .stableHeightCalibratedTurnover(let working):
             return "Stable height-calibrated turnover (\(working) SPM maintained consistently)"
         case .strideOverLengthening(let drop, let str, let severity):
-            return "Stride over-lengthening under fatigue (cadence dropped \(drop) SPM while stride reached +\(String(format: "%.2f", str))m; severity: \(severity.rawValue))"
+            return "Stride over-lengthening under fatigue (cadence dropped \(drop) SPM while stride reached +\(String(format: "%.2f", str))m; priority: \(severity.rawValue))"
         }
     }
 }
@@ -45,11 +45,11 @@ enum CardiacCausalVerdict: Sendable, Equatable {
     var summary: String {
         switch self {
         case .thermalOrCardiovascularDrift(let drift, let dur, let severity):
-            return "Cardiovascular decoupling (+ \(drift) BPM HR rise over \(dur) min at steady pace; thermal strain or internal fatigue, severity: \(severity.rawValue))"
+            return "Aerobic decoupling / cardiac drift (+\(drift) BPM HR rise over \(dur) min at steady pace; thermal strain or internal fatigue; priority: \(severity.rawValue))"
         case .elevationInducedCardiacSurge(let elev, let rise, let severity):
-            return "Gravitational cardiovascular surge (+\(rise) BPM HR rise from +\(Int(elev))m elevation climbing, not aerobic fitness loss; severity: \(severity.rawValue))"
+            return "Gravitational cardiovascular surge (+\(rise) BPM HR rise from +\(Int(elev))m elevation climbing, not aerobic fitness loss; priority: \(severity.rawValue))"
         case .pacingOvershootDecoupling(let paceDelta, let hrRise, let severity):
-            return "Pacing overshoot decoupling (started \(paceDelta)s/km too fast, triggering +\(hrRise) BPM cardiac rise; severity: \(severity.rawValue))"
+            return "Pacing overshoot decoupling (started \(paceDelta)s/km too fast, triggering +\(hrRise) BPM cardiac rise; priority: \(severity.rawValue))"
         case .stableCardiovascularCoupling(let avgHR):
             return "Coupled cardiovascular stability (steady heart rate around \(avgHR) BPM tracking pace cleanly)"
         }
@@ -65,11 +65,11 @@ enum VerticalEconomyVerdict: Sendable, Equatable {
     var summary: String {
         switch self {
         case .excessiveVerticalDisplacement(let ratio, let bounce, let severity):
-            return "Excessive vertical energy leakage (Vertical Ratio \(String(format: "%.1f", ratio))%, bounce \(String(format: "%.1f", bounce)) cm; upward bounce wastes propulsion energy, severity: \(severity.rawValue))"
+            return "Excessive vertical bounce (Vertical Ratio \(String(format: "%.1f", ratio))%, bounce \(String(format: "%.1f", bounce)) cm; upward bounce wastes propulsion energy; priority: \(severity.rawValue))"
         case .optimalForwardKinematics(let ratio, let bounce):
-            return "Optimal forward running economy (Vertical Ratio \(String(format: "%.1f", ratio))%, compact bounce \(String(format: "%.1f", bounce)) cm cleanly converted into forward momentum)"
+            return "Optimal forward running economy (Vertical Ratio \(String(format: "%.1f", ratio))%, compact bounce \(String(format: "%.1f", bounce)) cm converted cleanly into forward propulsion)"
         case .treadmillDeckKinematics(let cad):
-            return "Treadmill deck running economy (\(cad) SPM turnover evaluated on continuous belt; outdoor vertical kinematics omitted)"
+            return "Treadmill deck running economy (\(cad) SPM turnover evaluated on continuous belt)"
         }
     }
 }
@@ -85,12 +85,12 @@ enum PacingExecutionVerdict: Sendable, Equatable {
         case .earlyOverpaceFade(let first, let second, let fade, let severity):
             let p1 = PaceFormatter.formatPace(secondsPerKilometer: first)
             let p2 = PaceFormatter.formatPace(secondsPerKilometer: second)
-            return "Early over-pacing fade (faded by \(fade)s/km in second half: \(p1) -> \(p2); severity: \(severity.rawValue))"
+            return "Early over-pacing fade (faded by \(fade)s/km in second half: \(p1) -> \(p2); priority: \(severity.rawValue))"
         case .progressiveAcceleration(let second, let gain):
             let p2 = PaceFormatter.formatPace(secondsPerKilometer: second)
             return "Progressive negative split discipline (\(gain)s/km faster in second half down to \(p2))"
         case .disciplinedMetronomic(let spread):
-            return "Disciplined metronomic pacing (tight \(spread)s/km spread across all splits)"
+            return "Disciplined metronomic pacing (consistent \(spread)s/km spread across all splits)"
         }
     }
 }
@@ -104,10 +104,10 @@ struct PhysiologicalVerdicts: Sendable, Equatable {
 
     var promptDescription: String {
         return """
-        - Cadence Mechanics: \(cadence.summary)
-        - Cardiovascular Coupling: \(cardiac.summary)
-        - Vertical Running Economy: \(verticalEconomy.summary)
-        - Pacing Execution: \(pacing.summary)
+        - Cadence Turnover: \(cadence.summary)
+        - Aerobic Decoupling & Drift: \(cardiac.summary)
+        - Vertical Economy: \(verticalEconomy.summary)
+        - Pacing Consistency: \(pacing.summary)
         """
     }
 }

@@ -503,6 +503,52 @@ struct WorkoutAnalysisContext {
             return lines.joined(separator: "\n")
         }
 
+        if let tc = turnContext, tc.turnDomain == .futureSessionPlanning {
+            var lines = ["ATHLETE IDENTITY & CURRENT LOAD:"]
+            lines.append("- Athletic Experience Level: \(runnerProfile.experienceLevel)")
+            lines.append("- Active Training Goal: \(runnerProfile.trainingGoal)")
+            lines.append("- Current 30-Day Training Load: \(runnerProfile.loadSummary)")
+            lines.append("- Runner Height: \(Int(runnerProfile.userHeightCm)) cm (Height-calibrated cadence floor: \(runnerProfile.heightAdjustedCadenceFloor) SPM)")
+            lines.append("")
+            lines.append("CALENDAR & TEMPORAL CONTEXT:")
+            lines.append("- Current Date (Today): \(currentWeekday), \(currentDateFormatted)")
+            let elapsedNote: String = {
+                if isWorkoutToday { return "logged earlier today" }
+                if isWorkoutYesterday { return "logged yesterday" }
+                return "\(daysSinceWorkout) days ago on \(workoutWeekday), \(workoutDateFormatted)"
+            }()
+            lines.append("- Workout Date: \(workoutWeekday), \(workoutDateFormatted) (\(elapsedNote))")
+            if isWorkoutToday {
+                lines.append("- Activity Status: This workout took place today.")
+            } else {
+                let todayStatus = hasRunToday ? "Logged another run today." : "Did NOT run today."
+                let yesterdayStatus = hasRunYesterday ? "Logged a run yesterday." : "Did NOT run yesterday."
+                let restNote = daysSinceWorkout > 1 ? "\(daysSinceWorkout) days of rest since this session (fully rested and fresh)." : "1 day of rest since this session."
+                lines.append("- Recent Activity: \(todayStatus) \(yesterdayStatus) (\(restNote))")
+            }
+            let durationMin = max(1, Int((runRecord.duration / 60.0).rounded()))
+            let distKm = String(format: "%.1f km", runRecord.totalDistanceMeters / 1000.0)
+            lines.append("")
+            lines.append("RECENT SESSION CONTEXT (Brief reference for last logged session):")
+            lines.append("- Last Session (\(workoutWeekday)): \(detectedType) (\(isIndoor ? "Treadmill" : "Outdoors")), \(distKm) in \(durationMin) min, Working Pace: \(workingPaceFormatted), Working HR: \(workingHR) BPM")
+            lines.append("")
+            lines.append("FUTURE TRAINING & READINESS:")
+            lines.append("- Current Readiness: \(recoveryTimeline.state.rawValue)")
+            if recoveryTimeline.readyForHard {
+                lines.append("- Recovery Status: FULLY RECOVERED and fresh. Cleared for any workout including speed, tempo, or intervals (last hard session was \(Int(hoursSinceWorkout))h ago; required was only \(Int(recoveryTimeline.requiredHours))h). Zero residual fatigue remains.")
+            } else if let cap = recoveryTimeline.easyCap {
+                lines.append("- Recovery Status: In active recovery window until \(recoveryTimeline.earliestHardPhrase). Keep next run easy (cap: \(cap.lowerBound)–\(cap.upperBound) min).")
+            }
+            lines.append("")
+            lines.append(lockedPrescription.promptDescription)
+            if let drill = runRecord.insight?.drillRecommendations?.first ?? runRecord.insight?.drillRecommendation {
+                lines.append("- Pre-Run Technique Drill Option: \(drill.drillTitle) (warm-up turnover prep, not mandatory rehab)")
+            }
+            lines.append("")
+            lines.append(tc.promptHeader)
+            return lines.joined(separator: "\n")
+        }
+
         var lines: [String] = []
 
         // Athlete Identity & Current Load
@@ -563,9 +609,9 @@ struct WorkoutAnalysisContext {
         }
         lines.append("- Cardiovascular Strain: Working HR \(workingHR) BPM; \(percentZone4)% in Zone 4 (Threshold)")
 
-        // Swift Deterministic Causal Verdicts
+        // Physiological Deterministic Causal Verdicts
         lines.append("")
-        lines.append("SWIFT CAUSAL VERDICTS (DETERMINISTIC ROOT CAUSES):")
+        lines.append("PHYSIOLOGICAL & BIOMECHANICAL VERDICTS (ROOT-CAUSE DIAGNOSIS):")
         lines.append(physiologicalVerdicts.promptDescription)
 
         // Pacing & Splits

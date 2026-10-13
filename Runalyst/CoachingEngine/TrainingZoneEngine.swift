@@ -24,7 +24,7 @@ struct LockedTrainingPrescription: Sendable, Equatable {
 
     var promptDescription: String {
         var lines: [String] = []
-        lines.append("LOCKED TRAINING ZONES & SESSION PRESCRIPTION (CALCULATED BY SWIFT):")
+        lines.append("LOCKED TRAINING ZONES & SESSION PRESCRIPTION:")
         if isSubjectiveOverride {
             lines.append("- OVERRIDE ACTIVE: Subjective illness or acute distress reported.")
             lines.append("- Recommended Action: \(nextSessionName)")
