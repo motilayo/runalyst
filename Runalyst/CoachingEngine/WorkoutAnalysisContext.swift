@@ -48,6 +48,7 @@ struct WorkoutAnalysisContext {
     // Athlete Profile & Terrain
     let runnerProfile: RunnerProfile
     let elevationGainMeters: Double
+    let environmentalModifier: EnvironmentalModifier?
     let environmentModifier: String?
     let verticalRatio: Double?
     let efficiencyFactor: Double?
@@ -189,10 +190,24 @@ struct WorkoutAnalysisContext {
         // Environmental & Terrain Modifiers
         let splitElevation = self.splits.reduce(0.0) { $0 + $1.elevationGainMeters }
         self.elevationGainMeters = splitElevation
+        let ambientTemp = runRecord.ambientTemperatureCelsius
+        let ambientHum = runRecord.ambientHumidity
+        let envMod = WeatherProxyEngine.evaluateEnvironmentalModifier(
+            temperatureCelsius: ambientTemp,
+            humidity: ambientHum,
+            isIndoor: self.isIndoor,
+            elevationGainMeters: self.elevationGainMeters
+        )
+        self.environmentalModifier = envMod
+
         if self.elevationGainMeters >= 40.0 {
             self.environmentModifier = "High Elevation Gain (+\(Int(self.elevationGainMeters)) m) — cardiac drift expected from hill climbs"
         } else if self.isIndoor {
             self.environmentModifier = "Indoor Treadmill — flat deck pacing with zero wind resistance"
+        } else if envMod == .highHeat {
+            let tempDesc = ambientTemp.map { String(format: "%.0f°C", $0) } ?? "≥22°C"
+            let humDesc = ambientHum.map { "\($0 <= 1.0 ? Int($0 * 100) : Int($0))%" } ?? "≥75%"
+            self.environmentModifier = "High Heat & Humidity (\(tempDesc), \(humDesc)) — elevated thermal strain and reduced convective cooling"
         } else {
             self.environmentModifier = nil
         }
@@ -421,7 +436,10 @@ struct WorkoutAnalysisContext {
             secondHalfPaceSec: self.secondHalfPaceSec,
             fastestSplit: self.fastestSplit,
             slowestSplit: self.slowestSplit,
-            avgHeartRate: self.workingHR
+            avgHeartRate: self.workingHR,
+            ambientTemperatureC: ambientTemp,
+            ambientHumidity: ambientHum,
+            environmentalModifier: envMod
         )
         self.physiologicalVerdicts = PhysiologicalDiagnosisEngine.evaluate(physInput)
 

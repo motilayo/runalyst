@@ -1,4 +1,85 @@
 import Foundation
+import HealthKit
+#if canImport(WeatherKit)
+import WeatherKit
+#endif
+#if canImport(CoreLocation)
+import CoreLocation
+#endif
+
+/// Environmental and ambient conditions surrounding a run.
+enum EnvironmentalModifier: String, Sendable, Codable, Equatable {
+    case highHeat = "High Heat"
+    case highElevation = "High Elevation Gain"
+    case indoorTreadmill = "Indoor Treadmill"
+    case standard = "Standard Ambient"
+}
+
+/// Thermal and ambient weather proxy engine that cross-references WeatherKit and HealthKit metadata.
+enum WeatherProxyEngine {
+    static let highHeatTemperatureCelsiusThreshold: Double = 22.0
+    static let highHeatHumidityThresholdPercent: Double = 75.0
+
+    static func isHighHeat(temperatureCelsius: Double?, humidity: Double?) -> Bool {
+        if let temp = temperatureCelsius, temp >= highHeatTemperatureCelsiusThreshold {
+            return true
+        }
+        if let hum = humidity {
+            let percent = hum <= 1.0 ? hum * 100.0 : hum
+            if percent >= highHeatHumidityThresholdPercent {
+                return true
+            }
+        }
+        return false
+    }
+
+    static func evaluateEnvironmentalModifier(
+        temperatureCelsius: Double?,
+        humidity: Double?,
+        isIndoor: Bool,
+        elevationGainMeters: Double
+    ) -> EnvironmentalModifier {
+        if isIndoor {
+            return .indoorTreadmill
+        }
+        if elevationGainMeters >= 40.0 {
+            return .highElevation
+        }
+        if isHighHeat(temperatureCelsius: temperatureCelsius, humidity: humidity) {
+            return .highHeat
+        }
+        return .standard
+    }
+
+    static func extractWeatherMetadata(from workout: HKWorkout) -> (temperatureCelsius: Double?, humidityPercent: Double?) {
+        var tempC: Double?
+        var humPercent: Double?
+
+        if let tempQuantity = workout.metadata?[HKMetadataKeyWeatherTemperature] as? HKQuantity {
+            tempC = tempQuantity.doubleValue(for: .degreeCelsius())
+        }
+        if let humQuantity = workout.metadata?[HKMetadataKeyWeatherHumidity] as? HKQuantity {
+            let val = humQuantity.doubleValue(for: .percent())
+            humPercent = val <= 1.0 ? val * 100.0 : val
+        }
+        return (tempC, humPercent)
+    }
+
+    #if canImport(WeatherKit) && canImport(CoreLocation)
+    @available(iOS 16.0, *)
+    static func fetchWeather(for coordinate: CLLocationCoordinate2D, at date: Date = Date()) async -> (temperatureCelsius: Double?, humidityPercent: Double?) {
+        let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+        do {
+            let weather = try await WeatherService.shared.weather(for: location)
+            let tempC = weather.currentWeather.temperature.converted(to: .celsius).value
+            let humPercent = weather.currentWeather.humidity * 100.0
+            return (tempC, humPercent)
+        } catch {
+            return (nil, nil)
+        }
+    }
+    #endif
+}
 
 /// Mathematical severity of a biomechanical or physiological deviation.
 /// Guides the AI's coaching tone:
@@ -40,7 +121,13 @@ enum CardiacCausalVerdict: Sendable, Equatable {
     case thermalOrCardiovascularDrift(driftBPM: Int, durationMin: Int, severity: DeviationSeverity)
     case elevationInducedCardiacSurge(elevationGainM: Double, hrRiseBPM: Int, severity: DeviationSeverity)
     case pacingOvershootDecoupling(earlyPaceDeltaSec: Int, lateHRRiseBPM: Int, severity: DeviationSeverity)
+    case thermalStrain(heatIndex: String)
     case stableCardiovascularCoupling(avgHR: Int)
+
+    // swiftlint:disable:next identifier_name
+    static func thermalStrain(HeatIndex: String) -> CardiacCausalVerdict {
+        .thermalStrain(heatIndex: HeatIndex)
+    }
 
     var summary: String {
         switch self {
@@ -50,6 +137,8 @@ enum CardiacCausalVerdict: Sendable, Equatable {
             return "Gravitational cardiovascular surge (+\(rise) BPM HR rise from +\(Int(elev))m elevation climbing, not aerobic fitness loss; priority: \(severity.rawValue))"
         case .pacingOvershootDecoupling(let paceDelta, let hrRise, let severity):
             return "Pacing overshoot decoupling (started \(paceDelta)s/km too fast, triggering +\(hrRise) BPM cardiac rise; priority: \(severity.rawValue))"
+        case .thermalStrain(let heatIndex):
+            return "Environmental thermal strain decoupling (cardiac drift under high ambient heat and humidity [Heat Index: \(heatIndex)]; priority: \(DeviationSeverity.critical.rawValue))"
         case .stableCardiovascularCoupling(let avgHR):
             return "Coupled cardiovascular stability (steady heart rate around \(avgHR) BPM tracking pace cleanly)"
         }
@@ -129,6 +218,9 @@ struct PhysiologicalInput: Sendable {
     let fastestSplit: RunSplit?
     let slowestSplit: RunSplit?
     let avgHeartRate: Int
+    var ambientTemperatureC: Double?
+    var ambientHumidity: Double?
+    var environmentalModifier: EnvironmentalModifier?
 }
 
 /// Swift Physics & Biomechanics Engine that evaluates telemetry deterministically.
@@ -168,11 +260,17 @@ enum PhysiologicalDiagnosisEngine {
             cadenceVerdict = .stableHeightCalibratedTurnover(workingSPM: input.workingCadence)
         }
 
-        // 2. Cardiac Decoupling Evaluation
+        // 2. Cardiac Decoupling Evaluation (Thermal & Environmental Proxies)
         let cardiacVerdict: CardiacCausalVerdict
+        let isHighHeat = input.environmentalModifier == .highHeat ||
+            WeatherProxyEngine.isHighHeat(temperatureCelsius: input.ambientTemperatureC, humidity: input.ambientHumidity)
+
         if input.elevationGainMeters >= 40.0 && input.hasCardiacDrift {
             let sev: DeviationSeverity = input.cardiacDriftMagnitudeBPM >= 12 ? .critical : (input.cardiacDriftMagnitudeBPM >= 7 ? .moderate : .minor)
             cardiacVerdict = .elevationInducedCardiacSurge(elevationGainM: input.elevationGainMeters, hrRiseBPM: input.cardiacDriftMagnitudeBPM, severity: sev)
+        } else if isHighHeat && input.hasCardiacDrift && !input.isIndoor {
+            // Outdoor Proxy (Apple WeatherKit / Weather Metadata): High heat and humidity impair evaporative cooling
+            cardiacVerdict = .thermalStrain(HeatIndex: "High")
         } else if input.hasCardiacDrift {
             let durMin = max(1, Int(input.durationSeconds / 60))
             let sev: DeviationSeverity = input.cardiacDriftMagnitudeBPM >= 12 ? .critical : (input.cardiacDriftMagnitudeBPM >= 7 ? .moderate : .minor)
@@ -180,6 +278,7 @@ enum PhysiologicalDiagnosisEngine {
             if paceDiff >= 10.0 {
                 cardiacVerdict = .pacingOvershootDecoupling(earlyPaceDeltaSec: Int(paceDiff.rounded()), lateHRRiseBPM: input.cardiacDriftMagnitudeBPM, severity: sev)
             } else {
+                // Indoor Proxy (No Convective Cooling): Flat deck pacing with HR drift > 8 BPM over ~30 min
                 cardiacVerdict = .thermalOrCardiovascularDrift(driftBPM: input.cardiacDriftMagnitudeBPM, durationMin: durMin, severity: sev)
             }
         } else {

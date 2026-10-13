@@ -773,6 +773,23 @@ final class IndoorIntelligenceTests: XCTestCase {
     }
 
     @MainActor
+    func testWorkoutAnalysisContextEnvironmentalModifierHighHeat() {
+        let runRecord = makeTestRunRecord(isIndoor: false)
+        runRecord.ambientTemperatureCelsius = 24.5
+        runRecord.ambientHumidity = 80.0
+
+        let analysis = WorkoutAnalysisContext(
+            runRecord: runRecord,
+            runSignature: nil,
+            macroProfile: nil,
+            recoveryTimeline: RecoveryTimeline.build(runs: [], readiness: .productive, now: Date())
+        )
+        XCTAssertEqual(analysis.environmentalModifier, .highHeat)
+        XCTAssertNotNil(analysis.environmentModifier)
+        XCTAssertTrue(analysis.environmentModifier?.contains("High Heat & Humidity") == true)
+    }
+
+    @MainActor
     func testAnalystChatAthleteIdentityAndCoachingPrinciplesInPrompt() async {
         let runRecord = makeTestRunRecord(isIndoor: false)
         let chatEngine = AnalystChatEngine(runRecord: runRecord)
@@ -1002,6 +1019,88 @@ final class IndoorIntelligenceTests: XCTestCase {
         } else {
             XCTFail("Must use treadmill deck kinematics: \(verdictsTreadmill.verticalEconomy)")
         }
+    }
+
+    func testPhysiologicalDiagnosisEngineIndoorThermalProxyNoConvectiveCooling() {
+        let s1 = RunSplit(index: 1, distanceMeters: 1000, durationSeconds: 300, paceSecondsPerKm: 300, avgHeartRate: 145, avgCadence: 165, elevationGainMeters: 0)
+        let s2 = RunSplit(index: 2, distanceMeters: 1000, durationSeconds: 300, paceSecondsPerKm: 301, avgHeartRate: 156, avgCadence: 165, elevationGainMeters: 0)
+
+        // Indoor treadmill run: flat deck, no convective wind cooling, flat pace with +11 BPM HR drift over 30 min
+        let inputIndoor = PhysiologicalInput(
+            workingCadence: 165,
+            heightAdjustedCadenceFloor: 150,
+            splits: [s1, s2],
+            elevationGainMeters: 0,
+            hasCardiacDrift: true,
+            cardiacDriftMagnitudeBPM: 11,
+            durationSeconds: 1800,
+            verticalRatio: nil,
+            verticalOscillationCM: nil,
+            isIndoor: true,
+            firstHalfPaceSec: 300,
+            secondHalfPaceSec: 301,
+            fastestSplit: s1,
+            slowestSplit: s2,
+            avgHeartRate: 150,
+            environmentalModifier: .indoorTreadmill
+        )
+        let verdicts = PhysiologicalDiagnosisEngine.evaluate(inputIndoor)
+        if case .thermalOrCardiovascularDrift(let drift, let dur, let severity) = verdicts.cardiac {
+            XCTAssertEqual(drift, 11)
+            XCTAssertEqual(dur, 30)
+            XCTAssertEqual(severity, .moderate)
+        } else {
+            XCTFail("Must diagnose thermal/cardiovascular drift on indoor run: \(verdicts.cardiac)")
+        }
+    }
+
+    func testPhysiologicalDiagnosisEngineOutdoorWeatherKitThermalProxyHighHeat() {
+        let s1 = RunSplit(index: 1, distanceMeters: 1000, durationSeconds: 300, paceSecondsPerKm: 300, avgHeartRate: 148, avgCadence: 165, elevationGainMeters: 5)
+        let s2 = RunSplit(index: 2, distanceMeters: 1000, durationSeconds: 300, paceSecondsPerKm: 302, avgHeartRate: 162, avgCadence: 165, elevationGainMeters: 5)
+
+        // Outdoor run with WeatherKit high heat (24°C, 80% humidity) and +14 BPM drift
+        let inputOutdoorHeat = PhysiologicalInput(
+            workingCadence: 165,
+            heightAdjustedCadenceFloor: 150,
+            splits: [s1, s2],
+            elevationGainMeters: 10,
+            hasCardiacDrift: true,
+            cardiacDriftMagnitudeBPM: 14,
+            durationSeconds: 1800,
+            verticalRatio: 7.5,
+            verticalOscillationCM: 8.0,
+            isIndoor: false,
+            firstHalfPaceSec: 300,
+            secondHalfPaceSec: 302,
+            fastestSplit: s1,
+            slowestSplit: s2,
+            avgHeartRate: 155,
+            ambientTemperatureC: 24.0,
+            ambientHumidity: 80.0,
+            environmentalModifier: .highHeat
+        )
+        let verdicts = PhysiologicalDiagnosisEngine.evaluate(inputOutdoorHeat)
+        XCTAssertEqual(verdicts.cardiac, .thermalStrain(HeatIndex: "High"))
+    }
+
+    func testWeatherProxyEngineThresholdsAndModifierEvaluation() {
+        // Temperature >= 22°C (72°F)
+        XCTAssertTrue(WeatherProxyEngine.isHighHeat(temperatureCelsius: 22.0, humidity: 40.0))
+        XCTAssertTrue(WeatherProxyEngine.isHighHeat(temperatureCelsius: 25.0, humidity: 50.0))
+
+        // Humidity >= 75%
+        XCTAssertTrue(WeatherProxyEngine.isHighHeat(temperatureCelsius: 20.0, humidity: 75.0))
+        XCTAssertTrue(WeatherProxyEngine.isHighHeat(temperatureCelsius: 20.0, humidity: 0.75))
+
+        // Normal ambient
+        XCTAssertFalse(WeatherProxyEngine.isHighHeat(temperatureCelsius: 18.0, humidity: 50.0))
+        XCTAssertFalse(WeatherProxyEngine.isHighHeat(temperatureCelsius: nil, humidity: nil))
+
+        // Modifier evaluation
+        XCTAssertEqual(WeatherProxyEngine.evaluateEnvironmentalModifier(temperatureCelsius: 24.0, humidity: 80.0, isIndoor: false, elevationGainMeters: 10), .highHeat)
+        XCTAssertEqual(WeatherProxyEngine.evaluateEnvironmentalModifier(temperatureCelsius: 24.0, humidity: 80.0, isIndoor: true, elevationGainMeters: 10), .indoorTreadmill)
+        XCTAssertEqual(WeatherProxyEngine.evaluateEnvironmentalModifier(temperatureCelsius: 18.0, humidity: 50.0, isIndoor: false, elevationGainMeters: 45), .highElevation)
+        XCTAssertEqual(WeatherProxyEngine.evaluateEnvironmentalModifier(temperatureCelsius: 18.0, humidity: 50.0, isIndoor: false, elevationGainMeters: 10), .standard)
     }
 
     func testTrainingZoneEngineColdStartAndSubjectiveOverride() {

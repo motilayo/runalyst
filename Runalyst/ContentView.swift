@@ -450,7 +450,9 @@ struct ContentView: View {
                             hrCV: dto.hrCV,
                             cadenceSlope: dto.cadenceSlope,
                             needsInclineReview: dto.needsInclineReview,
-                            runSignatureData: dto.runSignatureData
+                            runSignatureData: dto.runSignatureData,
+                            ambientTemperatureCelsius: dto.ambientTemperatureCelsius,
+                            ambientHumidity: dto.ambientHumidity
                         )
                         modelContext.insert(newRun)
 

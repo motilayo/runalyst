@@ -112,6 +112,12 @@ final class RunRecord {
     /// Persisted RunSignature for RAG coaching and variance map visualization
     var runSignatureData: Data?
 
+    // MARK: - Environmental & Ambient Metrics
+    /// Ambient temperature in Celsius at start of run (from HealthKit metadata or WeatherKit)
+    var ambientTemperatureCelsius: Double?
+    /// Relative humidity as a fraction (0.0–1.0) or percentage (from HealthKit metadata or WeatherKit)
+    var ambientHumidity: Double?
+
     // MARK: - Classification & Tags
     /// The deterministic or CoreML predicted run type
     var detectedTypeRaw: String
@@ -175,7 +181,9 @@ final class RunRecord {
         hrCV: Double? = nil,
         cadenceSlope: Double? = nil,
         needsInclineReview: Bool? = nil,
-        runSignatureData: Data? = nil
+        runSignatureData: Data? = nil,
+        ambientTemperatureCelsius: Double? = nil,
+        ambientHumidity: Double? = nil
     ) {
         self.id = id
         self.hkWorkoutID = hkWorkoutID
@@ -202,6 +210,8 @@ final class RunRecord {
         self.cadenceSlope = cadenceSlope
         self.needsInclineReview = needsInclineReview
         self.runSignatureData = runSignatureData
+        self.ambientTemperatureCelsius = ambientTemperatureCelsius
+        self.ambientHumidity = ambientHumidity
         self.paceCV = paceCV
         self.paceSlope = paceSlope
         self.percentZone4 = percentZone4
