@@ -5,21 +5,6 @@ import HealthKit
 @preconcurrency import WorkoutKit
 #endif
 
-/// A deterministic calculator that applies physiological guardrails to AI prescriptions.
-/// Ensures the AI does not prescribe dangerous target thresholds.
-enum SafeTargetCalculator {
-    /// Caps the prescribed cadence alert range to a maximum of 185 SPM to prevent overstriding.
-    static func safeCadenceTarget(requestedCadence: Int?, previousCadence: Int?) -> HKQuantity? {
-        guard let requested = requestedCadence else { return nil }
-
-        let safeMax = 185
-        let floor = max(140, previousCadence ?? 150)
-        let safeTarget = min(safeMax, max(floor, requested))
-
-        return HKQuantity(unit: HKUnit.count().unitDivided(by: .minute()), doubleValue: Double(safeTarget))
-    }
-}
-
 extension PreRunDrill {
     static func iconName(for drillId: String?, title: String? = nil) -> String {
         if let idStr = drillId, let matched = PreRunDrillId(rawValue: idStr) {
@@ -78,44 +63,6 @@ extension PreRunDrill {
         }
         return .orange
     }
-}
-
-/// Represents a discrete phase of a pre-run workout/drill for visual timeline mapping.
-struct WorkoutPhase: Identifiable, Sendable, Equatable {
-    let id: String
-    let name: String
-    let durationSeconds: Int
-    let kind: Kind
-
-    enum Kind: Sendable, Equatable {
-        case warmup
-        case work
-        case recovery(isWalk: Bool)
-        case cooldown
-        case steady
-    }
-
-    var formattedDuration: String {
-        if durationSeconds >= 60 {
-            let minutes = durationSeconds / 60
-            let seconds = durationSeconds % 60
-            if seconds == 0 {
-                return "\(minutes)m"
-            } else {
-                return "\(minutes)m \(seconds)s"
-            }
-        } else {
-            return "\(durationSeconds)s"
-        }
-    }
-}
-
-/// The repeating interval geometry of a drill (reps × work / recovery).
-struct IntervalSpec: Sendable, Equatable {
-    let iterations: Int
-    let workSeconds: Int
-    let recoverySeconds: Int?
-    let isWalk: Bool
 }
 
 /// Represents an instantiated pre-run drill with user-specific cadence targets,
