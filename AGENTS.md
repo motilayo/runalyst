@@ -24,7 +24,10 @@ This `AGENTS.md` file acts as the primary repository of architectural context, t
 - **System Prompt & Tone**:
   - The system prompt enforces a conversational tone via the consolidated rule `conversational, motivational tone; speak directly to the runner`.
   - For AI prompt language localization, append instructions directly to the system prompt commanding the LLM to output in the user's active device language (e.g., `Respond entirely in \(Locale.current.language.languageCode)`).
-  - **Prompt Density**: Keep system prompts to ~10 rules max for on-device models. Consolidate redundant rules (e.g., merge tone + person rules). Fewer rules = higher adherence on small models.
+- **The Core Triad: Math, Physics, and Language**:
+  - **The Math (Swift)**: Deterministic, local computation of rolling window baselines, metric deltas, interval segmentation, cadence floors, pace variances, and recovery heart rate drops. Swift does the math so the AI never hallucinates numbers.
+  - **The Physics (Swift)**: Physiological and mechanical realities modeled directly in code—gravitational resistance on outdoor hill climbs, kinetic friction vs. moving treadmill belts (braking shock when cadence falls below floor), thermodynamics and lack of convective wind cooling indoors creating thermal accumulation, and cardiac lag.
+  - **The Language (The AI)**: Left entirely to FoundationModels. Swift feeds structured mathematical facts and physical findings into the prompt and tools; Swift must never generate canned coaching prose, narrative boilerplate paragraphs, or simulated conversational scripts.
 - **Deterministic Math & Directives**:
   - AI AI coaching prioritizes actionable form metrics like cadence. Vertical Oscillation is mathematically linked to cadence. A high vertical oscillation (> 10 cm) indicates bounding/overstriding, prompting cadence relationship analysis and drills like 'Cadence Pyramids'.
   - Mathematical computations for baseline statistics, metric deltas, and drill targets must be completely deterministic and computed locally in Swift to prevent LLM math hallucinations. Inject explicit contextual English strings (e.g., '150 SPM (BELOW the 150 SPM floor)') instead of raw numbers.

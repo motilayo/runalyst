@@ -337,31 +337,29 @@ struct WorkoutAnalysisContext {
                 if isFastestRep {
                     grade = "A+"
                     observation = self.isIndoor
-                        ? "fastest rep (\(wPaceFormatted)) with crisp belt turnover at \(wCadence) SPM"
-                        : "fastest rep (\(wPaceFormatted)) with decisive pace control and \(wCadence) SPM turnover"
+                        ? "Fastest work rep on belt (\(wPaceFormatted)) • \(wCadence) SPM"
+                        : "Fastest work rep (\(wPaceFormatted)) • \(wCadence) SPM"
                 } else if isSlowestRep && paceDeltaVsMean <= -12 {
                     grade = "B"
                     observation = self.isIndoor
-                        ? "belt pacing faded by \(abs(paceDeltaVsMean))s/km under indoor thermal strain; turnover was \(wCadence) SPM"
-                        : "pacing faded by \(abs(paceDeltaVsMean))s/km as muscular fatigue set in; turnover was \(wCadence) SPM"
+                        ? "Pace fade: -\(abs(paceDeltaVsMean))s/km vs mean (indoor thermal strain)"
+                        : "Pace fade: -\(abs(paceDeltaVsMean))s/km vs mean"
                 } else if abs(paceDeltaVsMean) <= 6 && wCadence >= 150 {
                     grade = "A"
                     observation = self.isIndoor
-                        ? "disciplined treadmill repeatability within \(abs(paceDeltaVsMean))s/km of average work pace"
-                        : "disciplined repeatability within \(abs(paceDeltaVsMean))s/km of average work pace"
+                        ? "Repeatability: ±\(abs(paceDeltaVsMean))s/km vs work mean (belt-paced)"
+                        : "Repeatability: ±\(abs(paceDeltaVsMean))s/km vs work mean"
                 } else if wCadence < 150 {
                     grade = "B-"
                     observation = self.isIndoor
-                        ? "turnover dipped to \(wCadence) SPM below the 150 SPM height floor on the belt (increased braking forces)"
-                        : "cadence dipped to \(wCadence) SPM below the 150 SPM height floor"
+                        ? "Sub-floor cadence: \(wCadence) SPM (braking shock on belt)"
+                        : "Sub-floor cadence: \(wCadence) SPM"
                 } else if paceDeltaVsMean > 6 {
                     grade = "A"
-                    observation = "strong acceleration (\(paceDeltaVsMean)s/km faster than work average)"
+                    observation = "Acceleration: +\(paceDeltaVsMean)s/km faster than work mean"
                 } else {
                     grade = "A-"
-                    observation = self.isIndoor
-                        ? "controlled belt effort at \(wPaceFormatted) with \(wCadence) SPM turnover"
-                        : "controlled work effort at \(wPaceFormatted) with \(wCadence) SPM turnover"
+                    observation = "Work effort: \(wPaceFormatted) • \(wCadence) SPM"
                 }
 
                 iEvals.append(IntervalRepEvaluation(
