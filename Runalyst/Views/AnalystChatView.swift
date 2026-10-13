@@ -43,6 +43,9 @@ struct AnalystChatView: View {
                             if engine.messages.count <= 1 {
                                 quickPromptChips
                                     .transition(.opacity.combined(with: .move(edge: .top)))
+                            } else if !engine.isResponding && engine.messages.last?.sender == .analyst {
+                                followUpPromptChips
+                                    .transition(.opacity.combined(with: .move(edge: .bottom)))
                             }
 
                             if engine.isResponding {
@@ -288,13 +291,54 @@ struct AnalystChatView: View {
         }
     }
 
-    private func chipButton(_ title: String, action: @escaping () -> Void) -> some View {
+    private var followUpPromptChips: some View {
+        let askedText = engine.messages
+            .filter { $0.sender == .user }
+            .map { $0.text.lowercased() }
+            .joined(separator: " ")
+
+        let candidates: [(title: String, prompt: String, icon: String)] = [
+            ("Tomorrow's Plan", "Should I run tomorrow, and what kind of session should I focus on?", "calendar"),
+            ("Break Down Splits", "Grade my performance in each split of this run", "chart.bar.xaxis"),
+            ("Recommended Drill", "Which drill would help improve my running form and cadence?", "figure.run"),
+            ("What to Improve", "What is the key area I should focus on improving?", "arrow.up.forward.circle"),
+            ("Running Economy", "How was my running economy and stride efficiency during this run?", "bolt.heart"),
+            ("Arm Drive", "How does arm drive help with rhythm and form?", "figure.walk")
+        ].filter { item in
+            !askedText.contains(item.title.lowercased()) && !askedText.contains(item.prompt.lowercased())
+        }
+
+        return Group {
+            if !candidates.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Suggested follow-ups")
+                        .font(.caption2.weight(.medium))
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal, 20)
+
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(candidates.prefix(4), id: \.title) { item in
+                                chipButton(item.title, icon: item.icon) {
+                                    inputText = item.prompt
+                                    submitQuestion()
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                    }
+                }
+            }
+        }
+    }
+
+    private func chipButton(_ title: String, icon: String = "sparkle", action: @escaping () -> Void) -> some View {
         Button {
             dismissKeyboard()
             action()
         } label: {
             HStack(spacing: 5) {
-                Image(systemName: "sparkle")
+                Image(systemName: icon)
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundColor(.purple)
                 Text(title)
