@@ -321,7 +321,7 @@ actor FramboiseEngine {
     static func consolidatePhaseSegments(_ segments: [PhaseSegment]) -> [PhaseSegment] {
         guard !segments.isEmpty else { return [] }
 
-        // Step 1: Gap bridging: merge work segments separated by brief non-work gaps (<= 35s steady or <= 15s any)
+        // Step 1: Gap bridging: merge work segments separated by brief momentary flutter (<= 15s any or <= 20s high-cadence steady)
         var bridged: [PhaseSegment] = []
         for seg in segments {
             if let last = bridged.last, last.kind == "work" && seg.kind == "work" {
@@ -330,7 +330,7 @@ actor FramboiseEngine {
                       seg.kind == "work",
                       let gap = bridged.last,
                       gap.kind != "work",
-                      gap.durationSeconds <= 15.0 || (gap.kind == "steady" && gap.durationSeconds <= 35.0),
+                      gap.durationSeconds <= 15.0 || (gap.kind == "steady" && gap.durationSeconds <= 20.0 && gap.avgCadence >= 158.0),
                       bridged[bridged.count - 2].kind == "work" {
                 _ = bridged.removeLast()
                 let prev = bridged.removeLast()
@@ -340,23 +340,26 @@ actor FramboiseEngine {
             }
         }
 
-        // Step 2: Outlier rejection: remove stray warmup/cooldown pickups vastly slower than true work reps
+        // Step 2: Outlier rejection: remove stray pickups vastly slower than true work reps
         let workPaces = bridged.filter { $0.kind == "work" && $0.avgPace > 0 }.map(\.avgPace).sorted()
         var filtered = bridged
         if workPaces.count >= 4 {
             let medWork = workPaces[workPaces.count / 2]
             filtered = bridged.map { seg in
-                if seg.kind == "work" && (seg.avgPace > medWork + 35.0 || seg.durationSeconds < 20.0) {
+                if seg.kind == "work" && ((seg.avgPace > medWork + 55.0 && seg.avgCadence < 160.0) || seg.durationSeconds < 14.0) {
                     return PhaseSegment(startSeconds: seg.startSeconds, endSeconds: seg.endSeconds, kind: "steady", avgPace: seg.avgPace, avgCadence: seg.avgCadence, avgHR: seg.avgHR)
                 }
                 return seg
             }
         }
 
-        // Step 3: Isolated Warmup / Cooldown Strides (separated by >= 180s from clustered work set)
+        // Step 3: Isolated Warmup / Cooldown Strides (separated by >= 240s-300s from clustered work set)
         let workIdxs = filtered.enumerated().filter { $0.element.kind == "work" }.map(\.offset)
         if workIdxs.count >= 4 {
-            // Check warmup stride
+            let workDurs = workIdxs.map { filtered[$0].durationSeconds }
+            let medWorkDur = workDurs.sorted()[workDurs.count / 2]
+
+            // Check warmup stride: must be separated by >= 240s steady gap AND be significantly shorter than set reps
             let firstWork = workIdxs[0], secondWork = workIdxs[1]
             let gapBeforeSet = filtered[secondWork].startSeconds - filtered[firstWork].endSeconds
             var gaps: [Double] = []
@@ -364,14 +367,14 @@ actor FramboiseEngine {
                 gaps.append(filtered[workIdxs[i + 1]].startSeconds - filtered[workIdxs[i]].endSeconds)
             }
             let medGap = gaps.isEmpty ? 90.0 : gaps.sorted()[gaps.count / 2]
-            if gapBeforeSet >= 180.0 && medGap <= 150.0 {
+            if gapBeforeSet >= 240.0 && medGap <= 150.0 && filtered[firstWork].durationSeconds <= medWorkDur * 0.65 {
                 let w = filtered[firstWork]
                 filtered[firstWork] = PhaseSegment(startSeconds: w.startSeconds, endSeconds: w.endSeconds, kind: "steady", avgPace: w.avgPace, avgCadence: w.avgCadence, avgHR: w.avgHR)
             }
-            // Check cooldown surge
+            // Check cooldown surge: must be separated by >= 300s steady gap AND be significantly shorter than set reps
             let lastWork = workIdxs[workIdxs.count - 1], penWork = workIdxs[workIdxs.count - 2]
             let gapAfterSet = filtered[lastWork].startSeconds - filtered[penWork].endSeconds
-            if gapAfterSet >= 180.0 && medGap <= 150.0 {
+            if gapAfterSet >= 300.0 && medGap <= 150.0 && filtered[lastWork].durationSeconds <= medWorkDur * 0.65 {
                 let w = filtered[lastWork]
                 filtered[lastWork] = PhaseSegment(startSeconds: w.startSeconds, endSeconds: w.endSeconds, kind: "steady", avgPace: w.avgPace, avgCadence: w.avgCadence, avgHR: w.avgHR)
             }

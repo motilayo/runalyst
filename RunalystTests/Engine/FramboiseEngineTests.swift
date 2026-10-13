@@ -802,4 +802,36 @@ final class FramboiseEngineTests: XCTestCase {
         let work = consolidated.filter { $0.kind == "work" }
         XCTAssertEqual(work.count, 9, "Consolidated segments must coalesce the fragmented Rep 4 into 1 rep, totaling exactly 9 work segments")
     }
+
+    func testConsolidatePhaseSegments_NineIntervalsWithExtendedRest_PreservesAllNineReps() {
+        var segments: [PhaseSegment] = []
+        var t: Double = 0
+
+        // Warmup: 300s steady
+        segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 300, kind: "steady", avgPace: 330, avgCadence: 160, avgHR: 135))
+        t += 300
+
+        // 8 intervals of 60s work + 60s recovery
+        for _ in 1...8 {
+            segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 60, kind: "work", avgPace: 210, avgCadence: 185, avgHR: 170))
+            t += 60
+            segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 60, kind: "recovery", avgPace: 380, avgCadence: 140, avgHR: 140))
+            t += 60
+        }
+
+        // Extended recovery before rep 9 (180s recovery)
+        segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 180, kind: "recovery", avgPace: 400, avgCadence: 135, avgHR: 135))
+        t += 180
+
+        // Rep 9: 60s work at 186 SPM
+        segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 60, kind: "work", avgPace: 208, avgCadence: 186, avgHR: 174))
+        t += 60
+
+        // Cooldown: 300s steady
+        segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 300, kind: "steady", avgPace: 360, avgCadence: 155, avgHR: 130))
+
+        let consolidated = FramboiseEngine.consolidatePhaseSegments(segments)
+        let work = consolidated.filter { $0.kind == "work" }
+        XCTAssertEqual(work.count, 9, "Engine must preserve all 9 work intervals and not drop the 9th rep due to extended rest")
+    }
 }
