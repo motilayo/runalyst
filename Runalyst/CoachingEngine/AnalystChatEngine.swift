@@ -275,17 +275,105 @@ class AnalystChatEngine: ObservableObject {
 
     #if canImport(FoundationModels)
     @available(iOS 26.0, *)
-    private func generateFoundationModelResponse(for userQuestion: String, turnContext: ManagedTurnContext) async throws -> String {
-        let systemInstructions = buildSystemInstructions(for: userQuestion, turnContext: turnContext)
+    func buildLeanSystemInstructions() -> String {
+        let language = Locale.current.language.languageCode?.identifier ?? "en"
+        return """
+        You are my personal running coach and exercise physiologist.
+        Speak directly to me ("you" / "your") like an experienced, objective running coach in natural conversation (1 to 3 short paragraphs). Clear, direct, perceptive, and data-backed. Never refer to me as "the runner" or in the third person.
 
-        // Swift manages conversational memory: each turn is provided with its turn-scoped instructions,
-        // sanitized turn digest, and bridging directives to eliminate token overflow and memory contamination.
+        TOOLS & DATA ACCESS:
+        You have access to 3 deterministic tools to query my running data:
+        1. `fetchWorkoutAnalysis`: Retrieves detailed retrospective telemetry, lap splits, second-half cardiac drift, and deterministic physiological verdicts for the session being reviewed.
+        2. `fetchReadinessAndPrescription`: Retrieves current recovery timeline, rest days elapsed, readiness status, and the locked prescription table for upcoming sessions.
+        3. `fetchAthleteProfile`: Retrieves my 30-day training load, experience level, and height-calibrated cadence floor.
+
+        TOOL USAGE RULES:
+        • MANDATORY: You have NO workout telemetry or heart rate data in your initial context. You MUST call `fetchWorkoutAnalysis` before answering any question about my past run, heart rate, cadence, pace, or performance.
+        • Before answering questions about whether I can run tomorrow, recovery, or next workout pacing, you MUST call `fetchReadinessAndPrescription`.
+        • For composite questions (e.g. "Why did my HR spike and should I rest tomorrow?"), call BOTH tools sequentially and address both aspects.
+        • For questions about my general training volume or profile, call `fetchAthleteProfile`.
+        • When I ask conceptual questions (e.g. "What is VO2 Max?", "What is cardiac drift?"), explain the concept simply using your internal knowledge. If relevant to my run, call `fetchWorkoutAnalysis` to connect it to my data.
+        • When I ask questions unrelated to running, health, physiology, or fitness (out of scope), do NOT call tools. Answer in 1 concise sentence and politely redirect back to training.
+
+        SAFETY & BOUNDARIES:
+        • Athlete Safety Override: If I mention physical illness, fever, flu, or sharp injury pain, SAFETY OVERRIDES ALL TRAINING. Advise rest and recovery immediately without calling training tools or prescribing workouts.
+        • Deterministic Authority: When you call `fetchWorkoutAnalysis` or `fetchReadinessAndPrescription`, the returned verdicts and locked prescription numbers are your indisputable mathematical conclusions. Never contradict them or invent numbers outside the returned tables.
+        • Never claim a flat treadmill intensifies gravitational load (gravity is normal 1g); flat treadmill drift is thermal accumulation from zero convective airflow.
+        • Bold accent numbers and units (e.g. **156 SPM**, **7:15/km**).
+
+        Respond in \(language).
+        """
+    }
+
+    @available(iOS 26.0, *)
+    func getOrCreateSession() -> LanguageModelSession {
+        if let existing = modelSession as? LanguageModelSession {
+            return existing
+        }
+
+        let workoutTool = FetchWorkoutAnalysisTool { [weak self] in
+            guard let self else { return "" }
+            let totalRuns = (try? self.runRecord.modelContext?.fetchCount(FetchDescriptor<RunRecord>())) ?? 1
+            let analysis = WorkoutAnalysisContext(
+                runRecord: self.runRecord,
+                runSignature: self.runSignature,
+                macroProfile: self.macroProfile,
+                recoveryTimeline: self.recoveryTimeline,
+                baselineStats: self.baselineStats,
+                runnerProfile: self.runnerProfile,
+                isSubjectiveDistress: false,
+                totalHistoricalRunsCount: totalRuns
+            )
+            return analysis.groundedPromptSummary()
+        }
+
+        let readinessTool = FetchReadinessAndPrescriptionTool { [weak self] in
+            guard let self else { return "" }
+            let totalRuns = (try? self.runRecord.modelContext?.fetchCount(FetchDescriptor<RunRecord>())) ?? 1
+            let analysis = WorkoutAnalysisContext(
+                runRecord: self.runRecord,
+                runSignature: self.runSignature,
+                macroProfile: self.macroProfile,
+                recoveryTimeline: self.recoveryTimeline,
+                baselineStats: self.baselineStats,
+                runnerProfile: self.runnerProfile,
+                isSubjectiveDistress: false,
+                totalHistoricalRunsCount: totalRuns
+            )
+            let dummyTurn = ManagedTurnContext(
+                turnDomain: .futureSessionPlanning,
+                stripWorkoutPayload: false,
+                prunePhysiologicalVerdicts: true
+            )
+            return analysis.groundedPromptSummary(turnContext: dummyTurn)
+        }
+
+        let profileTool = FetchAthleteProfileTool { [weak self] in
+            guard let self else { return "" }
+            let profile = self.runnerProfile
+            return """
+            ATHLETE PROFILE:
+            - Experience Level: \(profile.experienceLevel)
+            - Training Goal: \(profile.trainingGoal)
+            - 30-Day Load: \(profile.loadSummary)
+            - Height-Calibrated Cadence Floor: \(profile.heightAdjustedCadenceFloor) SPM
+            """
+        }
+
+        let tools: [any Tool] = [workoutTool, readinessTool, profileTool]
+        let instructions = buildLeanSystemInstructions()
         let session = LanguageModelSession(
             model: SystemLanguageModel.default,
-            instructions: systemInstructions
+            tools: tools,
+            instructions: instructions
         )
         self.modelSession = session
+        return session
+    }
 
+    @available(iOS 26.0, *)
+    private func generateFoundationModelResponse(for userQuestion: String, turnContext: ManagedTurnContext) async throws -> String {
+        let session = getOrCreateSession()
         return try await session.respond(to: userQuestion).content
     }
     #endif

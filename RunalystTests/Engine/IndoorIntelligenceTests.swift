@@ -1440,4 +1440,96 @@ final class IndoorIntelligenceTests: XCTestCase {
         )
         XCTAssertFalse(response.localizedCaseInsensitiveContains("yesterday's hard sessions"), "Must not claim hard session was yesterday when it was 2 days ago")
     }
+
+    // MARK: - Native FoundationModels Tool Calling Tests
+
+    @MainActor
+    func testNativeToolCallingWorkoutAnalysisToolOutput() async throws {
+        let runRecord = makeTestRunRecord(isIndoor: true)
+        runRecord.workingAvgCadence = 158
+        runRecord.workingAvgHeartRate = 162
+        let signature = RunSignature(
+            classification: "Intervals",
+            confidence: 0.94,
+            probabilities: ["Intervals": 0.94],
+            anomalies: ["Cadence Dip at km 2"],
+            cadenceFloor: 150.0,
+            phaseSegments: [
+                PhaseSegment(startSeconds: 0, endSeconds: 300, kind: "work", avgPace: 280, avgCadence: 165, avgHR: 168),
+                PhaseSegment(startSeconds: 300, endSeconds: 420, kind: "recovery", avgPace: 360, avgCadence: 145, avgHR: 135)
+            ],
+            dataSource: "wrist",
+            isIndoor: true,
+            needsInclineReview: false
+        )
+        let chatEngine = AnalystChatEngine(runRecord: runRecord, runSignature: signature)
+
+        #if canImport(FoundationModels)
+        if #available(iOS 26.0, *) {
+            let workoutTool = FetchWorkoutAnalysisTool {
+                let analysis = WorkoutAnalysisContext(
+                    runRecord: runRecord,
+                    runSignature: signature,
+                    macroProfile: nil,
+                    recoveryTimeline: chatEngine.recoveryTimeline
+                )
+                return analysis.groundedPromptSummary()
+            }
+
+            let result = try await workoutTool.call(arguments: WorkoutAnalysisQuery(focus: "verdicts"))
+            XCTAssertTrue(result.contains("PHYSIOLOGICAL & BIOMECHANICAL VERDICTS"))
+            XCTAssertTrue(result.contains("INTERVAL EXECUTION"))
+            XCTAssertEqual(workoutTool.name, "fetchWorkoutAnalysis")
+        }
+        #endif
+    }
+
+    @MainActor
+    func testNativeToolCallingReadinessAndPrescriptionToolOutput() async throws {
+        let runRecord = makeTestRunRecord(isIndoor: true)
+        runRecord.date = Date().addingTimeInterval(-72 * 3600) // 3 days ago
+        let chatEngine = AnalystChatEngine(runRecord: runRecord)
+
+        #if canImport(FoundationModels)
+        if #available(iOS 26.0, *) {
+            let readinessTool = FetchReadinessAndPrescriptionTool {
+                let analysis = WorkoutAnalysisContext(
+                    runRecord: runRecord,
+                    runSignature: nil,
+                    macroProfile: nil,
+                    recoveryTimeline: chatEngine.recoveryTimeline
+                )
+                let turn = ManagedTurnContext(
+                    turnDomain: .futureSessionPlanning,
+                    stripWorkoutPayload: false,
+                    prunePhysiologicalVerdicts: true
+                )
+                return analysis.groundedPromptSummary(turnContext: turn)
+            }
+
+            let result = try await readinessTool.call(arguments: ReadinessQuery(focus: "tomorrow_readiness"))
+            XCTAssertTrue(result.contains("FUTURE TRAINING & READINESS"))
+            XCTAssertTrue(result.contains("LOCKED TRAINING ZONES & SESSION PRESCRIPTION"))
+            XCTAssertFalse(result.contains("PHYSIOLOGICAL & BIOMECHANICAL VERDICTS"))
+            XCTAssertEqual(readinessTool.name, "fetchReadinessAndPrescription")
+        }
+        #endif
+    }
+
+    @MainActor
+    func testNativeToolCallingLeanSystemInstructions() {
+        let runRecord = makeTestRunRecord(isIndoor: true)
+        let chatEngine = AnalystChatEngine(runRecord: runRecord)
+
+        #if canImport(FoundationModels)
+        if #available(iOS 26.0, *) {
+            let leanPrompt = chatEngine.buildLeanSystemInstructions()
+            XCTAssertTrue(leanPrompt.contains("fetchWorkoutAnalysis"))
+            XCTAssertTrue(leanPrompt.contains("fetchReadinessAndPrescription"))
+            XCTAssertTrue(leanPrompt.contains("fetchAthleteProfile"))
+            XCTAssertTrue(leanPrompt.contains("Athlete Safety Override"))
+            XCTAssertFalse(leanPrompt.contains("WORKOUT DATA SHEET:"), "Lean tool instructions must NOT include upfront raw data sheet")
+        }
+        #endif
+    }
 }

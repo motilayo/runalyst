@@ -23,6 +23,7 @@
 		B1110014D4E5F60718293A14 /* Runalyst/CoachingEngine/PhysiologicalDiagnosisEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110014D4E5F60718293A14 /* Runalyst/CoachingEngine/PhysiologicalDiagnosisEngine.swift */; };
 		B1110015D4E5F60718293A15 /* Runalyst/CoachingEngine/TrainingZoneEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110015D4E5F60718293A15 /* Runalyst/CoachingEngine/TrainingZoneEngine.swift */; };
 		B1110016D4E5F60718293A16 /* Runalyst/CoachingEngine/ConversationMemoryManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110016D4E5F60718293A16 /* Runalyst/CoachingEngine/ConversationMemoryManager.swift */; };
+		B1110017D4E5F60718293A17 /* Runalyst/CoachingEngine/AnalystChatTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110017D4E5F60718293A17 /* Runalyst/CoachingEngine/AnalystChatTools.swift */; };
 		B1110009D4E5F60718293A09 /* IndoorIntelligenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110009D4E5F60718293A09 /* IndoorIntelligenceTests.swift */; };
 		075FD91D330B77E5867419C9 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0C58A0BCEA50BA9ED3463C4 /* ContentView.swift */; };
 		109644F6A12FCEE27F8160DA /* RunalystClassifier.mlmodel in Sources */ = {isa = PBXBuildFile; fileRef = B06944F28CDA8831E8FA559D /* RunalystClassifier.mlmodel */; };
@@ -115,6 +116,7 @@
 		A1110014D4E5F60718293A14 /* Runalyst/CoachingEngine/PhysiologicalDiagnosisEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/CoachingEngine/PhysiologicalDiagnosisEngine.swift; sourceTree = SOURCE_ROOT; };
 		A1110015D4E5F60718293A15 /* Runalyst/CoachingEngine/TrainingZoneEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/CoachingEngine/TrainingZoneEngine.swift; sourceTree = SOURCE_ROOT; };
 		A1110016D4E5F60718293A16 /* Runalyst/CoachingEngine/ConversationMemoryManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/CoachingEngine/ConversationMemoryManager.swift; sourceTree = SOURCE_ROOT; };
+		A1110017D4E5F60718293A17 /* Runalyst/CoachingEngine/AnalystChatTools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/CoachingEngine/AnalystChatTools.swift; sourceTree = SOURCE_ROOT; };
 		A1110009D4E5F60718293A09 /* IndoorIntelligenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IndoorIntelligenceTests.swift; sourceTree = "<group>"; };
 		C0D1E2F3A4B5C6D7E8010203 /* ReadinessModifierTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadinessModifierTests.swift; sourceTree = "<group>"; };
 		0FC0868FA1D2D6FB2E59A10C /* DrillRecommendation.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DrillRecommendation.swift; path = Runalyst/Models/DrillRecommendation.swift; sourceTree = "<group>"; };
@@ -387,6 +389,7 @@
 				A1110014D4E5F60718293A14 /* Runalyst/CoachingEngine/PhysiologicalDiagnosisEngine.swift */,
 				A1110015D4E5F60718293A15 /* Runalyst/CoachingEngine/TrainingZoneEngine.swift */,
 				A1110016D4E5F60718293A16 /* Runalyst/CoachingEngine/ConversationMemoryManager.swift */,
+				A1110017D4E5F60718293A17 /* Runalyst/CoachingEngine/AnalystChatTools.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -541,6 +544,7 @@
 				B1110014D4E5F60718293A14 /* Runalyst/CoachingEngine/PhysiologicalDiagnosisEngine.swift in Sources */,
 				B1110015D4E5F60718293A15 /* Runalyst/CoachingEngine/TrainingZoneEngine.swift in Sources */,
 				B1110016D4E5F60718293A16 /* Runalyst/CoachingEngine/ConversationMemoryManager.swift in Sources */,
+				B1110017D4E5F60718293A17 /* Runalyst/CoachingEngine/AnalystChatTools.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
