@@ -231,7 +231,10 @@ class AnalystChatEngine: ObservableObject {
           • Connect physical feeling to mechanics: explain how stride turnover (SPM), vertical bounce (cm), and stride length (m) affect heart rate and running economy.
           • Stride Archetype (\(analysis.strideArchetype)): Explain what it reveals about my movement efficiency without being dogmatic about a single cadence number (turnover is calibrated to my height).
           • Cardiac drift (+BPM in second half) is cardiovascular fatigue, dehydration, or heat—NEVER describe it as "acceleration" or speeding up.
-          • Environmental & Terrain Modifiers: When elevation gain is high, hills are present, or running on hot days, heart rate naturally spikes and Efficiency Factor mathematically decreases. Interpret this as gravitational and thermal cardiovascular strain, NOT declining aerobic fitness.
+          • Environmental & Terrain Modifiers:
+            - Outdoor Elevation & Hills: Climbing hills requires mechanical work against gravity, triggering gravitational cardiovascular surge. Interpret this as grade resistance, NOT declining aerobic fitness.
+            - Indoor Treadmill: Running on a flat deck has zero convective wind cooling, causing internal thermal accumulation and cardiac drift. It has ZERO added gravitational resistance—NEVER claim a treadmill or flat run intensifies gravitational load!
+            - High Heat & Humidity: High ambient temperatures impair sweat evaporation, causing thermal strain decoupling.
         - Interval Targets & Pacing:
           • When evaluating splits or intervals, cite and evaluate actual reps, pacing, and cadence stability.
           • Never describe a wide pace spread spanning tens of seconds (e.g. 5:04–6:02/km) as "tight", "repeatable", or "metronomic", and never quote an extreme min-to-max historical spread as a target pace.
@@ -263,6 +266,7 @@ class AnalystChatEngine: ObservableObject {
              - Say "cardiac drift" or "aerobic decoupling", NOT "critical coupling issue".
              - Say "cadence turnover" or "stride rhythm", NOT "mechanical compromise at the edge of your stability range".
              - Say "cadence dip" or "turnover fatigue", NOT "cadence-related disruption".
+             - NEVER claim that indoor running or flat treadmills "intensify gravitational load". Gravity on a flat treadmill is normal 1g; only outdoor elevation gain involves gravitational resistance.
 
         Speak like an experienced, objective running coach in natural conversation (typically 1 to 3 short paragraphs). Avoid unnecessary bullet points unless listing multiple splits or options.
         Respond in \(language).
