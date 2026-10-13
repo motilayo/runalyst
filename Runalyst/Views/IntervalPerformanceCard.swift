@@ -27,6 +27,7 @@ struct IntervalPerformanceCard: View {
         let evaluations = context.intervalEvaluations
         let overallGrade = context.overallGradeReport.grade
         let workSegments = context.workSegments
+        let isIndoor = context.isIndoor
         let meanWorkPace = workSegments.isEmpty ? 0 : workSegments.reduce(0.0) { $0 + $1.avgPace } / Double(workSegments.count)
         let paceSpread = Int(context.workRepPaceSpreadSec)
         let avgCadence = workSegments.isEmpty ? 0 : Int(workSegments.reduce(0.0) { $0 + $1.avgCadence } / Double(workSegments.count))
@@ -41,11 +42,26 @@ struct IntervalPerformanceCard: View {
                     .foregroundColor(.orange)
                     .font(.title3)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Interval Performance")
-                        .font(.headline.weight(.semibold))
-                        .foregroundColor(.primary)
-                    Text("\(evaluations.count) Work Reps Detected")
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        Text("Interval Performance")
+                            .font(.headline.weight(.semibold))
+                            .foregroundColor(.primary)
+
+                        HStack(spacing: 3) {
+                            Image(systemName: isIndoor ? "figure.run.square.stack" : "figure.run")
+                                .font(.system(size: 9, weight: .bold))
+                            Text(isIndoor ? "Indoor" : "Outdoor")
+                                .font(.system(size: 10, weight: .semibold))
+                        }
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .foregroundColor(isIndoor ? .purple : .blue)
+                        .background((isIndoor ? Color.purple : Color.blue).opacity(0.12))
+                        .clipShape(Capsule())
+                    }
+
+                    Text("\(evaluations.count) Work Reps • \(isIndoor ? "Treadmill Pacing" : "Road / Track")")
                         .font(.caption2)
                         .foregroundColor(.secondary)
                 }
@@ -71,37 +87,22 @@ struct IntervalPerformanceCard: View {
                     label: "WORK PACE",
                     value: PaceFormatter.formatPace(secondsPerKilometer: meanWorkPace),
                     valueColor: paceSpread <= 15 ? .green : .orange,
-                    subtitle: "±\(Int(Double(paceSpread) / 2.0))s spread"
+                    subtitle: isIndoor ? "±\(Int(Double(paceSpread) / 2.0))s spread • Belt" : "±\(Int(Double(paceSpread) / 2.0))s spread • Road"
                 )
 
                 metricTile(
                     label: "TURNOVER",
                     value: "\(avgCadence) SPM",
                     valueColor: avgCadence >= cadenceFloor ? Color(red: 0.0, green: 0.75, blue: 0.65) : .orange,
-                    subtitle: "Floor: \(cadenceFloor) SPM"
+                    subtitle: isIndoor ? "Floor: \(cadenceFloor) SPM (Belt)" : "Floor: \(cadenceFloor) SPM"
                 )
 
                 metricTile(
                     label: "AVG HR DROP",
                     value: avgHRDrop.map { "-\($0) BPM" } ?? "--",
-                    valueColor: (avgHRDrop ?? 0) >= 15 ? Color(red: 0.0, green: 0.75, blue: 0.65) : .secondary,
-                    subtitle: (avgHRDrop ?? 0) >= 20 ? "Strong Drop" : ((avgHRDrop ?? 0) >= 10 ? "Moderate" : "Recovery")
+                    valueColor: (avgHRDrop ?? 0) >= (isIndoor ? 12 : 15) ? Color(red: 0.0, green: 0.75, blue: 0.65) : .secondary,
+                    subtitle: hrDropSubtitle(avgHRDrop: avgHRDrop, isIndoor: isIndoor)
                 )
-            }
-
-            // MARK: - Coaching Verdict Callout Banner
-            HStack(alignment: .top, spacing: 8) {
-                Image(systemName: overallGrade.starts(with: "A") ? "checkmark.seal.fill" : "info.circle.fill")
-                    .font(.caption)
-                    .foregroundColor(gradeColor(for: overallGrade))
-                    .padding(.top, 1)
-
-                Text(coachingVerdict(paceSpread: paceSpread, avgCadence: avgCadence, cadenceFloor: cadenceFloor, avgHRDrop: avgHRDrop))
-                    .font(.caption)
-                    .foregroundColor(.primary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Spacer()
             }
 
             // MARK: - Graded Reps Section
@@ -279,27 +280,13 @@ struct IntervalPerformanceCard: View {
 
     // MARK: - Helpers
 
-    private func coachingVerdict(paceSpread: Int, avgCadence: Int, cadenceFloor: Int, avgHRDrop: Int?) -> String {
-        var parts: [String] = []
-        if paceSpread <= 15 {
-            parts.append("Even pacing repeatability across reps (±\(Int(Double(paceSpread) / 2.0))s/km spread)")
+    private func hrDropSubtitle(avgHRDrop: Int?, isIndoor: Bool) -> String {
+        guard let drop = avgHRDrop else { return isIndoor ? "Indoor Recovery" : "Recovery" }
+        if isIndoor {
+            return drop >= 18 ? "Strong (Static Air)" : (drop >= 12 ? "Solid (Heat Build)" : "Blunted by Heat")
         } else {
-            parts.append("Pace spread of \(paceSpread)s/km between fastest and slowest reps")
+            return drop >= 20 ? "Strong Drop" : (drop >= 10 ? "Moderate" : "Recovery")
         }
-
-        if avgCadence >= cadenceFloor {
-            parts.append("crisp turnover held above the \(cadenceFloor) SPM floor")
-        } else {
-            parts.append("cadence dipped below your \(cadenceFloor) SPM height floor")
-        }
-
-        if let drop = avgHRDrop, drop >= 15 {
-            parts.append("strong cardiovascular recovery (-\(drop) BPM drop)")
-        } else if let drop = avgHRDrop {
-            parts.append("moderate recovery (-\(drop) BPM drop)")
-        }
-
-        return parts.joined(separator: ", with ") + "."
     }
 
     private func gradeColor(for grade: String) -> Color {

@@ -10,7 +10,8 @@ extension WorkoutAnalysisContext {
             for rep in intervalEvaluations.prefix(24) {
                 var repLine = "• Rep \(rep.repIndex) (\(rep.workPaceFormatted), \(rep.workCadence) SPM, \(rep.workHeartRate) BPM): \(rep.letterGrade) — \(rep.observation)"
                 if let rPace = rep.recoveryPaceFormatted, let rDrop = rep.recoveryHeartRateDrop, rDrop > 0 {
-                    repLine += "\n  Recovery \(rep.repIndex) (\(rPace)): HR dropped -\(rDrop) BPM into recovery zone"
+                    let thermalNote = isIndoor && rDrop < 10 ? " (blunted by indoor thermal buildup)" : ""
+                    repLine += "\n  Recovery \(rep.repIndex) (\(rPace)): HR dropped -\(rDrop) BPM into recovery zone\(thermalNote)"
                 } else if let rPace = rep.recoveryPaceFormatted {
                     repLine += "\n  Recovery \(rep.repIndex) (\(rPace)): controlled active recovery jog"
                 }
@@ -29,6 +30,10 @@ extension WorkoutAnalysisContext {
                 lines.append("")
                 lines.append("Overall interval execution: \(overallGradeReport.grade). Fastest work rep was Rep \(fIdx) (min \(fRepStart)–\(fRepEnd)) at \(fRepPace); slowest was Rep \(sIdx) (min \(sRepStart)–\(sRepEnd)) at \(sRepPace) (pace spread: \(Int(workRepPaceSpreadSec))s/km).")
             }
+            let envSummary = isIndoor
+                ? "Environment: Indoor Treadmill — belt-regulated pace with zero wind resistance; static room air elevates thermal strain in recovery phases."
+                : "Environment: Outdoor — self-regulated pacing across road/track conditions with natural convective cooling."
+            lines.append(envSummary)
             return lines.joined(separator: "\n")
         }
 
@@ -209,6 +214,7 @@ extension WorkoutAnalysisContext {
         if evaluationModality == .intervals && !intervalEvaluations.isEmpty {
             lines.append("")
             lines.append("INTERVAL EXECUTION (\(intervalEvaluations.count) work reps):")
+            lines.append("- Environment: \(isIndoor ? "Indoor Treadmill (belt-driven, static room air, zero convective wind cooling)" : "Outdoor (self-regulated pace, road friction, natural convective cooling)")")
             if let f = fastestWorkRep, let s = slowestWorkRep {
                 lines.append("- Rep Pace Range: \(PaceFormatter.formatPace(secondsPerKilometer: f.avgPace)) to \(PaceFormatter.formatPace(secondsPerKilometer: s.avgPace)) (spread: \(Int(workRepPaceSpreadSec))s/km)")
             }
