@@ -51,6 +51,8 @@ struct RunRecordDTO: Sendable {
     let cadenceSlope: Double?
     let needsInclineReview: Bool?
     let runSignatureData: Data?
+    let ambientTemperatureCelsius: Double?
+    let ambientHumidity: Double?
 
     init(
         hkWorkoutID: UUID,
@@ -81,7 +83,9 @@ struct RunRecordDTO: Sendable {
         hrCV: Double? = nil,
         cadenceSlope: Double? = nil,
         needsInclineReview: Bool? = nil,
-        runSignatureData: Data? = nil
+        runSignatureData: Data? = nil,
+        ambientTemperatureCelsius: Double? = nil,
+        ambientHumidity: Double? = nil
     ) {
         self.hkWorkoutID = hkWorkoutID
         self.date = date
@@ -112,6 +116,8 @@ struct RunRecordDTO: Sendable {
         self.cadenceSlope = cadenceSlope
         self.needsInclineReview = needsInclineReview
         self.runSignatureData = runSignatureData
+        self.ambientTemperatureCelsius = ambientTemperatureCelsius
+        self.ambientHumidity = ambientHumidity
     }
 }
 
@@ -823,6 +829,7 @@ struct RunBaselineData: Sendable {
         )
         let signatureData = try? JSONEncoder().encode(signature)
         let probData = classificationResult.flatMap { try? JSONEncoder().encode($0.probabilities) }
+        let weather = WeatherProxyEngine.extractWeatherMetadata(from: workout)
 
         return RunRecordDTO(
             hkWorkoutID: workout.uuid,
@@ -853,7 +860,9 @@ struct RunBaselineData: Sendable {
             hrCV: hrCV,
             cadenceSlope: cadenceSlope,
             needsInclineReview: classificationResult?.needsInclineReview,
-            runSignatureData: signatureData
+            runSignatureData: signatureData,
+            ambientTemperatureCelsius: weather.temperatureCelsius,
+            ambientHumidity: weather.humidityPercent
         )
     }
 
@@ -925,6 +934,8 @@ struct RunBaselineData: Sendable {
         record.paceCV = dto.paceCV
         record.paceSlope = dto.paceSlope
         record.percentZone4 = dto.percentZone4
+        record.ambientTemperatureCelsius = dto.ambientTemperatureCelsius
+        record.ambientHumidity = dto.ambientHumidity
 
         // Preserve user drill intent tags
         var mergedTags = dto.framboiseTags

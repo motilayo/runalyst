@@ -373,6 +373,8 @@ struct UserProfileView: View {
 
     @AppStorage("useMetricSystem") private var useMetricSystem: Bool = Locale.current.measurementSystem == .metric
     @AppStorage("trainingGoal") private var trainingGoal: String = "Base Building"
+    @AppStorage("userExperienceLevel") private var userExperienceLevel: String = "Intermediate / Enthusiast"
+    @AppStorage("userHeightCm") private var userHeightCm: Double = 175.0
 
     let goalOptions = [
         "Base Building",
@@ -385,71 +387,72 @@ struct UserProfileView: View {
     ]
 
     var body: some View {
-        let metrics = calculateUserMetrics()
+        let profile = RunnerProfile.compute(
+            from: runRecords,
+            trainingGoal: trainingGoal,
+            experienceLevel: userExperienceLevel,
+            userHeightCm: userHeightCm
+        )
 
         Form {
-            Section(header: Text("Runner Profile")) {
+            Section(header: Text("Runner Identity")) {
                 Picker("Training Goal", selection: $trainingGoal) {
                     ForEach(goalOptions, id: \.self) { option in
                         Text(option).tag(option)
                     }
                 }
 
-                HStack {
-                    Text("Experience Level")
-                    Spacer()
-                    Text(metrics.level)
-                        .foregroundColor(.secondary)
+                Picker("Experience Level", selection: $userExperienceLevel) {
+                    ForEach(RunnerProfile.experienceLevelOptions, id: \.self) { option in
+                        Text(option).tag(option)
+                    }
                 }
 
                 HStack {
-                    Text("Recent Weekly Volume")
+                    Text("Height")
                     Spacer()
-                    Text(metrics.volume)
-                        .foregroundColor(.secondary)
+                    Stepper(
+                        value: $userHeightCm,
+                        in: 130...220,
+                        step: 1
+                    ) {
+                        if useMetricSystem {
+                            Text("\(Int(userHeightCm)) cm")
+                                .foregroundColor(.secondary)
+                        } else {
+                            let totalInches = Int((userHeightCm / 2.54).rounded())
+                            let feet = totalInches / 12
+                            let inches = totalInches % 12
+                            Text("\(feet)'\(inches)\" (\(Int(userHeightCm)) cm)")
+                                .foregroundColor(.secondary)
+                        }
+                    }
                 }
             }
 
-            Section(footer: Text("Runalyst automatically calculates your experience level and weekly volume based on your last 30 days of running data.")) {
-                EmptyView()
+            Section(
+                header: Text("Current 30-Day Training Load"),
+                footer: Text("Runalyst automatically tracks your empirical load and consistency from your last 30 days of workout telemetry.")
+            ) {
+                HStack {
+                    Text("Weekly Volume")
+                    Spacer()
+                    let displayVolume = useMetricSystem
+                        ? String(format: "%.1f km/wk", profile.weeklyAverageKm)
+                        : String(format: "%.1f mi/wk", profile.weeklyAverageKm * 0.621371)
+                    Text(displayVolume)
+                        .foregroundColor(.secondary)
+                }
+
+                HStack {
+                    Text("Run Frequency")
+                    Spacer()
+                    Text(String(format: "%.1f runs/wk", profile.runsPerWeek))
+                        .foregroundColor(.secondary)
+                }
             }
         }
         .navigationTitle("User Profile")
-    }
-
-    private func calculateUserMetrics() -> (level: String, volume: String) {
-        guard !runRecords.isEmpty else {
-            return ("Beginner / Novice", "0 \(useMetricSystem ? "km" : "mi")")
-        }
-
-        let thirtyDaysAgo = Calendar.current.date(byAdding: .day, value: -30, to: Date()) ?? Date()
-        let recentRuns = runRecords.filter { $0.date >= thirtyDaysAgo }
-
-        let totalDistanceMeters = recentRuns.reduce(0.0) { $0 + $1.totalDistanceMeters }
-        let totalDistanceKm = totalDistanceMeters / 1000.0
-        let weeklyAvgKm = totalDistanceKm / 4.28 // approx weeks in 30 days
-        let uniqueDays = Set(recentRuns.map { Calendar.current.startOfDay(for: $0.date) })
-        let runsPerWeek = Double(uniqueDays.count) / 4.28
-
-        let level: String
-        if weeklyAvgKm > 60 {
-            level = "Elite / Pro"
-        } else if weeklyAvgKm > 35 {
-            level = "Athlete / Competitor"
-        } else if weeklyAvgKm > 15 || runsPerWeek >= 3 {
-            level = "Intermediate / Enthusiast"
-        } else {
-            level = "Beginner / Novice"
-        }
-
-        let displayVolume: String
-        if useMetricSystem {
-            displayVolume = String(format: "%.1f km/wk", weeklyAvgKm)
-        } else {
-            displayVolume = String(format: "%.1f mi/wk", weeklyAvgKm * 0.621371)
-        }
-
-        return (level, displayVolume)
     }
 }
 

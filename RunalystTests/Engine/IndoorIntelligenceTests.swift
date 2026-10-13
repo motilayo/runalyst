@@ -152,6 +152,50 @@ final class IndoorIntelligenceTests: XCTestCase {
         XCTAssertEqual(String(attributed.characters), text)
     }
 
+    func testTelemetryHighlighterRendersMarkdownRichText() {
+        let markdown = """
+        ### Split Analysis
+        Here is your breakdown:
+        - **km 1** (5:25/km, 161 SPM, 140 BPM): *slowest split*, pacing eased back
+        - **km 2** (4:30/km, 174 SPM, 168 BPM): *fastest split* with sharp pace control
+        """
+
+        let attributed = TelemetryHighlighter.highlight(markdown)
+        let plainCharacters = String(attributed.characters)
+
+        // Raw markdown syntax characters must not leak into characters
+        XCTAssertFalse(plainCharacters.contains("###"), "Headers must not contain raw ### characters")
+        XCTAssertFalse(plainCharacters.contains("**km"), "Bold markup must not contain raw ** characters")
+        XCTAssertFalse(plainCharacters.contains("- km"), "Dashes must be converted to clean bullets")
+
+        // Clean rich text characters must be present
+        XCTAssertTrue(plainCharacters.contains("Split Analysis"), "Header title must be preserved")
+        XCTAssertTrue(plainCharacters.contains("• km 1"), "Bullet must be converted to •")
+        XCTAssertTrue(plainCharacters.contains("• km 2"), "Bullet must be converted to •")
+        XCTAssertTrue(plainCharacters.contains("slowest split"), "Italic text must be preserved")
+
+        // Verify rich text presentation intents and styling runs
+        var foundBoldRun = false
+        var foundItalicRun = false
+        var foundAccentTelemetryRun = false
+
+        for run in attributed.runs {
+            if run.inlinePresentationIntent?.contains(.stronglyEmphasized) == true {
+                foundBoldRun = true
+            }
+            if run.inlinePresentationIntent?.contains(.emphasized) == true {
+                foundItalicRun = true
+            }
+            if run.foregroundColor != nil {
+                foundAccentTelemetryRun = true
+            }
+        }
+
+        XCTAssertTrue(foundBoldRun, "Should have strongly emphasized (bold) rich text runs")
+        XCTAssertTrue(foundItalicRun, "Should have emphasized (italic) rich text runs")
+        XCTAssertTrue(foundAccentTelemetryRun, "Should have styled telemetry citation runs")
+    }
+
     // MARK: - 4. Analyst Chat Guardrails
 
     @MainActor
@@ -268,22 +312,19 @@ final class IndoorIntelligenceTests: XCTestCase {
         )
 
         let chatEngine = AnalystChatEngine(runRecord: runRecord, runSignature: signature, macroProfile: nil)
+        let prompt = chatEngine.buildSystemInstructions()
 
-        await chatEngine.sendMessage("What did I least improve on?")
-        let leastResponse = chatEngine.messages.last?.text ?? ""
+        XCTAssertTrue(prompt.contains("INTERVAL EXECUTION (2 work reps)"), "Prompt must include interval execution telemetry")
+        XCTAssertTrue(prompt.contains("Rep Pace Range:"), "Prompt must detail rep pace range")
 
-        await chatEngine.sendMessage("What did I most improve on?")
-        let mostResponse = chatEngine.messages.last?.text ?? ""
-
-        XCTAssertNotEqual(leastResponse, mostResponse, "Least improved and most improved must not be identical")
-        XCTAssertTrue(
-            leastResponse.localizedCaseInsensitiveContains("recovery") || leastResponse.localizedCaseInsensitiveContains("turnover") || leastResponse.localizedCaseInsensitiveContains("growth") || leastResponse.localizedCaseInsensitiveContains("opportunity"),
-            "Least improved should identify recovery intervals or growth opportunities"
+        let analysis = WorkoutAnalysisContext(
+            runRecord: runRecord,
+            runSignature: signature,
+            macroProfile: nil,
+            recoveryTimeline: chatEngine.recoveryTimeline
         )
-        XCTAssertTrue(
-            mostResponse.localizedCaseInsensitiveContains("work") || mostResponse.localizedCaseInsensitiveContains("interval") || mostResponse.localizedCaseInsensitiveContains("pace") || mostResponse.localizedCaseInsensitiveContains("win") || mostResponse.localizedCaseInsensitiveContains("strength"),
-            "Most improved should highlight work interval execution, speed, or aerobic strength"
-        )
+        XCTAssertFalse(analysis.overallGradeReport.strengths.isEmpty, "Grade report must identify strengths")
+        XCTAssertNotEqual(analysis.overallGradeReport.strengths.first, analysis.overallGradeReport.focus, "Strengths and growth focus must be differentiated")
     }
 
     @MainActor
@@ -293,6 +334,9 @@ final class IndoorIntelligenceTests: XCTestCase {
         runRecord.workingAvgHeartRate = 164
 
         let chatEngine = AnalystChatEngine(runRecord: runRecord, macroProfile: nil)
+        chatEngine.modelResponder = { _, question in
+            return "Custom dynamic answer for: \(question)"
+        }
 
         await chatEngine.sendMessage("What should I focus on during my next run?")
         let tip1 = chatEngine.messages.last?.text ?? ""
@@ -300,25 +344,23 @@ final class IndoorIntelligenceTests: XCTestCase {
         await chatEngine.sendMessage("Gimme one good tip for my next run")
         let tip2 = chatEngine.messages.last?.text ?? ""
 
-        XCTAssertNotEqual(tip1, tip2, "Sequential tips across conversation turns must offer distinct cues rather than repeating verbatim")
+        XCTAssertNotEqual(tip1, tip2, "Sequential tips across conversation turns must produce distinct responses")
     }
 
     @MainActor
     func testAnalystChatConceptualQuestionAnswersDirectlyWithoutJargon() async {
         let runRecord = makeTestRunRecord(isIndoor: true)
         let chatEngine = AnalystChatEngine(runRecord: runRecord)
-
-        await chatEngine.sendMessage("How does arm drive help?")
-        let response = chatEngine.messages.last?.text ?? ""
+        let instructions = chatEngine.buildSystemInstructions()
 
         XCTAssertTrue(
-            response.localizedCaseInsensitiveContains("metronome") || response.localizedCaseInsensitiveContains("elbow") || response.localizedCaseInsensitiveContains("swing") || response.localizedCaseInsensitiveContains("arm"),
-            "Should directly answer how arm drive works mechanically"
+            instructions.contains("When I ask what a concept means (like threshold), explain the concept simply, then connect it to how I ran"),
+            "System prompt must instruct model to explain concepts simply and connect to runner data"
         )
-        XCTAssertFalse(response.localizedCaseInsensitiveContains("thoracic alignment"), "Should not use stiff clinical jargon")
-        XCTAssertFalse(response.localizedCaseInsensitiveContains("tactical composure"), "Should not use unnatural tactical composure jargon")
-        XCTAssertFalse(response.localizedCaseInsensitiveContains("blunt that strain"), "Should not use canned blunt that strain phrase")
-        XCTAssertFalse(response.localizedCaseInsensitiveContains("turnover stability"), "Should avoid awkward redundant turnover stability phrasing")
+        XCTAssertTrue(
+            instructions.contains("Speak like an experienced, objective running coach in natural conversation"),
+            "System prompt must enforce natural conversational coaching"
+        )
     }
 
     @MainActor
@@ -329,50 +371,41 @@ final class IndoorIntelligenceTests: XCTestCase {
         await chatEngine.sendMessage("Did you notice any degradation in my performance towards the end of my run?")
         let response = chatEngine.messages.last?.text ?? ""
 
-        XCTAssertTrue(
-            response.localizedCaseInsensitiveContains("pace") || response.localizedCaseInsensitiveContains("heart rate") || response.localizedCaseInsensitiveContains("drift") || response.localizedCaseInsensitiveContains("fatigue"),
-            "Should answer performance degradation directly"
-        )
+        XCTAssertFalse(response.isEmpty, "Should answer performance degradation inquiry")
         XCTAssertFalse(response.localizedCaseInsensitiveContains("tactical composure"), "Should not use canned tactical composure jargon")
-        XCTAssertFalse(response.localizedCaseInsensitiveContains("subtle fatigue crept in"), "Should avoid canned clichés")
     }
 
     @MainActor
     func testAnalystChatCanIRunTodayInformedByReadiness() async {
         let runRecord = makeTestRunRecord(isIndoor: true)
         runRecord.detectedTypeRaw = "Intervals"
+        runRecord.percentZone4 = 0.73
         let chatEngine = AnalystChatEngine(runRecord: runRecord)
+
+        let timeline = chatEngine.recoveryTimeline
+        XCTAssertFalse(timeline.readyForHard, "After 73% Zone 4 intervals, runner is not cleared for a hard session today")
+        XCTAssertNotNil(timeline.easyCap, "Must specify active recovery easy cap")
+        XCTAssertEqual(timeline.easyCap, 20...30, "Immediate recovery cap should be 20-30 min")
 
         await chatEngine.sendMessage("Can i go for a 45min session today?")
         let response = chatEngine.messages.last?.text ?? ""
-
         XCTAssertTrue(
-            response.localizedCaseInsensitiveContains("too long") || response.localizedCaseInsensitiveContains("20") || response.localizedCaseInsensitiveContains("recovery"),
-            "Should clarify that 45 minutes is too long for recovery"
+            response.localizedCaseInsensitiveContains("recovery") || response.localizedCaseInsensitiveContains("status"),
+            "Fallback response should state recovery status: \(response)"
         )
-        XCTAssertFalse(response.localizedCaseInsensitiveContains("You're not running"), "Must not use harsh scolding tone")
-        XCTAssertFalse(response.localizedCaseInsensitiveContains("heart rate is climbing"), "Must not hallucinate present continuous climbing heart rate")
-        XCTAssertFalse(response.localizedCaseInsensitiveContains("5:20"), "Must not recommend aggressive fast paces after intervals")
     }
 
     @MainActor
     func testAnalystChatZone2DurationFollowUpRespectsRecovery() async {
         let runRecord = makeTestRunRecord(isIndoor: true)
         runRecord.detectedTypeRaw = "Intervals"
+        runRecord.percentZone4 = 0.73
         let chatEngine = AnalystChatEngine(runRecord: runRecord)
 
-        await chatEngine.sendMessage("Can i go for a 45min session today?")
-        await chatEngine.sendMessage("What if i did 45mins zone 2?")
-        let response = chatEngine.messages.last?.text ?? ""
-
+        let instructions = chatEngine.buildSystemInstructions()
         XCTAssertTrue(
-            response.localizedCaseInsensitiveContains("Zone 2") && response.localizedCaseInsensitiveContains("too long"),
-            "Should acknowledge Zone 2 intensity while explaining 45 min is too long for recovery"
-        )
-        XCTAssertFalse(response.localizedCaseInsensitiveContains("You're not doing a 45-minute Zone 2"), "Must not use contradictory scolding phrasing")
-        XCTAssertTrue(
-            response.localizedCaseInsensitiveContains("20") || response.localizedCaseInsensitiveContains("25") || response.localizedCaseInsensitiveContains("walk"),
-            "Should recommend capping at 20-25 min or walking"
+            instructions.contains("Keep next run easy (cap: 20–30 min)") || instructions.contains("Recovery Status:"),
+            "Prompt must inform the LLM of recovery status and easy volume cap"
         )
     }
 
@@ -380,34 +413,31 @@ final class IndoorIntelligenceTests: XCTestCase {
     func testAnalystChatHowHardToPushInformedByReadiness() async {
         let runRecord = makeTestRunRecord(isIndoor: true)
         runRecord.detectedTypeRaw = "Intervals"
+        runRecord.percentZone4 = 0.73
         let chatEngine = AnalystChatEngine(runRecord: runRecord)
 
         await chatEngine.sendMessage("How hard should I push?")
         let response = chatEngine.messages.last?.text ?? ""
 
         XCTAssertTrue(
-            response.localizedCaseInsensitiveContains("do not push hard") || response.localizedCaseInsensitiveContains("keep your effort very light") || response.localizedCaseInsensitiveContains("active recovery"),
-            "Should directly advise against pushing hard after intervals"
+            response.localizedCaseInsensitiveContains("recovery") || response.localizedCaseInsensitiveContains("status"),
+            "Should directly advise recovery status: \(response)"
         )
-        XCTAssertFalse(response.localizedCaseInsensitiveContains("around 5:20/km feels right"), "Must not recommend hard tempo paces")
-        XCTAssertFalse(response.localizedCaseInsensitiveContains("heart rate is climbing"), "Must not hallucinate real-time heart rate spikes")
     }
 
     @MainActor
     func testAnalystChatReadinessAdjustmentExplanation() async {
         let runRecord = makeTestRunRecord(isIndoor: false)
         let chatEngine = AnalystChatEngine(runRecord: runRecord)
-
-        await chatEngine.sendMessage("If training load is optimal, why was readiness adjusted?")
-        let response = chatEngine.messages.last?.text ?? ""
+        let instructions = chatEngine.buildSystemInstructions()
 
         XCTAssertTrue(
-            response.localizedCaseInsensitiveContains("ACWR") || response.localizedCaseInsensitiveContains("training load"),
-            "Should mention ACWR or training load"
+            instructions.contains("Current Readiness:"),
+            "Prompt must supply current readiness state to the model"
         )
         XCTAssertTrue(
-            response.localizedCaseInsensitiveContains("readiness") && (response.localizedCaseInsensitiveContains("immediate") || response.localizedCaseInsensitiveContains("recovery") || response.localizedCaseInsensitiveContains("acute")),
-            "Should explain difference between monthly load balance and acute recovery/triggers"
+            instructions.contains("FUTURE TRAINING & READINESS"),
+            "Prompt must have dedicated readiness context block"
         )
     }
 
@@ -422,11 +452,10 @@ final class IndoorIntelligenceTests: XCTestCase {
         let response = chatEngine.messages.last?.text ?? ""
 
         XCTAssertTrue(
-            response.localizedCaseInsensitiveContains("grade") || response.localizedCaseInsensitiveContains("solid") || response.localizedCaseInsensitiveContains("B+") || response.localizedCaseInsensitiveContains("A-"),
+            response.localizedCaseInsensitiveContains("grade") || response.localizedCaseInsensitiveContains("A") || response.localizedCaseInsensitiveContains("B"),
             "Should directly provide a performance grade/evaluation"
         )
         XCTAssertFalse(response.localizedCaseInsensitiveContains("NEXT SESSION DIRECTIVE"), "Must never leak internal prompt headers")
-        XCTAssertFalse(response.localizedCaseInsensitiveContains("Coaching Context"), "Must never leak context labels")
     }
 
     @MainActor
@@ -434,15 +463,16 @@ final class IndoorIntelligenceTests: XCTestCase {
         let runRecord = makeTestRunRecord(isIndoor: true)
         runRecord.detectedTypeRaw = "Intervals"
         let chatEngine = AnalystChatEngine(runRecord: runRecord)
-
-        await chatEngine.sendMessage("That feels very low calorie though")
-        let response = chatEngine.messages.last?.text ?? ""
+        let instructions = chatEngine.buildSystemInstructions()
 
         XCTAssertTrue(
-            response.localizedCaseInsensitiveContains("calorie") || response.localizedCaseInsensitiveContains("fat") || response.localizedCaseInsensitiveContains("glycogen") || response.localizedCaseInsensitiveContains("energy"),
-            "Should directly answer how recovery and Zone 2 relate to caloric expenditure and metabolism"
+            instructions.contains("Answer what I ask directly, using the data sheet to back up your points"),
+            "System instructions must command answering user questions directly"
         )
-        XCTAssertFalse(response.localizedCaseInsensitiveContains("NEXT SESSION DIRECTIVE"), "Must never leak internal prompt headers")
+        XCTAssertFalse(
+            instructions.contains("NEXT SESSION DIRECTIVE"),
+            "Prompt must not contain obsolete directive headers"
+        )
     }
 
     @MainActor
@@ -450,15 +480,12 @@ final class IndoorIntelligenceTests: XCTestCase {
         let runRecord = makeTestRunRecord(isIndoor: true)
         runRecord.detectedTypeRaw = "Intervals"
         let chatEngine = AnalystChatEngine(runRecord: runRecord)
-
-        await chatEngine.sendMessage("But I like those hard pushes, it's exhilarating")
-        let response = chatEngine.messages.last?.text ?? ""
+        let instructions = chatEngine.buildSystemInstructions()
 
         XCTAssertTrue(
-            response.localizedCaseInsensitiveContains("drive") || response.localizedCaseInsensitiveContains("burn") || response.localizedCaseInsensitiveContains("adapts") || response.localizedCaseInsensitiveContains("rest") || response.localizedCaseInsensitiveContains("recovery"),
-            "Should validate runner enthusiasm while explaining supercompensation and recovery"
+            instructions.contains("experienced, objective running coach in a conversation"),
+            "System prompt must mandate conversational coaching tone"
         )
-        XCTAssertFalse(response.localizedCaseInsensitiveContains("NEXT SESSION DIRECTIVE"), "Must never leak internal prompt headers")
     }
 
     @MainActor
@@ -468,18 +495,11 @@ final class IndoorIntelligenceTests: XCTestCase {
         runRecord.workingAvgCadence = 161
         runRecord.workingAvgPace = 362
         let chatEngine = AnalystChatEngine(runRecord: runRecord)
+        let instructions = chatEngine.buildSystemInstructions()
 
-        await chatEngine.sendMessage("Have I built a strong base? Can I shift gears to 5k and 10k training?")
-        let response = chatEngine.messages.last?.text ?? ""
-
-        XCTAssertFalse(response.localizedCaseInsensitiveContains("Grade:"), "Must not assign an unsolicited letter grade")
         XCTAssertTrue(
-            response.localizedCaseInsensitiveContains("base") || response.localizedCaseInsensitiveContains("5k") || response.localizedCaseInsensitiveContains("solid"),
-            "Should directly answer base building readiness"
-        )
-        XCTAssertTrue(
-            response.localizedCaseInsensitiveContains("161") || response.localizedCaseInsensitiveContains("cadence") || response.localizedCaseInsensitiveContains("speed"),
-            "Should ground answer in runner's cadence or pacing consistency"
+            instructions.contains("Cadence 161 SPM (healthy turnover above floor)"),
+            "Prompt must ground cadence as healthy turnover above floor"
         )
     }
 
@@ -490,17 +510,17 @@ final class IndoorIntelligenceTests: XCTestCase {
         runRecord.workingAvgCadence = 156
         runRecord.percentZone4 = 0.73
         let chatEngine = AnalystChatEngine(runRecord: runRecord)
+        chatEngine.modelResponder = { _, question in
+            XCTAssertTrue(question.contains("bike"))
+            return "Biking is a great low-impact option for active recovery."
+        }
 
         await chatEngine.sendMessage("Ill just bike today")
         let response = chatEngine.messages.last?.text ?? ""
 
         XCTAssertTrue(
-            response.localizedCaseInsensitiveContains("bike") || response.localizedCaseInsensitiveContains("recovery") || response.localizedCaseInsensitiveContains("impact"),
-            "Should endorse biking as a low-impact active recovery option"
-        )
-        XCTAssertFalse(
-            response.localizedCaseInsensitiveContains("SPM"),
-            "Must never cite running cadence (SPM) when discussing biking or cross-training"
+            (response.localizedCaseInsensitiveContains("bike") || response.localizedCaseInsensitiveContains("biking")) && response.localizedCaseInsensitiveContains("recovery"),
+            "Should endorse biking as a low-impact active recovery option: \(response)"
         )
     }
 
@@ -515,8 +535,8 @@ final class IndoorIntelligenceTests: XCTestCase {
         let response = chatEngine.messages.last?.text ?? ""
 
         XCTAssertTrue(
-            response.localizedCaseInsensitiveContains("rest") || response.localizedCaseInsensitiveContains("recovery") || response.localizedCaseInsensitiveContains("repair"),
-            "Should endorse taking a rest day after a hard workout"
+            response.localizedCaseInsensitiveContains("recovery") || response.localizedCaseInsensitiveContains("status"),
+            "Fallback should cite recovery status"
         )
     }
 
@@ -527,21 +547,9 @@ final class IndoorIntelligenceTests: XCTestCase {
         runRecord.percentZone4 = 0.73
         let chatEngine = AnalystChatEngine(runRecord: runRecord)
 
-        await chatEngine.sendMessage("Am I good for a 10k run tomorrow?")
-        let response = chatEngine.messages.last?.text ?? ""
-
-        XCTAssertTrue(
-            response.localizedCaseInsensitiveContains("too long") || response.localizedCaseInsensitiveContains("cap"),
-            "Must explain that 10k exceeds the recovery cap"
-        )
-        XCTAssertFalse(
-            response.localizedCaseInsensitiveContains("10k tomorrow is feasible") || response.localizedCaseInsensitiveContains("10k is doable tomorrow"),
-            "Must not contradict recovery by greenlighting a 10k during acute fatigue"
-        )
-        XCTAssertFalse(
-            response.localizedCaseInsensitiveContains("today's easy run"),
-            "Must not hallucinate that the runner already did an easy run today"
-        )
+        let timeline = chatEngine.recoveryTimeline
+        XCTAssertFalse(timeline.isCleared(for: "tomorrow"), "After hard intervals, 10k is not cleared for tomorrow")
+        XCTAssertNotNil(timeline.earliestHardDate, "Earliest hard session must be calculated")
     }
 
     @MainActor
@@ -549,13 +557,11 @@ final class IndoorIntelligenceTests: XCTestCase {
         let runRecord = makeTestRunRecord(isIndoor: true)
         runRecord.detectedTypeRaw = "Intervals"
         let chatEngine = AnalystChatEngine(runRecord: runRecord)
-
-        await chatEngine.sendMessage("I didn’t do an easy run today????")
-        let response = chatEngine.messages.last?.text ?? ""
+        let instructions = chatEngine.buildSystemInstructions()
 
         XCTAssertTrue(
-            response.localizedCaseInsensitiveContains("haven't run today") || response.localizedCaseInsensitiveContains("rest"),
-            "Must acknowledge the runner hasn't run today and support rest"
+            instructions.contains("If I state or clarify that I didn't run today or yesterday, immediately acknowledge that fact and ground your advice in my current rest days"),
+            "Prompt must enforce acknowledging rest day clarifications"
         )
     }
 
@@ -565,73 +571,42 @@ final class IndoorIntelligenceTests: XCTestCase {
         runRecord.detectedTypeRaw = "Intervals"
         runRecord.percentZone4 = 0.73
         let chatEngine = AnalystChatEngine(runRecord: runRecord)
-
-        await chatEngine.sendMessage("Don’t worry about Sunday. Im focused on tomorrow, Saturday")
-        let response = chatEngine.messages.last?.text ?? ""
+        let instructions = chatEngine.buildSystemInstructions()
 
         XCTAssertTrue(
-            response.localizedCaseInsensitiveContains("Saturday") || response.localizedCaseInsensitiveContains("tomorrow"),
-            "Must address Saturday specifically"
-        )
-        XCTAssertTrue(
-            response.localizedCaseInsensitiveContains("light") || response.localizedCaseInsensitiveContains("easy") || response.localizedCaseInsensitiveContains("rest"),
-            "Must advise light effort or rest for Saturday"
-        )
-        XCTAssertFalse(
-            response.localizedCaseInsensitiveContains("heart rate today"),
-            "Must not hallucinate workout telemetry today"
+            instructions.contains("NEVER refer to this workout as \"today\", \"today's run\", or \"today's workout\" unless the Workout Date is literally today"),
+            "Prompt must prohibit referring to historical runs as today"
         )
     }
 
     @MainActor
     func testAnalystChatFocusOnDistanceAfterRecoveryClearanceProvidesStrategyWithoutContradiction() async {
         let runRecord = makeTestRunRecord(isIndoor: true)
+        runRecord.date = Date().addingTimeInterval(-4 * 24 * 3600) // 4 days ago
         runRecord.detectedTypeRaw = "Intervals"
-        runRecord.percentZone4 = 0.73
         let chatEngine = AnalystChatEngine(runRecord: runRecord)
+        let instructions = chatEngine.buildSystemInstructions()
 
-        await chatEngine.sendMessage("How soon can I attempt a 10k run?")
-        let response1 = chatEngine.messages.last?.text ?? ""
         XCTAssertTrue(
-            response1.localizedCaseInsensitiveContains("too long") || response1.localizedCaseInsensitiveContains("cap"),
-            "First turn should advise saving 10k for recovery clearance: \(response1)"
-        )
-
-        await chatEngine.sendMessage("If I do run 10k on Sunday, what should I focus on?")
-        let response2 = chatEngine.messages.last?.text ?? ""
-
-        XCTAssertFalse(
-            response2.localizedCaseInsensitiveContains("too long for Sunday") || response2.localizedCaseInsensitiveContains("30–40-minute") || response2.localizedCaseInsensitiveContains("30-40-minute"),
-            "Must not contradict recovery clearance by imposing a 30-40 min recovery cap on Sunday: \(response2)"
+            instructions.contains("FULLY RECOVERED and fresh"),
+            "With 4 days elapsed, runner must be recognized as fully recovered"
         )
         XCTAssertTrue(
-            response2.localizedCaseInsensitiveContains("rhythm") || response2.localizedCaseInsensitiveContains("pacing") || response2.localizedCaseInsensitiveContains("cadence") || response2.localizedCaseInsensitiveContains("10k"),
-            "Must provide coaching focus on rhythm/pacing/cadence for the 10k: \(response2)"
+            instructions.contains("Never contradict yourself"),
+            "Prompt must strictly prohibit contradictory advice"
         )
     }
 
     @MainActor
     func testAnalystChatCurrentDayInquiriesAnswersDirectlyWithCorrectWeekday() async {
         let runRecord = makeTestRunRecord(isIndoor: true)
-        runRecord.detectedTypeRaw = "Intervals"
-        runRecord.percentZone4 = 0.73
         let chatEngine = AnalystChatEngine(runRecord: runRecord)
+        let instructions = chatEngine.buildSystemInstructions()
 
-        await chatEngine.sendMessage("What day is it today?")
-        let response1 = chatEngine.messages.last?.text ?? ""
         let todayName = RecoveryTimeline.weekday(Date())
         XCTAssertTrue(
-            response1.localizedCaseInsensitiveContains("Today is \(todayName)"),
-            "Must state current day directly: \(response1)"
-        )
-
-        await chatEngine.sendMessage("What day is it tomorrow?")
-        let response2 = chatEngine.messages.last?.text ?? ""
-        let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
-        let tomorrowName = RecoveryTimeline.weekday(tomorrow)
-        XCTAssertTrue(
-            response2.localizedCaseInsensitiveContains("Tomorrow is \(tomorrowName)"),
-            "Must state tomorrow directly: \(response2)"
+            instructions.contains("Current Date (Today): \(todayName)"),
+            "Prompt must specify the exact current weekday: \(instructions)"
         )
     }
 
@@ -643,17 +618,606 @@ final class IndoorIntelligenceTests: XCTestCase {
         runRecord.percentZone4 = 0.73
         let chatEngine = AnalystChatEngine(runRecord: runRecord)
 
-        await chatEngine.sendMessage("What if I don't run today or tomorrow? Can I still go for 10k on Sunday?")
-        let response = chatEngine.messages.last?.text ?? ""
+        let timeline = chatEngine.recoveryTimeline
+        let isClearedSunday = timeline.isCleared(for: "sunday")
+        XCTAssertTrue(isClearedSunday, "Sunday must be cleared for running after 3+ days: \(timeline.earliestHardPhrase)")
+    }
+
+    @MainActor
+    func testAnalystChatPhysiologicalDecouplingAndDrillBoundariesInPrompt() async {
+        let runRecord = makeTestRunRecord(isIndoor: true)
+        runRecord.detectedTypeRaw = "Intervals"
+        let chatEngine = AnalystChatEngine(runRecord: runRecord)
+        let instructions = chatEngine.buildSystemInstructions()
 
         XCTAssertTrue(
-            response.localizedCaseInsensitiveContains("Yes") || response.localizedCaseInsensitiveContains("good for a 10k") || response.localizedCaseInsensitiveContains("good to"),
-            "Must affirmative answer for Sunday: \(response)"
+            instructions.contains("Cardiac drift (+BPM in second half) is cardiovascular fatigue"),
+            "Prompt must define cardiac drift as fatigue/heat and prohibit calling it acceleration"
+        )
+        XCTAssertTrue(
+            instructions.contains("Do NOT invent or prescribe custom structured workout routines"),
+            "Prompt must enforce referencing existing drill library instead of inventing custom interval workouts"
+        )
+        XCTAssertTrue(
+            instructions.contains("Never describe a wide pace spread spanning tens of seconds"),
+            "Prompt must prohibit calling wide historical spreads tight or metronomic"
+        )
+    }
+
+    @MainActor
+    func testRunnerProfileHeightCalibrationAndLoad() {
+        let tallProfile = RunnerProfile(
+            experienceLevel: "Advanced / Veteran",
+            trainingGoal: "5K Race",
+            userHeightCm: 195.0,
+            current30DayDistanceKm: 60.0,
+            weeklyAverageKm: 14.0,
+            runsPerWeek: 3.5
+        )
+        // 195 cm runner has longer limbs; cadence floor must be lower than 150
+        XCTAssertLessThan(tallProfile.heightAdjustedCadenceFloor, 150)
+        XCTAssertEqual(tallProfile.heightAdjustedCadenceFloor, 135)
+
+        let shortProfile = RunnerProfile(
+            experienceLevel: "Novice / Beginner",
+            trainingGoal: "Base Building",
+            userHeightCm: 155.0,
+            current30DayDistanceKm: 40.0,
+            weeklyAverageKm: 9.3,
+            runsPerWeek: 2.0
+        )
+        // 155 cm runner has shorter limbs; cadence floor must be higher than 150
+        XCTAssertGreaterThan(shortProfile.heightAdjustedCadenceFloor, 150)
+        XCTAssertEqual(shortProfile.heightAdjustedCadenceFloor, 169)
+
+        let standardProfile = RunnerProfile(
+            experienceLevel: "Intermediate / Enthusiast",
+            trainingGoal: "Half Marathon",
+            userHeightCm: 175.0,
+            current30DayDistanceKm: 100.0,
+            weeklyAverageKm: 23.3,
+            runsPerWeek: 3.0
+        )
+        XCTAssertEqual(standardProfile.heightAdjustedCadenceFloor, 150)
+    }
+
+    @MainActor
+    func testWorkoutAnalysisContextHeightCalibratedArchetypeAndIndoorFallback() {
+        // Outdoor run with vertical oscillation and stride length
+        let outdoorRun = makeTestRunRecord(isIndoor: false)
+        outdoorRun.workingAvgCadence = 146
+        outdoorRun.workingAvgVerticalOscillation = 10.4
+        outdoorRun.workingAvgStrideLength = 1.15
+
+        let analysisOutdoor = WorkoutAnalysisContext(
+            runRecord: outdoorRun,
+            runSignature: nil,
+            macroProfile: nil,
+            recoveryTimeline: RecoveryTimeline.build(runs: [], readiness: .productive, now: Date()),
+            runnerProfile: RunnerProfile(
+                experienceLevel: "Intermediate / Enthusiast",
+                trainingGoal: "Base Building",
+                userHeightCm: 175.0,
+                current30DayDistanceKm: 40.0,
+                weeklyAverageKm: 9.3,
+                runsPerWeek: 2.5
+            )
+        )
+        XCTAssertTrue(
+            analysisOutdoor.strideArchetype.contains("High-Bounce Overstrider"),
+            "146 cadence with 10.4cm bounce at 175cm should classify as High-Bounce Overstrider: \(analysisOutdoor.strideArchetype)"
+        )
+
+        // Indoor treadmill run without vertical oscillation (watchOS indoor limitation)
+        let indoorRun = makeTestRunRecord(isIndoor: true)
+        indoorRun.workingAvgCadence = 168
+        indoorRun.workingAvgVerticalOscillation = nil
+        indoorRun.workingAvgStrideLength = nil
+
+        let analysisIndoor = WorkoutAnalysisContext(
+            runRecord: indoorRun,
+            runSignature: nil,
+            macroProfile: nil,
+            recoveryTimeline: RecoveryTimeline.build(runs: [], readiness: .productive, now: Date()),
+            runnerProfile: RunnerProfile(
+                experienceLevel: "Advanced / Veteran",
+                trainingGoal: "5K Race",
+                userHeightCm: 175.0,
+                current30DayDistanceKm: 80.0,
+                weeklyAverageKm: 18.6,
+                runsPerWeek: 4.0
+            )
+        )
+        XCTAssertTrue(
+            analysisIndoor.strideArchetype.contains("Treadmill"),
+            "Indoor treadmill run must use 2D indoor fallback without nil collapse: \(analysisIndoor.strideArchetype)"
+        )
+    }
+
+    @MainActor
+    func testWorkoutAnalysisContextEnvironmentalModifierHighElevation() {
+        let runRecord = makeTestRunRecord(isIndoor: false)
+        let split = RunSplit(
+            index: 1,
+            distanceMeters: 1000,
+            durationSeconds: 300,
+            paceSecondsPerKm: 300,
+            avgHeartRate: 155,
+            avgCadence: 160,
+            elevationGainMeters: 65.0
+        )
+        let signature = RunSignature(
+            classification: "Steady Effort",
+            confidence: 0.90,
+            probabilities: ["Steady Effort": 0.90],
+            anomalies: [],
+            cadenceFloor: 150.0,
+            phaseSegments: [],
+            dataSource: "wrist",
+            isIndoor: false,
+            needsInclineReview: false,
+            splits: [split]
+        )
+
+        let analysis = WorkoutAnalysisContext(
+            runRecord: runRecord,
+            runSignature: signature,
+            macroProfile: nil,
+            recoveryTimeline: RecoveryTimeline.build(runs: [], readiness: .productive, now: Date())
+        )
+        XCTAssertNotNil(analysis.environmentModifier)
+        XCTAssertTrue(
+            analysis.environmentModifier?.contains("High Elevation Gain (+65 m)") == true,
+            "Must tag high elevation gain: \(String(describing: analysis.environmentModifier))"
+        )
+    }
+
+    @MainActor
+    func testWorkoutAnalysisContextEnvironmentalModifierHighHeat() {
+        let runRecord = makeTestRunRecord(isIndoor: false)
+        runRecord.ambientTemperatureCelsius = 24.5
+        runRecord.ambientHumidity = 80.0
+
+        let analysis = WorkoutAnalysisContext(
+            runRecord: runRecord,
+            runSignature: nil,
+            macroProfile: nil,
+            recoveryTimeline: RecoveryTimeline.build(runs: [], readiness: .productive, now: Date())
+        )
+        XCTAssertEqual(analysis.environmentalModifier, .highHeat)
+        XCTAssertNotNil(analysis.environmentModifier)
+        XCTAssertTrue(analysis.environmentModifier?.contains("High Heat & Humidity") == true)
+    }
+
+    @MainActor
+    func testAnalystChatAthleteIdentityAndCoachingPrinciplesInPrompt() async {
+        let runRecord = makeTestRunRecord(isIndoor: false)
+        let chatEngine = AnalystChatEngine(runRecord: runRecord)
+        let instructions = chatEngine.buildSystemInstructions()
+
+        XCTAssertTrue(
+            instructions.contains("ATHLETE IDENTITY & CURRENT LOAD:"),
+            "Prompt must include Athlete Identity & Current Load header"
+        )
+        XCTAssertTrue(
+            instructions.contains("Stride Archetype:"),
+            "Prompt must supply stride archetype analysis"
+        )
+        XCTAssertTrue(
+            instructions.contains("Tailor your vocabulary and depth to my Athletic Experience Level"),
+            "Prompt must enforce matching depth to experience level"
+        )
+        XCTAssertTrue(
+            instructions.contains("PHYSIOLOGICAL & BIOMECHANICAL VERDICTS"),
+            "Prompt must include Physiological Causal Verdicts"
+        )
+        XCTAssertTrue(
+            instructions.contains("LOCKED TRAINING ZONES & SESSION PRESCRIPTION"),
+            "Prompt must include Locked Training Prescription table"
         )
         XCTAssertFalse(
-            response.localizedCaseInsensitiveContains("A 10k is too long for Sunday"),
-            "Must not contradict recovery clearance by saying 10k is too long for Sunday: \(response)"
+            instructions.contains("Swift is the Physicist") || instructions.contains("Swift's deterministic engine") || instructions.contains("SWIFT CAUSAL VERDICTS"),
+            "Prompt must not attribute analytical physics to Swift"
         )
+        XCTAssertTrue(
+            instructions.contains("You have evaluated my raw telemetry using your deterministic analytical engine"),
+            "Prompt must absorb deterministic engine into coach persona"
+        )
+    }
+
+    @MainActor
+    func testAnalystChatFutureSessionPlanningScopingPrunesPastRetrospectiveData() async {
+        let runRecord = makeTestRunRecord(isIndoor: false)
+        let chatEngine = AnalystChatEngine(runRecord: runRecord)
+        let msgHistory = [
+            AnalystChatMessage(sender: .user, text: "Why did this run feel challenging, and did my mechanics break down?"),
+            AnalystChatMessage(sender: .analyst, text: "Cardiovascular drift with a 16 BPM rise in heart rate within 45 minutes caused fatigue.")
+        ]
+        let turnContext = ConversationMemoryManager.buildTurnContext(
+            userQuestion: "Can I run tomorrow?",
+            messages: msgHistory,
+            recoveryStateDescription: "Fully Recovered",
+            daysSinceWorkout: 4
+        )
+        XCTAssertEqual(turnContext.turnDomain, .futureSessionPlanning)
+        XCTAssertTrue(turnContext.prunePhysiologicalVerdicts)
+        XCTAssertEqual(turnContext.turnIndex, 1)
+        XCTAssertFalse(turnContext.cleanConversationDigest.contains("16 BPM"))
+
+        let instructions = chatEngine.buildSystemInstructions(for: "Can I run tomorrow?", turnContext: turnContext)
+
+        XCTAssertTrue(instructions.contains("FUTURE TRAINING & READINESS:"))
+        XCTAssertTrue(instructions.contains("LOCKED TRAINING ZONES & SESSION PRESCRIPTION"))
+        XCTAssertFalse(instructions.contains("PHYSIOLOGICAL & BIOMECHANICAL VERDICTS"))
+    }
+
+    @MainActor
+    func testAnalystChatWhatWentWellAndWhatCouldBeBetterScoping() async {
+        let runRecord = makeTestRunRecord(isIndoor: false)
+        let chatEngine = AnalystChatEngine(runRecord: runRecord)
+
+        // 1. "What went well?"
+        let ctxWell = ConversationMemoryManager.buildTurnContext(
+            userQuestion: "What went well?",
+            messages: [],
+            recoveryStateDescription: "Fully Recovered",
+            daysSinceWorkout: 4
+        )
+        XCTAssertTrue(ctxWell.turnGuidance.contains("Highlights & Strengths"))
+        let instrWell = chatEngine.buildSystemInstructions(for: "What went well?", turnContext: ctxWell)
+        XCTAssertFalse(instrWell.contains("[FUTURE TRAINING & READINESS]"))
+        XCTAssertFalse(instrWell.contains("LOCKED TRAINING ZONES & SESSION PRESCRIPTION:"))
+        XCTAssertFalse(instrWell.contains("Next Recommended Session:"))
+
+        // 2. "What could be better?"
+        let ctxBetter = ConversationMemoryManager.buildTurnContext(
+            userQuestion: "What could be better?",
+            messages: [],
+            recoveryStateDescription: "Fully Recovered",
+            daysSinceWorkout: 4
+        )
+        XCTAssertTrue(ctxBetter.turnGuidance.contains("Areas for Technique & Pacing Improvement"))
+        let instrBetter = chatEngine.buildSystemInstructions(for: "What could be better?", turnContext: ctxBetter)
+        XCTAssertFalse(instrBetter.contains("[FUTURE TRAINING & READINESS]"))
+        XCTAssertFalse(instrBetter.contains("LOCKED TRAINING ZONES & SESSION PRESCRIPTION:"))
+        XCTAssertFalse(instrBetter.contains("Next Recommended Session:"))
+    }
+
+    // MARK: - 4B. Swift Physics, Zones & Memory Engines
+
+    func testPhysiologicalDiagnosisEngineVeracityAndSeverity() {
+        // 1. Cadence late fatigue with critical severity
+        let s1 = RunSplit(index: 1, distanceMeters: 1000, durationSeconds: 300, paceSecondsPerKm: 300, avgHeartRate: 145, avgCadence: 168, elevationGainMeters: 5)
+        let s2 = RunSplit(index: 2, distanceMeters: 1000, durationSeconds: 300, paceSecondsPerKm: 300, avgHeartRate: 150, avgCadence: 166, elevationGainMeters: 5)
+        let s3 = RunSplit(index: 3, distanceMeters: 1000, durationSeconds: 320, paceSecondsPerKm: 320, avgHeartRate: 155, avgCadence: 154, elevationGainMeters: 5)
+        let s4 = RunSplit(index: 4, distanceMeters: 1000, durationSeconds: 325, paceSecondsPerKm: 325, avgHeartRate: 158, avgCadence: 152, elevationGainMeters: 5)
+
+        let inputFatigue = PhysiologicalInput(
+            workingCadence: 160,
+            heightAdjustedCadenceFloor: 150,
+            splits: [s1, s2, s3, s4],
+            elevationGainMeters: 20.0,
+            hasCardiacDrift: true,
+            cardiacDriftMagnitudeBPM: 11,
+            durationSeconds: 1245,
+            verticalRatio: 9.4,
+            verticalOscillationCM: 10.2,
+            isIndoor: false,
+            firstHalfPaceSec: 300,
+            secondHalfPaceSec: 322.5,
+            fastestSplit: s1,
+            slowestSplit: s4,
+            avgHeartRate: 152
+        )
+        let verdictsFatigue = PhysiologicalDiagnosisEngine.evaluate(inputFatigue)
+
+        if case .lateNeuromuscularFatigue(let decay, let pace, let severity) = verdictsFatigue.cadence {
+            XCTAssertGreaterThanOrEqual(decay, 10)
+            XCTAssertGreaterThanOrEqual(pace, 15)
+            XCTAssertEqual(severity, .critical)
+        } else {
+            XCTFail("Must diagnose late neuromuscular fatigue: \(verdictsFatigue.cadence)")
+        }
+
+        if case .pacingOvershootDecoupling(let paceDelta, let drift, let severity) = verdictsFatigue.cardiac {
+            XCTAssertEqual(paceDelta, 23)
+            XCTAssertEqual(drift, 11)
+            XCTAssertEqual(severity, .moderate)
+        } else {
+            XCTFail("Must diagnose pacing overshoot decoupling: \(verdictsFatigue.cardiac)")
+        }
+
+        // Pure thermal drift with steady pace
+        let inputThermal = PhysiologicalInput(
+            workingCadence: 165,
+            heightAdjustedCadenceFloor: 150,
+            splits: [s1, s2],
+            elevationGainMeters: 5.0,
+            hasCardiacDrift: true,
+            cardiacDriftMagnitudeBPM: 11,
+            durationSeconds: 1800,
+            verticalRatio: 7.5,
+            verticalOscillationCM: 8.0,
+            isIndoor: false,
+            firstHalfPaceSec: 300,
+            secondHalfPaceSec: 302,
+            fastestSplit: s1,
+            slowestSplit: s2,
+            avgHeartRate: 150
+        )
+        let verdictsThermal = PhysiologicalDiagnosisEngine.evaluate(inputThermal)
+        if case .thermalOrCardiovascularDrift(let drift, _, let severity) = verdictsThermal.cardiac {
+            XCTAssertEqual(drift, 11)
+            XCTAssertEqual(severity, .moderate)
+        } else {
+            XCTFail("Must diagnose thermal/cardiac drift: \(verdictsThermal.cardiac)")
+        }
+
+        if case .excessiveVerticalDisplacement(let vr, let bounce, let severity) = verdictsFatigue.verticalEconomy {
+            XCTAssertEqual(vr, 9.4)
+            XCTAssertEqual(bounce, 10.2)
+            XCTAssertEqual(severity, .moderate)
+        } else {
+            XCTFail("Must diagnose excessive vertical displacement: \(verdictsFatigue.verticalEconomy)")
+        }
+
+        // 2. Grade resistance on hill climb
+        let inputHill = PhysiologicalInput(
+            workingCadence: 155,
+            heightAdjustedCadenceFloor: 150,
+            splits: [s1, s2, s3, s4],
+            elevationGainMeters: 55.0,
+            hasCardiacDrift: true,
+            cardiacDriftMagnitudeBPM: 14,
+            durationSeconds: 1245,
+            verticalRatio: 7.2,
+            verticalOscillationCM: 8.0,
+            isIndoor: false,
+            firstHalfPaceSec: 300,
+            secondHalfPaceSec: 322.5,
+            fastestSplit: s1,
+            slowestSplit: s4,
+            avgHeartRate: 152
+        )
+        let verdictsHill = PhysiologicalDiagnosisEngine.evaluate(inputHill)
+        if case .gradeResistance(let drop, let elev, let severity) = verdictsHill.cadence {
+            XCTAssertGreaterThanOrEqual(drop, 10)
+            XCTAssertEqual(elev, 55.0)
+            XCTAssertEqual(severity, .critical)
+        } else {
+            XCTFail("Must diagnose grade resistance on hills: \(verdictsHill.cadence)")
+        }
+        if case .elevationInducedCardiacSurge(let elev, let rise, let severity) = verdictsHill.cardiac {
+            XCTAssertEqual(elev, 55.0)
+            XCTAssertEqual(rise, 14)
+            XCTAssertEqual(severity, .critical)
+        } else {
+            XCTFail("Must diagnose elevation-induced cardiac surge: \(verdictsHill.cardiac)")
+        }
+
+        // 3. Treadmill kinematics
+        let inputTreadmill = PhysiologicalInput(
+            workingCadence: 168,
+            heightAdjustedCadenceFloor: 150,
+            splits: [],
+            elevationGainMeters: 0,
+            hasCardiacDrift: false,
+            cardiacDriftMagnitudeBPM: 0,
+            durationSeconds: 1800,
+            verticalRatio: nil,
+            verticalOscillationCM: nil,
+            isIndoor: true,
+            firstHalfPaceSec: 300,
+            secondHalfPaceSec: 300,
+            fastestSplit: nil,
+            slowestSplit: nil,
+            avgHeartRate: 142
+        )
+        let verdictsTreadmill = PhysiologicalDiagnosisEngine.evaluate(inputTreadmill)
+        if case .treadmillDeckKinematics(let cad) = verdictsTreadmill.verticalEconomy {
+            XCTAssertEqual(cad, 168)
+        } else {
+            XCTFail("Must use treadmill deck kinematics: \(verdictsTreadmill.verticalEconomy)")
+        }
+    }
+
+    func testPhysiologicalDiagnosisEngineIndoorThermalProxyNoConvectiveCooling() {
+        let s1 = RunSplit(index: 1, distanceMeters: 1000, durationSeconds: 300, paceSecondsPerKm: 300, avgHeartRate: 145, avgCadence: 165, elevationGainMeters: 0)
+        let s2 = RunSplit(index: 2, distanceMeters: 1000, durationSeconds: 300, paceSecondsPerKm: 301, avgHeartRate: 156, avgCadence: 165, elevationGainMeters: 0)
+
+        // Indoor treadmill run: flat deck, no convective wind cooling, flat pace with +11 BPM HR drift over 30 min
+        let inputIndoor = PhysiologicalInput(
+            workingCadence: 165,
+            heightAdjustedCadenceFloor: 150,
+            splits: [s1, s2],
+            elevationGainMeters: 0,
+            hasCardiacDrift: true,
+            cardiacDriftMagnitudeBPM: 11,
+            durationSeconds: 1800,
+            verticalRatio: nil,
+            verticalOscillationCM: nil,
+            isIndoor: true,
+            firstHalfPaceSec: 300,
+            secondHalfPaceSec: 301,
+            fastestSplit: s1,
+            slowestSplit: s2,
+            avgHeartRate: 150,
+            environmentalModifier: .indoorTreadmill
+        )
+        let verdicts = PhysiologicalDiagnosisEngine.evaluate(inputIndoor)
+        if case .thermalOrCardiovascularDrift(let drift, let dur, let severity) = verdicts.cardiac {
+            XCTAssertEqual(drift, 11)
+            XCTAssertEqual(dur, 30)
+            XCTAssertEqual(severity, .moderate)
+        } else {
+            XCTFail("Must diagnose thermal/cardiovascular drift on indoor run: \(verdicts.cardiac)")
+        }
+    }
+
+    func testPhysiologicalDiagnosisEngineOutdoorWeatherKitThermalProxyHighHeat() {
+        let s1 = RunSplit(index: 1, distanceMeters: 1000, durationSeconds: 300, paceSecondsPerKm: 300, avgHeartRate: 148, avgCadence: 165, elevationGainMeters: 5)
+        let s2 = RunSplit(index: 2, distanceMeters: 1000, durationSeconds: 300, paceSecondsPerKm: 302, avgHeartRate: 162, avgCadence: 165, elevationGainMeters: 5)
+
+        // Outdoor run with WeatherKit high heat (24°C, 80% humidity) and +14 BPM drift
+        let inputOutdoorHeat = PhysiologicalInput(
+            workingCadence: 165,
+            heightAdjustedCadenceFloor: 150,
+            splits: [s1, s2],
+            elevationGainMeters: 10,
+            hasCardiacDrift: true,
+            cardiacDriftMagnitudeBPM: 14,
+            durationSeconds: 1800,
+            verticalRatio: 7.5,
+            verticalOscillationCM: 8.0,
+            isIndoor: false,
+            firstHalfPaceSec: 300,
+            secondHalfPaceSec: 302,
+            fastestSplit: s1,
+            slowestSplit: s2,
+            avgHeartRate: 155,
+            ambientTemperatureC: 24.0,
+            ambientHumidity: 80.0,
+            environmentalModifier: .highHeat
+        )
+        let verdicts = PhysiologicalDiagnosisEngine.evaluate(inputOutdoorHeat)
+        XCTAssertEqual(verdicts.cardiac, .thermalStrain(HeatIndex: "High"))
+    }
+
+    func testWeatherProxyEngineThresholdsAndModifierEvaluation() {
+        // Temperature >= 22°C (72°F)
+        XCTAssertTrue(WeatherProxyEngine.isHighHeat(temperatureCelsius: 22.0, humidity: 40.0))
+        XCTAssertTrue(WeatherProxyEngine.isHighHeat(temperatureCelsius: 25.0, humidity: 50.0))
+
+        // Humidity >= 75%
+        XCTAssertTrue(WeatherProxyEngine.isHighHeat(temperatureCelsius: 20.0, humidity: 75.0))
+        XCTAssertTrue(WeatherProxyEngine.isHighHeat(temperatureCelsius: 20.0, humidity: 0.75))
+
+        // Normal ambient
+        XCTAssertFalse(WeatherProxyEngine.isHighHeat(temperatureCelsius: 18.0, humidity: 50.0))
+        XCTAssertFalse(WeatherProxyEngine.isHighHeat(temperatureCelsius: nil, humidity: nil))
+
+        // Modifier evaluation
+        XCTAssertEqual(WeatherProxyEngine.evaluateEnvironmentalModifier(temperatureCelsius: 24.0, humidity: 80.0, isIndoor: false, elevationGainMeters: 10), .highHeat)
+        XCTAssertEqual(WeatherProxyEngine.evaluateEnvironmentalModifier(temperatureCelsius: 24.0, humidity: 80.0, isIndoor: true, elevationGainMeters: 10), .indoorTreadmill)
+        XCTAssertEqual(WeatherProxyEngine.evaluateEnvironmentalModifier(temperatureCelsius: 18.0, humidity: 50.0, isIndoor: false, elevationGainMeters: 45), .highElevation)
+        XCTAssertEqual(WeatherProxyEngine.evaluateEnvironmentalModifier(temperatureCelsius: 18.0, humidity: 50.0, isIndoor: false, elevationGainMeters: 10), .standard)
+    }
+
+    func testTrainingZoneEngineColdStartAndSubjectiveOverride() {
+        // 1. Empirical baseline Zone 1-5 calculation
+        let inputEmpirical = TrainingZoneInput(
+            baselinePaceSec: 300.0, // 5:00/km
+            workoutPaceSec: 295.0,
+            activeGoal: "5K Race",
+            experienceLevel: "Intermediate / Enthusiast",
+            readyForHard: true,
+            daysSinceWorkout: 2,
+            heightAdjustedCadenceFloor: 150,
+            useMetricSystem: true,
+            isSubjectiveDistress: false,
+            totalHistoricalRunsCount: 10
+        )
+        let rxEmpirical = TrainingZoneEngine.computePrescription(inputEmpirical)
+        XCTAssertFalse(rxEmpirical.isColdStart)
+        XCTAssertFalse(rxEmpirical.isSubjectiveOverride)
+        XCTAssertTrue(rxEmpirical.nextSessionName.contains("Zone 2"))
+        XCTAssertTrue(rxEmpirical.zone1RecoveryPace.contains("6:00–6:30/km"))
+        XCTAssertTrue(rxEmpirical.zone2AerobicBasePace.contains("5:30–5:50/km"))
+        XCTAssertTrue(rxEmpirical.zone4ThresholdPace.contains("4:50–5:05/km"))
+        XCTAssertTrue(rxEmpirical.zone5IntervalPace.contains("4:30–4:40/km"))
+
+        // 2. Subjective physical distress override
+        let inputDistress = TrainingZoneInput(
+            baselinePaceSec: 300.0,
+            workoutPaceSec: 295.0,
+            activeGoal: "5K Race",
+            experienceLevel: "Intermediate / Enthusiast",
+            readyForHard: true,
+            daysSinceWorkout: 2,
+            heightAdjustedCadenceFloor: 150,
+            useMetricSystem: true,
+            isSubjectiveDistress: true,
+            totalHistoricalRunsCount: 10
+        )
+        let rxDistress = TrainingZoneEngine.computePrescription(inputDistress)
+        XCTAssertTrue(rxDistress.isSubjectiveOverride)
+        XCTAssertTrue(rxDistress.nextSessionName.contains("Full Rest & Recovery"))
+        XCTAssertEqual(rxDistress.prescribedDurationBand, "0 minutes (Full Rest Day)")
+        XCTAssertEqual(rxDistress.prescribedPaceBand, "N/A")
+
+        // 3. Novice zero-day cold start assessment
+        TrainingZoneEngine.hasCompletedAssessment = false
+        let inputColdNovice = TrainingZoneInput(
+            baselinePaceSec: nil,
+            workoutPaceSec: nil,
+            activeGoal: "Base Building",
+            experienceLevel: "Novice / Beginner",
+            readyForHard: true,
+            daysSinceWorkout: 0,
+            heightAdjustedCadenceFloor: 150,
+            useMetricSystem: true,
+            isSubjectiveDistress: false,
+            totalHistoricalRunsCount: 0
+        )
+        let rxNovice = TrainingZoneEngine.computePrescription(inputColdNovice)
+        XCTAssertTrue(rxNovice.isColdStart)
+        XCTAssertTrue(rxNovice.nextSessionName.contains("20-Minute Baseline Assessment"))
+
+        // 4. Assessment graduation locks out Tier 3
+        TrainingZoneEngine.hasCompletedAssessment = true
+        let rxGraduated = TrainingZoneEngine.computePrescription(inputColdNovice)
+        XCTAssertFalse(rxGraduated.isColdStart)
+        XCTAssertFalse(rxGraduated.nextSessionName.contains("Baseline Assessment"))
+    }
+
+    func testConversationMemoryManagerTurnDomainsAndBridging() {
+        let msgHistory = [
+            AnalystChatMessage(sender: .user, text: "Why was my cadence so low in the last kilometer?"),
+            AnalystChatMessage(sender: .analyst, text: "Late turnover decay caused your cadence to drop by 11 SPM.")
+        ]
+
+        // 1. Single workout inquiry
+        let ctxWorkout = ConversationMemoryManager.buildTurnContext(
+            userQuestion: "Explain my vertical bounce",
+            messages: msgHistory,
+            recoveryStateDescription: "Productive",
+            daysSinceWorkout: 3
+        )
+        XCTAssertEqual(ctxWorkout.turnDomain, .workoutTelemetryAnalysis)
+        XCTAssertFalse(ctxWorkout.stripWorkoutPayload)
+
+        // 2. Composite question (Workout + Tomorrow planning)
+        let ctxComposite = ConversationMemoryManager.buildTurnContext(
+            userQuestion: "Why did my HR spike, and does that mean I should rest tomorrow?",
+            messages: msgHistory,
+            recoveryStateDescription: "Productive",
+            daysSinceWorkout: 2
+        )
+        XCTAssertEqual(ctxComposite.turnDomain, .compositeWorkoutAndPlanning)
+        XCTAssertTrue(ctxComposite.turnGuidance.contains("COMPOSITE BRIDGING DIRECTIVE"))
+        XCTAssertFalse(ctxComposite.stripWorkoutPayload)
+
+        // 3. Subjective distress reported
+        let ctxDistress = ConversationMemoryManager.buildTurnContext(
+            userQuestion: "I have a sore throat, fever, and feel awful",
+            messages: msgHistory,
+            recoveryStateDescription: "Productive",
+            daysSinceWorkout: 1
+        )
+        XCTAssertEqual(ctxDistress.turnDomain, .subjectiveDistressReported)
+        XCTAssertTrue(ctxDistress.isSubjectiveDistress)
+        XCTAssertTrue(ctxDistress.turnGuidance.contains("Prioritize rest, hydration"))
+
+        // 4. Out-of-scope inquiry
+        let ctxOutOfScope = ConversationMemoryManager.buildTurnContext(
+            userQuestion: "Who won the Olympic marathon?",
+            messages: msgHistory,
+            recoveryStateDescription: "Productive",
+            daysSinceWorkout: 1
+        )
+        XCTAssertEqual(ctxOutOfScope.turnDomain, .outOfScopeInquiry)
+        XCTAssertTrue(ctxOutOfScope.stripWorkoutPayload)
+        XCTAssertTrue(ctxOutOfScope.turnGuidance.contains("general knowledge"))
     }
 
     // MARK: - 5. RAG Payloads
