@@ -116,10 +116,19 @@ class AnalystChatEngine: ObservableObject {
         }
 
         // Test responder hook (for unit tests / mock free speak)
+        let cal = Calendar.current
+        let daysDiff = cal.dateComponents([.day], from: cal.startOfDay(for: runRecord.date), to: cal.startOfDay(for: Date())).day ?? 0
+        let turnContext = ConversationMemoryManager.buildTurnContext(
+            userQuestion: trimmed,
+            messages: messages,
+            recoveryStateDescription: recoveryTimeline.state.rawValue,
+            daysSinceWorkout: daysDiff
+        )
+
         #if DEBUG
         if let responder = modelResponder {
             do {
-                let systemInstructions = buildSystemInstructions()
+                let systemInstructions = buildSystemInstructions(for: trimmed, turnContext: turnContext)
                 let responseText = try await responder(systemInstructions, trimmed)
                 messages.append(AnalystChatMessage(sender: .analyst, text: responseText))
                 return
@@ -129,12 +138,12 @@ class AnalystChatEngine: ObservableObject {
         }
         #endif
 
-        // FoundationModels on-device generation with rich Workout Data Sheet
+        // FoundationModels on-device generation with rich Workout Data Sheet & Turn-Aware Memory
         #if canImport(FoundationModels)
         if #available(iOS 26.0, *) {
             if SystemLanguageModel.default.isAvailable {
                 do {
-                    let responseText = try await generateFoundationModelResponse(for: trimmed)
+                    let responseText = try await generateFoundationModelResponse(for: trimmed, turnContext: turnContext)
                     messages.append(AnalystChatMessage(sender: .analyst, text: responseText))
                     return
                 } catch {
@@ -145,29 +154,46 @@ class AnalystChatEngine: ObservableObject {
         #endif
 
         // Clean, data-grounded fallback response (offline / non-AI hardware)
-        let fallbackResponse = generateDataGroundedFallback(for: trimmed)
+        let fallbackResponse = generateDataGroundedFallback(for: trimmed, turnContext: turnContext)
         messages.append(AnalystChatMessage(sender: .analyst, text: fallbackResponse))
     }
 
     // MARK: - FoundationModels Prompt Construction
 
-    func buildSystemInstructions() -> String {
+    func buildSystemInstructions(for userQuestion: String? = nil, turnContext: ManagedTurnContext? = nil) -> String {
         let language = Locale.current.language.languageCode?.identifier ?? "en"
+
+        let cal = Calendar.current
+        let daysDiff = cal.dateComponents([.day], from: cal.startOfDay(for: runRecord.date), to: cal.startOfDay(for: Date())).day ?? 0
+        let resolvedTurnContext = turnContext ?? (userQuestion.map {
+            ConversationMemoryManager.buildTurnContext(
+                userQuestion: $0,
+                messages: messages,
+                recoveryStateDescription: recoveryTimeline.state.rawValue,
+                daysSinceWorkout: daysDiff
+            )
+        })
+
+        let isDistress = resolvedTurnContext?.isSubjectiveDistress ?? false
+        let totalRuns = (try? runRecord.modelContext?.fetchCount(FetchDescriptor<RunRecord>())) ?? 1
+
         let analysis = WorkoutAnalysisContext(
             runRecord: runRecord,
             runSignature: runSignature,
             macroProfile: macroProfile,
             recoveryTimeline: recoveryTimeline,
             baselineStats: baselineStats,
-            runnerProfile: runnerProfile
+            runnerProfile: runnerProfile,
+            isSubjectiveDistress: isDistress,
+            totalHistoricalRunsCount: totalRuns
         )
-        let dataSheet = analysis.groundedPromptSummary()
+        let dataSheet = analysis.groundedPromptSummary(turnContext: resolvedTurnContext)
 
         return """
         WORKOUT DATA SHEET:
         \(dataSheet)
 
-        You are my personal running coach and exercise physiologist. You have access to my workout data sheet above.
+        You are my personal running coach and exercise physiologist. You have access to my workout data sheet and Swift's deterministic engine findings above.
         Speak directly to me ("you" / "your") like an experienced, objective running coach in a conversation—clear, direct, perceptive, and data-backed, with no generic motivational platitudes and no lecturing. Never refer to me as "the runner" or in the third person.
 
         How to answer:
@@ -199,46 +225,45 @@ class AnalystChatEngine: ObservableObject {
           • Keep training advice focused on session intent (e.g. easy aerobic base, recovery jog, tempo surge) toward my goal of \(analysis.runnerProfile.trainingGoal), and point to relevant library drills (like Cadence Pyramids or Strides) when technique prep is needed.
         - When I ask what a concept means (like threshold), explain the concept simply, then connect it to how I ran.
         - When I ask for insights or what to improve, give me the coaching story: what happened, why my body reacted that way, and what to adjust next time.
-        - Speak like an experienced, objective running coach in natural conversation (typically 1 to 3 short paragraphs).
-          • Do NOT force bullet points into every response. Use bullet points ONLY when listing multiple splits, intervals, or distinct workout options. For regular coaching advice, write natural conversational sentences.
-          • Do NOT repeat the same metrics or recommend the same drill across consecutive turns. Only mention technique drills when directly relevant.
-        - Only discuss future training, recovery timelines, or readiness when I specifically ask about them. Do not append unasked readiness sign-offs or disclaimers about unrecorded sensors.
+
+        COACHING TRANSLATION ROLE (SWIFT-DRIVEN PHYSICS & ZONES):
+        1. Swift is the Physicist and Biomechanical Calculator:
+           • Swift's physiology engine has already calculated the exact root causes under "SWIFT CAUSAL VERDICTS".
+           • Translate these findings into empathetic, fluid coaching language. Use the provided severity rating (.minor, .moderate, .critical) to calibrate your coaching tone:
+             - .minor: Gentle observation or encouraging technical tweak.
+             - .moderate: Constructive tactical adjustment for future sessions.
+             - .critical: Primary protective warning and essential workout takeaway.
+           • Do not guess alternative theories or contradict Swift's determined causes.
+
+        2. Swift is the Locked Pacing and Duration Calculator:
+           • When I ask about upcoming runs, target paces, or workout duration, quote exclusively from the "LOCKED TRAINING ZONES & SESSION PRESCRIPTION" table.
+           • You have zero authority to predict, estimate, or generate paces or durations outside this pre-calculated table.
+
+        3. Turn Scope and Memory:
+           • Respect the "TURN CONTEXT & SCOPE" instructions provided by Swift.
+           • If the turn is future planning or composite, evaluate future readiness using Current Recovery Status and the Locked Prescription Table—do not let past workout exertion prevent running unless recovery is actively required.
+           • If subjective physical distress (illness/injury) is active, prioritize rest and recovery above all goals.
+           • If out-of-scope inquiry, answer briefly in 1–2 sentences and pivot back to running.
+
+        Speak like an experienced, objective running coach in natural conversation (typically 1 to 3 short paragraphs). Avoid unnecessary bullet points unless listing multiple splits or options.
         Respond in \(language).
         """
     }
 
     #if canImport(FoundationModels)
     @available(iOS 26.0, *)
-    private func generateFoundationModelResponse(for userQuestion: String) async throws -> String {
-        let systemInstructions = buildSystemInstructions()
+    private func generateFoundationModelResponse(for userQuestion: String, turnContext: ManagedTurnContext) async throws -> String {
+        let systemInstructions = buildSystemInstructions(for: userQuestion, turnContext: turnContext)
 
-        let session: LanguageModelSession
-        if let existing = modelSession as? LanguageModelSession {
-            session = existing
-        } else {
-            session = LanguageModelSession(
-                model: SystemLanguageModel.default,
-                instructions: systemInstructions
-            )
-            self.modelSession = session
-        }
+        // Swift manages conversational memory: each turn is provided with its turn-scoped instructions,
+        // sanitized turn digest, and bridging directives to eliminate token overflow and memory contamination.
+        let session = LanguageModelSession(
+            model: SystemLanguageModel.default,
+            instructions: systemInstructions
+        )
+        self.modelSession = session
 
-        let reply: String
-        do {
-            reply = try await session.respond(to: userQuestion).content
-        } catch {
-            let errorDesc = "\(error)".lowercased()
-            let isContextExceeded = errorDesc.contains("context") || errorDesc.contains("token") || errorDesc.contains("limit")
-            guard isContextExceeded else { throw error }
-            let freshSession = LanguageModelSession(
-                model: SystemLanguageModel.default,
-                instructions: systemInstructions
-            )
-            self.modelSession = freshSession
-            reply = try await freshSession.respond(to: userQuestion).content
-        }
-
-        return reply
+        return try await session.respond(to: userQuestion).content
     }
     #endif
 
@@ -316,27 +341,54 @@ class AnalystChatEngine: ObservableObject {
 
     // MARK: - Data-Grounded Fallback Response (Offline / Non-AI Hardware)
 
-    private func generateDataGroundedFallback(for userQuestion: String) -> String {
+    private func generateDataGroundedFallback(for userQuestion: String, turnContext: ManagedTurnContext? = nil) -> String {
         let q = userQuestion.lowercased().replacingOccurrences(of: "’", with: "'")
+
+        // 1. Subjective distress override
+        if turnContext?.isSubjectiveDistress == true {
+            return "When you're dealing with illness, fever, or acute physical distress, training takes a back seat. Prioritize sleep, hydration, and full rest until your symptoms fully resolve."
+        }
+
+        // 2. Out-of-scope inquiry
+        if turnContext?.turnDomain == .outOfScopeInquiry {
+            return "I'm your personal running coach and exercise physiologist, so I specialize in your running biomechanics, training zones, and recovery. What would you like to explore regarding your runs?"
+        }
+
+        let isDistress = turnContext?.isSubjectiveDistress ?? false
+        let totalRuns = (try? runRecord.modelContext?.fetchCount(FetchDescriptor<RunRecord>())) ?? 1
+
         let analysis = WorkoutAnalysisContext(
             runRecord: runRecord,
             runSignature: runSignature,
             macroProfile: macroProfile,
             recoveryTimeline: recoveryTimeline,
-            baselineStats: baselineStats
+            baselineStats: baselineStats,
+            runnerProfile: runnerProfile,
+            isSubjectiveDistress: isDistress,
+            totalHistoricalRunsCount: totalRuns
         )
 
-        // 1. Splits, intervals, and pacing segments
+        // 3. Form, focus, cadence, turnover improvements
+        if q.contains("form") || q.contains("focus") || q.contains("improve") || q.contains("technique") || q.contains("turnover") {
+            let floor = analysis.runnerProfile.heightAdjustedCadenceFloor
+            if analysis.workingCadence < floor {
+                return "Your cadence was \(analysis.workingCadence) SPM, which is below your \(floor) SPM height-adjusted floor. Focus on quickening your foot turnover with shorter, lighter steps under your center of mass."
+            } else {
+                return "Your cadence was \(analysis.workingCadence) SPM, maintaining a healthy, efficient foot turnover above your \(floor) SPM floor. Focus on keeping your strides relaxed."
+            }
+        }
+
+        // 4. Splits, intervals, and pacing segments
         if q.contains("split") || q.contains("interval") || q.contains("rep") || q.contains("segment") || q.contains("fastest") || q.contains("slowest") {
             return analysis.formatSplitReport()
         }
 
-        // 2. Grade and performance evaluation
+        // 5. Grade and performance evaluation
         if q.contains("grade") || q.contains("rate") || q.contains("score") || q.contains("how did i do") {
             return analysis.overallGradeReport.sentence
         }
 
-        // 3. Sensor queries (vertical oscillation, stride length)
+        // 6. Sensor queries (vertical oscillation, stride length)
         if q.contains("vertical") || q.contains("bounce") || q.contains("oscillation") {
             if let osc = runRecord.workingAvgVerticalOscillation {
                 return "Your vertical bounce was \(String(format: "%.1f", osc)) cm."
@@ -352,7 +404,7 @@ class AnalystChatEngine: ObservableObject {
             }
         }
 
-        // 4. Classification explanations
+        // 7. Classification explanations
         if q.contains("why") && (q.contains("label") || q.contains("classif") || q.contains("mixed")) {
             let type = runRecord.detectedTypeRaw.isEmpty ? "Run" : runRecord.detectedTypeRaw
             let reason = runRecord.needsInclineReview == true
@@ -361,27 +413,29 @@ class AnalystChatEngine: ObservableObject {
             return "This session was classified as \(type) due to \(reason)"
         }
 
-        // 5. Calendar / Day queries
+        // 8. Calendar / Day queries
         if q.contains("what day is") || q.contains("what is today") || q.contains("what date is") {
             return "Today is \(analysis.currentWeekday), \(analysis.currentDateFormatted)."
         }
 
-        // 6. Runner clarification (didn't run today / yesterday)
+        // 9. Runner clarification (didn't run today / yesterday)
         if q.contains("didn't run") || q.contains("didnt run") || q.contains("haven't run") || q.contains("havent run") {
             let timeframe = q.contains("yesterday") ? "yesterday" : "today"
             return "Understood—today is \(analysis.currentWeekday), and you haven't run \(timeframe). You have \(analysis.daysSinceWorkout) days of rest since your last session on \(analysis.workoutWeekday)."
         }
 
-        // 7. Future training, recovery, and readiness
-        if q.contains("can i run") || q.contains("ready") || q.contains("recovery") || q.contains("rest") || q.contains("tomorrow") || q.contains("today") || q.contains("push") || q.contains("hard") {
+        // 10. Future training, recovery, and readiness
+        if q.contains("can i") || q.contains("ready") || q.contains("recovery") || q.contains("rest") || q.contains("tomorrow") || q.contains("today") || q.contains("push") || q.contains("hard") || q.contains("next run") || q.contains("what pace") || q.contains("how long") {
+            let recoveryNote: String
             if analysis.recoveryTimeline.readyForHard {
-                return "Your recovery status is \(analysis.recoveryTimeline.state.rawValue): fully recovered and cleared for your next workout."
+                recoveryNote = "Your recovery status is \(analysis.recoveryTimeline.state.rawValue): fully recovered and cleared for your next workout."
             } else {
-                return "Your recovery status is \(analysis.recoveryTimeline.state.rawValue): in active recovery until \(analysis.recoveryTimeline.earliestHardPhrase)."
+                recoveryNote = "Your recovery status is \(analysis.recoveryTimeline.state.rawValue): in active recovery until \(analysis.recoveryTimeline.earliestHardPhrase)."
             }
+            return "\(recoveryNote) Next Recommended Session: \(analysis.lockedPrescription.nextSessionName) (\(analysis.lockedPrescription.prescribedDurationBand) at \(analysis.lockedPrescription.prescribedPaceBand)). \(analysis.lockedPrescription.sessionRationale)"
         }
 
-        // 8. Direct data summary
+        // 11. Direct data summary
         let pace = PaceFormatter.formatPace(secondsPerKilometer: runRecord.workingAvgPace)
         let cad = Int(runRecord.workingAvgCadence)
         let hr = Int(runRecord.workingAvgHeartRate)

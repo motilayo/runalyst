@@ -790,6 +790,269 @@ final class IndoorIntelligenceTests: XCTestCase {
             instructions.contains("Tailor your vocabulary and depth to my Athletic Experience Level"),
             "Prompt must enforce matching depth to experience level"
         )
+        XCTAssertTrue(
+            instructions.contains("SWIFT CAUSAL VERDICTS"),
+            "Prompt must include Swift Causal Verdicts"
+        )
+        XCTAssertTrue(
+            instructions.contains("LOCKED TRAINING ZONES & SESSION PRESCRIPTION"),
+            "Prompt must include Locked Training Prescription table"
+        )
+    }
+
+    // MARK: - 4B. Swift Physics, Zones & Memory Engines
+
+    func testPhysiologicalDiagnosisEngineVeracityAndSeverity() {
+        // 1. Cadence late fatigue with critical severity
+        let s1 = RunSplit(index: 1, distanceMeters: 1000, durationSeconds: 300, paceSecondsPerKm: 300, avgHeartRate: 145, avgCadence: 168, elevationGainMeters: 5)
+        let s2 = RunSplit(index: 2, distanceMeters: 1000, durationSeconds: 300, paceSecondsPerKm: 300, avgHeartRate: 150, avgCadence: 166, elevationGainMeters: 5)
+        let s3 = RunSplit(index: 3, distanceMeters: 1000, durationSeconds: 320, paceSecondsPerKm: 320, avgHeartRate: 155, avgCadence: 154, elevationGainMeters: 5)
+        let s4 = RunSplit(index: 4, distanceMeters: 1000, durationSeconds: 325, paceSecondsPerKm: 325, avgHeartRate: 158, avgCadence: 152, elevationGainMeters: 5)
+
+        let inputFatigue = PhysiologicalInput(
+            workingCadence: 160,
+            heightAdjustedCadenceFloor: 150,
+            splits: [s1, s2, s3, s4],
+            elevationGainMeters: 20.0,
+            hasCardiacDrift: true,
+            cardiacDriftMagnitudeBPM: 11,
+            durationSeconds: 1245,
+            verticalRatio: 9.4,
+            verticalOscillationCM: 10.2,
+            isIndoor: false,
+            firstHalfPaceSec: 300,
+            secondHalfPaceSec: 322.5,
+            fastestSplit: s1,
+            slowestSplit: s4,
+            avgHeartRate: 152
+        )
+        let verdictsFatigue = PhysiologicalDiagnosisEngine.evaluate(inputFatigue)
+
+        if case .lateNeuromuscularFatigue(let decay, let pace, let severity) = verdictsFatigue.cadence {
+            XCTAssertGreaterThanOrEqual(decay, 10)
+            XCTAssertGreaterThanOrEqual(pace, 15)
+            XCTAssertEqual(severity, .critical)
+        } else {
+            XCTFail("Must diagnose late neuromuscular fatigue: \(verdictsFatigue.cadence)")
+        }
+
+        if case .pacingOvershootDecoupling(let paceDelta, let drift, let severity) = verdictsFatigue.cardiac {
+            XCTAssertEqual(paceDelta, 23)
+            XCTAssertEqual(drift, 11)
+            XCTAssertEqual(severity, .moderate)
+        } else {
+            XCTFail("Must diagnose pacing overshoot decoupling: \(verdictsFatigue.cardiac)")
+        }
+
+        // Pure thermal drift with steady pace
+        let inputThermal = PhysiologicalInput(
+            workingCadence: 165,
+            heightAdjustedCadenceFloor: 150,
+            splits: [s1, s2],
+            elevationGainMeters: 5.0,
+            hasCardiacDrift: true,
+            cardiacDriftMagnitudeBPM: 11,
+            durationSeconds: 1800,
+            verticalRatio: 7.5,
+            verticalOscillationCM: 8.0,
+            isIndoor: false,
+            firstHalfPaceSec: 300,
+            secondHalfPaceSec: 302,
+            fastestSplit: s1,
+            slowestSplit: s2,
+            avgHeartRate: 150
+        )
+        let verdictsThermal = PhysiologicalDiagnosisEngine.evaluate(inputThermal)
+        if case .thermalOrCardiovascularDrift(let drift, _, let severity) = verdictsThermal.cardiac {
+            XCTAssertEqual(drift, 11)
+            XCTAssertEqual(severity, .moderate)
+        } else {
+            XCTFail("Must diagnose thermal/cardiac drift: \(verdictsThermal.cardiac)")
+        }
+
+        if case .excessiveVerticalDisplacement(let vr, let bounce, let severity) = verdictsFatigue.verticalEconomy {
+            XCTAssertEqual(vr, 9.4)
+            XCTAssertEqual(bounce, 10.2)
+            XCTAssertEqual(severity, .moderate)
+        } else {
+            XCTFail("Must diagnose excessive vertical displacement: \(verdictsFatigue.verticalEconomy)")
+        }
+
+        // 2. Grade resistance on hill climb
+        let inputHill = PhysiologicalInput(
+            workingCadence: 155,
+            heightAdjustedCadenceFloor: 150,
+            splits: [s1, s2, s3, s4],
+            elevationGainMeters: 55.0,
+            hasCardiacDrift: true,
+            cardiacDriftMagnitudeBPM: 14,
+            durationSeconds: 1245,
+            verticalRatio: 7.2,
+            verticalOscillationCM: 8.0,
+            isIndoor: false,
+            firstHalfPaceSec: 300,
+            secondHalfPaceSec: 322.5,
+            fastestSplit: s1,
+            slowestSplit: s4,
+            avgHeartRate: 152
+        )
+        let verdictsHill = PhysiologicalDiagnosisEngine.evaluate(inputHill)
+        if case .gradeResistance(let drop, let elev, let severity) = verdictsHill.cadence {
+            XCTAssertGreaterThanOrEqual(drop, 10)
+            XCTAssertEqual(elev, 55.0)
+            XCTAssertEqual(severity, .critical)
+        } else {
+            XCTFail("Must diagnose grade resistance on hills: \(verdictsHill.cadence)")
+        }
+        if case .elevationInducedCardiacSurge(let elev, let rise, let severity) = verdictsHill.cardiac {
+            XCTAssertEqual(elev, 55.0)
+            XCTAssertEqual(rise, 14)
+            XCTAssertEqual(severity, .critical)
+        } else {
+            XCTFail("Must diagnose elevation-induced cardiac surge: \(verdictsHill.cardiac)")
+        }
+
+        // 3. Treadmill kinematics
+        let inputTreadmill = PhysiologicalInput(
+            workingCadence: 168,
+            heightAdjustedCadenceFloor: 150,
+            splits: [],
+            elevationGainMeters: 0,
+            hasCardiacDrift: false,
+            cardiacDriftMagnitudeBPM: 0,
+            durationSeconds: 1800,
+            verticalRatio: nil,
+            verticalOscillationCM: nil,
+            isIndoor: true,
+            firstHalfPaceSec: 300,
+            secondHalfPaceSec: 300,
+            fastestSplit: nil,
+            slowestSplit: nil,
+            avgHeartRate: 142
+        )
+        let verdictsTreadmill = PhysiologicalDiagnosisEngine.evaluate(inputTreadmill)
+        if case .treadmillDeckKinematics(let cad) = verdictsTreadmill.verticalEconomy {
+            XCTAssertEqual(cad, 168)
+        } else {
+            XCTFail("Must use treadmill deck kinematics: \(verdictsTreadmill.verticalEconomy)")
+        }
+    }
+
+    func testTrainingZoneEngineColdStartAndSubjectiveOverride() {
+        // 1. Empirical baseline Zone 1-5 calculation
+        let inputEmpirical = TrainingZoneInput(
+            baselinePaceSec: 300.0, // 5:00/km
+            workoutPaceSec: 295.0,
+            activeGoal: "5K Race",
+            experienceLevel: "Intermediate / Enthusiast",
+            readyForHard: true,
+            daysSinceWorkout: 2,
+            heightAdjustedCadenceFloor: 150,
+            useMetricSystem: true,
+            isSubjectiveDistress: false,
+            totalHistoricalRunsCount: 10
+        )
+        let rxEmpirical = TrainingZoneEngine.computePrescription(inputEmpirical)
+        XCTAssertFalse(rxEmpirical.isColdStart)
+        XCTAssertFalse(rxEmpirical.isSubjectiveOverride)
+        XCTAssertTrue(rxEmpirical.nextSessionName.contains("Zone 2"))
+        XCTAssertTrue(rxEmpirical.zone1RecoveryPace.contains("6:00–6:30/km"))
+        XCTAssertTrue(rxEmpirical.zone2AerobicBasePace.contains("5:30–5:50/km"))
+        XCTAssertTrue(rxEmpirical.zone4ThresholdPace.contains("4:50–5:05/km"))
+        XCTAssertTrue(rxEmpirical.zone5IntervalPace.contains("4:30–4:40/km"))
+
+        // 2. Subjective physical distress override
+        let inputDistress = TrainingZoneInput(
+            baselinePaceSec: 300.0,
+            workoutPaceSec: 295.0,
+            activeGoal: "5K Race",
+            experienceLevel: "Intermediate / Enthusiast",
+            readyForHard: true,
+            daysSinceWorkout: 2,
+            heightAdjustedCadenceFloor: 150,
+            useMetricSystem: true,
+            isSubjectiveDistress: true,
+            totalHistoricalRunsCount: 10
+        )
+        let rxDistress = TrainingZoneEngine.computePrescription(inputDistress)
+        XCTAssertTrue(rxDistress.isSubjectiveOverride)
+        XCTAssertTrue(rxDistress.nextSessionName.contains("Full Rest & Recovery"))
+        XCTAssertEqual(rxDistress.prescribedDurationBand, "0 minutes (Full Rest Day)")
+        XCTAssertEqual(rxDistress.prescribedPaceBand, "N/A")
+
+        // 3. Novice zero-day cold start assessment
+        TrainingZoneEngine.hasCompletedAssessment = false
+        let inputColdNovice = TrainingZoneInput(
+            baselinePaceSec: nil,
+            workoutPaceSec: nil,
+            activeGoal: "Base Building",
+            experienceLevel: "Novice / Beginner",
+            readyForHard: true,
+            daysSinceWorkout: 0,
+            heightAdjustedCadenceFloor: 150,
+            useMetricSystem: true,
+            isSubjectiveDistress: false,
+            totalHistoricalRunsCount: 0
+        )
+        let rxNovice = TrainingZoneEngine.computePrescription(inputColdNovice)
+        XCTAssertTrue(rxNovice.isColdStart)
+        XCTAssertTrue(rxNovice.nextSessionName.contains("20-Minute Baseline Assessment"))
+
+        // 4. Assessment graduation locks out Tier 3
+        TrainingZoneEngine.hasCompletedAssessment = true
+        let rxGraduated = TrainingZoneEngine.computePrescription(inputColdNovice)
+        XCTAssertFalse(rxGraduated.isColdStart)
+        XCTAssertFalse(rxGraduated.nextSessionName.contains("Baseline Assessment"))
+    }
+
+    func testConversationMemoryManagerTurnDomainsAndBridging() {
+        let msgHistory = [
+            AnalystChatMessage(sender: .user, text: "Why was my cadence so low in the last kilometer?"),
+            AnalystChatMessage(sender: .analyst, text: "Late turnover decay caused your cadence to drop by 11 SPM.")
+        ]
+
+        // 1. Single workout inquiry
+        let ctxWorkout = ConversationMemoryManager.buildTurnContext(
+            userQuestion: "Explain my vertical bounce",
+            messages: msgHistory,
+            recoveryStateDescription: "Productive",
+            daysSinceWorkout: 3
+        )
+        XCTAssertEqual(ctxWorkout.turnDomain, .workoutTelemetryAnalysis)
+        XCTAssertFalse(ctxWorkout.stripWorkoutPayload)
+
+        // 2. Composite question (Workout + Tomorrow planning)
+        let ctxComposite = ConversationMemoryManager.buildTurnContext(
+            userQuestion: "Why did my HR spike, and does that mean I should rest tomorrow?",
+            messages: msgHistory,
+            recoveryStateDescription: "Productive",
+            daysSinceWorkout: 2
+        )
+        XCTAssertEqual(ctxComposite.turnDomain, .compositeWorkoutAndPlanning)
+        XCTAssertTrue(ctxComposite.turnGuidance.contains("COMPOSITE BRIDGING DIRECTIVE"))
+        XCTAssertFalse(ctxComposite.stripWorkoutPayload)
+
+        // 3. Subjective distress reported
+        let ctxDistress = ConversationMemoryManager.buildTurnContext(
+            userQuestion: "I have a sore throat, fever, and feel awful",
+            messages: msgHistory,
+            recoveryStateDescription: "Productive",
+            daysSinceWorkout: 1
+        )
+        XCTAssertEqual(ctxDistress.turnDomain, .subjectiveDistressReported)
+        XCTAssertTrue(ctxDistress.isSubjectiveDistress)
+        XCTAssertTrue(ctxDistress.turnGuidance.contains("Prioritize rest, hydration"))
+
+        // 4. Out-of-scope inquiry
+        let ctxOutOfScope = ConversationMemoryManager.buildTurnContext(
+            userQuestion: "Who won the Olympic marathon?",
+            messages: msgHistory,
+            recoveryStateDescription: "Productive",
+            daysSinceWorkout: 1
+        )
+        XCTAssertEqual(ctxOutOfScope.turnDomain, .outOfScopeInquiry)
+        XCTAssertTrue(ctxOutOfScope.stripWorkoutPayload)
+        XCTAssertTrue(ctxOutOfScope.turnGuidance.contains("general knowledge"))
     }
 
     // MARK: - 5. RAG Payloads

@@ -92,13 +92,21 @@ struct WorkoutAnalysisContext {
     // Overall Grade
     let overallGradeReport: RunGradeReport
 
+    // Swift Deterministic Diagnostic Verdicts
+    let physiologicalVerdicts: PhysiologicalVerdicts
+
+    // Locked Training Prescription
+    let lockedPrescription: LockedTrainingPrescription
+
     init(
         runRecord: RunRecord,
         runSignature: RunSignature?,
         macroProfile: MacroProfile?,
         recoveryTimeline: RecoveryTimeline,
         baselineStats: (avgPace: Double, avgCadence: Double, avgHR: Double)? = nil,
-        runnerProfile: RunnerProfile? = nil
+        runnerProfile: RunnerProfile? = nil,
+        isSubjectiveDistress: Bool = false,
+        totalHistoricalRunsCount: Int = 1
     ) {
         self.runRecord = runRecord
         self.macroProfile = macroProfile
@@ -396,6 +404,42 @@ struct WorkoutAnalysisContext {
             cardiacDrift: self.hasCardiacDrift
         )
         self.overallGradeReport = RunGrade.evaluate(gradeInput)
+
+        // Swift Physics Causal Verdicts
+        let physInput = PhysiologicalInput(
+            workingCadence: self.workingCadence,
+            heightAdjustedCadenceFloor: self.runnerProfile.heightAdjustedCadenceFloor,
+            splits: resolvedSplits,
+            elevationGainMeters: self.elevationGainMeters,
+            hasCardiacDrift: self.hasCardiacDrift,
+            cardiacDriftMagnitudeBPM: self.cardiacDriftMagnitudeBPM,
+            durationSeconds: runRecord.duration,
+            verticalRatio: self.verticalRatio,
+            verticalOscillationCM: self.verticalOscillationCM,
+            isIndoor: self.isIndoor,
+            firstHalfPaceSec: self.firstHalfPaceSec,
+            secondHalfPaceSec: self.secondHalfPaceSec,
+            fastestSplit: self.fastestSplit,
+            slowestSplit: self.slowestSplit,
+            avgHeartRate: self.workingHR
+        )
+        self.physiologicalVerdicts = PhysiologicalDiagnosisEngine.evaluate(physInput)
+
+        // Swift Locked Training Prescription
+        let useMetric = UserDefaults.standard.bool(forKey: "useMetricSystem")
+        let tzInput = TrainingZoneInput(
+            baselinePaceSec: self.baselineStats?.avgPace,
+            workoutPaceSec: self.workingPaceSec,
+            activeGoal: self.runnerProfile.trainingGoal,
+            experienceLevel: self.runnerProfile.experienceLevel,
+            readyForHard: self.recoveryTimeline.readyForHard,
+            daysSinceWorkout: self.daysSinceWorkout,
+            heightAdjustedCadenceFloor: self.runnerProfile.heightAdjustedCadenceFloor,
+            useMetricSystem: useMetric,
+            isSubjectiveDistress: isSubjectiveDistress,
+            totalHistoricalRunsCount: totalHistoricalRunsCount
+        )
+        self.lockedPrescription = TrainingZoneEngine.computePrescription(tzInput)
     }
 
     // MARK: - Formatted Dynamic Text Presentations
@@ -448,7 +492,17 @@ struct WorkoutAnalysisContext {
     }
 
     /// Formats precomputed analytical findings into a compact context block for the on-device language model.
-    func groundedPromptSummary() -> String {
+    func groundedPromptSummary(turnContext: ManagedTurnContext? = nil) -> String {
+        if let tc = turnContext, tc.stripWorkoutPayload {
+            var lines = ["ATHLETE IDENTITY & CURRENT LOAD:"]
+            lines.append("- Athletic Experience Level: \(runnerProfile.experienceLevel)")
+            lines.append("- Active Training Goal: \(runnerProfile.trainingGoal)")
+            lines.append("- Current Date (Today): \(currentWeekday), \(currentDateFormatted)")
+            lines.append("")
+            lines.append(tc.promptHeader)
+            return lines.joined(separator: "\n")
+        }
+
         var lines: [String] = []
 
         // Athlete Identity & Current Load
@@ -509,6 +563,11 @@ struct WorkoutAnalysisContext {
         }
         lines.append("- Cardiovascular Strain: Working HR \(workingHR) BPM; \(percentZone4)% in Zone 4 (Threshold)")
 
+        // Swift Deterministic Causal Verdicts
+        lines.append("")
+        lines.append("SWIFT CAUSAL VERDICTS (DETERMINISTIC ROOT CAUSES):")
+        lines.append(physiologicalVerdicts.promptDescription)
+
         // Pacing & Splits
         if !splitEvaluations.isEmpty {
             lines.append("")
@@ -559,8 +618,16 @@ struct WorkoutAnalysisContext {
         } else if let cap = recoveryTimeline.easyCap {
             lines.append("- Recovery Status: In active recovery window until \(recoveryTimeline.earliestHardPhrase). Keep next run easy (cap: \(cap.lowerBound)–\(cap.upperBound) min).")
         }
+        lines.append("")
+        lines.append(lockedPrescription.promptDescription)
+
         if let drill = runRecord.insight?.drillRecommendations?.first ?? runRecord.insight?.drillRecommendation {
-            lines.append("- Technique Cue / Drill: Warm up with \(drill.drillTitle) before the next run (to work on turnover, not as mandatory rehab).")
+            lines.append("- Pre-Run Technique Drill Option: \(drill.drillTitle) (warm-up turnover prep, not mandatory rehab)")
+        }
+
+        if let tc = turnContext {
+            lines.append("")
+            lines.append(tc.promptHeader)
         }
 
         return lines.joined(separator: "\n")
