@@ -293,4 +293,95 @@ extension WorkoutAnalysisContext {
 
         return lines.joined(separator: "\n")
     }
+
+    /// Builds a focused mathematical report of interval execution for native tool calling.
+    func formatIntervalPerformanceSummary() -> String {
+        guard evaluationModality == .intervals && !intervalEvaluations.isEmpty else {
+            return "This workout was classified as \(detectedType), not discrete interval reps."
+        }
+        var lines = ["INTERVAL PERFORMANCE (THE MATH & EXECUTION):"]
+        lines.append("- Work Reps Detected: \(intervalEvaluations.count) work reps")
+        lines.append("- Environment: \(isIndoor ? "Indoor Treadmill (belt-driven, static room air)" : "Outdoor (self-propelled road/track)")")
+        if let f = fastestWorkRep, let s = slowestWorkRep {
+            lines.append("- Work Rep Range: \(PaceFormatter.formatPace(secondsPerKilometer: f.avgPace)) to \(PaceFormatter.formatPace(secondsPerKilometer: s.avgPace)) (spread: \(Int(workRepPaceSpreadSec))s/km)")
+        }
+        lines.append("- Repeatability: \(workRepPaceSpreadSec <= 8.0 ? "Disciplined (tight ±\(Int(workRepPaceSpreadSec / 2.0))s/km spread)" : "Variable (\(Int(workRepPaceSpreadSec))s/km spread; late rep fatigue)")")
+        let avgCad = workSegments.isEmpty ? 0 : Int(workSegments.reduce(0.0) { $0 + $1.avgCadence } / Double(workSegments.count))
+        let floor = runnerProfile.heightAdjustedCadenceFloor
+        lines.append("- Turnover Adherence: Work average \(avgCad) SPM vs \(floor) SPM height floor (\(avgCad >= floor ? "above floor" : "sub-floor"))")
+        let validDrops = intervalEvaluations.compactMap(\.recoveryHeartRateDrop)
+        if !validDrops.isEmpty {
+            let avgDrop = Int((Double(validDrops.reduce(0, +)) / Double(validDrops.count)).rounded())
+            lines.append("- Recovery Heart Rate: Average drop of -\(avgDrop) BPM between sets\(isIndoor ? " (impacted by indoor thermal buildup)" : "")")
+        }
+        lines.append("")
+        lines.append("Rep-by-Rep Breakdown:")
+        for rep in intervalEvaluations.prefix(24) {
+            var detail = "• Rep \(rep.repIndex) (\(rep.workPaceFormatted), \(rep.workCadence) SPM, \(rep.workHeartRate) BPM): Grade \(rep.letterGrade) — \(rep.observation)"
+            if let rPace = rep.recoveryPaceFormatted, let rDrop = rep.recoveryHeartRateDrop, rDrop > 0 {
+                detail += "\n  Recovery: \(rPace), -\(rDrop) BPM drop"
+            }
+            lines.append(detail)
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    /// Builds a focused physical reality report (friction, thermodynamics, gravity, cardiac lag) for native tool calling.
+    func formatWorkoutPhysicsSummary(domain: String? = nil) -> String {
+        var lines = ["WORKOUT PHYSICS & PHYSIOLOGY:"]
+
+        // 1. Kinematics & Kinetic Friction
+        lines.append("1. Kinematics & Kinetic Friction:")
+        if isIndoor {
+            lines.append("- Surface: Moving treadmill belt. Zero forward road displacement; belt is motor-driven beneath feet.")
+            if isSubFloorCadence {
+                lines.append("- Braking Shock: Turnover dipped below \(runnerProfile.heightAdjustedCadenceFloor) SPM floor. Low cadence on a moving belt increases foot contact ahead of center-of-mass, creating severe kinetic braking shock.")
+            } else {
+                lines.append("- Turnover Stability: Turnover maintained above \(runnerProfile.heightAdjustedCadenceFloor) SPM floor, minimizing braking impulse on the belt.")
+            }
+            lines.append("- Air Drag: Zero relative wind resistance.")
+        } else {
+            lines.append("- Surface: Ground-truth road/track pavement. Authentic friction and self-propulsion required.")
+            lines.append("- Wind Drag: Authentic convective aerodynamic resistance.")
+        }
+
+        // 2. Thermodynamics & Thermal Accumulation
+        lines.append("")
+        lines.append("2. Thermodynamics & Cooling:")
+        if isIndoor {
+            lines.append("- Heat Dissipation: Static room air with 0 km/h relative airflow impairs sweat evaporation. Thermal accumulation elevates core temperature and causes cardiac drift even on flat grades.")
+        } else {
+            let tempStr = runRecord.ambientTemperatureCelsius.map { String(format: "%.1f°C", $0) } ?? "ambient"
+            let humStr = runRecord.ambientHumidity.map { "\($0 <= 1.0 ? Int($0 * 100) : Int($0))%" } ?? "ambient"
+            lines.append("- Heat Dissipation: Natural convective wind cooling assists sweat evaporation (\(tempStr), \(humStr) humidity).")
+            if (runRecord.ambientTemperatureCelsius ?? 0) >= 22.0 {
+                lines.append("- High Ambient Heat: Elevated temperature blunts evaporative cooling, triggering cardiac decoupling.")
+            }
+        }
+
+        // 3. Gravitational Resistance
+        lines.append("")
+        lines.append("3. Gravitational Resistance:")
+        if isIndoor {
+            lines.append("- Deck Grade: Flat 0% grade has ZERO added gravitational resistance (1g normal force). Never misattribute indoor strain to gravity.")
+        } else {
+            if elevationGainMeters >= 30.0 {
+                lines.append("- Hill Climbing: +\(Int(elevationGainMeters))m elevation climbed requires mechanical work against gravity. Cardiac surge on hills is gravitational load, not aerobic fitness decline.")
+            } else {
+                lines.append("- Terrain: Flat topography (+\(Int(elevationGainMeters))m gain); standard 1g gravitational load.")
+            }
+        }
+
+        // 4. Cardiac Lag & Decoupling
+        lines.append("")
+        lines.append("4. Cardiac Lag & Cardiovascular Coupling:")
+        lines.append("- Physiological Delay: Heart rate naturally lags pace changes by 15–30 seconds due to autonomic circulatory kinetics.")
+        if hasCardiacDrift {
+            lines.append("- Decoupling: Cardiac drift detected (+\(cardiacDriftMagnitudeBPM) BPM in second half despite flat/fading pace). Cause: thermal strain or glycogen depletion, not speeding up.")
+        } else {
+            lines.append("- Coupling: Stable cardiac coupling (heart rate remained in lockstep with mechanical output).")
+        }
+
+        return lines.joined(separator: "\n")
+    }
 }

@@ -200,22 +200,26 @@ class AnalystChatEngine: ObservableObject {
         Speak directly to me ("you" / "your") like an experienced, objective running coach in natural conversation (1 to 3 short paragraphs). Clear, direct, perceptive, and data-backed. Never refer to me as "the runner" or in the third person.
 
         TOOLS & DATA ACCESS:
-        You have access to 3 deterministic tools to query my running data:
-        1. `fetchWorkoutAnalysis`: Retrieves detailed retrospective telemetry, lap splits, second-half cardiac drift, and deterministic physiological verdicts for the session being reviewed.
-        2. `fetchReadinessAndPrescription`: Retrieves current recovery timeline, rest days elapsed, readiness status, and the locked prescription table for upcoming sessions.
-        3. `fetchAthleteProfile`: Retrieves my 30-day training load, experience level, and height-calibrated cadence floor.
+        You have access to 5 deterministic native tools to query my running math and physics:
+        1. `fetchWorkoutAnalysis`: Retrieves retrospective telemetry, lap splits, second-half cardiac drift, and deterministic physiological verdicts for continuous runs or overall session reviews.
+        2. `fetchIntervalPerformance`: Retrieves discrete interval rep breakdown (work reps, paces, turnover, heart rates, active recovery phases, recovery heart rate drops, pace repeatability across sets, and belt vs road mechanics). MANDATORY to call when evaluating interval workouts or rep execution.
+        3. `fetchWorkoutPhysics`: Retrieves modeled physical and physiological realities: treadmill belt kinetics and braking shock when cadence dips, indoor static air thermal build vs convective wind cooling, gravitational hill resistance, and cardiac lag.
+        4. `fetchReadinessAndPrescription`: Retrieves current recovery timeline, rest days elapsed, readiness status, and the locked prescription table for upcoming sessions.
+        5. `fetchAthleteProfile`: Retrieves my 30-day training load, experience level, and height-calibrated cadence floor.
 
         TOOL USAGE RULES:
-        • MANDATORY: You have NO workout telemetry or heart rate data in your initial context. You MUST call `fetchWorkoutAnalysis` before answering any question about my past run, heart rate, cadence, pace, or performance.
-        • Before answering questions about whether I can run tomorrow, recovery, or next workout pacing, you MUST call `fetchReadinessAndPrescription`.
-        • For composite questions (e.g. "Why did my HR spike and should I rest tomorrow?"), call BOTH tools sequentially and address both aspects.
-        • For questions about my general training volume or profile, call `fetchAthleteProfile`.
-        • When I ask conceptual questions (e.g. "What is VO2 Max?", "What is cardiac drift?"), explain the concept simply using your internal knowledge. If relevant to my run, call `fetchWorkoutAnalysis` to connect it to my data.
-        • When I ask questions unrelated to running, health, physiology, or fitness (out of scope), do NOT call tools. Answer in 1 concise sentence and politely redirect back to training.
+        • MANDATORY: You have NO workout telemetry or heart rate data in your initial context. You MUST call the appropriate tool before answering questions about my past run, heart rate, cadence, pace, or performance.
+        • For interval workouts or questions about sets/reps: call `fetchIntervalPerformance`.
+        • For questions about treadmill vs outdoor mechanics, heat, hills, or physics: call `fetchWorkoutPhysics`.
+        • Before answering questions about whether I can run tomorrow, recovery, or next workout pacing: call `fetchReadinessAndPrescription`.
+        • For composite questions: call the necessary tools sequentially and address both aspects.
+        • For questions about general training volume or profile: call `fetchAthleteProfile`.
+        • For conceptual questions (e.g. "What is VO2 Max?", "What is cardiac drift?"): explain the concept simply using your internal knowledge. If relevant to my run, call tools to connect it to my data.
+        • For out-of-scope questions unrelated to running, health, or fitness: do NOT call tools; answer in 1 concise sentence and redirect to training.
 
         SAFETY & BOUNDARIES:
         • Athlete Safety Override: If I mention physical illness, fever, flu, or sharp injury pain, SAFETY OVERRIDES ALL TRAINING. Advise rest and recovery immediately without calling training tools or prescribing workouts.
-        • Deterministic Authority: When you call `fetchWorkoutAnalysis` or `fetchReadinessAndPrescription`, the returned verdicts and locked prescription numbers are your indisputable mathematical conclusions. Never contradict them or invent numbers outside the returned tables.
+        • Deterministic Authority: The returned math and physics verdicts are your indisputable mathematical conclusions. Never contradict them or invent numbers outside the returned data.
         • Never claim a flat treadmill intensifies gravitational load (gravity is normal 1g); flat treadmill drift is thermal accumulation from zero convective airflow.
         • Bold accent numbers and units (e.g. **156 SPM**, **7:15/km**).
 
@@ -229,12 +233,22 @@ class AnalystChatEngine: ObservableObject {
             return existing
         }
 
-        let workoutTool = FetchWorkoutAnalysisTool { [weak self] in
+        let workoutTool = FetchWorkoutAnalysisTool { [weak self] _ in
             guard let self else { return "" }
             return self.makeAnalysisContext().groundedPromptSummary()
         }
 
-        let readinessTool = FetchReadinessAndPrescriptionTool { [weak self] in
+        let intervalTool = FetchIntervalPerformanceTool { [weak self] _ in
+            guard let self else { return "" }
+            return self.makeAnalysisContext().formatIntervalPerformanceSummary()
+        }
+
+        let physicsTool = FetchWorkoutPhysicsTool { [weak self] query in
+            guard let self else { return "" }
+            return self.makeAnalysisContext().formatWorkoutPhysicsSummary(domain: query.domain)
+        }
+
+        let readinessTool = FetchReadinessAndPrescriptionTool { [weak self] _ in
             guard let self else { return "" }
             let dummyTurn = ManagedTurnContext(
                 turnDomain: .futureSessionPlanning,
@@ -244,7 +258,7 @@ class AnalystChatEngine: ObservableObject {
             return self.makeAnalysisContext().groundedPromptSummary(turnContext: dummyTurn)
         }
 
-        let profileTool = FetchAthleteProfileTool { [weak self] in
+        let profileTool = FetchAthleteProfileTool { [weak self] _ in
             guard let self else { return "" }
             let profile = self.runnerProfile
             return """
@@ -256,7 +270,7 @@ class AnalystChatEngine: ObservableObject {
             """
         }
 
-        let tools: [any Tool] = [workoutTool, readinessTool, profileTool]
+        let tools: [any Tool] = [workoutTool, intervalTool, physicsTool, readinessTool, profileTool]
         let instructions = buildLeanSystemInstructions()
         let session = LanguageModelSession(
             model: SystemLanguageModel.default,

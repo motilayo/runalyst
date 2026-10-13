@@ -1525,10 +1525,69 @@ final class IndoorIntelligenceTests: XCTestCase {
         if #available(iOS 26.0, *) {
             let leanPrompt = chatEngine.buildLeanSystemInstructions()
             XCTAssertTrue(leanPrompt.contains("fetchWorkoutAnalysis"))
+            XCTAssertTrue(leanPrompt.contains("fetchIntervalPerformance"))
+            XCTAssertTrue(leanPrompt.contains("fetchWorkoutPhysics"))
             XCTAssertTrue(leanPrompt.contains("fetchReadinessAndPrescription"))
             XCTAssertTrue(leanPrompt.contains("fetchAthleteProfile"))
             XCTAssertTrue(leanPrompt.contains("Athlete Safety Override"))
             XCTAssertFalse(leanPrompt.contains("WORKOUT DATA SHEET:"), "Lean tool instructions must NOT include upfront raw data sheet")
+        }
+        #endif
+    }
+
+    @MainActor
+    func testNativeToolCallingIntervalPerformanceToolOutput() async throws {
+        let runRecord = makeTestRunRecord(isIndoor: true)
+        let signature = RunSignature(
+            classification: "Intervals",
+            confidence: 0.94,
+            probabilities: ["Intervals": 0.94],
+            anomalies: [],
+            cadenceFloor: 150.0,
+            phaseSegments: [
+                PhaseSegment(startSeconds: 0, endSeconds: 180, kind: "work", avgPace: 270, avgCadence: 165, avgHR: 168),
+                PhaseSegment(startSeconds: 180, endSeconds: 240, kind: "recovery", avgPace: 360, avgCadence: 145, avgHR: 135)
+            ],
+            dataSource: "wrist",
+            isIndoor: true,
+            needsInclineReview: false
+        )
+        let chatEngine = AnalystChatEngine(runRecord: runRecord, runSignature: signature)
+
+        #if canImport(FoundationModels)
+        if #available(iOS 26.0, *) {
+            let intervalTool = FetchIntervalPerformanceTool { _ in
+                let analysis = chatEngine.makeAnalysisContext()
+                return analysis.formatIntervalPerformanceSummary()
+            }
+
+            let result = try await intervalTool.call(arguments: IntervalPerformanceQuery(focus: "all"))
+            XCTAssertTrue(result.contains("INTERVAL PERFORMANCE"))
+            XCTAssertTrue(result.contains("Work Reps Detected"))
+            XCTAssertTrue(result.contains("Indoor Treadmill"))
+            XCTAssertEqual(intervalTool.name, "fetchIntervalPerformance")
+        }
+        #endif
+    }
+
+    @MainActor
+    func testNativeToolCallingWorkoutPhysicsToolOutput() async throws {
+        let runRecord = makeTestRunRecord(isIndoor: true)
+        let chatEngine = AnalystChatEngine(runRecord: runRecord)
+
+        #if canImport(FoundationModels)
+        if #available(iOS 26.0, *) {
+            let physicsTool = FetchWorkoutPhysicsTool { query in
+                let analysis = chatEngine.makeAnalysisContext()
+                return analysis.formatWorkoutPhysicsSummary(domain: query.domain)
+            }
+
+            let result = try await physicsTool.call(arguments: WorkoutPhysicsQuery(domain: "all"))
+            XCTAssertTrue(result.contains("WORKOUT PHYSICS & PHYSIOLOGY"))
+            XCTAssertTrue(result.contains("Kinematics & Kinetic Friction"))
+            XCTAssertTrue(result.contains("Thermodynamics & Cooling"))
+            XCTAssertTrue(result.contains("Moving treadmill belt"))
+            XCTAssertEqual(physicsTool.name, "fetchWorkoutPhysics")
         }
         #endif
     }
