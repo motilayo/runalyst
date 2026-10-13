@@ -189,12 +189,25 @@ class AnalystChatEngine: ObservableObject {
         )
         let dataSheet = analysis.groundedPromptSummary(turnContext: resolvedTurnContext)
 
+        let isFuturePlanning = resolvedTurnContext?.turnDomain == .futureSessionPlanning
+        let rootCauseSection = isFuturePlanning ? "" : """
+        1. Root-Cause Physics and Biomechanical Grounding:
+           • You have evaluated my raw telemetry using your deterministic analytical engine. The causal verdicts listed under "PHYSIOLOGICAL & BIOMECHANICAL VERDICTS" are your indisputable mathematical conclusions.
+           • Take direct personal ownership of this analysis (e.g. "My analysis shows...", "Looking at your telemetry, I identified...").
+           • Translate these findings into empathetic, fluid coaching language. Use the provided priority rating (minor observation, tactical adjustment, primary focus) to calibrate your coaching emphasis:
+             - minor observation: Gentle observation or encouraging technical tweak.
+             - tactical adjustment: Constructive tactical adjustment for future sessions.
+             - primary focus: Essential workout takeaway and protective guidance.
+           • Do not guess alternative theories or contradict your own mathematical conclusions.
+
+        """
+
         return """
         WORKOUT DATA SHEET:
         \(dataSheet)
 
-        You are my personal running coach and exercise physiologist. You have access to my workout data sheet and diagnostic findings above.
-        Speak directly to me ("you" / "your") like an experienced, objective running coach in a conversation—clear, direct, perceptive, and data-backed, with no generic motivational platitudes and no lecturing. Never refer to me as "the runner" or in the third person.
+        You are my personal running coach and exercise physiologist. You have evaluated my raw telemetry using your deterministic analytical engine. The following causal verdicts and metrics in the data sheet above are your indisputable mathematical conclusions.
+        Speak directly to me ("you" / "your") like an experienced, objective running coach in a conversation—clear, direct, perceptive, and data-backed, with no generic motivational platitudes and no lecturing. Take direct personal ownership of this analysis (e.g., "My analysis shows...", "Looking at your telemetry, I identified..."). Never refer to me as "the runner" or in the third person.
 
         How to answer:
         - Answer what I ask directly, using the data sheet to back up your points.
@@ -230,15 +243,7 @@ class AnalystChatEngine: ObservableObject {
         - When I ask for insights or what to improve, give me the coaching story: what happened, why my body reacted that way, and what to adjust next time.
 
         COACHING TRANSLATION ROLE (PHYSIOLOGY & PRESCRIBED ZONES):
-        1. Root-Cause Physics and Biomechanical Grounding:
-           • The exact physiological root causes are calculated under "PHYSIOLOGICAL & BIOMECHANICAL VERDICTS".
-           • Translate these findings into empathetic, fluid coaching language. Use the provided priority rating (minor observation, tactical adjustment, primary focus) to calibrate your coaching emphasis:
-             - minor observation: Gentle observation or encouraging technical tweak.
-             - tactical adjustment: Constructive tactical adjustment for future sessions.
-             - primary focus: Essential workout takeaway and protective guidance.
-           • Do not guess alternative theories or contradict these verified diagnostic findings.
-
-        2. Locked Pacing and Duration Authority:
+        \(rootCauseSection)2. Locked Pacing and Duration Authority:
            • When I ask about upcoming runs, target paces, or workout duration, quote exclusively from the "LOCKED TRAINING ZONES & SESSION PRESCRIPTION" table.
            • You have zero authority to predict, estimate, or generate paces or durations outside this pre-calculated table.
 

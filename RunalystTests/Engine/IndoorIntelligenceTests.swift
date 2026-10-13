@@ -799,8 +799,12 @@ final class IndoorIntelligenceTests: XCTestCase {
             "Prompt must include Locked Training Prescription table"
         )
         XCTAssertFalse(
-            instructions.contains("Swift flagged this") || instructions.contains("Swift's analysis") || instructions.contains("Swift is the Physicist"),
-            "Prompt must not contain 4th-wall leaking references attributing coaching to Swift"
+            instructions.contains("Swift is the Physicist") || instructions.contains("Swift's deterministic engine") || instructions.contains("SWIFT CAUSAL VERDICTS"),
+            "Prompt must not attribute analytical physics to Swift"
+        )
+        XCTAssertTrue(
+            instructions.contains("You have evaluated my raw telemetry using your deterministic analytical engine"),
+            "Prompt must absorb deterministic engine into coach persona"
         )
     }
 
@@ -808,14 +812,22 @@ final class IndoorIntelligenceTests: XCTestCase {
     func testAnalystChatFutureSessionPlanningScopingPrunesPastRetrospectiveData() async {
         let runRecord = makeTestRunRecord(isIndoor: false)
         let chatEngine = AnalystChatEngine(runRecord: runRecord)
-        let turnContext = ManagedTurnContext(
-            turnDomain: .futureSessionPlanning,
-            isSubjectiveDistress: false,
-            cleanConversationDigest: "",
-            turnGuidance: "Future planning",
-            stripWorkoutPayload: false
+        let msgHistory = [
+            AnalystChatMessage(sender: .user, text: "Why did this run feel challenging, and did my mechanics break down?"),
+            AnalystChatMessage(sender: .analyst, text: "Cardiovascular drift with a 16 BPM rise in heart rate within 45 minutes caused fatigue.")
+        ]
+        let turnContext = ConversationMemoryManager.buildTurnContext(
+            userQuestion: "Can I run tomorrow?",
+            messages: msgHistory,
+            recoveryStateDescription: "Fully Recovered",
+            daysSinceWorkout: 4
         )
-        let instructions = chatEngine.buildSystemInstructions(userQuestion: "Can I run tomorrow?", turnContext: turnContext)
+        XCTAssertEqual(turnContext.turnDomain, .futureSessionPlanning)
+        XCTAssertTrue(turnContext.prunePhysiologicalVerdicts)
+        XCTAssertEqual(turnContext.turnIndex, 1)
+        XCTAssertFalse(turnContext.cleanConversationDigest.contains("16 BPM"))
+
+        let instructions = chatEngine.buildSystemInstructions(for: "Can I run tomorrow?", turnContext: turnContext)
 
         XCTAssertTrue(instructions.contains("FUTURE TRAINING & READINESS:"))
         XCTAssertTrue(instructions.contains("LOCKED TRAINING ZONES & SESSION PRESCRIPTION"))

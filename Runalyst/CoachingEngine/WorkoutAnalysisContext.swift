@@ -503,7 +503,7 @@ struct WorkoutAnalysisContext {
             return lines.joined(separator: "\n")
         }
 
-        if let tc = turnContext, tc.turnDomain == .futureSessionPlanning {
+        if let tc = turnContext, tc.turnDomain == .futureSessionPlanning || tc.prunePhysiologicalVerdicts {
             var lines = ["ATHLETE IDENTITY & CURRENT LOAD:"]
             lines.append("- Athletic Experience Level: \(runnerProfile.experienceLevel)")
             lines.append("- Active Training Goal: \(runnerProfile.trainingGoal)")

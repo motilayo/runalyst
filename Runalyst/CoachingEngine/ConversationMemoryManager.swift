@@ -13,15 +13,35 @@ enum TurnDomain: Sendable, Equatable {
 /// Managed context and memory scoping synthesized for a single conversation turn.
 struct ManagedTurnContext: Sendable, Equatable {
     let turnDomain: TurnDomain
+    let turnIndex: Int
     let isSubjectiveDistress: Bool
     let cleanConversationDigest: String
     let turnGuidance: String
     let stripWorkoutPayload: Bool
+    let prunePhysiologicalVerdicts: Bool
+
+    init(
+        turnDomain: TurnDomain,
+        turnIndex: Int = 0,
+        isSubjectiveDistress: Bool = false,
+        cleanConversationDigest: String = "",
+        turnGuidance: String = "",
+        stripWorkoutPayload: Bool = false,
+        prunePhysiologicalVerdicts: Bool = false
+    ) {
+        self.turnDomain = turnDomain
+        self.turnIndex = turnIndex
+        self.isSubjectiveDistress = isSubjectiveDistress
+        self.cleanConversationDigest = cleanConversationDigest
+        self.turnGuidance = turnGuidance
+        self.stripWorkoutPayload = stripWorkoutPayload
+        self.prunePhysiologicalVerdicts = prunePhysiologicalVerdicts
+    }
 
     var promptHeader: String {
         var lines: [String] = []
         lines.append("TURN CONTEXT & DIRECTIVE:")
-        lines.append("- Domain: \(turnDomain)")
+        lines.append("- Domain: \(turnDomain) (Turn \(turnIndex))")
         lines.append("- Memory Guidance: \(turnGuidance)")
         if !cleanConversationDigest.isEmpty {
             lines.append("- Conversation Digest:\n\(cleanConversationDigest)")
@@ -40,6 +60,7 @@ enum ConversationMemoryManager {
         daysSinceWorkout: Int
     ) -> ManagedTurnContext {
         let lower = userQuestion.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        let userTurnIndex = max(0, messages.filter { $0.sender == .user }.count)
 
         // 1. Subjective Distress Detection (Illness, Fever, Extreme Exhaustion, Acute Injury)
         let distressWords: Set<String> = [
@@ -56,10 +77,12 @@ enum ConversationMemoryManager {
         if isWordDistress || isPhraseDistress {
             return ManagedTurnContext(
                 turnDomain: .subjectiveDistressReported,
+                turnIndex: userTurnIndex,
                 isSubjectiveDistress: true,
                 cleanConversationDigest: summarizeHistory(messages),
                 turnGuidance: "The runner reported physical illness, fever, or acute distress. Prioritize rest, hydration, and recovery above all training goals. Do not recommend running.",
-                stripWorkoutPayload: false
+                stripWorkoutPayload: false,
+                prunePhysiologicalVerdicts: false
             )
         }
 
@@ -71,10 +94,12 @@ enum ConversationMemoryManager {
         if outOfScopeTriggers.contains(where: { lower.contains($0) }) {
             return ManagedTurnContext(
                 turnDomain: .outOfScopeInquiry,
+                turnIndex: userTurnIndex,
                 isSubjectiveDistress: false,
                 cleanConversationDigest: "",
                 turnGuidance: "The user is asking a general knowledge or non-running question. Answer concisely in 1–2 sentences, then politely pivot the conversation back to their personal running data and goals.",
-                stripWorkoutPayload: true
+                stripWorkoutPayload: true,
+                prunePhysiologicalVerdicts: true
             )
         }
 
@@ -89,23 +114,28 @@ enum ConversationMemoryManager {
             let guidance = "COMPOSITE BRIDGING DIRECTIVE: Answer sequentially: First, explain the root cause of the past workout exertion using the physiological verdicts. Second, evaluate tomorrow's readiness using strictly the Current Recovery Status (\(recoveryStateDescription)) and the Locked Training Prescription Table. Do not assume past exertion from a previous session prohibits running tomorrow unless the recovery timeline explicitly requires active recovery."
             return ManagedTurnContext(
                 turnDomain: .compositeWorkoutAndPlanning,
+                turnIndex: userTurnIndex,
                 isSubjectiveDistress: false,
                 cleanConversationDigest: summarizeHistory(messages),
                 turnGuidance: guidance,
-                stripWorkoutPayload: false
+                stripWorkoutPayload: false,
+                prunePhysiologicalVerdicts: false
             )
         }
 
-        // 4. Future Session Planning Only
+        // 4. Future Session Planning Only (Aggressive turn-scoping prunes retrospective verdicts)
         if hasFutureIntent || lower.contains("ready") || lower.contains("rest day") || lower.contains("push hard") {
             let restNote = daysSinceWorkout > 0 ? "You have had \(daysSinceWorkout) days of rest since your last session." : "This workout was today."
-            let guidance = "TURN FOCUS: Future Training & Readiness. Ground your response strictly in the Current Recovery Status (\(recoveryStateDescription)) and Locked Prescription Table. \(restNote) Answer whether I can run and detail the prescribed next session. DO NOT volunteer an unprompted retrospective review of past workouts or splits. Focus 100% on the upcoming session."
+            let guidance = "TURN FOCUS: Future Training & Readiness. Ground your response strictly in the Current Recovery Status (\(recoveryStateDescription)) and Locked Prescription Table. \(restNote) Answer whether I can run and detail the prescribed next session. DO NOT repeat past workout metrics, cardiac drift, or split details. Focus 100% on the upcoming session."
+            let shouldPruneVerdicts = userTurnIndex > 0 || true
             return ManagedTurnContext(
                 turnDomain: .futureSessionPlanning,
+                turnIndex: userTurnIndex,
                 isSubjectiveDistress: false,
-                cleanConversationDigest: summarizeHistory(messages),
+                cleanConversationDigest: summarizeHistory(messages, pruneRetrospectiveDetail: true),
                 turnGuidance: guidance,
-                stripWorkoutPayload: false
+                stripWorkoutPayload: false,
+                prunePhysiologicalVerdicts: shouldPruneVerdicts
             )
         }
 
@@ -115,25 +145,29 @@ enum ConversationMemoryManager {
         if educationMarkers.contains(where: { lower.contains($0) }) && conceptTerms.contains(where: { lower.contains($0) }) {
             return ManagedTurnContext(
                 turnDomain: .physiologicalEducation,
+                turnIndex: userTurnIndex,
                 isSubjectiveDistress: false,
                 cleanConversationDigest: summarizeHistory(messages),
                 turnGuidance: "TURN FOCUS: Running Concept Education. Explain the physiological concept clearly, connecting it to running mechanics.",
-                stripWorkoutPayload: false
+                stripWorkoutPayload: false,
+                prunePhysiologicalVerdicts: false
             )
         }
 
         // 6. Default: Workout Telemetry Analysis
         return ManagedTurnContext(
             turnDomain: .workoutTelemetryAnalysis,
+            turnIndex: userTurnIndex,
             isSubjectiveDistress: false,
             cleanConversationDigest: summarizeHistory(messages),
             turnGuidance: "TURN FOCUS: Workout Telemetry & Biomechanics. Explain what happened during this specific workout using the physiological verdicts.",
-            stripWorkoutPayload: false
+            stripWorkoutPayload: false,
+            prunePhysiologicalVerdicts: false
         )
     }
 
     /// Compiles a concise digest of recent turns to avoid token bloat and context contamination.
-    private static func summarizeHistory(_ messages: [AnalystChatMessage]) -> String {
+    private static func summarizeHistory(_ messages: [AnalystChatMessage], pruneRetrospectiveDetail: Bool = false) -> String {
         // Exclude the initial greeting and only take last 3 exchanges
         let substantive = messages.filter { $0.text.count > 10 }
         let recent = substantive.suffix(4)
@@ -141,6 +175,9 @@ enum ConversationMemoryManager {
 
         var lines: [String] = []
         for msg in recent {
+            if pruneRetrospectiveDetail && msg.sender == .analyst {
+                continue
+            }
             let sender = msg.sender == .user ? "Runner" : "Coach"
             let snippet = msg.text.prefix(120).replacingOccurrences(of: "\n", with: " ")
             lines.append("  • \(sender): \(snippet)...")
