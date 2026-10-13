@@ -65,7 +65,9 @@ enum AnalystFallbackResponder {
         }
 
         // 5. Why Run Felt Challenging / Breakdown
-        if q.contains("challenging") || q.contains("why did this run feel") || q.contains("break down") || q.contains("breakdown") {
+        let isChallengingIntent = q.contains("challenging") || q.contains("why did this run feel") || q.contains("breakdown")
+        let isGeneralBreakdown = q.contains("break down") && !q.contains("split") && !q.contains("interval") && !q.contains("rep")
+        if isChallengingIntent || isGeneralBreakdown {
             var reasons: [String] = []
             if analysis.cardiacDriftMagnitudeBPM >= 8 {
                 reasons.append("cardiac drift (**+\(analysis.cardiacDriftMagnitudeBPM) BPM** rise)")
@@ -104,8 +106,9 @@ enum AnalystFallbackResponder {
         }
 
         // 9. Splits, intervals, and pacing segments
-        if q.contains("split") || q.contains("interval") || q.contains("segment") || q.contains("lap") || q.contains("fastest") || q.contains("slowest") {
-            return analysis.formatSplitReport()
+        let isSegmentEvalIntent = q.contains("split") || q.contains("interval") || q.contains("segment") || q.contains("lap") || q.contains("fastest") || q.contains("slowest") || q.contains("grade my performance") || q.contains("rep")
+        if isSegmentEvalIntent {
+            return analysis.formatPerformanceReport()
         }
 
         // 10. Arm Drive & Upper Body Mechanics

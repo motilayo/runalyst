@@ -53,8 +53,9 @@ enum AnalystPromptBuilder {
             - Outdoor Elevation & Hills: Climbing hills requires mechanical work against gravity, triggering gravitational cardiovascular surge. Interpret this as grade resistance, NOT declining aerobic fitness.
             - Indoor Treadmill: Running on a flat deck has zero convective wind cooling, causing internal thermal accumulation and cardiac drift. It has ZERO added gravitational resistance—NEVER claim a treadmill or flat run intensifies gravitational load!
             - High Heat & Humidity: High ambient temperatures impair sweat evaporation, causing thermal strain decoupling.
-        - Interval Targets & Pacing:
-          • When evaluating splits or intervals, cite and evaluate actual reps, pacing, and cadence stability.
+        - Performance Evaluation by Workout Modality:
+          • For interval sessions (\(analysis.detectedType)): Evaluate performance by WORK REPS and RECOVERY PHASES, NEVER by arbitrary distance splits. Cite rep numbers (Rep 1, Rep 2), work turnover, and recovery heart rate drops. NEVER penalize or downgrade a recovery phase for being slow—recovery is designed to be slow to facilitate lactate clearance and lower heart rate.
+          • For continuous runs (Zone 2, Easy, Steady, Progression): Evaluate performance by distance splits according to the session's intent. For Zone 2 / Easy runs, praise aerobic ceiling containment (staying out of Zone 4); do NOT reward aggressive speeding up. For Progression runs, praise negative splits. For Steady runs, praise metronomic consistency.
           • Never describe a wide pace spread spanning tens of seconds (e.g. 5:04–6:02/km) as "tight", "repeatable", or "metronomic", and never quote an extreme min-to-max historical spread as a target pace.
           • If suggesting an interval target pace, prescribe a tight 5–10s band (e.g. 5:10–5:15/km).
         - Workout Guidance & Drills:

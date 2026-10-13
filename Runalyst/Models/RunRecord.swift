@@ -300,6 +300,22 @@ extension RunRecord {
         return trimmed
     }
 
+    /// Evaluation modality derived from the canonical run classification.
+    var evaluationModality: WorkoutEvaluationModality {
+        let norm = normalizedClassification
+        let intervalClassifications: Set<String> = ["Intervals", "Pyramids", "Fartlek", "Hill Repeats"]
+        if intervalClassifications.contains(norm) {
+            return .intervals
+        }
+        if norm.localizedCaseInsensitiveContains("easy") || norm.localizedCaseInsensitiveContains("recovery") || norm.localizedCaseInsensitiveContains("zone 2") {
+            return .aerobicBase
+        }
+        if norm.localizedCaseInsensitiveContains("progression") {
+            return .progression
+        }
+        return .steadySplits
+    }
+
     /// Checks if this run matches the provided filter chip (either canonical classification or drill name).
     func matchesFilter(_ filter: String) -> Bool {
         guard !isDeleted else { return false }

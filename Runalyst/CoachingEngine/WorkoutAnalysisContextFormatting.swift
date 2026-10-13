@@ -3,13 +3,52 @@ import Foundation
 // MARK: - Formatted Dynamic Text Presentations
 
 extension WorkoutAnalysisContext {
-    /// Builds a rich-text split-by-split report with zero canned boilerplate.
-    func formatSplitReport() -> String {
+    /// Builds a rich-text performance report adaptive to the workout's authentic classification.
+    func formatPerformanceReport() -> String {
+        if evaluationModality == .intervals && !intervalEvaluations.isEmpty {
+            var lines = ["Here is the breakdown of your intervals:"]
+            for rep in intervalEvaluations.prefix(8) {
+                var repLine = "• Rep \(rep.repIndex) (\(rep.workPaceFormatted), \(rep.workCadence) SPM, \(rep.workHeartRate) BPM): \(rep.letterGrade) — \(rep.observation)"
+                if let rPace = rep.recoveryPaceFormatted, let rDrop = rep.recoveryHeartRateDrop, rDrop > 0 {
+                    repLine += "\n  Recovery \(rep.repIndex) (\(rPace)): HR dropped -\(rDrop) BPM into recovery zone"
+                } else if let rPace = rep.recoveryPaceFormatted {
+                    repLine += "\n  Recovery \(rep.repIndex) (\(rPace)): controlled active recovery jog"
+                }
+                lines.append(repLine)
+            }
+
+            if let fRep = fastestWorkRep, let sRep = slowestWorkRep, workSegments.count >= 2 {
+                let fIdx = (workSegments.firstIndex(where: { $0.id == fRep.id }) ?? 0) + 1
+                let sIdx = (workSegments.firstIndex(where: { $0.id == sRep.id }) ?? 0) + 1
+                let fRepPace = PaceFormatter.formatPace(secondsPerKilometer: fRep.avgPace)
+                let sRepPace = PaceFormatter.formatPace(secondsPerKilometer: sRep.avgPace)
+                let fRepStart = Int(fRep.startSeconds / 60)
+                let fRepEnd = Int(fRep.endSeconds / 60)
+                let sRepStart = Int(sRep.startSeconds / 60)
+                let sRepEnd = Int(sRep.endSeconds / 60)
+                lines.append("")
+                lines.append("Overall interval execution: \(overallGradeReport.grade). Fastest work rep was Rep \(fIdx) (min \(fRepStart)–\(fRepEnd)) at \(fRepPace); slowest was Rep \(sIdx) (min \(sRepStart)–\(sRepEnd)) at \(sRepPace) (pace spread: \(Int(workRepPaceSpreadSec))s/km).")
+            }
+            return lines.joined(separator: "\n")
+        }
+
+        // Continuous / Distance Splits
         guard !splitEvaluations.isEmpty else {
             return overallGradeReport.sentence
         }
 
-        var lines = ["Here is the breakdown of your splits:"]
+        let header: String = {
+            switch evaluationModality {
+            case .aerobicBase:
+                return "Here is the breakdown of your Zone 2 aerobic splits:"
+            case .progression:
+                return "Here is the breakdown of your progression splits:"
+            default:
+                return "Here is the breakdown of your splits:"
+            }
+        }()
+
+        var lines = [header]
         for s in splitEvaluations.prefix(8) {
             lines.append("• km \(s.index) (\(s.paceFormatted), \(s.cadence) SPM, \(s.heartRate) BPM): \(s.letterGrade) — \(s.observation)")
         }
@@ -35,19 +74,12 @@ extension WorkoutAnalysisContext {
             lines.append("Overall split execution: \(overallGradeReport.grade). \(pacingTrendDescription). Fastest split was km \(f.index) (min \(fMinStart)–\(fMinEnd)) at \(fPace); slowest was km \(s.index) (min \(sMinStart)–\(sMinEnd)) at \(sPace).")
         }
 
-        if let fRep = fastestWorkRep, let sRep = slowestWorkRep, workSegments.count >= 2 {
-            let fIdx = (workSegments.firstIndex(where: { $0.id == fRep.id }) ?? 0) + 1
-            let sIdx = (workSegments.firstIndex(where: { $0.id == sRep.id }) ?? 0) + 1
-            let fRepPace = PaceFormatter.formatPace(secondsPerKilometer: fRep.avgPace)
-            let sRepPace = PaceFormatter.formatPace(secondsPerKilometer: sRep.avgPace)
-            let fRepStart = Int(fRep.startSeconds / 60)
-            let fRepEnd = Int(fRep.endSeconds / 60)
-            let sRepStart = Int(sRep.startSeconds / 60)
-            let sRepEnd = Int(sRep.endSeconds / 60)
-            lines.append("For your intervals, fastest work rep was Rep \(fIdx) (min \(fRepStart)–\(fRepEnd)) at \(fRepPace); slowest was Rep \(sIdx) (min \(sRepStart)–\(sRepEnd)) at \(sRepPace).")
-        }
-
         return lines.joined(separator: "\n")
+    }
+
+    /// Legacy compatibility alias for formatPerformanceReport
+    func formatSplitReport() -> String {
+        formatPerformanceReport()
     }
 
     /// Formats precomputed analytical findings into a compact context block for the on-device language model.
@@ -173,10 +205,39 @@ extension WorkoutAnalysisContext {
         lines.append("PHYSIOLOGICAL & BIOMECHANICAL VERDICTS (ROOT-CAUSE DIAGNOSIS):")
         lines.append(physiologicalVerdicts.promptDescription)
 
-        // Pacing & Splits
-        if !splitEvaluations.isEmpty {
+        // Pacing & Performance Findings
+        if evaluationModality == .intervals && !intervalEvaluations.isEmpty {
             lines.append("")
-            lines.append("PACING & SPLIT FINDINGS (\(splitEvaluations.count) splits):")
+            lines.append("INTERVAL EXECUTION (\(intervalEvaluations.count) work reps):")
+            if let f = fastestWorkRep, let s = slowestWorkRep {
+                lines.append("- Rep Pace Range: \(PaceFormatter.formatPace(secondsPerKilometer: f.avgPace)) to \(PaceFormatter.formatPace(secondsPerKilometer: s.avgPace)) (spread: \(Int(workRepPaceSpreadSec))s/km)")
+            }
+            if workRepPaceSpreadSec <= 8.0 {
+                lines.append("- Rep Repeatability: Disciplined, tightly controlled interval pacing")
+            } else {
+                lines.append("- Rep Repeatability: Wide pace spread (\(Int(workRepPaceSpreadSec))s/km difference between fastest and slowest reps; indicates late-rep fatigue)")
+            }
+            lines.append("Interval Rep Details (Evaluate by these reps, NOT arbitrary distance splits):")
+            for rep in intervalEvaluations.prefix(8) {
+                var detail = "  • Rep \(rep.repIndex) (\(rep.workPaceFormatted), \(rep.workCadence) SPM, \(rep.workHeartRate) BPM): Grade \(rep.letterGrade) — \(rep.observation)"
+                if let rPace = rep.recoveryPaceFormatted, let rDrop = rep.recoveryHeartRateDrop, rDrop > 0 {
+                    detail += " [Recovery: \(rPace), -\(rDrop) BPM HR drop]"
+                }
+                lines.append(detail)
+            }
+        } else if !splitEvaluations.isEmpty {
+            let sectionTitle: String = {
+                switch evaluationModality {
+                case .aerobicBase:
+                    return "ZONE 2 AEROBIC SPLIT FINDINGS (\(splitEvaluations.count) splits):"
+                case .progression:
+                    return "PROGRESSION SPLIT FINDINGS (\(splitEvaluations.count) splits):"
+                default:
+                    return "PACING & SPLIT FINDINGS (\(splitEvaluations.count) splits):"
+                }
+            }()
+            lines.append("")
+            lines.append(sectionTitle)
             lines.append("- Trend: \(pacingTrendDescription)")
             if let f = fastestSplit {
                 lines.append("- Fastest Split: km \(f.index) at \(PaceFormatter.formatPace(secondsPerKilometer: f.paceSecondsPerKm)) (\(Int(f.avgCadence)) SPM, \(Int(f.avgHeartRate)) BPM)")
@@ -190,20 +251,6 @@ extension WorkoutAnalysisContext {
             lines.append("Split Details:")
             for s in splitEvaluations.prefix(8) {
                 lines.append("  • km \(s.index): \(s.paceFormatted), \(s.cadence) SPM, \(s.heartRate) BPM — \(s.observation)")
-            }
-        }
-
-        // Interval Work Reps
-        if !workSegments.isEmpty {
-            lines.append("")
-            lines.append("INTERVAL EXECUTION (\(workSegments.count) work reps):")
-            if let f = fastestWorkRep, let s = slowestWorkRep {
-                lines.append("- Rep Pace Range: \(PaceFormatter.formatPace(secondsPerKilometer: f.avgPace)) to \(PaceFormatter.formatPace(secondsPerKilometer: s.avgPace)) (spread: \(Int(workRepPaceSpreadSec))s/km)")
-            }
-            if workRepPaceSpreadSec <= 8.0 {
-                lines.append("- Rep Repeatability: Disciplined, tightly controlled interval pacing")
-            } else {
-                lines.append("- Rep Repeatability: Wide pace spread (\(Int(workRepPaceSpreadSec))s/km difference between fastest and slowest reps; indicates pacing inconsistency or late-rep fatigue)")
             }
         }
 

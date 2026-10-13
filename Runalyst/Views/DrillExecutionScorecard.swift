@@ -63,6 +63,7 @@ struct DrillExecutionScorecard: View {
     let drillId: PreRunDrillId
     let baselineCadence: Double?
     let baselineOscillation: Double?
+    var customTitle: String?
 
     var body: some View {
         let template = DrillTemplate.template(for: drillId)
@@ -226,7 +227,7 @@ struct DrillExecutionScorecard: View {
                 Image(systemName: drillId.iconName)
                     .foregroundColor(drillId.iconColor)
                     .font(.title3)
-                Text("Drill Performance")
+                Text(customTitle ?? (runRecord.prescribedDrillName != nil ? "Drill Performance" : "Workout Performance"))
                     .font(.headline.weight(.semibold))
                     .foregroundColor(.primary)
                 Spacer()

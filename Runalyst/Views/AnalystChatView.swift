@@ -280,6 +280,12 @@ struct AnalystChatView: View {
                     inputText = "How does this workout build toward my current training goal?"
                     submitQuestion()
                 }
+                if runRecord.evaluationModality == .intervals {
+                    chipButton("Break Down Intervals") {
+                        inputText = "Grade my performance in each interval of this run"
+                        submitQuestion()
+                    }
+                }
                 if runRecord.isIndoor == true {
                     chipButton("Treadmill Form") {
                         inputText = "Did I overstride or reach too far on the treadmill?"
@@ -297,9 +303,14 @@ struct AnalystChatView: View {
             .map { $0.text.lowercased() }
             .joined(separator: " ")
 
+        let isInterval = runRecord.evaluationModality == .intervals
+        let splitChipTitle = isInterval ? "Break Down Intervals" : "Break Down Splits"
+        let splitChipPrompt = isInterval ? "Grade my performance in each interval of this run" : "Grade my performance in each split of this run"
+        let splitChipIcon = isInterval ? "waveform.path.ecg" : "chart.bar.xaxis"
+
         let candidates: [(title: String, prompt: String, icon: String)] = [
             ("Tomorrow's Plan", "Should I run tomorrow, and what kind of session should I focus on?", "calendar"),
-            ("Break Down Splits", "Grade my performance in each split of this run", "chart.bar.xaxis"),
+            (splitChipTitle, splitChipPrompt, splitChipIcon),
             ("Recommended Drill", "Which drill would help improve my running form and cadence?", "figure.run"),
             ("What to Improve", "What is the key area I should focus on improving?", "arrow.up.forward.circle"),
             ("Running Economy", "How was my running economy and stride efficiency during this run?", "bolt.heart"),
