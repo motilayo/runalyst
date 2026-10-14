@@ -704,7 +704,12 @@ class HealthKitManager: ObservableObject {
         }
 
         // Build and persist RunSignature for Workout Rhythm and RAG Analyst Chat
-        let phaseSegments = await engine.generatePhaseSegments(from: trimmed, cadenceFloor: 150.0)
+        let phaseSegments: [PhaseSegment]
+        if let nativeSegments = generatePhaseSegmentsFromActivities(workout: workout, buckets: trimmed) {
+            phaseSegments = nativeSegments
+        } else {
+            phaseSegments = await engine.generatePhaseSegments(from: trimmed, cadenceFloor: 150.0)
+        }
         let splits = await engine.calculateSplits(from: trimmed)
         let anomalies: [String] = (cv > 0.12 ? ["High Pace Variability"] : []) + (hrCV > 0.10 ? ["High Cardiac Strain"] : [])
         let signature = RunSignature(
@@ -756,6 +761,73 @@ class HealthKitManager: ObservableObject {
             ambientTemperatureCelsius: weather.temperatureCelsius,
             ambientHumidity: weather.humidityPercent
         )
+    }
+
+    private func generatePhaseSegmentsFromActivities(
+        workout: HKWorkout,
+        buckets: [BucketData]
+    ) -> [PhaseSegment]? {
+        let activities = workout.workoutActivities.sorted { $0.startDate < $1.startDate }
+        guard activities.count >= 4 else { return nil }
+
+        let workoutStart = workout.startDate
+        var segments: [PhaseSegment] = []
+
+        let moving = buckets.filter { $0.meanCadence >= 120 }
+        let medCad = moving.isEmpty ? 160.0 : moving.map(\.meanCadence).sorted()[moving.count / 2]
+        let validPaces = moving.map(\.meanPaceSecPerKm).filter { $0 > 0 }.sorted()
+        let medPace = validPaces.isEmpty ? 300.0 : validPaces[validPaces.count / 2]
+
+        for act in activities {
+            let startSec = max(0, act.startDate.timeIntervalSince(workoutStart))
+            let actEnd = act.endDate ?? act.startDate.addingTimeInterval(act.duration)
+            let endSec = max(startSec + 1, actEnd.timeIntervalSince(workoutStart))
+            let actBuckets = buckets.filter { $0.startTime >= act.startDate && $0.startTime < actEnd }
+
+            let pSum = actBuckets.map(\.meanPaceSecPerKm).filter { $0 > 0 }
+            let avgP = pSum.isEmpty ? medPace : pSum.reduce(0, +) / Double(pSum.count)
+
+            let cSum = actBuckets.map(\.meanCadence).filter { $0 > 0 }
+            let avgC = cSum.isEmpty ? medCad : cSum.reduce(0, +) / Double(cSum.count)
+
+            let hSum = actBuckets.map(\.meanHR).filter { $0 > 0 }
+            let avgH = hSum.isEmpty ? 0.0 : hSum.reduce(0, +) / Double(hSum.count)
+
+            var kind = "steady"
+            if let meta = act.metadata {
+                for (_, v) in meta {
+                    let str = String(describing: v).lowercased()
+                    if str.contains("work") || str.contains("push") || str.contains("interval") || str.contains("surge") {
+                        kind = "work"
+                        break
+                    } else if str.contains("recovery") || str.contains("rest") {
+                        kind = "recovery"
+                        break
+                    }
+                }
+            }
+
+            if kind == "steady" {
+                if avgC >= medCad || (avgP > 0 && avgP <= medPace - 10.0) {
+                    kind = "work"
+                } else {
+                    kind = "recovery"
+                }
+            }
+
+            segments.append(PhaseSegment(
+                startSeconds: startSec,
+                endSeconds: endSec,
+                kind: kind,
+                avgPace: avgP,
+                avgCadence: avgC,
+                avgHR: avgH
+            ))
+        }
+
+        let workCount = segments.filter { $0.kind == "work" }.count
+        guard workCount >= 2 else { return nil }
+        return FramboiseEngine.consolidatePhaseSegments(segments)
     }
 
     func refreshWorkoutMetrics(for record: RunRecord, in context: ModelContext) async throws {

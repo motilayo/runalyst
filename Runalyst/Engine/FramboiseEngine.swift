@@ -259,6 +259,8 @@ actor FramboiseEngine {
         let medCad = moving.isEmpty ? 160.0 : moving.map(\.meanCadence).sorted()[moving.count / 2]
         let validPaces = moving.map(\.meanPaceSecPerKm).filter { $0 > 0 }.sorted()
         let medPace = validPaces.isEmpty ? 300.0 : validPaces[validPaces.count / 2]
+        let validHRs = moving.map(\.meanHR).filter { $0 > 0 }.sorted()
+        let medHR = validHRs.isEmpty ? 150.0 : validHRs[validHRs.count / 2]
 
         let p20 = validPaces.isEmpty ? medPace : validPaces[validPaces.count / 5]
         let hasLargePaceRange = (medPace - p20) >= 35.0
@@ -271,9 +273,16 @@ actor FramboiseEngine {
         var pSum = 0.0, cSum = 0.0, hrSum = 0.0, count = 0.0, elapsed = 0.0
 
         for b in buckets {
+            // Incline/Hill push on treadmill: pace remains near base pace, but cardiac strain spikes into Zone 4/5
+            let isCardioInclineSurge = b.meanHR >= max(155.0, medHR + 5.0)
+                && b.meanCadence >= cadenceFloor
+                && b.meanPaceSecPerKm > 0
+                && b.meanPaceSecPerKm <= medPace + 15.0
+
             let isSurge = (b.meanPaceSecPerKm > 0 && b.meanPaceSecPerKm <= surgePaceThreshold && b.meanCadence >= medCad)
                 || (b.meanPaceSecPerKm > 0 && b.meanPaceSecPerKm <= p20 + 15.0)
                 || (b.meanCadence >= surgeCadenceThreshold && b.meanPaceSecPerKm > 0 && b.meanPaceSecPerKm <= medPace - 15.0)
+                || isCardioInclineSurge
 
             let isRec = b.meanPaceSecPerKm >= medPace + 20.0 || (b.meanCadence < medCad - 5.0 && b.meanCadence < cadenceFloor)
 
