@@ -518,5 +518,16 @@ final class CoachingEngineDataTests: XCTestCase {
         XCTAssertTrue(comparison.structuredTelemetryFacts.contains("15s/km faster"))
         XCTAssertTrue(comparison.structuredTelemetryFacts.contains("+6 SPM"))
         XCTAssertTrue(comparison.structuredTelemetryFacts.contains("5 BPM lower") || comparison.structuredTelemetryFacts.contains("-5 BPM"))
+
+        // 3. Test negative delta formatting (no double negatives, e.g. "6 SPM lower turnover", not "-6 SPM")
+        let reverseComparison = HistoricalRunMatcher.compare(current: sep14Run, with: currentRun)
+        XCTAssertEqual(reverseComparison.cadenceDelta, -6)
+        XCTAssertTrue(reverseComparison.structuredTelemetryFacts.contains("6 SPM lower turnover in current run"))
+        XCTAssertFalse(reverseComparison.structuredTelemetryFacts.contains("-6 SPM lower turnover"))
+
+        // 4. Test natural language comparison summary
+        XCTAssertTrue(comparison.coachingComparisonSummary.contains("Comparing your"))
+        XCTAssertTrue(comparison.coachingComparisonSummary.contains("15s/km faster"))
+        XCTAssertTrue(comparison.coachingComparisonSummary.contains("+6 SPM higher turnover"))
     }
 }

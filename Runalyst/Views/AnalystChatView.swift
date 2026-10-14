@@ -212,7 +212,7 @@ struct AnalystChatView: View {
     private func messageBubble(_ message: AnalystChatMessage) -> some View {
         HStack {
             if message.sender == .user {
-                Spacer()
+                Spacer(minLength: 40)
                 Text(message.text)
                     .font(.subheadline)
                     .foregroundColor(.white)
@@ -227,9 +227,8 @@ struct AnalystChatView: View {
                     )
                     .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                     .shadow(color: Color.purple.opacity(0.25), radius: 4, x: 0, y: 2)
-                    .frame(maxWidth: 290, alignment: .trailing)
             } else {
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 5) {
                         Image(systemName: "brain.head.profile")
                             .font(.caption2.bold())
@@ -254,8 +253,7 @@ struct AnalystChatView: View {
                         .stroke(Color.white.opacity(0.06), lineWidth: 1)
                 )
                 .shadow(color: Color.black.opacity(0.03), radius: 5, x: 0, y: 1)
-                .frame(maxWidth: 320, alignment: .leading)
-                Spacer()
+                Spacer(minLength: 28)
             }
         }
         .padding(.horizontal)

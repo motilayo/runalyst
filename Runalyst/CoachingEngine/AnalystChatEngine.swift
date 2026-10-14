@@ -207,12 +207,35 @@ class AnalystChatEngine: ObservableObject {
         let runType = runRecord.detectedTypeRaw.isEmpty ? "Run" : runRecord.detectedTypeRaw
         let isIndoor = runRecord.isIndoor ?? false
         let envNote = isIndoor ? "Indoor Treadmill (belt-driven, static air)" : "Outdoors"
+
+        let cal = Calendar.current
+        let daysDiff = cal.dateComponents([.day], from: cal.startOfDay(for: runRecord.date), to: cal.startOfDay(for: Date())).day ?? 0
+        let dateFormatter = DateFormatter()
+        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+        dateFormatter.dateFormat = "EEEE, MMMM d"
+        let workoutDateStr = dateFormatter.string(from: runRecord.date)
+        let todayStr = dateFormatter.string(from: Date())
+
+        let temporalGrounding = daysDiff == 0
+            ? "This workout took place TODAY."
+            : "This workout took place on \(workoutDateStr) (\(daysDiff) days ago). Today is \(todayStr). NEVER refer to this workout as 'today', 'today's session', or 'today's run'—refer to it accurately as 'your \(workoutDateStr) run' or 'your \(runType)'."
+
+        let useMetric = (UserDefaults.standard.object(forKey: "useMetricSystem") as? Bool) ?? true
+        let unitSystemInstruction = useMetric
+            ? "USER UNIT SYSTEM: Metric. Quote paces strictly in min/km (e.g. 5:15/km) and distances in km (e.g. 5.0 km). NEVER dump imperial units (mi, min/mi) and NEVER output dual units like '7:36/km (12:14/mi)'. Stick strictly to metric."
+            : "USER UNIT SYSTEM: Imperial. Quote paces strictly in min/mi (e.g. 8:25/mi) and distances in miles (e.g. 3.1 mi). NEVER dump metric units (km, min/km) and NEVER output dual units. Stick strictly to imperial."
+
         return """
         You are my personal running coach and exercise physiologist.
         Speak directly to me ("you" / "your") like an experienced, objective running coach in natural conversation (1 to 3 short paragraphs). Clear, direct, perceptive, and data-backed. Never refer to me as "the runner" or in the third person.
 
         WORKOUT CONTEXT:
         Reviewing workout: \(runType) (\(envNote)).
+
+        TEMPORAL & CALENDAR GROUNDING:
+        \(temporalGrounding)
+
+        \(unitSystemInstruction)
 
         TOOLS & DATA ACCESS:
         You have access to 6 deterministic native tools to query my running math and physics:
@@ -225,12 +248,7 @@ class AnalystChatEngine: ObservableObject {
 
         EXECUTION RULES — ZERO STALLING:
         • SILENT, IMMEDIATE TOOL INVOCATION: You MUST invoke the appropriate tool immediately in your first turn to retrieve the facts.
-        • NEVER announce, promise, or narrate tool retrieval. NEVER say phrases like:
-          - "I need to pull your most recent workout analysis"
-          - "I'll retrieve the analysis" / "I will retrieve the analysis"
-          - "Let's start there"
-          - "To assess your ..., I need to ..."
-          - "Let me check your workout"
+        • NEVER announce, promise, or narrate tool retrieval.
         • Call the tool silently and immediately, receive the returned telemetry, and output ONLY your final coaching response once the tool returns data.
         • For running economy, stride efficiency, cadence, or overall performance: call `fetchWorkoutAnalysis`.
         • For interval reps, work/recovery splits, or pace consistency: call `fetchIntervalPerformance`.
@@ -240,10 +258,24 @@ class AnalystChatEngine: ObservableObject {
         • For conceptual questions (e.g. "What is VO2 Max?", "What is cardiac drift?"): explain the concept simply using your internal knowledge. If relevant to my run, call tools to connect it to my data.
         • For out-of-scope questions unrelated to running, health, or fitness: do NOT call tools; answer in 1 concise sentence and redirect to training.
 
+        CONVERSATIONAL CONTINUITY & FOLLOW-UP DIRECTIVES:
+        • Strict Topic Continuity: When I ask follow-ups like "That's all?", "Tell me more", "Why?", "What else?", or "Go deeper", you MUST elaborate on the ACTIVE topic previously discussed:
+          - If discussing a workout comparison (e.g. Intervals vs Tempo): go deeper into the comparative physiology (why heart rate differed, continuous threshold vs interval recovery valleys, treadmill motor belt vs road asphalt friction, thermal buildup vs wind cooling).
+          - If discussing interval execution: dive into rep-by-rep pacing decay, heart rate drop during recovery, or cadence floor maintenance.
+          - If discussing cardiac drift: explain stroke volume reduction, thermal load, and hydration impact.
+          - NEVER reset the conversation or dump an unsolicited general workout overview.
+          - NEVER volunteer tomorrow's workout prescription, future duration/pace bands, or readiness status during follow-ups unless I explicitly ask about tomorrow, next run, readiness, or planning.
+
+        • FUTURE PRESCRIPTION BOUNDARY: You must ONLY call `fetchReadinessAndPrescription` or prescribe upcoming workouts when I explicitly ask about tomorrow, next session, readiness, or future planning. Do NOT volunteer tomorrow's prescription during general workout debriefs or comparisons.
+
+        • AVOID MECHANICAL BULLET LISTS: Do not respond with a stark, dry list of metric lines (e.g. '• Pace: ... • Cadence: ... • Heart Rate: ...'). Instead, weave telemetry comparisons and observations into rich, insightful coaching sentences that explain the physiological cause and effect.
+
         SAFETY & BOUNDARIES:
         • Athlete Safety Override: If I mention physical illness, fever, flu, or sharp injury pain, SAFETY OVERRIDES ALL TRAINING. Advise rest and recovery immediately without calling training tools or prescribing workouts.
         • Deterministic Authority: The returned math and physics verdicts are your indisputable mathematical conclusions. Never contradict them or invent numbers outside the returned data.
         • Never claim a flat treadmill intensifies gravitational load (gravity is normal 1g); flat treadmill drift is thermal accumulation from zero convective airflow.
+        • Clean delta phrasing: Say "4 SPM lower turnover", NEVER "-4 SPM lower turnover" (avoid double negatives).
+        • Space pacing tightly (e.g. "12s/km slower", not "12s/ km slower").
         • Bold accent numbers and units (e.g. **156 SPM**, **7:15/km**, **1.42**).
 
         Respond in \(language).
@@ -317,8 +349,24 @@ class AnalystChatEngine: ObservableObject {
     @available(iOS 26.0, *)
     private func generateFoundationModelResponse(for userQuestion: String, turnContext: ManagedTurnContext) async throws -> String {
         let session = getOrCreateSession()
-        let response = try await session.respond(to: userQuestion)
+        let prompt: String
+        if turnContext.turnDomain == .elaborationOrFollowUp || turnContext.isSubjectiveDistress {
+            prompt = """
+            \(userQuestion)
+
+            [Coach Turn Directive: \(turnContext.turnGuidance)]
+            """
+        } else {
+            prompt = userQuestion
+        }
+        let response = try await session.respond(to: prompt)
         var responseText = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Strip any accidental echoing of internal directive brackets
+        if let range = responseText.range(of: #"\s*\[Coach Turn Directive:.*?\]"#, options: .regularExpression) {
+            responseText.removeSubrange(range)
+            responseText = responseText.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
 
         // Guard against LLM conversational stalling where the on-device model announces
         // future retrieval intent instead of delivering completed analysis.

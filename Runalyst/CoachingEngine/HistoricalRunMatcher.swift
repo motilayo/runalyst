@@ -52,7 +52,7 @@ struct HistoricalRunMatcher {
             if cadenceDelta > 0 {
                 cadComparison = "+\(cadenceDelta) SPM higher turnover in current run"
             } else if cadenceDelta < 0 {
-                cadComparison = "\(cadenceDelta) SPM lower turnover in current run"
+                cadComparison = "\(abs(cadenceDelta)) SPM lower turnover in current run"
             } else {
                 cadComparison = "matched turnover"
             }
@@ -75,6 +75,27 @@ struct HistoricalRunMatcher {
                 physiologicalSignal = "Aerobic containment: easier pace kept cardiovascular stress low."
             } else {
                 physiologicalSignal = "Close mechanical and physiological parity across sessions."
+            }
+
+            let isCurrentInterval = current.classification.localizedCaseInsensitiveContains("interval")
+            let isPriorInterval = prior.classification.localizedCaseInsensitiveContains("interval")
+
+            let structureContrast: String
+            if isCurrentInterval && !isPriorInterval {
+                structureContrast = "Current session was an intermittent interval workout with alternating work reps and recovery valleys, whereas prior session was a continuous \(prior.classification). Recovery intervals actively lowered average heart rate despite high-velocity work reps."
+            } else if !isCurrentInterval && isPriorInterval {
+                structureContrast = "Current session was a continuous \(current.classification), whereas prior session was an intermittent interval workout with active recovery valleys."
+            } else {
+                structureContrast = "Both workouts share continuous training structure."
+            }
+
+            let envContrast: String
+            if current.isIndoor && !prior.isIndoor {
+                envContrast = "Current session was performed indoors on a treadmill (motor-driven belt, static air with thermal buildup, zero wind resistance), whereas prior session was outdoors on road pavement (stationary ground propulsion, convective wind cooling, outdoor grade variations)."
+            } else if !current.isIndoor && prior.isIndoor {
+                envContrast = "Current session was performed outdoors (ground propulsion, wind cooling) vs prior session indoors on a treadmill."
+            } else {
+                envContrast = "Both workouts took place in similar \(envCurrent.lowercased()) environments."
             }
 
             return """
@@ -102,7 +123,44 @@ struct HistoricalRunMatcher {
             - Cadence: \(cadComparison)
             - Heart Rate: \(hrComparison)
             - Physiological Fact: \(physiologicalSignal)
+            - Workout Structure Contrast: \(structureContrast)
+            - Environmental Contrast: \(envContrast)
             """
+        }
+
+        /// Natural language synthesized comparison for fallback and offline coaching contexts.
+        var coachingComparisonSummary: String {
+            let paceComp = paceDeltaSeconds > 0 ? "\(paceDeltaSeconds)s/km faster" : (paceDeltaSeconds < 0 ? "\(abs(paceDeltaSeconds))s/km slower" : "identical pace")
+            let cadComp = cadenceDelta > 0 ? "+\(cadenceDelta) SPM higher turnover" : (cadenceDelta < 0 ? "\(abs(cadenceDelta)) SPM lower turnover" : "matched turnover")
+            let hrComp = heartRateDelta > 0 ? "+\(heartRateDelta) BPM higher cardiac cost" : (heartRateDelta < 0 ? "\(abs(heartRateDelta)) BPM lower cardiovascular demand" : "matched heart rate")
+
+            var lines = [
+                "Comparing your **\(current.weekday), \(current.formattedDate) \(current.classification)** to your **\(prior.weekday), \(prior.formattedDate) \(prior.classification)**:",
+                "",
+                "• **Pace**: **\(current.paceFormatted)** vs **\(prior.paceFormatted)** (\(paceComp))",
+                "• **Cadence**: **\(current.cadenceSPM) SPM** vs **\(prior.cadenceSPM) SPM** (\(cadComp))",
+                "• **Heart Rate**: **\(current.heartRateBPM) BPM** vs **\(prior.heartRateBPM) BPM** (\(hrComp))",
+                ""
+            ]
+
+            let isCurrentInterval = current.classification.localizedCaseInsensitiveContains("interval")
+            let isPriorInterval = prior.classification.localizedCaseInsensitiveContains("interval")
+
+            if isCurrentInterval && !isPriorInterval {
+                lines.append("Workout structure contrast: your current interval workout featured discrete work bouts separated by active recovery valleys, allowing your average heart rate to stay lower despite fast reps. The prior \(prior.classification) was a continuous sustained effort with constant cardiovascular load.")
+            } else if paceDeltaSeconds > 0 && heartRateDelta <= 0 {
+                lines.append("Positive aerobic progression: you held a faster pace while operating at lower cardiovascular cost and maintaining higher turnover.")
+            } else if paceDeltaSeconds <= 0 && heartRateDelta < 0 {
+                lines.append("Controlled aerobic containment: you operated at a more conservative pace, keeping your cardiovascular cost significantly lower.")
+            } else {
+                lines.append("Consistent pacing and cardiovascular engagement across both sessions.")
+            }
+
+            if current.isIndoor && !prior.isIndoor {
+                lines.append("\nIndoor vs outdoor contrast: running on the treadmill eliminated wind resistance and road gradient variations, but required active turnover to keep pace with the moving belt.")
+            }
+
+            return lines.joined(separator: "\n")
         }
     }
 

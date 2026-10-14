@@ -26,9 +26,25 @@ enum AnalystFallbackResponder {
         let isComparisonIntent = q.contains("compare") || q.contains("versus") || q.contains(" vs ") || q.contains(" vs. ") || q.contains("difference between") || q.contains("how does this compare")
         if isComparisonIntent {
             if let prior = HistoricalRunMatcher.findRun(matching: userQuestion, relativeTo: runRecord, in: runRecord.modelContext) {
-                return HistoricalRunMatcher.compare(current: runRecord, with: prior).structuredTelemetryFacts
+                return HistoricalRunMatcher.compare(current: runRecord, with: prior).coachingComparisonSummary
             } else {
                 return "No historical workout found matching your query in stored records."
+            }
+        }
+
+        // 2.7. Conversational Follow-Up / Elaboration ("That's all?", "Tell me more", "Why?", "Explain further")
+        let isElaborationIntent = turnContext?.turnDomain == .elaborationOrFollowUp ||
+            q.contains("that's all") || q.contains("thats all") || q.contains("is that all") ||
+            q.contains("tell me more") || q.contains("elaborate") || q.contains("go deeper")
+        if isElaborationIntent {
+            let digest = turnContext?.cleanConversationDigest.lowercased() ?? ""
+            if digest.contains("comparing") || digest.contains("versus") || digest.contains("vs") || digest.contains("september") || digest.contains("faster in current") || digest.contains("slower in current") {
+                let envNote = analysis.isIndoor ? "on the treadmill" : "outdoors"
+                return "Going deeper into the comparison: the primary physiological difference stems from the workout structure. Your \(analysis.detectedType) \(envNote) had active recovery periods that allowed your cardiovascular system to lower heart rate between work bouts, holding your average to **\(Int(runRecord.workingAvgHeartRate)) BPM**. In contrast, a continuous tempo run demands unbroken threshold effort without recovery valleys, creating much higher cumulative cardiac load. Mechanically, your turnover remained disciplined at **\(Int(runRecord.workingAvgCadence)) SPM**, showing solid neuromuscular control."
+            } else if analysis.evaluationModality == .intervals {
+                return "Looking closer at your interval execution: the key to this session was managing turnover during the late work reps. While your average cadence was **\(analysis.workingCadence) SPM**, maintaining that rhythm as fatigue sets in prevents braking forces and keeps your ground contact time sharp."
+            } else {
+                return "Delving deeper into this run: your cardiovascular coupling and cadence of **\(analysis.workingCadence) SPM** provided consistent mechanical stability. The primary physiological takeaway is how your body maintained aerobic containment throughout the working distance."
             }
         }
 

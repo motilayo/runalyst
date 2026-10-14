@@ -883,6 +883,27 @@ final class IndoorIntelligenceTests: XCTestCase {
         XCTAssertFalse(instrBetter.contains("Next Recommended Session:"))
     }
 
+    @MainActor
+    func testAnalystChatFollowUpElaborationMaintainsTopicContinuity() async {
+        let runRecord = makeTestRunRecord(isIndoor: true)
+        let chatEngine = AnalystChatEngine(runRecord: runRecord)
+
+        // 1. Comparison turn
+        chatEngine.messages.append(AnalystChatMessage(sender: .user, text: "Compare my performance in this run to my September 14 run"))
+        chatEngine.messages.append(AnalystChatMessage(sender: .analyst, text: "Comparing your Tuesday Intervals to Monday Tempo: Pace was 13s/km slower, Cadence was 4 SPM lower turnover..."))
+
+        // 2. Runner asks "That's all?"
+        await chatEngine.sendMessage("That's all?")
+        let lastResponse = chatEngine.messages.last?.text ?? ""
+
+        // Must stay on comparison topic (contrast, structure, intervals vs tempo, treadmill vs road)
+        XCTAssertTrue(lastResponse.contains("comparison") || lastResponse.contains("difference") || lastResponse.contains("structure") || lastResponse.contains("Intervals") || lastResponse.contains("tempo"))
+        // Must NOT hallucinate "today was"
+        XCTAssertFalse(lastResponse.contains("today was") || lastResponse.contains("session today"))
+        // Must NOT dump unsolicited tomorrow prescription
+        XCTAssertFalse(lastResponse.contains("tomorrow's run") || lastResponse.contains("recommend keeping tomorrow"))
+    }
+
     // MARK: - 4B. Swift Physics, Zones & Memory Engines
 
     func testPhysiologicalDiagnosisEngineVeracityAndSeverity() {
@@ -1218,6 +1239,22 @@ final class IndoorIntelligenceTests: XCTestCase {
         XCTAssertEqual(ctxOutOfScope.turnDomain, .outOfScopeInquiry)
         XCTAssertTrue(ctxOutOfScope.stripWorkoutPayload)
         XCTAssertTrue(ctxOutOfScope.turnGuidance.contains("general knowledge"))
+
+        // 5. Follow-up elaboration inquiry ("That's all?", "Tell me more")
+        let comparisonHistory = [
+            AnalystChatMessage(sender: .user, text: "Compare my performance in this run to my September 14 run"),
+            AnalystChatMessage(sender: .analyst, text: "Comparing your Tuesday Intervals to Monday Tempo: Pace was 13s/km slower, Cadence was 4 SPM lower turnover...")
+        ]
+        let ctxElaboration = ConversationMemoryManager.buildTurnContext(
+            userQuestion: "That's all?",
+            messages: comparisonHistory,
+            recoveryStateDescription: "Acute Fatigue",
+            daysSinceWorkout: 1
+        )
+        XCTAssertEqual(ctxElaboration.turnDomain, .elaborationOrFollowUp)
+        XCTAssertTrue(ctxElaboration.turnGuidance.contains("Workout Comparison Elaboration"))
+        XCTAssertTrue(ctxElaboration.turnGuidance.contains("DO NOT reset the conversation"))
+        XCTAssertTrue(ctxElaboration.turnGuidance.contains("DO NOT prescribe tomorrow's workout"))
     }
 
     // MARK: - 5. RAG Payloads
