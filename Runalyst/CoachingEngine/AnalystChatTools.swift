@@ -55,7 +55,7 @@ struct FetchWorkoutAnalysisTool: Tool {
     typealias Output = String
 
     let name = "fetchWorkoutAnalysis"
-    let description = "Retrieves deterministic biomechanical and physiological analysis of this specific workout: running economy, stride efficiency, efficiency factor, stride archetype, cadence, heart rate drift, pace, lap splits, and causal physiological verdicts."
+    let description = "Retrieves deterministic biomechanical and physiological analysis of this workout partitioned into strongly-typed namespaces (session_totals, steady_state_performance, or active_work_performance and recovery_performance) with explicit metadata descriptions and causal physiological verdicts."
 
     let provider: @MainActor @Sendable (WorkoutAnalysisQuery) async -> String
 
@@ -79,7 +79,7 @@ struct FetchIntervalPerformanceTool: Tool {
     typealias Output = String
 
     let name = "fetchIntervalPerformance"
-    let description = "Retrieves discrete interval performance telemetry: work rep paces, cadences, heart rates, active recovery paces, recovery heart rate drops, pace repeatability across sets, and belt vs road mechanics."
+    let description = "Retrieves discrete interval performance partitioned into strongly-typed namespaces: active_work_performance (high-intensity intervals), recovery_performance (rest jogs and HR drops), and rep_by_rep_breakdown with separated work and recovery phases."
 
     let provider: @MainActor @Sendable (IntervalPerformanceQuery) async -> String
 

@@ -1599,10 +1599,46 @@ final class IndoorIntelligenceTests: XCTestCase {
             }
 
             let result = try await intervalTool.call(arguments: IntervalPerformanceQuery(focus: "all"))
-            XCTAssertTrue(result.contains("INTERVAL PERFORMANCE"))
+            XCTAssertTrue(result.contains("INTERVAL_PERFORMANCE_TELEMETRY"))
             XCTAssertTrue(result.contains("Work Reps Detected"))
             XCTAssertTrue(result.contains("Indoor Treadmill"))
+            XCTAssertTrue(result.contains("category_1_session_totals"))
+            XCTAssertTrue(result.contains("category_2_active_work_performance"))
+            XCTAssertTrue(result.contains("category_3_recovery_performance"))
+            XCTAssertTrue(result.contains("category_4_rep_by_rep_breakdown"))
+            XCTAssertTrue(result.contains("_description"))
+            XCTAssertTrue(result.contains("work_phase"))
+            XCTAssertTrue(result.contains("recovery_phase"))
             XCTAssertEqual(intervalTool.name, "fetchIntervalPerformance")
+        }
+        #endif
+    }
+
+    @MainActor
+    func testWorkoutAnalysisDynamicSchemaForSteadyRunsOmitIntervalBuckets() async throws {
+        let runRecord = makeTestRunRecord(isIndoor: false)
+        runRecord.detectedTypeRaw = "Steady Effort"
+        let chatEngine = AnalystChatEngine(runRecord: runRecord)
+
+        #if canImport(FoundationModels)
+        if #available(iOS 26.0, *) {
+            let workoutTool = FetchWorkoutAnalysisTool { _ in
+                let analysis = chatEngine.makeAnalysisContext()
+                return analysis.compactTelemetryAnalysis()
+            }
+            let intervalTool = FetchIntervalPerformanceTool { _ in
+                let analysis = chatEngine.makeAnalysisContext()
+                return analysis.formatIntervalPerformanceSummary()
+            }
+
+            let workoutResult = try await workoutTool.call(arguments: WorkoutAnalysisQuery(focus: "full_telemetry"))
+            XCTAssertTrue(workoutResult.contains("category_1_session_totals"))
+            XCTAssertTrue(workoutResult.contains("category_2_steady_state_performance"))
+            XCTAssertFalse(workoutResult.contains("category_3_recovery_performance"), "Steady runs must NOT emit recovery performance bucket")
+            XCTAssertFalse(workoutResult.contains("category_4_rep_by_rep_breakdown"), "Steady runs must NOT emit rep breakdown bucket")
+
+            let intervalResult = try await intervalTool.call(arguments: IntervalPerformanceQuery(focus: "all"))
+            XCTAssertTrue(intervalResult.contains("NOT_AN_INTERVAL_WORKOUT"))
         }
         #endif
     }

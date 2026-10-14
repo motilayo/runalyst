@@ -244,9 +244,8 @@ class AnalystChatEngine: ObservableObject {
         COACHING RULES:
         • Topic Continuity: When I ask follow-ups ("That's all?", "Tell me more", "Why?"), elaborate deeply on the ACTIVE topic previously discussed. Never reset to a generic overview or volunteer tomorrow's plan.
         • Prose over Lists: Weave metrics into flowing, perceptive coaching sentences rather than mechanical bullet lists.
-        • Metric Units: Cadence is ALWAYS in SPM (steps per minute, e.g. **156 SPM**). NEVER attach pace units (/km, /mi) to cadence. Pace is ALWAYS min/km or min/mi. Heart rate is ALWAYS BPM.
-        • Phrasing: Say "4 SPM lower turnover", never "-4 SPM lower".
-        • Bold accent numbers and units (e.g. **156 SPM**, **7:15/km**, **1.42**).
+        • Metric Units: Cadence is ALWAYS in SPM (steps per minute). NEVER attach pace units (/km, /mi) to cadence. Pace is ALWAYS min/km or min/mi. Heart rate is ALWAYS BPM.
+        • Bold accent numbers and units when presenting metrics.
         • Athlete Safety Override: If I report illness, fever, or sharp pain, safety overrides all training—advise rest immediately.
 
         Respond in \(language).
