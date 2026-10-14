@@ -344,24 +344,8 @@ class AnalystChatEngine: ObservableObject {
     private func generateFoundationModelResponse(for userQuestion: String, turnContext: ManagedTurnContext) async throws -> String {
         let session = getOrCreateSession()
         toolsCalledThisTurn = 0
-        let prompt: String
-        if !turnContext.turnGuidance.isEmpty {
-            prompt = """
-            \(userQuestion)
-
-            [Coach Turn Directive: \(turnContext.turnGuidance)]
-            """
-        } else {
-            prompt = userQuestion
-        }
-        let response = try await session.respond(to: prompt)
+        let response = try await session.respond(to: userQuestion)
         var responseText = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        // Strip any accidental echoing of internal directive brackets
-        if let range = responseText.range(of: #"\s*\[Coach Turn Directive:.*?\]"#, options: .regularExpression) {
-            responseText.removeSubrange(range)
-            responseText = responseText.trimmingCharacters(in: .whitespacesAndNewlines)
-        }
 
         // Guard against LLM conversational stalling where the on-device model announces
         // future retrieval intent instead of delivering completed analysis.
@@ -379,15 +363,6 @@ class AnalystChatEngine: ObservableObject {
         if turnContext.turnDomain == .outOfScopeInquiry && Self.containsMetricTelemetry(responseText) {
             let runType = runRecord.detectedTypeRaw.isEmpty ? "workout" : runRecord.detectedTypeRaw
             return Self.sanitizeOutOfScopeResponse(responseText, runType: runType)
-        }
-
-        // If the user explicitly asked for an interval or split breakdown, but the model responded with
-        // vague summary text lacking individual rep data, intercept and deliver the authentic performance report.
-        if Self.isIntervalBreakdownRequest(userQuestion) && !Self.containsRepBreakdown(responseText) {
-            let report = makeAnalysisContext().formatPerformanceReport()
-            if !report.isEmpty {
-                return report
-            }
         }
 
         // If no tools were called during this turn, the LLM has zero real telemetry context.
@@ -502,21 +477,6 @@ class AnalystChatEngine: ObservableObject {
 
         let defaultPivot = "I'm your personal running coach and exercise physiologist, so I specialize in your running biomechanics and recovery."
         return "\(defaultPivot) What would you like to explore regarding your runs?"
-    }
-
-    /// Evaluates whether a user question is explicitly asking for an interval, rep, or split breakdown.
-    nonisolated static func isIntervalBreakdownRequest(_ text: String) -> Bool {
-        let lower = text.lowercased()
-        let intervalMarkers = [
-            "each interval", "break down each", "breakdown each", "grade each",
-            "grade my performance", "each rep", "each split", "break down the intervals",
-            "break down my intervals", "breakdown the intervals", "interval breakdown",
-            "split breakdown", "rep breakdown", "break down each interval",
-            "list each interval", "show each interval", "break down for me",
-            "break down each for me", "break it down for me", "how did i do on each",
-            "rate each", "break down each interval for me"
-        ]
-        return intervalMarkers.contains { lower.contains($0) }
     }
 
     /// Evaluates whether a generated response contains discrete rep or split breakdowns.

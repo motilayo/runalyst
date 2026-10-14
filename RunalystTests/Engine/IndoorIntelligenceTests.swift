@@ -1787,14 +1787,17 @@ final class IndoorIntelligenceTests: XCTestCase {
     }
 
     @MainActor
-    func testIntervalBreakdownIntentDetectionAndVerification() {
-        let q1 = "Grade my performance in each interval of this run"
-        let q2 = "Can you break down each interval for me?"
-        let qGeneral = "Ok, tell me about my Tuesday run"
+    func testIntervalBreakdownToolDescriptionsAndVerification() {
+        #if canImport(FoundationModels)
+        if #available(iOS 26.0, *) {
+            let intervalTool = FetchIntervalPerformanceTool { _ in "" }
+            let workoutTool = FetchWorkoutAnalysisTool { _ in "" }
 
-        XCTAssertTrue(AnalystChatEngine.isIntervalBreakdownRequest(q1))
-        XCTAssertTrue(AnalystChatEngine.isIntervalBreakdownRequest(q2))
-        XCTAssertFalse(AnalystChatEngine.isIntervalBreakdownRequest(qGeneral))
+            XCTAssertTrue(intervalTool.description.contains("individual rep-by-rep breakdowns"))
+            XCTAssertTrue(intervalTool.description.contains("recovery jog paces and heart rate drops"))
+            XCTAssertTrue(workoutTool.description.contains("overall workout telemetry"))
+        }
+        #endif
 
         let vagueResponse = """
         The analysis of your Tuesday, October 13 run confirms consistent pace execution across \
@@ -1806,17 +1809,6 @@ final class IndoorIntelligenceTests: XCTestCase {
 
         XCTAssertFalse(AnalystChatEngine.containsRepBreakdown(vagueResponse), "Vague response must be flagged as lacking rep breakdown")
         XCTAssertTrue(AnalystChatEngine.containsRepBreakdown(structuredRepResponse), "Structured rep response must be recognized")
-
-        let turnContext = ConversationMemoryManager.buildTurnContext(
-            userQuestion: q1,
-            messages: [],
-            recoveryStateDescription: "Productive",
-            daysSinceWorkout: 1
-        )
-        XCTAssertTrue(
-            turnContext.turnGuidance.contains("Discrete Interval Rep Breakdown & Performance Grading"),
-            "Turn guidance must direct the model to provide interval rep breakdown"
-        )
     }
 
     @MainActor
