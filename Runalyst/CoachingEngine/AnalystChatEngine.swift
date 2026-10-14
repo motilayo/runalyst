@@ -81,18 +81,20 @@ class AnalystChatEngine: ObservableObject {
         let isIndoor = runRecord.isIndoor ?? false
         let envNote = isIndoor ? "treadmill" : "outdoor"
         let isIntervals = runRecord.evaluationModality == .intervals && runRecord.detectedTypeRaw == "Intervals"
-        let grade = makeAnalysisContext().overallGradeReport.grade
+        let context = makeAnalysisContext()
+        let grade = context.overallGradeReport.grade
 
         let initialGreeting: String
-        if isIntervals {
-            let workPace = PaceFormatter.formatPace(secondsPerKilometer: runRecord.workingAvgPace)
-            let repCount = runRecord.signature?.phaseSegments.filter { $0.kind == "work" }.count ?? 0
-            let repsDesc = repCount > 0 ? "(\(repCount) reps @ \(workPace))" : "(@ \(workPace))"
-            let cad = runRecord.workingAvgCadence
-            initialGreeting = "I took a look at your Grade \(grade) \(envNote) intervals \(repsDesc). Want to dig into your \(cad) SPM turnover, pacing spread, or recovery?"
+        if isIntervals && !context.workSegments.isEmpty {
+            let workSegments = context.workSegments
+            let meanWorkPace = workSegments.reduce(0.0) { $0 + $1.avgPace } / Double(workSegments.count)
+            let workPace = PaceFormatter.formatPace(secondsPerKilometer: meanWorkPace)
+            let repCount = workSegments.count
+            let cad = Int((workSegments.reduce(0.0) { $0 + $1.avgCadence } / Double(workSegments.count)).rounded())
+            initialGreeting = "I took a look at your Grade \(grade) \(envNote) intervals (\(repCount) reps @ \(workPace)). Want to dig into your \(cad) SPM turnover, pacing spread, or recovery?"
         } else {
             let pace = PaceFormatter.formatPace(secondsPerKilometer: runRecord.workingAvgPace)
-            let cad = runRecord.workingAvgCadence
+            let cad = Int(runRecord.workingAvgCadence.rounded())
             let runType = runRecord.detectedTypeRaw.isEmpty ? "run" : runRecord.detectedTypeRaw.lowercased()
             initialGreeting = "I took a look at your Grade \(grade) \(envNote) \(runType) (@ \(pace)). Want to dig into your \(cad) SPM turnover, pacing trend, or recovery?"
         }
