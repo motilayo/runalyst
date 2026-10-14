@@ -22,6 +22,18 @@ enum AnalystFallbackResponder {
             return "I'm your personal running coach and exercise physiologist, so I specialize in your running biomechanics, training zones, and recovery. What would you like to explore regarding your runs?"
         }
 
+        // 2.4. 30-Day Performance Arc & Best vs Worst Rankings
+        let mentionsSplitsOrSegments = q.contains("split") || q.contains("segment") || q.contains("lap") || q.contains("rep")
+        let isArcIntent = !mentionsSplitsOrSegments && (
+            (q.contains("best") && (q.contains("worst") || q.contains("toughest") || (q.contains("performance") && !q.contains("interval")) || q.contains("run") || q.contains("workout"))) ||
+            (q.contains("past 30 days") && (q.contains("best") || q.contains("worst") || q.contains("rank") || q.contains("performance"))) ||
+            q.contains("performance arc")
+        )
+        if isArcIntent {
+            let arc = HistoricalRunMatcher.analyzePerformanceArc(relativeTo: runRecord, in: runRecord.modelContext)
+            return arc.coachingArcSummary
+        }
+
         // 2.5. Workout Comparison (e.g. "compare this run to my September 14 run", "vs last week", "compare to previous intervals")
         let isComparisonIntent = q.contains("compare") || q.contains("versus") || q.contains(" vs ") || q.contains(" vs. ") || q.contains("difference between") || q.contains("how does this compare")
         if isComparisonIntent {

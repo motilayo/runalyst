@@ -529,5 +529,39 @@ final class CoachingEngineDataTests: XCTestCase {
         XCTAssertTrue(comparison.coachingComparisonSummary.contains("Comparing your"))
         XCTAssertTrue(comparison.coachingComparisonSummary.contains("15s/km faster"))
         XCTAssertTrue(comparison.coachingComparisonSummary.contains("+6 SPM higher turnover"))
+
+        // 5. Test 30-Day Performance Arc Analysis
+        let arc = HistoricalRunMatcher.analyzePerformanceArc(relativeTo: currentRun, in: context)
+        XCTAssertEqual(arc.totalRunsInPast30Days, 2)
+        XCTAssertNotNil(arc.bestRun)
+        XCTAssertNotNil(arc.worstRun)
+        XCTAssertEqual(arc.bestRun?.cadenceSPM, 156)
+        XCTAssertEqual(arc.worstRun?.cadenceSPM, 150)
+        XCTAssertTrue(arc.structuredTelemetryFacts.contains("156 SPM"))
+        XCTAssertTrue(arc.structuredTelemetryFacts.contains("150 SPM"))
+        XCTAssertFalse(arc.structuredTelemetryFacts.contains("/km cadence"), "Must never output /km cadence")
+        XCTAssertFalse(arc.coachingArcSummary.contains("/km cadence"), "Coaching summary must never output /km cadence")
+        XCTAssertTrue(arc.coachingArcSummary.contains("156 SPM"))
+
+        // 6. Test superlative matching ("best run", "worst run")
+        let bestMatch = try XCTUnwrap(HistoricalRunMatcher.findRun(matching: "compare to my best run", relativeTo: sep14Run, in: context))
+        XCTAssertEqual(bestMatch.id, currentRun.id)
+
+        let worstMatch = try XCTUnwrap(HistoricalRunMatcher.findRun(matching: "compare to my worst performance", relativeTo: currentRun, in: context))
+        XCTAssertEqual(worstMatch.id, sep14Run.id)
+
+        // 7. Test AnalystFallbackResponder 30-day best/worst performance intent
+        let chatEngine = AnalystChatEngine(runRecord: currentRun)
+        let analysis = chatEngine.makeAnalysisContext()
+
+        let fallbackArcResponse = AnalystFallbackResponder.generateResponse(
+            for: "In the past 30 days, which run was my best performance? Which was my worst performance?",
+            analysis: analysis,
+            runRecord: currentRun
+        )
+        XCTAssertTrue(fallbackArcResponse.contains("best performance"))
+        XCTAssertTrue(fallbackArcResponse.contains("toughest session"))
+        XCTAssertTrue(fallbackArcResponse.contains("156 SPM"))
+        XCTAssertFalse(fallbackArcResponse.contains("/km cadence"), "Fallback must never write /km cadence")
     }
 }

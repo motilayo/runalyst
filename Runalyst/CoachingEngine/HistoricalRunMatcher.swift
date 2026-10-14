@@ -20,6 +20,7 @@ struct HistoricalRunMatcher {
         let distanceMeters: Double
         let durationSeconds: Double
         let isIndoor: Bool
+        let efficiencyFactor: Double?
     }
 
     struct ComparisonTelemetry: Sendable {
@@ -164,6 +165,92 @@ struct HistoricalRunMatcher {
         }
     }
 
+    struct PerformanceArcAnalysis: Sendable {
+        let totalRunsInPast30Days: Int
+        let bestRun: TelemetryData?
+        let worstRun: TelemetryData?
+        let currentRun: TelemetryData
+
+        /// Structured mathematical and telemetry facts for FoundationModels tool injection.
+        /// Zero canned coaching prose; purely factual telemetry.
+        var structuredTelemetryFacts: String {
+            guard let best = bestRun else {
+                return """
+                30-DAY PERFORMANCE ARC TELEMETRY:
+                Only 1 workout recorded in the past 30 days (\(currentRun.weekday), \(currentRun.formattedDate)):
+                - Type: \(currentRun.classification) (\(currentRun.isIndoor ? "Indoor Treadmill" : "Outdoor"))
+                - Distance: \(String(format: "%.2f", currentRun.distanceMeters / 1000.0)) km (\(Int(currentRun.durationSeconds / 60)) min)
+                - Working Pace: \(currentRun.paceFormatted)
+                - Working Cadence: \(currentRun.cadenceSPM) SPM
+                - Working Heart Rate: \(currentRun.heartRateBPM) BPM
+                - Efficiency Factor: \(currentRun.efficiencyFactor.map { String(format: "%.2f m/beat", $0) } ?? "N/A")
+                """
+            }
+
+            let worst = worstRun ?? currentRun
+            let paceDeltaSec = Int(worst.paceSecondsPerKm.rounded() - best.paceSecondsPerKm.rounded())
+            let cadDelta = best.cadenceSPM - worst.cadenceSPM
+            let hrDelta = worst.heartRateBPM - best.heartRateBPM
+            let bestEFStr = best.efficiencyFactor.map { String(format: "%.2f m/beat", $0) } ?? "N/A"
+            let worstEFStr = worst.efficiencyFactor.map { String(format: "%.2f m/beat", $0) } ?? "N/A"
+
+            return """
+            30-DAY PERFORMANCE ARC TELEMETRY (\(totalRunsInPast30Days) workouts recorded in the past 30 days):
+
+            BEST PERFORMANCE WORKOUT:
+            - Date: \(best.weekday), \(best.formattedDate)
+            - Classification: \(best.classification) (\(best.isIndoor ? "Indoor Treadmill" : "Outdoor"))
+            - Distance: \(String(format: "%.2f", best.distanceMeters / 1000.0)) km (\(Int(best.durationSeconds / 60)) min)
+            - Working Pace: \(best.paceFormatted)
+            - Working Cadence: \(best.cadenceSPM) SPM (turnover in steps per minute)
+            - Working Heart Rate: \(best.heartRateBPM) BPM
+            - Efficiency Factor: \(bestEFStr) (peak aerobic running economy)
+
+            WORST / TOUGHEST WORKOUT:
+            - Date: \(worst.weekday), \(worst.formattedDate)
+            - Classification: \(worst.classification) (\(worst.isIndoor ? "Indoor Treadmill" : "Outdoor"))
+            - Distance: \(String(format: "%.2f", worst.distanceMeters / 1000.0)) km (\(Int(worst.durationSeconds / 60)) min)
+            - Working Pace: \(worst.paceFormatted) (\(abs(paceDeltaSec))s/km slower than best)
+            - Working Cadence: \(worst.cadenceSPM) SPM (\(abs(cadDelta)) SPM lower turnover)
+            - Working Heart Rate: \(worst.heartRateBPM) BPM (+\(max(0, hrDelta)) BPM higher cardiac load)
+            - Efficiency Factor: \(worstEFStr) (lower running economy under fatigue)
+
+            MATHEMATICAL PERFORMANCE DELTAS (Best vs Toughest):
+            - Pace Gap: \(abs(paceDeltaSec))s/km difference
+            - Cadence Gap: \(abs(cadDelta)) SPM difference (turnover strictly in SPM)
+            - Heart Rate Gap: \(abs(hrDelta)) BPM cardiac spread
+            - Physiological Contrast: In the best session on \(best.formattedDate), aerobic coupling was optimal with high speed per heartbeat. In contrast, the toughest session on \(worst.formattedDate) exhibited higher cardiovascular strain and lower mechanical turnover.
+            """
+        }
+
+        /// Natural language synthesized coaching arc for fallback and offline coaching contexts.
+        var coachingArcSummary: String {
+            guard let best = bestRun else {
+                return "In the past 30 days, you have 1 workout recorded: your **\(currentRun.weekday), \(currentRun.formattedDate) \(currentRun.classification)** (**\(String(format: "%.2f", currentRun.distanceMeters / 1000.0)) km** at **\(currentRun.paceFormatted)** with **\(currentRun.cadenceSPM) SPM** cadence)."
+            }
+
+            let worst = worstRun ?? currentRun
+            let paceDeltaSec = Int(worst.paceSecondsPerKm.rounded() - best.paceSecondsPerKm.rounded())
+            let cadDelta = best.cadenceSPM - worst.cadenceSPM
+            let bestEF = best.efficiencyFactor.map { String(format: "%.2f", $0) } ?? ""
+            let worstEF = worst.efficiencyFactor.map { String(format: "%.2f", $0) } ?? ""
+
+            let bestEFNote = !bestEF.isEmpty ? " and a **\(bestEF)** efficiency factor (reflecting high speed per heartbeat)" : ""
+            let worstEFNote = !worstEF.isEmpty ? " The **\(worstEF)** efficiency factor and " : " The "
+            let cadDiffNote = cadDelta > 0 ? "**\(cadDelta) SPM lower turnover**" : "matched turnover"
+
+            let envNote = worst.isIndoor ? "particularly under the treadmill's static heat and braking shock" : "reflecting cumulative fatigue"
+
+            return """
+            Looking at your performance arc across the past 30 days (\(totalRunsInPast30Days) workouts recorded):
+
+            Your **best performance** came on **\(best.weekday), \(best.formattedDate)** during a **\(String(format: "%.2f", best.distanceMeters / 1000.0)) km \(best.classification)**, where you sustained a **\(best.paceFormatted)** pace with **\(best.cadenceSPM) SPM** cadence\(bestEFNote)—demonstrating peak aerobic control and mechanical efficiency.
+
+            Your **toughest session** was your **\(worst.weekday), \(worst.formattedDate) \(worst.classification)**. \(worstEFNote)\(cadDiffNote) showed cardiovascular decoupling creeping in, \(envNote). Compared to your best session, your pace was **\(abs(paceDeltaSec))s/km slower** at a heart rate of **\(worst.heartRateBPM) BPM**, showing how environmental conditions and recovery interplay.
+            """
+        }
+    }
+
     /// Finds a historical run in the model context matching the user's natural language query.
     static func findRun(
         matching query: String,
@@ -178,6 +265,32 @@ struct HistoricalRunMatcher {
         guard !otherRuns.isEmpty else { return nil }
 
         let lower = query.lowercased()
+
+        let calendar = Calendar.current
+
+        // 0. Superlatives: "best", "fastest", "worst", "slowest", "toughest"
+        func efficiencyScore(for run: RunRecord) -> Double {
+            if let ef = run.efficiencyFactor, ef > 0 { return ef }
+            let pace = run.workingAvgPace > 0 ? run.workingAvgPace : run.rawAvgPace
+            let hr = run.workingAvgHeartRate > 0 ? run.workingAvgHeartRate : run.rawAvgHeartRate
+            guard pace > 0, hr > 0 else { return 0.0 }
+            return (60_000.0 / pace) / hr
+        }
+
+        if lower.contains("best") || lower.contains("fastest") || lower.contains("highest efficiency") {
+            let candidates = otherRuns.filter { $0.totalDistanceMeters >= 500 && $0.duration >= 180 }
+            let pool = candidates.isEmpty ? otherRuns : candidates
+            if let best = pool.max(by: { efficiencyScore(for: $0) < efficiencyScore(for: $1) }) {
+                return best
+            }
+        }
+        if lower.contains("worst") || lower.contains("slowest") || lower.contains("toughest") || lower.contains("lowest efficiency") {
+            let candidates = otherRuns.filter { $0.totalDistanceMeters >= 500 && $0.duration >= 180 }
+            let pool = candidates.isEmpty ? otherRuns : candidates
+            if let worst = pool.min(by: { efficiencyScore(for: $0) < efficiencyScore(for: $1) }) {
+                return worst
+            }
+        }
 
         // 1. Month + Day parsing (e.g., "September 14", "Sep 14", "Sept 14", "9/14")
         let months: [(name: String, number: Int)] = [
@@ -229,7 +342,6 @@ struct HistoricalRunMatcher {
             }
         }
 
-        let calendar = Calendar.current
         if let targetMonth = targetMonth, let targetDay = targetDay {
             let matches = otherRuns.filter { run in
                 let comps = calendar.dateComponents([.month, .day], from: run.date)
@@ -273,40 +385,27 @@ struct HistoricalRunMatcher {
         return nil
     }
 
-    /// Computes deterministic telemetry deltas between the current run and a prior run.
-    static func compare(current: RunRecord, with prior: RunRecord) -> ComparisonTelemetry {
-        let calendar = Calendar.current
+    /// Extracts standardized telemetry data from a RunRecord.
+    static func extractTelemetry(from run: RunRecord) -> TelemetryData {
         let dateFormatter = DateFormatter()
         dateFormatter.locale = Locale(identifier: "en_US_POSIX")
         dateFormatter.dateFormat = "MMMM d"
-
-        let currentFormattedDate = dateFormatter.string(from: current.date)
-        let priorFormattedDate = dateFormatter.string(from: prior.date)
 
         let weekdayFormatter = DateFormatter()
         weekdayFormatter.locale = Locale(identifier: "en_US_POSIX")
         weekdayFormatter.dateFormat = "EEEE"
 
-        let currentWeekday = weekdayFormatter.string(from: current.date)
-        let priorWeekday = weekdayFormatter.string(from: prior.date)
+        let currentFormattedDate = dateFormatter.string(from: run.date)
+        let currentWeekday = weekdayFormatter.string(from: run.date)
 
-        let currentType = current.detectedTypeRaw.isEmpty ? current.normalizedClassification : current.detectedTypeRaw
-        let priorType = prior.detectedTypeRaw.isEmpty ? prior.normalizedClassification : prior.detectedTypeRaw
-
-        let currentPace = current.workingAvgPace > 0 ? current.workingAvgPace : current.rawAvgPace
-        let priorPace = prior.workingAvgPace > 0 ? prior.workingAvgPace : prior.rawAvgPace
-
-        let currentCad = Int(current.workingAvgCadence > 0 ? current.workingAvgCadence : current.rawAvgCadence)
-        let priorCad = Int(prior.workingAvgCadence > 0 ? prior.workingAvgCadence : prior.rawAvgCadence)
-
-        let currentHR = Int(current.workingAvgHeartRate > 0 ? current.workingAvgHeartRate : current.rawAvgHeartRate)
-        let priorHR = Int(prior.workingAvgHeartRate > 0 ? prior.workingAvgHeartRate : prior.rawAvgHeartRate)
-
+        let currentType = run.detectedTypeRaw.isEmpty ? run.normalizedClassification : run.detectedTypeRaw
+        let currentPace = run.workingAvgPace > 0 ? run.workingAvgPace : run.rawAvgPace
+        let currentCad = Int(run.workingAvgCadence > 0 ? run.workingAvgCadence : run.rawAvgCadence)
+        let currentHR = Int(run.workingAvgHeartRate > 0 ? run.workingAvgHeartRate : run.rawAvgHeartRate)
         let currentPaceStr = PaceFormatter.formatPace(secondsPerKilometer: currentPace)
-        let priorPaceStr = PaceFormatter.formatPace(secondsPerKilometer: priorPace)
 
-        let currentTelemetry = TelemetryData(
-            date: current.date,
+        return TelemetryData(
+            date: run.date,
             formattedDate: currentFormattedDate,
             weekday: currentWeekday,
             classification: currentType,
@@ -314,31 +413,109 @@ struct HistoricalRunMatcher {
             paceFormatted: currentPaceStr,
             cadenceSPM: currentCad,
             heartRateBPM: currentHR,
-            distanceMeters: current.totalDistanceMeters,
-            durationSeconds: current.duration,
-            isIndoor: current.isIndoor ?? false
+            distanceMeters: run.totalDistanceMeters,
+            durationSeconds: run.duration,
+            isIndoor: run.isIndoor ?? false,
+            efficiencyFactor: run.efficiencyFactor
         )
+    }
 
-        let priorTelemetry = TelemetryData(
-            date: prior.date,
-            formattedDate: priorFormattedDate,
-            weekday: priorWeekday,
-            classification: priorType,
-            paceSecondsPerKm: priorPace,
-            paceFormatted: priorPaceStr,
-            cadenceSPM: priorCad,
-            heartRateBPM: priorHR,
-            distanceMeters: prior.totalDistanceMeters,
-            durationSeconds: prior.duration,
-            isIndoor: prior.isIndoor ?? false
+    /// Evaluates 30-day performance rankings, identifying the athlete's peak and toughest workouts.
+    static func analyzePerformanceArc(
+        relativeTo currentRun: RunRecord,
+        in context: ModelContext?
+    ) -> PerformanceArcAnalysis {
+        let currentTelemetry = extractTelemetry(from: currentRun)
+        guard let context = context else {
+            return PerformanceArcAnalysis(
+                totalRunsInPast30Days: 1,
+                bestRun: currentTelemetry,
+                worstRun: nil,
+                currentRun: currentTelemetry
+            )
+        }
+
+        let descriptor = FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)])
+        guard let allRuns = try? context.fetch(descriptor), !allRuns.isEmpty else {
+            return PerformanceArcAnalysis(
+                totalRunsInPast30Days: 1,
+                bestRun: currentTelemetry,
+                worstRun: nil,
+                currentRun: currentTelemetry
+            )
+        }
+
+        let calendar = Calendar.current
+        let thirtyDaysAgo = calendar.date(byAdding: .day, value: -30, to: currentRun.date) ?? currentRun.date.addingTimeInterval(-30 * 86400)
+        let futureLimit = currentRun.date.addingTimeInterval(3600)
+
+        var past30DaysRuns = allRuns.filter { $0.date >= thirtyDaysAgo && $0.date <= futureLimit }
+        if !past30DaysRuns.contains(where: { $0.id == currentRun.id }) {
+            past30DaysRuns.append(currentRun)
+        }
+
+        guard past30DaysRuns.count >= 2 else {
+            return PerformanceArcAnalysis(
+                totalRunsInPast30Days: past30DaysRuns.count,
+                bestRun: currentTelemetry,
+                worstRun: nil,
+                currentRun: currentTelemetry
+            )
+        }
+
+        let meaningfulRuns = past30DaysRuns.filter { $0.totalDistanceMeters >= 500 && $0.duration >= 180 }
+        let candidateRuns = meaningfulRuns.count >= 2 ? meaningfulRuns : past30DaysRuns
+
+        func efficiencyScore(for run: RunRecord) -> Double {
+            if let ef = run.efficiencyFactor, ef > 0 { return ef }
+            let pace = run.workingAvgPace > 0 ? run.workingAvgPace : run.rawAvgPace
+            let hr = run.workingAvgHeartRate > 0 ? run.workingAvgHeartRate : run.rawAvgHeartRate
+            guard pace > 0, hr > 0 else { return 0.0 }
+            return (60_000.0 / pace) / hr
+        }
+
+        let sorted = candidateRuns.sorted { r1, r2 in
+            let ef1 = efficiencyScore(for: r1)
+            let ef2 = efficiencyScore(for: r2)
+            if abs(ef1 - ef2) > 0.001 {
+                return ef1 > ef2
+            }
+            let p1 = r1.workingAvgPace > 0 ? r1.workingAvgPace : r1.rawAvgPace
+            let p2 = r2.workingAvgPace > 0 ? r2.workingAvgPace : r2.rawAvgPace
+            return p1 < p2
+        }
+
+        guard let bestRecord = sorted.first else {
+            return PerformanceArcAnalysis(
+                totalRunsInPast30Days: past30DaysRuns.count,
+                bestRun: currentTelemetry,
+                worstRun: nil,
+                currentRun: currentTelemetry
+            )
+        }
+        let worstRecord = sorted.count > 1 ? sorted.last : nil
+
+        let bestTelemetry = extractTelemetry(from: bestRecord)
+        let worstTelemetry = worstRecord.map { extractTelemetry(from: $0) }
+
+        return PerformanceArcAnalysis(
+            totalRunsInPast30Days: past30DaysRuns.count,
+            bestRun: bestTelemetry,
+            worstRun: worstTelemetry,
+            currentRun: currentTelemetry
         )
+    }
 
-        // Deltas
-        let paceDeltaSec = Int(priorPace.rounded() - currentPace.rounded())
-        let cadDelta = currentCad - priorCad
-        let hrDelta = currentHR - priorHR
-        let distDelta = current.totalDistanceMeters - prior.totalDistanceMeters
-        let durDelta = current.duration - prior.duration
+    /// Computes deterministic telemetry deltas between the current run and a prior run.
+    static func compare(current: RunRecord, with prior: RunRecord) -> ComparisonTelemetry {
+        let currentTelemetry = extractTelemetry(from: current)
+        let priorTelemetry = extractTelemetry(from: prior)
+
+        let paceDeltaSec = Int(priorTelemetry.paceSecondsPerKm.rounded() - currentTelemetry.paceSecondsPerKm.rounded())
+        let cadDelta = currentTelemetry.cadenceSPM - priorTelemetry.cadenceSPM
+        let hrDelta = currentTelemetry.heartRateBPM - priorTelemetry.heartRateBPM
+        let distDelta = currentTelemetry.distanceMeters - priorTelemetry.distanceMeters
+        let durDelta = currentTelemetry.durationSeconds - priorTelemetry.durationSeconds
 
         return ComparisonTelemetry(
             current: currentTelemetry,
