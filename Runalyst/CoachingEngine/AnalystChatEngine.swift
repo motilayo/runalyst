@@ -37,6 +37,8 @@ class AnalystChatEngine: ObservableObject {
 
     #if canImport(FoundationModels)
     private var modelSession: Any? // LanguageModelSession on iOS 26+
+    /// Number of tools executed during the active conversation turn.
+    private(set) var toolsCalledThisTurn: Int = 0
     #endif
 
     #if DEBUG
@@ -241,6 +243,11 @@ class AnalystChatEngine: ObservableObject {
         • Workout comparison, 30-day rankings, best/worst performance: `fetchHistoricalWorkout`.
         Never announce tool retrieval; call immediately and synthesize findings directly into your answer.
 
+        ZERO-HALLUCINATION MANDATE:
+        • Every pace, cadence, heart rate, interval split, and distance MUST be fetched via a tool call.
+        • NEVER invent, guess, estimate, or extrapolate numbers. If you have not executed a tool call to retrieve the exact metrics for this run, DO NOT cite specific paces or cadences.
+        • Do not volunteer unprompted interval splits or paces when answering general, conceptual, or out-of-scope questions.
+
         COACHING RULES:
         • Topic Continuity: When I ask follow-ups ("That's all?", "Tell me more", "Why?"), elaborate deeply on the ACTIVE topic previously discussed. Never reset to a generic overview or volunteer tomorrow's plan.
         • Prose over Lists: Weave metrics into flowing, perceptive coaching sentences rather than mechanical bullet lists.
@@ -260,21 +267,25 @@ class AnalystChatEngine: ObservableObject {
 
         let workoutTool = FetchWorkoutAnalysisTool { [weak self] query in
             guard let self else { return "" }
+            self.toolsCalledThisTurn += 1
             return self.makeAnalysisContext().compactTelemetryAnalysis(focus: query.focus)
         }
 
         let intervalTool = FetchIntervalPerformanceTool { [weak self] _ in
             guard let self else { return "" }
+            self.toolsCalledThisTurn += 1
             return self.makeAnalysisContext().formatIntervalPerformanceSummary()
         }
 
         let physicsTool = FetchWorkoutPhysicsTool { [weak self] query in
             guard let self else { return "" }
+            self.toolsCalledThisTurn += 1
             return self.makeAnalysisContext().formatWorkoutPhysicsSummary(domain: query.domain)
         }
 
         let readinessTool = FetchReadinessAndPrescriptionTool { [weak self] _ in
             guard let self else { return "" }
+            self.toolsCalledThisTurn += 1
             let analysis = self.makeAnalysisContext()
             return """
             RECOVERY & UPCOMING SESSION PRESCRIPTION:
@@ -287,6 +298,7 @@ class AnalystChatEngine: ObservableObject {
 
         let profileTool = FetchAthleteProfileTool { [weak self] _ in
             guard let self else { return "" }
+            self.toolsCalledThisTurn += 1
             let profile = self.runnerProfile
             return """
             ATHLETE PROFILE:
@@ -299,6 +311,7 @@ class AnalystChatEngine: ObservableObject {
 
         let historicalTool = FetchHistoricalWorkoutTool { [weak self] query in
             guard let self else { return "No historical data available." }
+            self.toolsCalledThisTurn += 1
             let target = (query.target ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             let lower = target.lowercased()
 
@@ -330,8 +343,9 @@ class AnalystChatEngine: ObservableObject {
     @available(iOS 26.0, *)
     private func generateFoundationModelResponse(for userQuestion: String, turnContext: ManagedTurnContext) async throws -> String {
         let session = getOrCreateSession()
+        toolsCalledThisTurn = 0
         let prompt: String
-        if turnContext.turnDomain == .elaborationOrFollowUp || turnContext.isSubjectiveDistress {
+        if !turnContext.turnGuidance.isEmpty {
             prompt = """
             \(userQuestion)
 
@@ -360,12 +374,25 @@ class AnalystChatEngine: ObservableObject {
             }
         }
 
+        // Swift-side Hallucination Verifier:
+        // If the turn is out-of-scope and the response contains fabricated metrics:
+        if turnContext.turnDomain == .outOfScopeInquiry && Self.containsMetricTelemetry(responseText) {
+            let runType = runRecord.detectedTypeRaw.isEmpty ? "workout" : runRecord.detectedTypeRaw
+            return Self.sanitizeOutOfScopeResponse(responseText, runType: runType)
+        }
+
+        // If no tools were called during this turn, the LLM has zero real telemetry context.
+        // Any specific pace citations (e.g. 5:05/km), split intervals, or cadence figures are fabricated hallucinations.
+        if toolsCalledThisTurn == 0 && turnContext.turnDomain != .elaborationOrFollowUp && Self.containsMetricTelemetry(responseText) {
+            return generateDataGroundedFallback(for: userQuestion, turnContext: turnContext)
+        }
+
         return responseText
     }
     #endif
 
     /// Evaluates whether an LLM generation stalled by announcing future data retrieval instead of answering.
-    static func isStallResponse(_ text: String) -> Bool {
+    nonisolated static func isStallResponse(_ text: String) -> Bool {
         let lower = text.lowercased()
         let stallPatterns = [
             "need to pull",
@@ -392,8 +419,80 @@ class AnalystChatEngine: ObservableObject {
     }
 
     /// Synthesizes 1,000-meter splits from phase segments if physical splits were not persisted.
-    static func synthesizeSplitsFromSegments(_ segments: [PhaseSegment], splitDistanceMeters: Double = 1000.0) -> [RunSplit] {
+    nonisolated static func synthesizeSplitsFromSegments(_ segments: [PhaseSegment], splitDistanceMeters: Double = 1000.0) -> [RunSplit] {
         RunSplit.synthesize(from: segments, splitDistanceMeters: splitDistanceMeters)
+    }
+
+    /// Evaluates whether a text string contains specific pace, cadence, heart rate, or interval split telemetry.
+    nonisolated static func containsMetricTelemetry(_ text: String) -> Bool {
+        // Pace pattern: e.g. 5:05/km, 8:20/mi, 4:15 / km, 5:18/km, 5:15 min/km
+        let pacePattern = #"\b\d{1,2}:\d{2}\s*(/|min/|per\s*)(km|mi)\b"#
+        if text.range(of: pacePattern, options: [.regularExpression, .caseInsensitive]) != nil {
+            return true
+        }
+        // Cadence pattern: e.g. 160 SPM, 160-170 SPM, 160–170 SPM
+        let cadencePattern = #"\b\d{2,3}(\s*[-–]\s*\d{2,3})?\s*spm\b"#
+        if text.range(of: cadencePattern, options: [.regularExpression, .caseInsensitive]) != nil {
+            return true
+        }
+        // Heart rate pattern: e.g. 155 BPM, 150-160 BPM
+        let hrPattern = #"\b\d{2,3}(\s*[-–]\s*\d{2,3})?\s*bpm\b"#
+        if text.range(of: hrPattern, options: [.regularExpression, .caseInsensitive]) != nil {
+            return true
+        }
+        // Interval ordinal mentions (e.g. "first interval", "second interval", "1st interval")
+        let intervalPattern = #"\b(first|second|third|fourth|fifth|1st|2nd|3rd|4th|5th)\s+interval\b"#
+        if text.range(of: intervalPattern, options: [.regularExpression, .caseInsensitive]) != nil {
+            return true
+        }
+        return false
+    }
+
+    /// Sanitizes an out-of-scope response by preserving the conversational acknowledgment/redirection
+    /// while strictly stripping any fabricated metric sentences or numbers.
+    nonisolated static func sanitizeOutOfScopeResponse(_ text: String, runType: String) -> String {
+        let pattern = #"[^.!?]+[.!?]?"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else {
+            let fallbackPiv = "I'm your personal running coach, so I specialize in running biomechanics and recovery."
+            return "\(fallbackPiv) What would you like to explore regarding your runs?"
+        }
+
+        let nsString = text as NSString
+        let matches = regex.matches(in: text, range: NSRange(location: 0, length: nsString.length))
+        let rawSentences = matches.map {
+            nsString.substring(with: $0.range).trimmingCharacters(in: .whitespacesAndNewlines)
+        }.filter { !$0.isEmpty }
+
+        var opening: String?
+        var closing: String?
+
+        for sentence in rawSentences {
+            if containsMetricTelemetry(sentence) {
+                continue
+            }
+            let lower = sentence.lowercased()
+            if lower.contains("during that workout") || lower.contains("that session") ||
+               lower.contains("cadence floor") || lower.contains("running economy") ||
+               lower.contains("let's focus on what matters") || lower.contains("lets focus on what matters") {
+                continue
+            }
+            if opening == nil && sentence.count > 15 {
+                opening = sentence
+            } else if lower.contains("how can i help") || lower.hasPrefix("what") || lower.hasPrefix("how") || sentence.hasSuffix("?") {
+                closing = sentence
+            }
+        }
+
+        if let opening {
+            if let closing {
+                return "\(opening) \(closing)"
+            } else {
+                return "\(opening) What would you like to explore about your form, effort, or recovery from your \(runType)?"
+            }
+        }
+
+        let defaultPivot = "I'm your personal running coach and exercise physiologist, so I specialize in your running biomechanics and recovery."
+        return "\(defaultPivot) What would you like to explore regarding your runs?"
     }
 
     // MARK: - Honest System Status (No Fake Canned Responses)

@@ -88,17 +88,13 @@ enum ConversationMemoryManager {
         }
 
         // 2. Out-of-Scope Detection (General Trivia, Coding, Non-running inquiries)
-        let outOfScopeTriggers = [
-            "who won the", "president of", "capital of", "recipe for", "how do i fix a flat tire on my bike",
-            "movie", "actor", "weather in", "write python", "write swift code"
-        ]
-        if outOfScopeTriggers.contains(where: { lower.contains($0) }) {
+        if isOutOfScopeQuery(lower) {
             return ManagedTurnContext(
                 turnDomain: .outOfScopeInquiry,
                 turnIndex: userTurnIndex,
                 isSubjectiveDistress: false,
                 cleanConversationDigest: "",
-                turnGuidance: "The user is asking a general knowledge or non-running question. Answer concisely in 1–2 sentences, then politely pivot the conversation back to their personal running data and goals.",
+                turnGuidance: "The user is asking a general knowledge, non-running, or out-of-scope question. Acknowledge what they asked in a friendly sentence (e.g., clarifying that you coach running, not general trivia, dance, or cooking), then pivot back to their running. CRITICAL: NEVER invent, estimate, or quote workout metrics (paces, cadences, interval splits) when pivoting. Simply ask how you can help with their running training or recovery.",
                 stripWorkoutPayload: true,
                 prunePhysiologicalVerdicts: true
             )
@@ -281,6 +277,21 @@ enum ConversationMemoryManager {
             stripWorkoutPayload: false,
             prunePhysiologicalVerdicts: false
         )
+    }
+
+    /// Evaluates whether an input query is asking an out-of-scope, non-running question.
+    static func isOutOfScopeQuery(_ text: String) -> Bool {
+        let lower = text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        let triggers = [
+            "dougie", "dance", "dancing", "twerk", "waltz", "salsa", "hip hop",
+            "sing", "song", "lyrics", "rap", "music", "guitar", "piano",
+            "recipe", "cook", "bake", "pancake", "cake", "pizza", "burger", "cocktail",
+            "movie", "actor", "actress", "film", "cinema", "video game", "play game", "chess", "poker",
+            "write python", "write swift", "write code", "coding", "javascript", "html", "css",
+            "who won the", "president of", "capital of", "weather in", "stock market", "crypto", "bitcoin",
+            "tell me a joke", "write a poem", "write a story", "bedtime story"
+        ]
+        return triggers.contains { lower.contains($0) }
     }
 
     /// Compiles a concise digest of recent turns to avoid token bloat and context contamination.
