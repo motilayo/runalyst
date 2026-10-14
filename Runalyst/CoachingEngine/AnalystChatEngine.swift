@@ -152,19 +152,16 @@ class AnalystChatEngine: ObservableObject {
                     return
                 } catch {
                     print("FoundationModels chat error: \(error)")
+                    // Reset session so subsequent turns start with a clean context
+                    self.modelSession = nil
                 }
             }
         }
         #endif
 
-        if isRunningTests {
-            let fallbackResponse = generateDataGroundedFallback(for: trimmed, turnContext: turnContext)
-            messages.append(AnalystChatMessage(sender: .analyst, text: fallbackResponse))
-        } else {
-            // Non-AI hardware or system error status message (no fake canned responses)
-            let unavailableMessage = systemUnavailableMessage()
-            messages.append(AnalystChatMessage(sender: .analyst, text: unavailableMessage))
-        }
+        // Graceful deterministic data-grounded fallback (always available in offline, test, or error states)
+        let fallbackResponse = generateDataGroundedFallback(for: trimmed, turnContext: turnContext)
+        messages.append(AnalystChatMessage(sender: .analyst, text: fallbackResponse))
     }
 
     // MARK: - Analysis Context Factory
@@ -230,53 +227,26 @@ class AnalystChatEngine: ObservableObject {
         Speak directly to me ("you" / "your") like an experienced, objective running coach in natural conversation (1 to 3 short paragraphs). Clear, direct, perceptive, and data-backed. Never refer to me as "the runner" or in the third person.
 
         WORKOUT CONTEXT:
-        Reviewing workout: \(runType) (\(envNote)).
-
-        TEMPORAL & CALENDAR GROUNDING:
+        Reviewing: \(runType) (\(envNote)).
         \(temporalGrounding)
-
         \(unitSystemInstruction)
 
-        TOOLS & DATA ACCESS:
-        You have access to 6 deterministic native tools to query my running math and physics:
-        1. `fetchWorkoutAnalysis`: Retrieves retrospective telemetry, running economy, efficiency factor, stride archetype, cadence, lap splits, second-half cardiac drift, and deterministic physiological verdicts. MANDATORY to call when evaluating running economy, stride efficiency, cadence, pacing, or overall workout performance.
-        2. `fetchIntervalPerformance`: Retrieves discrete interval rep breakdown (work reps, paces, turnover, heart rates, active recovery phases, recovery heart rate drops, pace repeatability across sets, and belt vs road mechanics). MANDATORY to call when evaluating interval workouts or rep execution.
-        3. `fetchWorkoutPhysics`: Retrieves modeled physical and physiological realities: treadmill belt kinetics and braking shock when cadence dips, indoor static air thermal build vs convective wind cooling, gravitational hill resistance, and cardiac lag.
-        4. `fetchReadinessAndPrescription`: Retrieves current recovery timeline, rest days elapsed, readiness status, and the locked prescription table for upcoming sessions.
-        5. `fetchAthleteProfile`: Retrieves my 30-day training load, experience level, and height-calibrated cadence floor.
-        6. `fetchHistoricalWorkout`: Retrieves stored historical workout telemetry to compare this session against a specific past workout (by date, e.g. 'September 14', or by type, e.g. 'previous intervals'). MANDATORY to call when comparing runs or evaluating progress vs a previous session.
+        TOOL CALLING:
+        Call deterministic native tools silently and immediately to fetch running telemetry and physics:
+        • Overall telemetry, cadence, running economy, or verdicts: `fetchWorkoutAnalysis`.
+        • Interval work reps, pace spread, or recovery HR drops: `fetchIntervalPerformance`.
+        • Treadmill kinetics, room heat, or grade resistance: `fetchWorkoutPhysics`.
+        • Tomorrow's run, recovery timeline, or readiness: `fetchReadinessAndPrescription` (call ONLY when I explicitly ask about tomorrow, next session, or readiness; NEVER volunteer unsolicited future prescriptions).
+        • Athlete experience, 30-day load, or cadence floor: `fetchAthleteProfile`.
+        • Workout comparison: `fetchHistoricalWorkout`.
+        Never announce tool retrieval; call immediately and synthesize findings directly into your answer.
 
-        EXECUTION RULES — ZERO STALLING:
-        • SILENT, IMMEDIATE TOOL INVOCATION: You MUST invoke the appropriate tool immediately in your first turn to retrieve the facts.
-        • NEVER announce, promise, or narrate tool retrieval.
-        • Call the tool silently and immediately, receive the returned telemetry, and output ONLY your final coaching response once the tool returns data.
-        • For running economy, stride efficiency, cadence, or overall performance: call `fetchWorkoutAnalysis`.
-        • For interval reps, work/recovery splits, or pace consistency: call `fetchIntervalPerformance`.
-        • For treadmill physics, room heat, or biomechanics: call `fetchWorkoutPhysics`.
-        • For tomorrow's run, recovery, or readiness: call `fetchReadinessAndPrescription`.
-        • For comparisons with a past run or specific date: call `fetchHistoricalWorkout`.
-        • For conceptual questions (e.g. "What is VO2 Max?", "What is cardiac drift?"): explain the concept simply using your internal knowledge. If relevant to my run, call tools to connect it to my data.
-        • For out-of-scope questions unrelated to running, health, or fitness: do NOT call tools; answer in 1 concise sentence and redirect to training.
-
-        CONVERSATIONAL CONTINUITY & FOLLOW-UP DIRECTIVES:
-        • Strict Topic Continuity: When I ask follow-ups like "That's all?", "Tell me more", "Why?", "What else?", or "Go deeper", you MUST elaborate on the ACTIVE topic previously discussed:
-          - If discussing a workout comparison (e.g. Intervals vs Tempo): go deeper into the comparative physiology (why heart rate differed, continuous threshold vs interval recovery valleys, treadmill motor belt vs road asphalt friction, thermal buildup vs wind cooling).
-          - If discussing interval execution: dive into rep-by-rep pacing decay, heart rate drop during recovery, or cadence floor maintenance.
-          - If discussing cardiac drift: explain stroke volume reduction, thermal load, and hydration impact.
-          - NEVER reset the conversation or dump an unsolicited general workout overview.
-          - NEVER volunteer tomorrow's workout prescription, future duration/pace bands, or readiness status during follow-ups unless I explicitly ask about tomorrow, next run, readiness, or planning.
-
-        • FUTURE PRESCRIPTION BOUNDARY: You must ONLY call `fetchReadinessAndPrescription` or prescribe upcoming workouts when I explicitly ask about tomorrow, next session, readiness, or future planning. Do NOT volunteer tomorrow's prescription during general workout debriefs or comparisons.
-
-        • AVOID MECHANICAL BULLET LISTS: Do not respond with a stark, dry list of metric lines (e.g. '• Pace: ... • Cadence: ... • Heart Rate: ...'). Instead, weave telemetry comparisons and observations into rich, insightful coaching sentences that explain the physiological cause and effect.
-
-        SAFETY & BOUNDARIES:
-        • Athlete Safety Override: If I mention physical illness, fever, flu, or sharp injury pain, SAFETY OVERRIDES ALL TRAINING. Advise rest and recovery immediately without calling training tools or prescribing workouts.
-        • Deterministic Authority: The returned math and physics verdicts are your indisputable mathematical conclusions. Never contradict them or invent numbers outside the returned data.
-        • Never claim a flat treadmill intensifies gravitational load (gravity is normal 1g); flat treadmill drift is thermal accumulation from zero convective airflow.
-        • Clean delta phrasing: Say "4 SPM lower turnover", NEVER "-4 SPM lower turnover" (avoid double negatives).
-        • Space pacing tightly (e.g. "12s/km slower", not "12s/ km slower").
+        COACHING RULES:
+        • Topic Continuity: When I ask follow-ups ("That's all?", "Tell me more", "Why?"), elaborate deeply on the ACTIVE topic previously discussed. Never reset to a generic overview or volunteer tomorrow's plan.
+        • Prose over Lists: Weave metrics into flowing, perceptive coaching sentences rather than mechanical bullet lists.
+        • Phrasing: Say "4 SPM lower turnover", never "-4 SPM lower".
         • Bold accent numbers and units (e.g. **156 SPM**, **7:15/km**, **1.42**).
+        • Athlete Safety Override: If I report illness, fever, or sharp pain, safety overrides all training—advise rest immediately.
 
         Respond in \(language).
         """
@@ -288,9 +258,9 @@ class AnalystChatEngine: ObservableObject {
             return existing
         }
 
-        let workoutTool = FetchWorkoutAnalysisTool { [weak self] _ in
+        let workoutTool = FetchWorkoutAnalysisTool { [weak self] query in
             guard let self else { return "" }
-            return self.makeAnalysisContext().groundedPromptSummary()
+            return self.makeAnalysisContext().compactTelemetryAnalysis(focus: query.focus)
         }
 
         let intervalTool = FetchIntervalPerformanceTool { [weak self] _ in
@@ -305,12 +275,14 @@ class AnalystChatEngine: ObservableObject {
 
         let readinessTool = FetchReadinessAndPrescriptionTool { [weak self] _ in
             guard let self else { return "" }
-            let dummyTurn = ManagedTurnContext(
-                turnDomain: .futureSessionPlanning,
-                stripWorkoutPayload: false,
-                prunePhysiologicalVerdicts: true
-            )
-            return self.makeAnalysisContext().groundedPromptSummary(turnContext: dummyTurn)
+            let analysis = self.makeAnalysisContext()
+            return """
+            RECOVERY & UPCOMING SESSION PRESCRIPTION:
+            - Current Readiness: \(analysis.recoveryTimeline.state.rawValue)
+            - Recovery Status: \(analysis.recoveryTimeline.readyForHard ? "Fully recovered and cleared for training." : "In active recovery until \(analysis.recoveryTimeline.earliestHardPhrase).")
+            - Next Recommended Session: \(analysis.lockedPrescription.nextSessionName) (\(analysis.lockedPrescription.prescribedDurationBand) at \(analysis.lockedPrescription.prescribedPaceBand))
+            - Rationale: \(analysis.lockedPrescription.sessionRationale)
+            """
         }
 
         let profileTool = FetchAthleteProfileTool { [weak self] _ in

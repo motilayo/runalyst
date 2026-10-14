@@ -384,4 +384,44 @@ extension WorkoutAnalysisContext {
 
         return lines.joined(separator: "\n")
     }
+
+    /// Builds a compact, token-efficient telemetry summary for on-device FoundationModels tool calling.
+    /// Caps output to ~250 tokens to respect Apple's TN3193 4,096-token session limit.
+    func compactTelemetryAnalysis(focus: String? = nil) -> String {
+        var lines: [String] = []
+        let distKm = String(format: "%.1f km", runRecord.totalDistanceMeters / 1000.0)
+        let durMin = max(1, Int((runRecord.duration / 60.0).rounded()))
+        lines.append("WORKOUT TELEMETRY (\(workoutWeekday), \(workoutDateFormatted)):")
+        lines.append("- Type: \(detectedType) (\(isIndoor ? "Indoor Treadmill" : "Outdoors")), \(distKm) in \(durMin) min")
+        lines.append("- Working Pace: \(workingPaceFormatted), Working HR: \(workingHR) BPM")
+        let floor = runnerProfile.heightAdjustedCadenceFloor
+        lines.append("- Cadence: \(workingCadence) SPM (Floor: \(floor) SPM, \(isSubFloorCadence ? "BELOW floor" : "healthy turnover"))")
+        if let ef = efficiencyFactor {
+            lines.append("- Efficiency Factor: \(String(format: "%.2f", ef)) m/beat")
+        }
+        lines.append("- Stride Archetype: \(strideArchetype)")
+        if hasCardiacDrift {
+            lines.append("- Cardiac Drift: +\(cardiacDriftMagnitudeBPM) BPM rise in second half")
+        }
+
+        lines.append("")
+        lines.append("PHYSIOLOGICAL VERDICTS:")
+        lines.append(physiologicalVerdicts.promptDescription)
+
+        if evaluationModality == .intervals && !intervalEvaluations.isEmpty {
+            lines.append("")
+            lines.append("INTERVAL SUMMARY (\(intervalEvaluations.count) work reps):")
+            if let f = fastestWorkRep, let s = slowestWorkRep {
+                lines.append("- Rep Pace Spread: \(PaceFormatter.formatPace(secondsPerKilometer: f.avgPace)) to \(PaceFormatter.formatPace(secondsPerKilometer: s.avgPace)) (spread: \(Int(workRepPaceSpreadSec))s/km)")
+            }
+            lines.append("- Repeatability: \(workRepPaceSpreadSec <= 8.0 ? "Disciplined consistency" : "Wide spread; late rep fatigue")")
+            lines.append("- Overall: \(overallGradeReport.grade), \(overallGradeReport.sentence)")
+        } else {
+            lines.append("")
+            lines.append("PACING & GRADE:")
+            lines.append("- Pacing: \(pacingTrendDescription), Grade: \(overallGradeReport.grade)")
+        }
+
+        return lines.joined(separator: "\n")
+    }
 }
