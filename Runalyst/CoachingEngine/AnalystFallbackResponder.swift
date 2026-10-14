@@ -55,7 +55,7 @@ enum AnalystFallbackResponder {
             let digest = turnContext?.cleanConversationDigest.lowercased() ?? ""
             if digest.contains("comparing") || digest.contains("versus") || digest.contains("vs") || digest.contains("september") || digest.contains("faster in current") || digest.contains("slower in current") {
                 let envNote = analysis.isIndoor ? "on the treadmill" : "outdoors"
-                return "Going deeper into the comparison: the primary physiological difference stems from the workout structure. Your \(analysis.detectedType) \(envNote) had active recovery periods that allowed your cardiovascular system to lower heart rate between work bouts, holding your average to **\(Int(runRecord.workingAvgHeartRate)) BPM**. In contrast, a continuous tempo run demands unbroken threshold effort without recovery valleys, creating much higher cumulative cardiac load. Mechanically, your turnover remained disciplined at **\(Int(runRecord.workingAvgCadence)) SPM**, showing solid neuromuscular control."
+                return "Going deeper into the comparison: the primary physiological difference stems from the workout structure. Your \(analysis.detectedType) \(envNote) had active recovery periods that allowed your cardiovascular system to lower heart rate between work bouts, holding your average to **\(Int(runRecord.workingAvgHeartRate)) BPM**. In contrast, a continuous tempo run demands unbroken threshold effort without recovery valleys, creating much higher cumulative cardiac load. Mechanically, your turnover remained disciplined at **\(Int(runRecord.workingAvgCadence)) SPM**, showing smooth, steady stride rhythm."
             } else if analysis.evaluationModality == .intervals {
                 return "Looking closer at your interval execution: the key to this session was managing turnover during the late work reps. While your average cadence was **\(analysis.workingCadence) SPM**, maintaining that rhythm as fatigue sets in prevents braking forces and keeps your ground contact time sharp."
             } else {
@@ -152,8 +152,15 @@ enum AnalystFallbackResponder {
             }
         }
 
+        // 8.5. Pacing Repeatability & Consistency Concept
+        if q.contains("repeatability") || q.contains("what does repeatability") {
+            let spreadNote = Int(analysis.workRepPaceSpreadSec)
+            let spreadText = spreadNote <= 8 ? "disciplined and steady (held within ±\(max(1, Int(Double(spreadNote) / 2.0)))s/km of your average)" : "variable (\(spreadNote)s/km spread between fastest and slowest reps)"
+            return "Pacing repeatability simply means holding an even, steady speed across all your intervals so you don't burn out early. In your session, your work pacing was \(spreadText)."
+        }
+
         // 9. Splits, intervals, and pacing segments
-        let isSegmentEvalIntent = q.contains("split") || q.contains("interval") || q.contains("segment") || q.contains("lap") || q.contains("fastest") || q.contains("slowest") || q.contains("performance") || q.contains("rep")
+        let isSegmentEvalIntent = q.contains("split") || q.contains("interval") || q.contains("segment") || q.contains("lap") || q.contains("fastest") || q.contains("slowest") || q.contains("performance") || q.contains("each rep") || q.contains("every rep") || q.contains("break down") || q.contains("breakdown")
         if isSegmentEvalIntent {
             return analysis.formatPerformanceReport()
         }
@@ -172,7 +179,7 @@ enum AnalystFallbackResponder {
             } else if analysis.workingCadence < analysis.runnerProfile.heightAdjustedCadenceFloor {
                 return "I recommend **Cadence Pyramids** or **Strides** during your warm-up to train your turnover up toward your **\(analysis.runnerProfile.heightAdjustedCadenceFloor) SPM** height floor."
             } else {
-                return "I recommend **Strides** (4–6 x 20-second relaxed accelerations) during your warm-up to reinforce neuromuscular sharpness and quick foot turnover."
+                return "I recommend **Strides** (4–6 x 20-second relaxed accelerations) during your warm-up to wake up quick foot turnover and a springy stride."
             }
         }
 

@@ -160,12 +160,12 @@ enum ConversationMemoryManager {
                 TURN FOCUS: In-Depth Interval Performance Elaboration.
                 The runner is asking to go deeper into their interval rep execution.
                 1. DO NOT reset to a generic overview or prescribe tomorrow's session.
-                2. Analyze work rep pacing repeatability, recovery heart rate drops, and cadence maintenance through the late reps.
+                2. Analyze work rep pacing consistency, recovery heart rate drops, and cadence maintenance through the late reps.
                 """
             } else if isCardiacTopic {
                 guidance = """
-                TURN FOCUS: In-Depth Cardiovascular Decoupling Elaboration.
-                Explain the physiological drivers of cardiac drift (thermal accumulation, stroke volume reduction, aerobic decoupling).
+                TURN FOCUS: In-Depth Heart Rate & Effort Elaboration.
+                Explain the physiological drivers of cardiac drift (thermal buildup in static room air, dehydration, or aerobic fatigue).
                 DO NOT volunteer tomorrow's workout prescription.
                 """
             } else {

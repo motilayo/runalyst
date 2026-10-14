@@ -130,16 +130,16 @@ struct DrillReadout: Sendable, Identifiable {
 
             switch duration {
             case .fiveMinutes:
-                overviewText = "In this drill, you will complete a neuromuscular wake-up to prime your fast-twitch fibers."
+                overviewText = "In this drill, you will wake up your leg turnover and find a quick, springy rhythm before your run."
                 breakdownText = "You’ll start with a 1-minute easy jog, followed by 4 short interval sets of 15-second strides and 45-second walks."
             case .tenMinutes:
-                overviewText = "In this drill, you will complete a neuromuscular wake-up to prime your fast-twitch fibers."
+                overviewText = "In this drill, you will wake up your leg turnover and find a quick, springy rhythm before your run."
                 breakdownText = "You’ll start with a 2-minute easy jog, followed by 4 short interval sets of 15-second strides and 45-second walks."
             case .fifteenMinutes:
-                overviewText = "In this drill, you will complete a neuromuscular wake-up to prime your fast-twitch fibers."
+                overviewText = "In this drill, you will wake up your leg turnover and find a quick, springy rhythm before your run."
                 breakdownText = "You’ll start with a 5-minute easy jog to warm up the joints, followed by 6 short interval sets. In each interval, you’ll accelerate into a 20-second sprint, followed immediately by a 60-second walk to let your heart rate drop completely."
             case .thirtyMinutes:
-                overviewText = "In this drill, you will complete an extended stride and neuromuscular activation workout."
+                overviewText = "In this drill, you will build leg speed with relaxed accelerations to prime your turnover."
                 breakdownText = "You’ll start with a 5-minute easy jog, followed by 8 sets of 30-second strides and 90-second walks, finishing with a 5-minute cool-down."
             }
 
@@ -280,7 +280,7 @@ struct DrillReadout: Sendable, Identifiable {
             )
             let phases = drill.generatePhases()
 
-            let overviewText = "In this drill, you will complete a quick-step activation to sharpen muscle reaction time and prime your nervous system."
+            let overviewText = "In this drill, you will complete quick-step bursts to wake up fast turnover and keep your stride springy and light."
             let breakdownText: String
 
             switch duration {
@@ -299,7 +299,7 @@ struct DrillReadout: Sendable, Identifiable {
             return DrillReadout(
                 drillId: .neuromuscularPrimer,
                 title: resolvedTitle,
-                subtitle: "Neuromuscular Pre-Run • \(duration.rawValue) min",
+                subtitle: "Form Primer • \(duration.rawValue) min",
                 overview: overviewText,
                 breakdown: breakdownText,
                 coachingTip: coachingTip,
@@ -433,7 +433,7 @@ struct DrillReadout: Sendable, Identifiable {
                 drillId: .fartlekPrimer,
                 title: resolvedTitle,
                 subtitle: "Gear-Shifting Pre-Run • \(duration.rawValue) min",
-                overview: "In this drill, you will complete a speed-play activation to wake up gear-shifting neuromuscular patterns.",
+                overview: "In this drill, you will practice shifting gears with quick surges to dial in your rhythm.",
                 breakdown: breakdownText,
                 coachingTip: coachingTip,
                 phases: phases,

@@ -267,7 +267,7 @@ enum PreRunDrillId: String, CaseIterable, Codable, Sendable {
         case .strides:
             return "figure.run"
         case .neuromuscularPrimer:
-            return "brain.head.profile"
+            return "sparkles"
         case .aerobicFlush, .recoveryJog:
             return "lungs.fill"
         case .fartlekPrimer:

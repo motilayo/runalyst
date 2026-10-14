@@ -65,7 +65,7 @@ function initScreenshotShowcase() {
       src: 'assets/images/05_PreRun_Library.png',
       badge: '05 / CURATED PRE-RUN DRILL CATALOG',
       title: 'Curated Pre-Run Drills Library',
-      desc: 'Browse a complete library of biomechanically targeted primers—from Neuromuscular Primers and Cadence Pyramids to Aerobic Flushes. Adjust drill duration (5, 10, 15, or 30 mins) with one tap.',
+      desc: 'Browse a complete library of biomechanically targeted primers—from Form Primers and Cadence Pyramids to Aerobic Flushes. Adjust drill duration (5, 10, 15, or 30 mins) with one tap.',
       b1: '10+ structured drill archetypes covering foundation, tempo surges, hills, and recovery',
       b2: 'Live haptic feedback toggle for wrist vibration cues on interval transitions',
       b3: 'Seamless one-tap push to Apple Watch WorkoutKit for guided wrist workouts'
