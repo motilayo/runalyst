@@ -272,14 +272,15 @@ struct DashboardView: View {
         }
     }
 
-    private func targetPill(text: String) -> some View {
+    private func targetPill(text: String, color: Color = .purple) -> some View {
         Text(text)
             .font(.caption.bold())
             .monospacedDigit()
+            .lineLimit(1)
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
-            .background(Color.purple.opacity(0.12))
-            .foregroundColor(.purple)
+            .background(color.opacity(0.12))
+            .foregroundColor(color)
             .clipShape(Capsule())
     }
 
@@ -332,20 +333,17 @@ struct DashboardView: View {
                         .foregroundColor(.primary)
 
                     if let rx = deterministicPrescription {
-                        let durationText = rx.prescribedDurationBand
-                            .replacingOccurrences(of: " minutes", with: " Min")
-                            .replacingOccurrences(of: " minute", with: " Min")
                         ViewThatFits(in: .horizontal) {
                             HStack(spacing: 8) {
-                                targetPill(text: durationText)
-                                targetPill(text: "Pace: \(rx.prescribedPaceBand)")
-                                targetPill(text: hrCapText(for: rx))
+                                targetPill(text: rx.compactDurationBand, color: .purple)
+                                targetPill(text: "Pace: \(rx.prescribedPaceBand)", color: Color(red: 0.0, green: 0.55, blue: 1.0))
+                                targetPill(text: hrCapText(for: rx), color: Color(red: 1.0, green: 0.22, blue: 0.55))
                             }
                             ScrollView(.horizontal, showsIndicators: false) {
                                 HStack(spacing: 6) {
-                                    targetPill(text: durationText)
-                                    targetPill(text: "Pace: \(rx.prescribedPaceBand)")
-                                    targetPill(text: hrCapText(for: rx))
+                                    targetPill(text: rx.compactDurationBand, color: .purple)
+                                    targetPill(text: "Pace: \(rx.prescribedPaceBand)", color: Color(red: 0.0, green: 0.55, blue: 1.0))
+                                    targetPill(text: hrCapText(for: rx), color: Color(red: 1.0, green: 0.22, blue: 0.55))
                                 }
                             }
                         }

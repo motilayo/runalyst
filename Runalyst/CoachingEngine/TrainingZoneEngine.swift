@@ -60,6 +60,16 @@ struct LockedTrainingPrescription: Sendable, Equatable {
         self.zone5IntervalPace = zone5IntervalPace
     }
 
+    /// Compact duration text formatted for target pills and summary badges (e.g. "30–40 Min", "Rest Day").
+    var compactDurationBand: String {
+        if intensityCategory.contains("REST") || prescribedDurationBand.localizedCaseInsensitiveContains("rest") {
+            return "Rest Day"
+        }
+        return prescribedDurationBand
+            .replacingOccurrences(of: " minutes", with: " Min")
+            .replacingOccurrences(of: " minute", with: " Min")
+    }
+
     var promptDescription: String {
         var lines: [String] = []
         lines.append("LOCKED TRAINING ZONES & SESSION PRESCRIPTION:")
