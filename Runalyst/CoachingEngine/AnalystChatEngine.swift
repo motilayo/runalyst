@@ -78,10 +78,24 @@ class AnalystChatEngine: ObservableObject {
     }
 
     private func setupInitialGreeting() {
-        let runType = runRecord.detectedTypeRaw.isEmpty ? "Run" : runRecord.detectedTypeRaw
         let isIndoor = runRecord.isIndoor ?? false
-        let envNote = isIndoor ? "on the treadmill" : "outdoors"
-        let initialGreeting = "I took a look at your \(runType) \(envNote). What would you like to explore about your form, effort, or recovery?"
+        let envNote = isIndoor ? "treadmill" : "outdoor"
+        let isIntervals = runRecord.evaluationModality == .intervals && runRecord.detectedTypeRaw == "Intervals"
+        let grade = makeAnalysisContext().overallGradeReport.grade
+
+        let initialGreeting: String
+        if isIntervals {
+            let workPace = PaceFormatter.formatPace(secondsPerKilometer: runRecord.workingAvgPace)
+            let repCount = runRecord.signature?.phaseSegments.filter { $0.kind == "work" }.count ?? 0
+            let repsDesc = repCount > 0 ? "(\(repCount) reps @ \(workPace))" : "(@ \(workPace))"
+            let cad = runRecord.workingAvgCadence
+            initialGreeting = "I took a look at your Grade \(grade) \(envNote) intervals \(repsDesc). Want to dig into your \(cad) SPM turnover, pacing spread, or recovery?"
+        } else {
+            let pace = PaceFormatter.formatPace(secondsPerKilometer: runRecord.workingAvgPace)
+            let cad = runRecord.workingAvgCadence
+            let runType = runRecord.detectedTypeRaw.isEmpty ? "run" : runRecord.detectedTypeRaw.lowercased()
+            initialGreeting = "I took a look at your Grade \(grade) \(envNote) \(runType) (@ \(pace)). Want to dig into your \(cad) SPM turnover, pacing trend, or recovery?"
+        }
         messages.append(AnalystChatMessage(sender: .analyst, text: initialGreeting))
     }
 

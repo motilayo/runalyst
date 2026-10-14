@@ -14,21 +14,29 @@ struct AnalystChatView: View {
         _engine = StateObject(wrappedValue: AnalystChatEngine(runRecord: runRecord))
     }
 
+    private var headerSubtitle: String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "EEE, MMM d"
+        let dateStr = formatter.string(from: runRecord.date)
+        let isIndoor = runRecord.isIndoor ?? false
+        let envStr = isIndoor ? "Indoor" : "Outdoor"
+        let typeStr = runRecord.detectedTypeRaw.isEmpty ? "Run" : runRecord.detectedTypeRaw
+        return "🔒 On-Device • \(dateStr) \(envStr) \(typeStr)"
+    }
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                // Disclaimer Banner
+                // Header Subtitle: Run Context & Privacy
                 HStack(spacing: 6) {
-                    Image(systemName: "sparkles")
-                        .font(.caption2.bold())
-                        .foregroundColor(.purple)
-                    Text("AI Coach • Personal Workout Insights")
+                    Text(headerSubtitle)
                         .font(.caption2.weight(.medium))
                         .foregroundColor(.secondary)
                 }
                 .padding(.vertical, 8)
                 .frame(maxWidth: .infinity)
-                .background(Color.purple.opacity(0.06))
+                .background(Color(UIColor.secondarySystemBackground).opacity(0.6))
 
                 // Messages ScrollView
                 ScrollViewReader { proxy in
@@ -37,15 +45,6 @@ struct AnalystChatView: View {
                             ForEach(engine.messages) { message in
                                 messageBubble(message)
                                     .id(message.id)
-                            }
-
-                            // Starter chips shown inside the stream only during greeting phase
-                            if engine.messages.count <= 1 {
-                                quickPromptChips
-                                    .transition(.opacity.combined(with: .move(edge: .top)))
-                            } else if !engine.isResponding && engine.messages.last?.sender == .analyst {
-                                followUpPromptChips
-                                    .transition(.opacity.combined(with: .move(edge: .bottom)))
                             }
 
                             if engine.isResponding {
@@ -87,7 +86,7 @@ struct AnalystChatView: View {
                         if focused {
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                    proxy.scrollTo("bottom_anchor", anchor: .bottom)
+                                proxy.scrollTo("bottom_anchor", anchor: .bottom)
                                 }
                             }
                         }
@@ -96,49 +95,62 @@ struct AnalystChatView: View {
 
                 Divider()
 
-                // Text Input Bar
-                HStack(spacing: 10) {
-                    TextField("Ask about pace, heart rate, cadence, or form...", text: $inputText)
-                        .font(.subheadline)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
-                        .background(Color(UIColor.secondarySystemGroupedBackground))
-                        .clipShape(Capsule())
-                        .overlay(
-                            Capsule()
-                                .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
-                        )
-                        .focused($isInputFocused)
-                        .onSubmit {
-                            submitQuestion()
+                // Bottom Thumb-Zone: Quick Chips + Text Input Bar
+                VStack(spacing: 8) {
+                    if !engine.isResponding {
+                        if engine.messages.count <= 1 {
+                            quickPromptChips
+                                .transition(.opacity.combined(with: .move(edge: .bottom)))
+                        } else if engine.messages.last?.sender == .analyst {
+                            followUpPromptChips
+                                .transition(.opacity.combined(with: .move(edge: .bottom)))
+                        }
+                    }
+
+                    // Text Input Bar
+                    HStack(spacing: 10) {
+                        TextField("Ask about pace, heart rate, cadence...", text: $inputText)
+                            .font(.subheadline)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+                            .background(Color(UIColor.secondarySystemGroupedBackground))
+                            .clipShape(Capsule())
+                            .overlay(
+                                Capsule()
+                                    .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
+                            )
+                            .focused($isInputFocused)
+                            .onSubmit {
+                                submitQuestion()
+                            }
+
+                        if isInputFocused {
+                            Button {
+                                dismissKeyboard()
+                            } label: {
+                                Image(systemName: "keyboard.chevron.compact.down")
+                                    .font(.system(size: 18, weight: .semibold))
+                                    .foregroundColor(.secondary)
+                                    .frame(width: 34, height: 34)
+                                    .background(Color(UIColor.secondarySystemGroupedBackground))
+                                    .clipShape(Circle())
+                            }
+                            .transition(.scale.combined(with: .opacity))
                         }
 
-                    if isInputFocused {
                         Button {
-                            dismissKeyboard()
+                            submitQuestion()
                         } label: {
-                            Image(systemName: "keyboard.chevron.compact.down")
-                                .font(.system(size: 18, weight: .semibold))
-                                .foregroundColor(.secondary)
-                                .frame(width: 34, height: 34)
-                                .background(Color(UIColor.secondarySystemGroupedBackground))
-                                .clipShape(Circle())
+                            Image(systemName: "arrow.up.circle.fill")
+                                .font(.system(size: 34))
+                                .foregroundColor(inputText.trimmingCharacters(in: .whitespaces).isEmpty ? Color(UIColor.tertiaryLabel) : .purple)
                         }
-                        .transition(.scale.combined(with: .opacity))
+                        .disabled(inputText.trimmingCharacters(in: .whitespaces).isEmpty || engine.isResponding)
                     }
-
-                    Button {
-                        submitQuestion()
-                    } label: {
-                        Image(systemName: "arrow.up.circle.fill")
-                            .font(.system(size: 34))
-                            .foregroundColor(inputText.trimmingCharacters(in: .whitespaces).isEmpty ? Color(UIColor.tertiaryLabel) : .purple)
-                    }
-                    .disabled(inputText.trimmingCharacters(in: .whitespaces).isEmpty || engine.isResponding)
+                    .animation(.spring(response: 0.3, dampingFraction: 0.8), value: isInputFocused)
+                    .padding(.horizontal, 16)
                 }
-                .animation(.spring(response: 0.3, dampingFraction: 0.8), value: isInputFocused)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
+                .padding(.vertical, 8)
                 .background(Color(UIColor.systemBackground))
             }
             .navigationTitle("AI Coach")
@@ -228,16 +240,7 @@ struct AnalystChatView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                     .shadow(color: Color.purple.opacity(0.25), radius: 4, x: 0, y: 2)
             } else {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 5) {
-                        Image(systemName: "sparkles")
-                            .font(.caption2.bold())
-                            .foregroundColor(.purple)
-                        Text("AI Coach")
-                            .font(.caption2.bold())
-                            .foregroundColor(.purple)
-                    }
-
+                VStack(alignment: .leading, spacing: 6) {
                     Text(TelemetryHighlighter.highlight(message.text))
                         .font(.subheadline)
                         .foregroundColor(.primary)
@@ -262,30 +265,30 @@ struct AnalystChatView: View {
     private var quickPromptChips: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                chipButton("Stride Rhythm", icon: "waveform.path") {
+                chipButton("Stride Rhythm", icon: "waveform.path", iconColor: Color(red: 0.18, green: 0.82, blue: 0.35)) {
                     inputText = "How was my cadence and rhythm during this run?"
                     submitQuestion()
                 }
-                chipButton("Heart Rate Drift", icon: "heart.fill") {
+                chipButton("Heart Rate Drift", icon: "heart.fill", iconColor: Color(red: 1.0, green: 0.18, blue: 0.55)) {
                     inputText = "Did my heart rate stay steady, or did I start tiring out?"
                     submitQuestion()
                 }
-                chipButton("Pacing Consistency", icon: "speedometer") {
+                chipButton("Pacing Consistency", icon: "speedometer", iconColor: Color(red: 0.0, green: 0.55, blue: 1.0)) {
                     inputText = "What does pacing consistency mean, and how was my pacing?"
                     submitQuestion()
                 }
-                chipButton("Should I Run Tomorrow?", icon: "calendar") {
+                chipButton("Should I Run Tomorrow?", icon: "calendar", iconColor: .purple) {
                     inputText = "Should I run tomorrow, and what kind of session should I focus on?"
                     submitQuestion()
                 }
                 if runRecord.evaluationModality == .intervals {
-                    chipButton("Break Down Intervals", icon: "repeat") {
+                    chipButton("Break Down Intervals", icon: "repeat", iconColor: Color(red: 0.0, green: 0.55, blue: 1.0)) {
                         inputText = "Grade my performance in each interval of this run"
                         submitQuestion()
                     }
                 }
                 if runRecord.isIndoor == true {
-                    chipButton("Treadmill Form", icon: "figure.run") {
+                    chipButton("Treadmill Form", icon: "figure.run", iconColor: Color(red: 0.18, green: 0.82, blue: 0.35)) {
                         inputText = "Did I overstride or reach too far on the treadmill?"
                         submitQuestion()
                     }
@@ -306,13 +309,13 @@ struct AnalystChatView: View {
         let splitChipPrompt = isInterval ? "Grade my performance in each interval of this run" : "Grade my performance in each split of this run"
         let splitChipIcon = isInterval ? "waveform.path.ecg" : "chart.bar.xaxis"
 
-        let candidates: [(title: String, prompt: String, icon: String)] = [
-            ("Tomorrow's Plan", "Should I run tomorrow, and what kind of session should I focus on?", "calendar"),
-            (splitChipTitle, splitChipPrompt, splitChipIcon),
-            ("Recommended Drill", "Which drill would help improve my running form and cadence?", "figure.run"),
-            ("What to Improve", "What is the key area I should focus on improving?", "arrow.up.forward.circle"),
-            ("Running Economy", "How was my running economy and stride efficiency during this run?", "bolt.heart"),
-            ("Arm Drive", "How does arm drive help with rhythm and form?", "figure.walk")
+        let candidates: [(title: String, prompt: String, icon: String, color: Color)] = [
+            ("Tomorrow's Plan", "Should I run tomorrow, and what kind of session should I focus on?", "calendar", .purple),
+            (splitChipTitle, splitChipPrompt, splitChipIcon, Color(red: 0.0, green: 0.55, blue: 1.0)),
+            ("Recommended Drill", "Which drill would help improve my running form and cadence?", "figure.run", Color(red: 0.18, green: 0.82, blue: 0.35)),
+            ("What to Improve", "What is the key area I should focus on improving?", "arrow.up.forward.circle", .orange),
+            ("Running Economy", "How was my running economy and stride efficiency during this run?", "bolt.heart", Color(red: 1.0, green: 0.18, blue: 0.55)),
+            ("Arm Drive", "How does arm drive help with rhythm and form?", "figure.walk", Color(red: 0.18, green: 0.82, blue: 0.35))
         ].filter { item in
             !askedText.contains(item.title.lowercased()) && !askedText.contains(item.prompt.lowercased())
         }
@@ -328,7 +331,7 @@ struct AnalystChatView: View {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 8) {
                             ForEach(candidates.prefix(4), id: \.title) { item in
-                                chipButton(item.title, icon: item.icon) {
+                                chipButton(item.title, icon: item.icon, iconColor: item.color) {
                                     inputText = item.prompt
                                     submitQuestion()
                                 }
@@ -341,7 +344,7 @@ struct AnalystChatView: View {
         }
     }
 
-    private func chipButton(_ title: String, icon: String = "sparkle", action: @escaping () -> Void) -> some View {
+    private func chipButton(_ title: String, icon: String = "sparkle", iconColor: Color = .purple, action: @escaping () -> Void) -> some View {
         Button {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             dismissKeyboard()
@@ -350,7 +353,7 @@ struct AnalystChatView: View {
             HStack(spacing: 5) {
                 Image(systemName: icon)
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(.purple)
+                    .foregroundColor(iconColor)
                 Text(title)
                     .font(.caption.weight(.semibold))
                     .foregroundColor(.primary)
@@ -362,7 +365,7 @@ struct AnalystChatView: View {
             .clipShape(Capsule())
             .overlay(
                 Capsule()
-                    .stroke(Color.purple.opacity(0.22), lineWidth: 1)
+                    .stroke(iconColor.opacity(0.25), lineWidth: 1)
             )
             .shadow(color: Color.black.opacity(0.02), radius: 3, x: 0, y: 1)
             .contentShape(Rectangle())

@@ -324,6 +324,30 @@ struct HistoricalWorkoutQuery: Sendable {
 
 /// Tool providing deterministic retrospective workout telemetry, biomechanics, and physiological verdicts.
 @available(iOS 26.0, *)
+struct FetchWorkoutTelemetryTool: Tool {
+    typealias Arguments = WorkoutAnalysisQuery
+    typealias Output = String
+
+    let name = "fetchWorkoutTelemetry"
+    let description = "Retrieves deterministic overall workout telemetry for this run. For interval workouts, delivers the primary interval_scorecard and complete reps array (work pace, cadence, HR, and grade) as the primary workload, with blended session totals demoted. For continuous runs, delivers kilometer splits and steady pacing metrics."
+
+    let provider: @MainActor @Sendable (WorkoutAnalysisQuery) async -> String
+
+    init(provider: @escaping @MainActor @Sendable (WorkoutAnalysisQuery) async -> String) {
+        self.provider = provider
+    }
+
+    init(simpleProvider: @escaping @MainActor @Sendable () async -> String) {
+        self.provider = { _ in await simpleProvider() }
+    }
+
+    func call(arguments: WorkoutAnalysisQuery) async throws -> String {
+        await provider(arguments)
+    }
+}
+
+/// Tool providing deterministic retrospective workout telemetry, biomechanics, and physiological verdicts.
+@available(iOS 26.0, *)
 struct FetchWorkoutAnalysisTool: Tool {
     typealias Arguments = WorkoutAnalysisQuery
     typealias Output = String

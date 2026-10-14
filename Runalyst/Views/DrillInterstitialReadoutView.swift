@@ -120,19 +120,7 @@ struct DrillInterstitialReadoutView: View {
                     }
 
                     // 3. Coaching Cue
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack(spacing: 5) {
-                            Image(systemName: "lightbulb.fill")
-                                .font(.caption.bold())
-                                .foregroundColor(.orange)
-                            Text("Coaching Cue")
-                                .font(.caption.bold())
-                                .foregroundColor(.secondary)
-                                .textCase(.uppercase)
-                        }
-
-                        DrillCoachingCueBox(cue: readout.coachingTip)
-                    }
+                    DrillCoachingCueBox(cue: readout.coachingTip)
                 }
                 .frame(maxWidth: 860)
                 .frame(maxWidth: .infinity)
@@ -164,7 +152,10 @@ struct DrillInterstitialReadoutView: View {
                 .background(.ultraThinMaterial)
             }
             .background(Color(UIColor.systemGroupedBackground).ignoresSafeArea())
+            .navigationTitle(readout.title)
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -173,6 +164,8 @@ struct DrillInterstitialReadoutView: View {
                         Image(systemName: "xmark.circle.fill")
                             .foregroundColor(.secondary)
                             .font(.title3)
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
                     }
                 }
             }
@@ -213,6 +206,8 @@ struct DrillInterstitialReadoutView: View {
                 Image(systemName: "info.circle")
                     .font(.caption)
                     .foregroundColor(.secondary)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
             .contentShape(Rectangle())
             .onTapGesture { showingReadinessInfo = true }

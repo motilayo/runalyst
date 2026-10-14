@@ -58,9 +58,19 @@ struct ProgressionChartView: View {
     @State private var selectedRunType: String?
     @State private var selectedDate: Date?
 
+    private let defaultHorizon: ChartTimeHorizon
+
     init(allRuns: [RunRecord], defaultHorizon: ChartTimeHorizon = .thirtyDays) {
         self.allRuns = allRuns
+        self.defaultHorizon = defaultHorizon
         self._selectedHorizon = State(initialValue: defaultHorizon)
+    }
+
+    private var availableHorizons: [ChartTimeHorizon] {
+        if defaultHorizon == .allTime {
+            return [.sixMonths, .oneYear, .allTime]
+        }
+        return ChartTimeHorizon.allCases
     }
 
     private var horizonRuns: [RunRecord] {
@@ -288,7 +298,7 @@ struct ProgressionChartView: View {
 
                 // Time Horizon Picker
                 Picker("Time Horizon", selection: $selectedHorizon) {
-                    ForEach(ChartTimeHorizon.allCases) { horizon in
+                    ForEach(availableHorizons) { horizon in
                         Text(horizon.rawValue).tag(horizon)
                     }
                 }

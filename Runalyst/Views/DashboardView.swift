@@ -245,74 +245,138 @@ struct DashboardView: View {
     }
 
     @ViewBuilder
+    private var deterministicPrescription: LockedTrainingPrescription? {
+        guard let latestRun = runRecords.first else { return nil }
+        let tzInput = TrainingZoneInput(
+            baselinePaceSec: baselinePace ?? latestRun.workingAvgPace,
+            workoutPaceSec: latestRun.workingAvgPace,
+            activeGoal: trainingGoal,
+            experienceLevel: "Intermediate",
+            readyForHard: !currentHeadline().localizedCaseInsensitiveContains("fatigue"),
+            daysSinceWorkout: Calendar.current.dateComponents([.day], from: latestRun.date, to: Date()).day ?? 0,
+            heightAdjustedCadenceFloor: 155,
+            useMetricSystem: useMetricSystem,
+            isSubjectiveDistress: false,
+            totalHistoricalRunsCount: runRecords.count
+        )
+        return TrainingZoneEngine.computePrescription(tzInput)
+    }
+
+    private func hrCapText(for rx: LockedTrainingPrescription) -> String {
+        if rx.intensityCategory.contains("RECOVERY") || rx.intensityCategory.contains("ZONE_2") || currentHeadline().localizedCaseInsensitiveContains("fatigue") {
+            return "HR: < 145"
+        } else if rx.intensityCategory.contains("THRESHOLD") || rx.intensityCategory.contains("TEMPO") {
+            return "HR: 155–168"
+        } else {
+            return "HR: < 155"
+        }
+    }
+
+    private func targetPill(text: String) -> some View {
+        Text(text)
+            .font(.caption.bold())
+            .monospacedDigit()
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Color.purple.opacity(0.12))
+            .foregroundColor(.purple)
+            .clipShape(Capsule())
+    }
+
+    @ViewBuilder
     private var aiInsightCard: some View {
         let is7Day = timeRange == "7 Days"
-        let iconName = is7Day ? "bolt.heart.fill" : "chart.line.uptrend.xyaxis"
-        let iconColor: Color = is7Day ? .red : .orange
-        let cardTitle = is7Day ? "AI Tactical Coach" : "Physiological Trends"
-        let cardSubtitle = is7Day ? "Readiness & Acute Fatigue" : "Aerobic Adaptation & Efficiency"
+        let iconName = is7Day ? "sparkles" : "chart.line.uptrend.xyaxis"
+        let iconColor: Color = is7Day ? .purple : .orange
+        let cardTitle = is7Day ? "AI COACH • TODAY'S DIRECTIVE" : "AI Coach • 30-Day Trends"
+        let cardSubtitle = is7Day ? "Readiness & Target Guidance" : "Aerobic Adaptation & Efficiency"
         let loadingText = is7Day ? "Analyzing readiness & recovery..." : "Analyzing 30-day trends..."
 
-        VStack(alignment: .leading, spacing: 8) {
-            VStack(alignment: .leading, spacing: 8) {
-                let headline = currentHeadline()
-                let bodyText = currentBody()
+        VStack(alignment: .leading, spacing: 10) {
+            let headline = currentHeadline()
+            let bodyText = currentBody()
 
-                if isFetchingInsight && headline.isEmpty {
-                    AnimatedLoadingView(
-                        text: loadingText,
-                        isHorizontal: true,
-                        imageSize: 18,
-                        textFont: .subheadline,
-                        textColor: .secondary,
-                        iconColor: .primary,
-                        spacing: 8
-                    )
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.vertical, 8)
-                } else {
-                    HStack(spacing: 8) {
-                        Image(systemName: iconName)
-                            .foregroundColor(iconColor)
-                            .font(.headline)
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(cardTitle)
-                                .font(.subheadline.bold())
-                                .foregroundColor(.primary)
+            if isFetchingInsight && headline.isEmpty {
+                AnimatedLoadingView(
+                    text: loadingText,
+                    isHorizontal: true,
+                    imageSize: 18,
+                    textFont: .subheadline,
+                    textColor: .secondary,
+                    iconColor: .primary,
+                    spacing: 8
+                )
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 8)
+            } else {
+                HStack(spacing: 8) {
+                    Image(systemName: iconName)
+                        .foregroundColor(iconColor)
+                        .font(is7Day ? .subheadline.bold() : .headline)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(cardTitle)
+                            .font(is7Day ? .caption.bold() : .subheadline.bold())
+                            .foregroundColor(is7Day ? .purple : .primary)
+                        if !is7Day {
                             Text(cardSubtitle)
                                 .font(.caption2)
                                 .foregroundColor(.secondary)
                         }
                     }
-
-                    if !headline.isEmpty {
-                        Text(headline)
-                            .font(.headline)
-                            .foregroundColor(.primary)
-                    }
-
-                    let defaultPlaceholder = is7Day
-                        ? "Complete more runs this week to evaluate acute fatigue and recovery trends."
-                        : "Complete more runs over the next 30 days to measure structural aerobic adaptation."
-
-                    Text(bodyText.isEmpty ? defaultPlaceholder : bodyText)
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                        .lineSpacing(2)
-
-                    AIDisclaimerFooter()
                 }
+
+                if is7Day {
+                    let displayHeadline = headline.isEmpty ? "Easy Recovery Needed" : headline
+                    Text(displayHeadline)
+                        .font(.title3.bold())
+                        .foregroundColor(.primary)
+
+                    if let rx = deterministicPrescription {
+                        let durationText = rx.prescribedDurationBand
+                            .replacingOccurrences(of: " minutes", with: " Min")
+                            .replacingOccurrences(of: " minute", with: " Min")
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: 8) {
+                                targetPill(text: durationText)
+                                targetPill(text: "Pace: \(rx.prescribedPaceBand)")
+                                targetPill(text: hrCapText(for: rx))
+                            }
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 6) {
+                                    targetPill(text: durationText)
+                                    targetPill(text: "Pace: \(rx.prescribedPaceBand)")
+                                    targetPill(text: hrCapText(for: rx))
+                                }
+                            }
+                        }
+                    }
+                } else if !headline.isEmpty {
+                    Text(headline)
+                        .font(.headline)
+                        .foregroundColor(.primary)
+                }
+
+                let defaultPlaceholder = is7Day
+                    ? "Complete more runs this week to evaluate acute fatigue and recovery trends."
+                    : "Complete more runs over the next 30 days to measure structural aerobic adaptation."
+
+                Text(bodyText.isEmpty ? defaultPlaceholder : bodyText)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .lineSpacing(2)
+
+                AIDisclaimerFooter()
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(16)
-            .background(Color(UIColor.secondarySystemGroupedBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(Color(UIColor.separator).opacity(0.2), lineWidth: 0.5)
-            )
-            .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(Color(UIColor.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(Color(UIColor.separator).opacity(0.2), lineWidth: 0.5)
+        )
+        .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
         .onAppear {
             checkAndFetchInsight()
         }
@@ -770,47 +834,51 @@ struct DashboardView: View {
             ScrollViewReader { scrollProxy in
                 ScrollView {
                     LazyVStack(spacing: 20) {
-                        filterControlsSection
-
-                        if timeRange == "All Time" {
-                        LifetimeMilestonesCard(allRuns: runRecords)
-
-                        ProgressionChartView(allRuns: runRecords, defaultHorizon: .allTime)
-                    } else if timeRange == "30 Days" {
-                        fitnessBaselineCard
-
-                        if !timeRangeRuns.isEmpty {
-                            if horizontalSizeClass == .regular {
-                                HStack(alignment: .top, spacing: 16) {
+                        if timeRange == "7 Days" {
+                            if !timeRangeRuns.isEmpty {
+                                if horizontalSizeClass == .regular {
+                                    HStack(alignment: .top, spacing: 16) {
+                                        aiInsightCard
+                                        proactiveCoachCard
+                                    }
+                                    .padding(.horizontal)
+                                } else {
                                     aiInsightCard
+                                        .padding(.horizontal)
                                     proactiveCoachCard
+                                        .padding(.horizontal)
                                 }
-                                .padding(.horizontal)
-                            } else {
-                                aiInsightCard
-                                    .padding(.horizontal)
-                                proactiveCoachCard
-                                    .padding(.horizontal)
                             }
-                        }
-                    } else { // 7 Days
-                        fitnessBaselineCard
 
-                        if !timeRangeRuns.isEmpty {
-                            if horizontalSizeClass == .regular {
-                                HStack(alignment: .top, spacing: 16) {
+                            filterControlsSection
+
+                            fitnessBaselineCard
+                        } else if timeRange == "30 Days" {
+                            filterControlsSection
+
+                            fitnessBaselineCard
+
+                            if !timeRangeRuns.isEmpty {
+                                if horizontalSizeClass == .regular {
+                                    HStack(alignment: .top, spacing: 16) {
+                                        aiInsightCard
+                                        proactiveCoachCard
+                                    }
+                                    .padding(.horizontal)
+                                } else {
                                     aiInsightCard
+                                        .padding(.horizontal)
                                     proactiveCoachCard
+                                        .padding(.horizontal)
                                 }
-                                .padding(.horizontal)
-                            } else {
-                                aiInsightCard
-                                    .padding(.horizontal)
-                                proactiveCoachCard
-                                    .padding(.horizontal)
                             }
+                        } else { // All Time
+                            filterControlsSection
+
+                            LifetimeMilestonesCard(allRuns: runRecords)
+
+                            ProgressionChartView(allRuns: runRecords, defaultHorizon: .allTime)
                         }
-                    }
 
                     if !availableFilters.isEmpty {
                         filterChips
@@ -947,38 +1015,6 @@ struct DashboardView: View {
                 fetchInsight()
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
             }
-            .safeAreaInset(edge: .bottom, spacing: 80) {
-                if !runRecords.isEmpty {
-                    HStack {
-                        Spacer()
-                        Button {
-                            showingAnalystChat = true
-                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                        } label: {
-                            HStack(spacing: 8) {
-                                Image(systemName: "bubble.left.and.bubble.right.fill")
-                                    .font(.headline)
-                                Text("AI Analyst")
-                                    .font(.subheadline.bold())
-                            }
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 12)
-                            .background(
-                                LinearGradient(
-                                    colors: [Color.purple, Color.indigo],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                            .clipShape(Capsule())
-                            .shadow(color: Color.purple.opacity(0.35), radius: 8, x: 0, y: 4)
-                        }
-                        .padding(.trailing, 20)
-                        .padding(.bottom, 8)
-                    }
-                }
-            }
             .sheet(isPresented: $showingAnalystChat) {
                 if let latestRun = runRecords.first {
                     AnalystChatView(runRecord: latestRun)
@@ -1003,8 +1039,21 @@ struct DashboardView: View {
                     }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    NavigationLink(destination: SettingsView(onForceSync: onSync)) {
-                        Image(systemName: "gearshape")
+                    HStack(spacing: 14) {
+                        if !runRecords.isEmpty {
+                            Button {
+                                showingAnalystChat = true
+                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            } label: {
+                                Image(systemName: "bubble.left.and.bubble.right.fill")
+                                    .foregroundColor(.purple)
+                            }
+                            .accessibilityLabel("AI Coach")
+                        }
+
+                        NavigationLink(destination: SettingsView(onForceSync: onSync)) {
+                            Image(systemName: "gearshape")
+                        }
                     }
                 }
             }

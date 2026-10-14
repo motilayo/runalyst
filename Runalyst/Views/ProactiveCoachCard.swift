@@ -23,6 +23,27 @@ struct ProactiveCoachCard: View {
         let baseCadence = baselineCadence
         let computedTarget = baseCadence.map { template.calculateTargetCadence($0) }
 
+        let readiness = ReadinessEvaluator.assess(runRecords: runRecords)
+        let adaptedTarget = ReadinessModifier.adaptTarget(computedTarget, baselineCadence: baseCadence, drillId: primerId, state: readiness.state)
+        let primerDrill = PreRunDrill(
+            id: primerId,
+            previousCadence: baseCadence,
+            targetCadence: adaptedTarget.targetCadence,
+            readinessState: readiness.state
+        )
+
+        let dynamicDurationText: String = {
+            if primerDrill.readinessAdjustedIntervalSpec != nil {
+                let phases = primerDrill.generatePhases()
+                let total = phases.map(\.durationSeconds).reduce(0, +)
+                let mins = total / 60
+                let secs = total % 60
+                let formatted = secs > 0 ? "\(mins)m \(secs)s" : "\(mins) min"
+                return "\(formatted) (Trimmed from \(primerDrill.duration.title))"
+            }
+            return "\(primerDrill.duration.title) drill"
+        }()
+
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 Image(systemName: primerId.iconName)
@@ -32,7 +53,7 @@ struct ProactiveCoachCard: View {
                     Text(template.title)
                         .font(.headline)
                         .foregroundColor(.primary)
-                    Text("\(PreRunDrill(id: primerId).duration.title) drill")
+                    Text(dynamicDurationText)
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
@@ -54,15 +75,6 @@ struct ProactiveCoachCard: View {
             Text(template.defaultPurpose)
                 .font(.subheadline)
                 .foregroundColor(.secondary)
-
-            let readiness = ReadinessEvaluator.assess(runRecords: runRecords)
-            let adaptedTarget = ReadinessModifier.adaptTarget(computedTarget, baselineCadence: baseCadence, drillId: primerId, state: readiness.state)
-            let primerDrill = PreRunDrill(
-                id: primerId,
-                previousCadence: baseCadence,
-                targetCadence: adaptedTarget.targetCadence,
-                readinessState: readiness.state
-            )
 
             HStack(spacing: 16) {
                 Label(primerDrill.defaultWorkString, systemImage: "repeat")
