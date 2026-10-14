@@ -246,21 +246,21 @@ class AnalystChatEngine: ObservableObject {
         \(unitSystemInstruction)
 
         TOOL CALLING & SCOPE DISCIPLINE:
-        Call deterministic native tools silently and immediately to fetch verified telemetry and physics:
-        • Workout telemetry, intervals, cadence, pacing, splits, or verdicts: `fetchWorkoutAnalysis` (or `fetchIntervalPerformance`).
-          - When reviewing an interval workout, `fetchWorkoutAnalysis` delivers the primary `interval_scorecard` and full `reps` array in one call.
-          - Prioritize `interval_scorecard` (active work pace, turnover, and recovery drops) as the true workload.
+        Call deterministic native tools silently and immediately to fetch verified telemetry:
+        • Workout telemetry, intervals, cadence, pacing, splits, or verdicts: `fetchWorkoutAnalysis` (incorporating `fetchIntervalPerformance` and `fetchWorkoutPhysics`).
+          - MANDATORY: You do NOT have the workout data in your initial prompt. For ANY question about this workout (performance, intervals, reps, cadence, pace, heart rate, splits, or grades), you MUST call `fetchWorkoutAnalysis` immediately before answering.
+          - NEVER invent, guess, or estimate intervals or metrics.
+          - For interval workouts, `fetchWorkoutAnalysis` delivers the complete authentic `reps` array (rep number, work pace, cadence, heart rate, grade, recovery pace, and recovery HR drop). When asked to grade each interval, list each authentic rep directly from this array.
           - If the session was a steady continuous run (`interval_scorecard` is null), evaluate the kilometer splits. NEVER invent phantom interval repetitions.
-          - If `heart_rate_confidence` indicates an unreliable sensor artifact (e.g. resting HR < 85 BPM during active running), do NOT evaluate cardiovascular load or praise resting heart rates.
+          - If `heart_rate_status` is omitted or `heart_rate_confidence` indicates an unreliable sensor artifact (e.g. resting HR < 85 BPM), heart rate metrics are omitted. Do NOT evaluate cardiovascular load or invent heart rates.
           - The `background_session_totals` are blended totals across warm-up and cool-down—NEVER cite them as the interval work pace.
         • Tomorrow's run, recovery timeline, or readiness: `fetchReadinessAndPrescription` (call ONLY when I explicitly ask about tomorrow, next session, or readiness; NEVER volunteer unsolicited future prescriptions).
+          - Pass `userReportedDistress: true` if I mention illness, pain, injury, exhaustion, or poor sleep.
           - When answering about tomorrow or upcoming training: Deliver the readiness verdict and prescribed session directly.
           - SCOPE MANDATE: Do NOT recite past workout paces, cadences, heart rates, or interval drops when answering future planning questions unless I explicitly ask you to compare them.
-          - NEGATIVE CONSTRAINT: Strictly obey `forbidden_terms` and `intensity_category` from the `fetchReadinessAndPrescription` payload. If the category is `EASY_AEROBIC_ZONE_2`, NEVER call it a tempo, threshold, hard, or interval run.
+          - POSITIVE CATEGORY DIRECTIVE: Strictly describe the session according to `intensity_category` and `coaching_directive`. When the category is `EASY_AEROBIC_ZONE_2`, describe it exclusively as an Easy Aerobic run focused on relaxed conversational breathing and gentle rhythm.
           - SINGLE DIRECTIVE: Deliver ONE decisive coaching verdict based on `readiness_verdict`. Never waffle between resting and pushing in the same answer.
-        • Treadmill kinetics, room heat, or grade resistance: `fetchWorkoutPhysics`.
         • Athlete experience, 30-day load, or cadence floor: `fetchAthleteProfile`.
-        • Workout comparison, 30-day rankings, best/worst performance: `fetchHistoricalWorkout`.
         Never announce tool retrieval; call immediately and synthesize findings directly into your answer.
 
         ZERO-HALLUCINATION & MEMORY MANDATE:
@@ -294,32 +294,20 @@ class AnalystChatEngine: ObservableObject {
             return self.makeAnalysisContext().compactTelemetryAnalysis(focus: query.focus)
         }
 
-        let intervalTool = FetchIntervalPerformanceTool { [weak self] _ in
+        let readinessTool = FetchReadinessAndPrescriptionTool { [weak self] query in
             guard let self else { return "" }
             self.toolsCalledThisTurn += 1
-            self.sessionHasLoadedWorkoutAnalysis = true
-            return self.makeAnalysisContext().compactTelemetryAnalysis()
-        }
-
-        let physicsTool = FetchWorkoutPhysicsTool { [weak self] query in
-            guard let self else { return "" }
-            self.toolsCalledThisTurn += 1
-            return self.makeAnalysisContext().formatWorkoutPhysicsSummary(domain: query.domain)
-        }
-
-        let readinessTool = FetchReadinessAndPrescriptionTool { [weak self] _ in
-            guard let self else { return "" }
-            self.toolsCalledThisTurn += 1
-            let analysis = self.makeAnalysisContext()
+            let isDistress = query.userReportedDistress == true
+            let analysis = self.makeAnalysisContext(isSubjectiveDistress: isDistress)
             let rx = analysis.lockedPrescription
-            let isReady = analysis.recoveryTimeline.readyForHard
+            let isReady = analysis.recoveryTimeline.readyForHard && !isDistress
             let verdict = isReady ? "CLEARED_FOR_TRAINING" : "ACTIVE_RECOVERY_REQUIRED"
             let recoveryStatus = isReady
                 ? "Fully recovered and cleared for training."
-                : "In active recovery until \(analysis.recoveryTimeline.earliestHardPhrase)."
+                : (isDistress ? "Subjective fatigue/distress reported. Mandatory recovery prescribed." : "In active recovery until \(analysis.recoveryTimeline.earliestHardPhrase).")
             let directive = isReady
-                ? "Runner is cleared for training. Prescribe \(rx.nextSessionName) directly. Focus strictly on upcoming training. Do NOT quote past workout heart rates, paces, or interval drops. Do NOT use any forbidden terms (\(rx.forbiddenTerms.joined(separator: ", ")))."
-                : "Runner is in active recovery. Prescribe gentle recovery flush or rest. Do NOT suggest hard pacing or tempo work."
+                ? "Runner is cleared for training. Prescribe \(rx.nextSessionName) directly (\(rx.prescribedDurationBand) at \(rx.prescribedPaceBand)). Focus strictly on upcoming training. Do NOT quote past workout heart rates, paces, or interval drops."
+                : "Runner is in active recovery. Prescribe gentle recovery flush or rest. Keep all movement strictly light and conversational."
 
             let response = ReadinessToolResponse(
                 schema_name: "READINESS_AND_PRESCRIPTION_RESPONSE",
@@ -331,7 +319,6 @@ class AnalystChatEngine: ObservableObject {
                 prescribed_duration_band: rx.prescribedDurationBand,
                 prescribed_cadence_band: rx.prescribedCadenceBand,
                 session_rationale: rx.sessionRationale,
-                forbidden_terms: rx.forbiddenTerms,
                 coaching_directive: directive
             )
 
@@ -365,27 +352,8 @@ class AnalystChatEngine: ObservableObject {
             """
         }
 
-        let historicalTool = FetchHistoricalWorkoutTool { [weak self] query in
-            guard let self else { return "No historical data available." }
-            self.toolsCalledThisTurn += 1
-            let target = (query.target ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            let lower = target.lowercased()
-
-            let isArcRequest = lower.contains("best") || lower.contains("worst") || lower.contains("arc") ||
-                lower.contains("30") || lower.contains("rank") || lower.contains("all") || lower.isEmpty
-            if isArcRequest {
-                let arc = HistoricalRunMatcher.analyzePerformanceArc(relativeTo: self.runRecord, in: self.runRecord.modelContext)
-                return arc.structuredTelemetryFacts
-            }
-
-            if let priorRun = HistoricalRunMatcher.findRun(matching: target, relativeTo: self.runRecord, in: self.runRecord.modelContext) {
-                return HistoricalRunMatcher.compare(current: self.runRecord, with: priorRun).structuredTelemetryFacts
-            } else {
-                return "No historical workout found matching '\(target)' in stored records."
-            }
-        }
-
-        let tools: [any Tool] = [workoutTool, intervalTool, physicsTool, readinessTool, profileTool, historicalTool]
+        // Strictly 3 orthogonal tools passed to LanguageModelSession to eliminate tool collision
+        let tools: [any Tool] = [workoutTool, readinessTool, profileTool]
         let instructions = buildLeanSystemInstructions()
         let session = LanguageModelSession(
             model: SystemLanguageModel.default,
@@ -400,28 +368,35 @@ class AnalystChatEngine: ObservableObject {
     private func generateFoundationModelResponse(for userQuestion: String, turnContext: ManagedTurnContext) async throws -> String {
         let session = getOrCreateSession()
         toolsCalledThisTurn = 0
-        let response = try await session.respond(to: userQuestion)
+        var response = try await session.respond(to: userQuestion)
         var responseText = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
 
         // Guard against LLM conversational stalling where the on-device model announces
         // future retrieval intent instead of delivering completed analysis.
-        // Re-prompt the session to execute the tool and synthesize the coaching observation directly.
         if Self.isStallResponse(responseText) {
-            let followUp = try await session.respond(to: "Execute the tool call now and synthesize your final coaching observation directly.")
-            let followUpText = followUp.content.trimmingCharacters(in: .whitespacesAndNewlines)
+            response = try await session.respond(to: "Execute the tool call now and synthesize your final coaching observation directly.")
+            let followUpText = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
             if !followUpText.isEmpty && !Self.isStallResponse(followUpText) {
                 responseText = followUpText
             }
         }
 
-        // If the workout analysis hasn't been loaded into session memory yet and the user asks about the workout,
-        // re-prompt the session to execute the native tool call so the telemetry is written into session memory.
-        if !sessionHasLoadedWorkoutAnalysis && turnContext.turnDomain == .workoutTelemetryAnalysis && toolsCalledThisTurn == 0 && (Self.isStallResponse(responseText) || !Self.containsMetricTelemetry(responseText)) {
-            let followUp = try await session.respond(to: "Call fetchWorkoutAnalysis now to load the verified telemetry for this run, then provide your coaching analysis.")
-            let followUpText = followUp.content.trimmingCharacters(in: .whitespacesAndNewlines)
+        // If the turn is asking about workout telemetry and the workout analysis has never been loaded,
+        // and the model failed to call the tool (toolsCalledThisTurn == 0):
+        if !sessionHasLoadedWorkoutAnalysis && turnContext.turnDomain == .workoutTelemetryAnalysis && toolsCalledThisTurn == 0 {
+            response = try await session.respond(to: "Call fetchWorkoutAnalysis now to load the verified telemetry and interval reps for this run, then provide your coaching analysis. Do NOT guess numbers.")
+            let followUpText = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
             if !followUpText.isEmpty && !Self.isStallResponse(followUpText) {
                 responseText = followUpText
             }
+        }
+
+        // ABSOLUTE ZERO-HALLUCINATION SAFETY GATE:
+        // If the turn is workout telemetry and the model STILL never called the tool:
+        // Any numbers in responseText are GUARANTEED to be hallucinated.
+        // Never show hallucinated metrics to the user. Fall back to authentic Swift telemetry!
+        if !sessionHasLoadedWorkoutAnalysis && turnContext.turnDomain == .workoutTelemetryAnalysis && toolsCalledThisTurn == 0 {
+            return generateDataGroundedFallback(for: userQuestion, turnContext: turnContext)
         }
 
         // Swift-side Hallucination Verifier:

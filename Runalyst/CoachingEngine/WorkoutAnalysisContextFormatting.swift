@@ -8,8 +8,9 @@ extension WorkoutAnalysisContext {
         if evaluationModality == .intervals && !intervalEvaluations.isEmpty {
             var lines = ["Here is the breakdown of your intervals:"]
             for rep in intervalEvaluations.prefix(24) {
-                var repLine = "• Rep \(rep.repIndex) (\(rep.workPaceFormatted), \(rep.workCadence) SPM, \(rep.workHeartRate) BPM): \(rep.letterGrade) — \(rep.observation)"
-                if let rPace = rep.recoveryPaceFormatted, let rDrop = rep.recoveryHeartRateDrop, rDrop > 0 {
+                let hrPart = runRecord.isHeartRateSensorLowConfidence ? "" : ", \(rep.workHeartRate) BPM"
+                var repLine = "• Rep \(rep.repIndex) (\(rep.workPaceFormatted), \(rep.workCadence) SPM\(hrPart)): \(rep.letterGrade) — \(rep.observation)"
+                if let rPace = rep.recoveryPaceFormatted, let rDrop = rep.recoveryHeartRateDrop, rDrop > 0, !runRecord.isHeartRateSensorLowConfidence {
                     let thermalNote = isIndoor && rDrop < 10 ? " (blunted by indoor thermal buildup)" : ""
                     repLine += "\n  Recovery \(rep.repIndex) (\(rPace)): HR dropped -\(rDrop) BPM into recovery zone\(thermalNote)"
                 } else if let rPace = rep.recoveryPaceFormatted {
@@ -55,7 +56,8 @@ extension WorkoutAnalysisContext {
 
         var lines = [header]
         for s in splitEvaluations.prefix(8) {
-            lines.append("• km \(s.index) (\(s.paceFormatted), \(s.cadence) SPM, \(s.heartRate) BPM): \(s.letterGrade) — \(s.observation)")
+            let hrPart = runRecord.isHeartRateSensorLowConfidence ? "" : ", \(s.heartRate) BPM"
+            lines.append("• km \(s.index) (\(s.paceFormatted), \(s.cadence) SPM\(hrPart)): \(s.letterGrade) — \(s.observation)")
         }
 
         if let f = fastestSplit, let s = slowestSplit, splitEvaluations.count >= 2 {
@@ -126,7 +128,8 @@ extension WorkoutAnalysisContext {
             let distKm = String(format: "%.1f km", runRecord.totalDistanceMeters / 1000.0)
             lines.append("")
             lines.append("RECENT SESSION CONTEXT (Brief reference for last logged session):")
-            lines.append("- Last Session (\(workoutWeekday)): \(detectedType) (\(isIndoor ? "Treadmill" : "Outdoors")), \(distKm) in \(durationMin) min, Working Pace: \(workingPaceFormatted), Working HR: \(workingHR) BPM")
+            let hrDesc = runRecord.isHeartRateSensorLowConfidence ? "Omitted (sensor lock anomaly < 85 BPM)" : "\(workingHR) BPM"
+            lines.append("- Last Session (\(workoutWeekday)): \(detectedType) (\(isIndoor ? "Treadmill" : "Outdoors")), \(distKm) in \(durationMin) min, Working Pace: \(workingPaceFormatted), Working HR: \(hrDesc)")
             lines.append("")
             lines.append("FUTURE TRAINING & READINESS:")
             lines.append("- Current Readiness: \(recoveryTimeline.state.rawValue)")
@@ -475,13 +478,17 @@ extension WorkoutAnalysisContext {
             ? "Indoor Treadmill (belt-driven, static room air)"
             : "Outdoors (road/track)"
 
+        let isLowConfidenceHR = runRecord.isHeartRateSensorLowConfidence
+        let hrStatus = isLowConfidenceHR ? "Omitted (Sensor lock anomaly < 85 BPM)" : "Reliable"
+
         let blendedTotals = BlendedTotals(
             _description: "Contains blended averages for the entire session (warm-up, work bouts, recovery jogs, and cooldown combined). SECONDARY: Do NOT cite these as the interval workload or active pace.",
             total_distance: distKm,
             total_duration: "\(durMin) min",
             blended_session_avg_pace: workingPaceFormatted,
             blended_session_avg_cadence_spm: workingCadence,
-            blended_session_avg_heart_rate_bpm: workingHR,
+            blended_session_avg_heart_rate_bpm: isLowConfidenceHR ? nil : workingHR,
+            heart_rate_status: isLowConfidenceHR ? hrStatus : nil,
             height_cadence_floor_spm: floor,
             aerobic_efficiency_factor: efficiencyFactor.map { String(format: "%.2f m/beat", $0) },
             cardiac_drift: hasCardiacDrift ? "+\(cardiacDriftMagnitudeBPM) BPM rise in second half" : nil,
@@ -512,11 +519,12 @@ extension WorkoutAnalysisContext {
             intervalScorecard = IntervalScorecard(
                 active_work_pace: activeWorkPace,
                 active_turnover_spm: avgWorkCad,
-                average_hr_drop: signedAvgDrop,
+                average_hr_drop: isLowConfidenceHR ? 0 : signedAvgDrop,
                 total_work_reps: intervalEvaluations.count,
                 session_grade: overallGradeReport.grade,
                 pacing_consistency: consistency,
-                active_avg_heart_rate_bpm: avgWorkHR,
+                active_avg_heart_rate_bpm: isLowConfidenceHR ? nil : avgWorkHR,
+                heart_rate_status: isLowConfidenceHR ? hrStatus : nil,
                 cadence_floor_status: "\(avgWorkCad) SPM vs \(floor) SPM floor (\(avgWorkCad >= floor ? "above floor" : "sub-floor"))"
             )
 
@@ -529,8 +537,9 @@ extension WorkoutAnalysisContext {
                     work_cadence_spm: rep.workCadence,
                     rep_grade: rep.letterGrade,
                     recovery_pace: recPace,
-                    recovery_hr_drop_bpm: recDrop,
-                    work_heart_rate_bpm: rep.workHeartRate,
+                    recovery_hr_drop_bpm: isLowConfidenceHR ? nil : recDrop,
+                    work_heart_rate_bpm: isLowConfidenceHR ? nil : rep.workHeartRate,
+                    heart_rate_status: isLowConfidenceHR ? hrStatus : nil,
                     observation: rep.observation
                 )
             }
@@ -541,13 +550,28 @@ extension WorkoutAnalysisContext {
             intervalScorecard = nil
             repsList = nil
 
-            let fSplitDesc = fastestSplit.map { "km \($0.index) at \(PaceFormatter.formatPace(secondsPerKilometer: $0.paceSecondsPerKm)) (\(Int($0.avgCadence)) SPM, \(Int($0.avgHeartRate)) BPM)" }
-            let sSplitDesc = slowestSplit.map { "km \($0.index) at \(PaceFormatter.formatPace(secondsPerKilometer: $0.paceSecondsPerKm)) (\(Int($0.avgCadence)) SPM, \(Int($0.avgHeartRate)) BPM)" }
+            let fSplitDesc = fastestSplit.map { split in
+                let cad = "\(Int(split.avgCadence)) SPM"
+                if isLowConfidenceHR {
+                    return "km \(split.index) at \(PaceFormatter.formatPace(secondsPerKilometer: split.paceSecondsPerKm)) (\(cad))"
+                } else {
+                    return "km \(split.index) at \(PaceFormatter.formatPace(secondsPerKilometer: split.paceSecondsPerKm)) (\(cad), \(Int(split.avgHeartRate)) BPM)"
+                }
+            }
+            let sSplitDesc = slowestSplit.map { split in
+                let cad = "\(Int(split.avgCadence)) SPM"
+                if isLowConfidenceHR {
+                    return "km \(split.index) at \(PaceFormatter.formatPace(secondsPerKilometer: split.paceSecondsPerKm)) (\(cad))"
+                } else {
+                    return "km \(split.index) at \(PaceFormatter.formatPace(secondsPerKilometer: split.paceSecondsPerKm)) (\(cad), \(Int(split.avgHeartRate)) BPM)"
+                }
+            }
 
             steadyScorecard = SteadyStateScorecard(
                 avg_pace: workingPaceFormatted,
                 avg_turnover_spm: workingCadence,
-                avg_heart_rate_bpm: workingHR,
+                avg_heart_rate_bpm: isLowConfidenceHR ? nil : workingHR,
+                heart_rate_status: isLowConfidenceHR ? hrStatus : "Reliable",
                 session_grade: overallGradeReport.grade,
                 pacing_trend: pacingTrendDescription,
                 cadence_floor_status: "\(workingCadence) SPM vs \(floor) SPM floor (\(workingCadence >= floor ? "above floor" : "sub-floor"))",
@@ -560,15 +584,16 @@ extension WorkoutAnalysisContext {
                     split_index: split.index,
                     pace: split.paceFormatted,
                     cadence_spm: split.cadence,
-                    heart_rate_bpm: split.heartRate,
+                    heart_rate_bpm: isLowConfidenceHR ? nil : split.heartRate,
+                    heart_rate_status: isLowConfidenceHR ? hrStatus : nil,
                     grade: split.letterGrade,
                     observation: split.observation
                 )
             }
         }
 
-        let hrConfidence: String = runRecord.isHeartRateSensorLowConfidence
-            ? "unreliable_sensor_artifact (resting/cadence-lock HR < 85 BPM detected; do NOT evaluate or praise cardiovascular effort from this number)"
+        let hrConfidence: String = isLowConfidenceHR
+            ? "unreliable_sensor_artifact (resting/cadence-lock HR < 85 BPM detected; heart rate metrics omitted from payload)"
             : "reliable"
 
         return UnifiedWorkoutToolResponse(
@@ -582,7 +607,8 @@ extension WorkoutAnalysisContext {
             splits: splitsList,
             background_session_totals: blendedTotals,
             physiological_verdicts: physiologicalVerdicts.promptDescription,
-            heart_rate_confidence: hrConfidence
+            heart_rate_confidence: hrConfidence,
+            heart_rate_status: hrStatus
         )
     }
 

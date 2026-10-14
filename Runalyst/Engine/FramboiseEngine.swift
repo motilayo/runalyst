@@ -332,7 +332,40 @@ actor FramboiseEngine {
             ))
         }
 
-        return Self.consolidatePhaseSegments(raw)
+        var consolidated = Self.consolidatePhaseSegments(raw)
+
+        // Minimum Repetition Gate:
+        // True interval classification requires workRepCount >= 2
+        // (at least two distinct work surges separated by a recovery/steady trough).
+        // A single speed-up or a warm-up followed by steady running is NEVER an interval session.
+        let workSegmentsCount = consolidated.filter { $0.kind == "work" }.count
+        if workSegmentsCount < 2 {
+            consolidated = consolidated.map { seg in
+                if seg.kind == "work" || seg.kind == "recovery" {
+                    return PhaseSegment(
+                        startSeconds: seg.startSeconds,
+                        endSeconds: seg.endSeconds,
+                        kind: "steady",
+                        avgPace: seg.avgPace,
+                        avgCadence: seg.avgCadence,
+                        avgHR: seg.avgHR
+                    )
+                }
+                return seg
+            }
+
+            var coalesced: [PhaseSegment] = []
+            for seg in consolidated {
+                if let last = coalesced.last, last.kind == seg.kind {
+                    coalesced[coalesced.count - 1] = Self.mergeSegments(last, seg)
+                } else {
+                    coalesced.append(seg)
+                }
+            }
+            consolidated = coalesced
+        }
+
+        return consolidated
     }
 
     /// Merges fragmented work segments separated by brief dips and filters out stray warmup/cooldown surges.
@@ -425,6 +458,7 @@ actor FramboiseEngine {
                 finalSegments.append(seg)
             }
         }
+
         return finalSegments
     }
 

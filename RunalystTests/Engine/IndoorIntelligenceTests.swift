@@ -2085,6 +2085,9 @@ final class IndoorIntelligenceTests: XCTestCase {
         let context = chatEngine.makeAnalysisContext()
         let payload = context.buildUnifiedWorkoutToolResponse()
         XCTAssertTrue(payload.heart_rate_confidence?.contains("unreliable") == true, "Tool payload must explicitly flag low confidence HR sensor data")
+        XCTAssertNil(payload.steady_state_scorecard?.avg_heart_rate_bpm, "Low confidence HR integer must be nulled out so LLM cannot quote it")
+        XCTAssertEqual(payload.steady_state_scorecard?.heart_rate_status, "Omitted (Sensor lock anomaly < 85 BPM)")
+        XCTAssertNil(payload.splits?.first?.heart_rate_bpm, "Split HR integers must be nulled out")
     }
 
     @MainActor
@@ -2100,8 +2103,96 @@ final class IndoorIntelligenceTests: XCTestCase {
         XCTAssertTrue(rx.forbiddenTerms.contains("tempo"), "Forbidden terms must include tempo for Zone 2 recovery")
 
         let instructions = chatEngine.buildLeanSystemInstructions()
-        XCTAssertTrue(instructions.contains("NEGATIVE CONSTRAINT"), "Instructions must mandate negative constraint adherence")
-        XCTAssertTrue(instructions.contains("forbidden_terms"), "Instructions must mention forbidden_terms")
+        XCTAssertTrue(instructions.contains("POSITIVE CATEGORY DIRECTIVE"), "Instructions must mandate positive category adherence")
+        XCTAssertFalse(instructions.contains("forbidden_terms"), "Prompt must NOT contain forbidden_terms to avoid token attention bleed")
         XCTAssertTrue(instructions.contains("SCOPE MANDATE"), "Instructions must mandate not reciting past metrics during future planning")
+    }
+
+    @MainActor
+    func testWarmUpFollowedBySteadyRunIsNotClassifiedAsIntervals() async {
+        let engine = FramboiseEngine()
+        let now = Date()
+
+        // 5 minutes warm-up at 8:15/km (495 s/km) followed by 25 minutes steady at 6:30/km (390 s/km)
+        var buckets: [BucketData] = []
+        // Warm-up: 10 buckets of 30s = 5 min
+        for i in 0..<10 {
+            buckets.append(BucketData(
+                startTime: now.addingTimeInterval(Double(i * 30)),
+                distanceMeters: 60.6,
+                durationSeconds: 30.0,
+                meanPaceSecPerKm: 495.0,
+                meanCadence: 145.0,
+                meanHR: 130.0
+            ))
+        }
+        // Steady block: 50 buckets of 30s = 25 min
+        for i in 10..<60 {
+            buckets.append(BucketData(
+                startTime: now.addingTimeInterval(Double(i * 30)),
+                distanceMeters: 76.9,
+                durationSeconds: 30.0,
+                meanPaceSecPerKm: 390.0,
+                meanCadence: 162.0,
+                meanHR: 155.0
+            ))
+        }
+
+        let segments = await engine.generatePhaseSegments(from: buckets, cadenceFloor: 150.0)
+        let workSegments = segments.filter { $0.kind == "work" }
+        XCTAssertLessThan(workSegments.count, 2, "A single warm-up transition must have < 2 work reps")
+        XCTAssertEqual(workSegments.count, 0, "Consolidated phase segments must have 0 work reps because workRepCount < 2 is gated to steady")
+    }
+
+    @MainActor
+    func testReadinessToolWithUserReportedDistressOverridesPrescriptionToRecovery() {
+        let runRecord = makeTestRunRecord(isIndoor: false)
+        let chatEngine = AnalystChatEngine(runRecord: runRecord)
+
+        // Default readiness without distress
+        let normalContext = chatEngine.makeAnalysisContext(isSubjectiveDistress: false)
+        XCTAssertEqual(normalContext.recoveryTimeline.state, .productive)
+
+        // Subjective distress override (illness, pain, exhaustion)
+        let distressContext = chatEngine.makeAnalysisContext(isSubjectiveDistress: true)
+        XCTAssertEqual(distressContext.lockedPrescription.intensityCategory, "FULL_REST_OVERRIDE")
+    }
+
+    @MainActor
+    func testZeroHallucinationSafetyGateDeliversAuthenticRepsWhenToolNotCalled() {
+        let runRecord = makeTestRunRecord(isIndoor: true)
+        runRecord.detectedTypeRaw = "Intervals"
+        let signature = RunSignature(
+            classification: "Intervals",
+            confidence: 0.95,
+            probabilities: ["Intervals": 0.95],
+            anomalies: [],
+            cadenceFloor: 150.0,
+            phaseSegments: [
+                PhaseSegment(startSeconds: 0, endSeconds: 90, kind: "work", avgPace: 340, avgCadence: 163, avgHR: 140),
+                PhaseSegment(startSeconds: 90, endSeconds: 150, kind: "recovery", avgPace: 435, avgCadence: 145, avgHR: 133),
+                PhaseSegment(startSeconds: 150, endSeconds: 270, kind: "work", avgPace: 345, avgCadence: 163, avgHR: 143)
+            ],
+            dataSource: "wrist",
+            isIndoor: true,
+            needsInclineReview: false
+        )
+        let chatEngine = AnalystChatEngine(runRecord: runRecord, runSignature: signature)
+        let context = chatEngine.makeAnalysisContext()
+
+        // When a runner asks about interval performance, the fallback responder strictly outputs authentic reps
+        let response = AnalystFallbackResponder.generateResponse(
+            for: "Grade my performance in each interval of this run",
+            turnContext: ManagedTurnContext(
+                turnDomain: .workoutTelemetryAnalysis,
+                isSubjectiveDistress: false
+            ),
+            analysis: context,
+            runRecord: runRecord
+        )
+
+        XCTAssertTrue(response.contains("• Rep 1"), "Must format authentic reps")
+        XCTAssertTrue(response.contains("163 SPM"), "Must contain authentic 163 SPM from telemetry")
+        XCTAssertFalse(response.contains("120 SPM stride"), "Must never output fabricated arithmetic progression")
     }
 }

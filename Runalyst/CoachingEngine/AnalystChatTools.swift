@@ -28,8 +28,9 @@ public struct UnifiedWorkoutToolResponse: Codable, Sendable {
     // Indisputable causal physiological diagnoses computed locally in Swift
     public let physiological_verdicts: String
 
-    // Verification of sensor plausibility
+    // Verification of sensor plausibility and omission status
     public let heart_rate_confidence: String?
+    public let heart_rate_status: String?
 
     public init(
         schema_name: String = "UNIFIED_WORKOUT_TOOL_RESPONSE",
@@ -42,7 +43,8 @@ public struct UnifiedWorkoutToolResponse: Codable, Sendable {
         splits: [SplitDetail]? = nil,
         background_session_totals: BlendedTotals,
         physiological_verdicts: String,
-        heart_rate_confidence: String? = nil
+        heart_rate_confidence: String? = nil,
+        heart_rate_status: String? = nil
     ) {
         self.schema_name = schema_name
         self.workout_type = workout_type
@@ -55,6 +57,7 @@ public struct UnifiedWorkoutToolResponse: Codable, Sendable {
         self.background_session_totals = background_session_totals
         self.physiological_verdicts = physiological_verdicts
         self.heart_rate_confidence = heart_rate_confidence
+        self.heart_rate_status = heart_rate_status
     }
 }
 
@@ -66,6 +69,7 @@ public struct IntervalScorecard: Codable, Sendable {
     public let session_grade: String        // "A"
     public let pacing_consistency: String?  // "Disciplined consistency (tight spread)"
     public let active_avg_heart_rate_bpm: Int?
+    public let heart_rate_status: String?
     public let cadence_floor_status: String?
 
     public init(
@@ -76,6 +80,7 @@ public struct IntervalScorecard: Codable, Sendable {
         session_grade: String,
         pacing_consistency: String? = nil,
         active_avg_heart_rate_bpm: Int? = nil,
+        heart_rate_status: String? = nil,
         cadence_floor_status: String? = nil
     ) {
         self.active_work_pace = active_work_pace
@@ -85,6 +90,7 @@ public struct IntervalScorecard: Codable, Sendable {
         self.session_grade = session_grade
         self.pacing_consistency = pacing_consistency
         self.active_avg_heart_rate_bpm = active_avg_heart_rate_bpm
+        self.heart_rate_status = heart_rate_status
         self.cadence_floor_status = cadence_floor_status
     }
 }
@@ -95,8 +101,9 @@ public struct IntervalRepDetail: Codable, Sendable {
     public let work_cadence_spm: Int        // 162
     public let rep_grade: String            // "A", "A-", "A+"
     public let recovery_pace: String        // "7:15/km"
-    public let recovery_hr_drop_bpm: Int    // -6
+    public let recovery_hr_drop_bpm: Int?
     public let work_heart_rate_bpm: Int?
+    public let heart_rate_status: String?
     public let observation: String?
 
     public init(
@@ -105,8 +112,9 @@ public struct IntervalRepDetail: Codable, Sendable {
         work_cadence_spm: Int,
         rep_grade: String,
         recovery_pace: String,
-        recovery_hr_drop_bpm: Int,
+        recovery_hr_drop_bpm: Int? = nil,
         work_heart_rate_bpm: Int? = nil,
+        heart_rate_status: String? = nil,
         observation: String? = nil
     ) {
         self.rep_number = rep_number
@@ -116,6 +124,7 @@ public struct IntervalRepDetail: Codable, Sendable {
         self.recovery_pace = recovery_pace
         self.recovery_hr_drop_bpm = recovery_hr_drop_bpm
         self.work_heart_rate_bpm = work_heart_rate_bpm
+        self.heart_rate_status = heart_rate_status
         self.observation = observation
     }
 }
@@ -123,7 +132,8 @@ public struct IntervalRepDetail: Codable, Sendable {
 public struct SteadyStateScorecard: Codable, Sendable {
     public let avg_pace: String
     public let avg_turnover_spm: Int
-    public let avg_heart_rate_bpm: Int
+    public let avg_heart_rate_bpm: Int?
+    public let heart_rate_status: String?
     public let session_grade: String
     public let pacing_trend: String
     public let cadence_floor_status: String
@@ -133,7 +143,8 @@ public struct SteadyStateScorecard: Codable, Sendable {
     public init(
         avg_pace: String,
         avg_turnover_spm: Int,
-        avg_heart_rate_bpm: Int,
+        avg_heart_rate_bpm: Int? = nil,
+        heart_rate_status: String? = nil,
         session_grade: String,
         pacing_trend: String,
         cadence_floor_status: String,
@@ -143,6 +154,7 @@ public struct SteadyStateScorecard: Codable, Sendable {
         self.avg_pace = avg_pace
         self.avg_turnover_spm = avg_turnover_spm
         self.avg_heart_rate_bpm = avg_heart_rate_bpm
+        self.heart_rate_status = heart_rate_status
         self.session_grade = session_grade
         self.pacing_trend = pacing_trend
         self.cadence_floor_status = cadence_floor_status
@@ -155,7 +167,8 @@ public struct SplitDetail: Codable, Sendable {
     public let split_index: Int
     public let pace: String
     public let cadence_spm: Int
-    public let heart_rate_bpm: Int
+    public let heart_rate_bpm: Int?
+    public let heart_rate_status: String?
     public let grade: String
     public let observation: String
 
@@ -163,7 +176,8 @@ public struct SplitDetail: Codable, Sendable {
         split_index: Int,
         pace: String,
         cadence_spm: Int,
-        heart_rate_bpm: Int,
+        heart_rate_bpm: Int? = nil,
+        heart_rate_status: String? = nil,
         grade: String,
         observation: String
     ) {
@@ -171,6 +185,7 @@ public struct SplitDetail: Codable, Sendable {
         self.pace = pace
         self.cadence_spm = cadence_spm
         self.heart_rate_bpm = heart_rate_bpm
+        self.heart_rate_status = heart_rate_status
         self.grade = grade
         self.observation = observation
     }
@@ -182,7 +197,8 @@ public struct BlendedTotals: Codable, Sendable {
     public let total_duration: String
     public let blended_session_avg_pace: String
     public let blended_session_avg_cadence_spm: Int
-    public let blended_session_avg_heart_rate_bpm: Int
+    public let blended_session_avg_heart_rate_bpm: Int?
+    public let heart_rate_status: String?
     public let height_cadence_floor_spm: Int
     public let aerobic_efficiency_factor: String?
     public let cardiac_drift: String?
@@ -194,7 +210,8 @@ public struct BlendedTotals: Codable, Sendable {
         total_duration: String,
         blended_session_avg_pace: String,
         blended_session_avg_cadence_spm: Int,
-        blended_session_avg_heart_rate_bpm: Int,
+        blended_session_avg_heart_rate_bpm: Int? = nil,
+        heart_rate_status: String? = nil,
         height_cadence_floor_spm: Int,
         aerobic_efficiency_factor: String? = nil,
         cardiac_drift: String? = nil,
@@ -206,6 +223,7 @@ public struct BlendedTotals: Codable, Sendable {
         self.blended_session_avg_pace = blended_session_avg_pace
         self.blended_session_avg_cadence_spm = blended_session_avg_cadence_spm
         self.blended_session_avg_heart_rate_bpm = blended_session_avg_heart_rate_bpm
+        self.heart_rate_status = heart_rate_status
         self.height_cadence_floor_spm = height_cadence_floor_spm
         self.aerobic_efficiency_factor = aerobic_efficiency_factor
         self.cardiac_drift = cardiac_drift
@@ -224,7 +242,6 @@ public struct ReadinessToolResponse: Codable, Sendable {
     public let prescribed_duration_band: String
     public let prescribed_cadence_band: String
     public let session_rationale: String
-    public let forbidden_terms: [String]
     public let coaching_directive: String
 
     public init(
@@ -237,7 +254,6 @@ public struct ReadinessToolResponse: Codable, Sendable {
         prescribed_duration_band: String,
         prescribed_cadence_band: String,
         session_rationale: String,
-        forbidden_terms: [String],
         coaching_directive: String
     ) {
         self.schema_name = schema_name
@@ -249,7 +265,6 @@ public struct ReadinessToolResponse: Codable, Sendable {
         self.prescribed_duration_band = prescribed_duration_band
         self.prescribed_cadence_band = prescribed_cadence_band
         self.session_rationale = session_rationale
-        self.forbidden_terms = forbidden_terms
         self.coaching_directive = coaching_directive
     }
 }
@@ -263,7 +278,7 @@ import FoundationModels
 @available(iOS 26.0, *)
 @Generable
 struct WorkoutAnalysisQuery: Sendable {
-    @Guide(description: "Specific query focus: 'verdicts', 'economy_and_efficiency', 'cadence_mechanics', 'cardiac_drift', 'splits', or 'full_telemetry'")
+    @Guide(description: "Specific query focus: 'intervals', 'reps', 'performance', 'verdicts', 'economy_and_efficiency', 'cadence_mechanics', 'cardiac_drift', 'splits', or 'full_telemetry'")
     var focus: String?
 }
 
@@ -286,6 +301,9 @@ struct WorkoutPhysicsQuery: Sendable {
 struct ReadinessQuery: Sendable {
     @Guide(description: "Planning query focus: 'tomorrow_readiness', 'locked_prescription', or 'recovery_status'")
     var focus: String?
+
+    @Guide(description: "Pass true if the runner mentions illness, pain, exhaustion, injury, or poor sleep in their prompt.")
+    var userReportedDistress: Bool?
 }
 
 @available(iOS 26.0, *)
