@@ -1591,4 +1591,46 @@ final class IndoorIntelligenceTests: XCTestCase {
         }
         #endif
     }
+
+    @MainActor
+    func testStallResponseDetectionRecognizesAnnouncementsWithoutData() {
+        let stall1 = "To assess your running economy and stride efficiency, I need to pull your most recent workout analysis. Let's start there."
+        let stall2 = "Your performance is directly tied to your most recent workout. I'll retrieve the analysis to see how your pacing, heart rate, and cadence matched the expected efficiency."
+        let validCoaching = "Your running Efficiency Factor was **1.42** (+2.1% vs baseline), reflecting speed produced per heartbeat. Average cadence was **162 SPM**."
+
+        XCTAssertTrue(AnalystChatEngine.isStallResponse(stall1), "Must flag stall announcement")
+        XCTAssertTrue(AnalystChatEngine.isStallResponse(stall2), "Must flag retrieve announcement")
+        XCTAssertFalse(AnalystChatEngine.isStallResponse(validCoaching), "Must not flag legitimate data-grounded coaching")
+    }
+
+    @MainActor
+    func testAnalystChatRunningEconomyAndStrideEfficiencyAnswersDirectlyWithoutStalling() async {
+        let runRecord = makeTestRunRecord(isIndoor: true)
+        let chatEngine = AnalystChatEngine(runRecord: runRecord)
+        await chatEngine.sendMessage("How was my running economy and stride efficiency during this run?")
+        let response = chatEngine.messages.last?.text ?? ""
+
+        XCTAssertFalse(AnalystChatEngine.isStallResponse(response), "Response must not stall")
+        XCTAssertFalse(response.contains("Let's start there"), "Must not tell runner to start there without data")
+        XCTAssertFalse(response.contains("I need to pull"), "Must not announce data pulling")
+        XCTAssertTrue(
+            response.contains("Efficiency Factor") || response.contains("cadence") || response.contains("SPM") || response.contains("stride"),
+            "Must directly deliver economy and stride metrics"
+        )
+    }
+
+    @MainActor
+    func testAnalystChatPerformanceInquiryAnswersDirectlyWithoutStalling() async {
+        let runRecord = makeTestRunRecord(isIndoor: true)
+        let chatEngine = AnalystChatEngine(runRecord: runRecord)
+        await chatEngine.sendMessage("How was my performance?")
+        let response = chatEngine.messages.last?.text ?? ""
+
+        XCTAssertFalse(AnalystChatEngine.isStallResponse(response), "Response must not stall")
+        XCTAssertFalse(response.contains("I'll retrieve"), "Must not announce data retrieval")
+        XCTAssertTrue(
+            response.contains("SPM") || response.contains("BPM") || response.contains("pace") || response.contains("Pace") || response.contains("grade") || response.contains("split") || response.contains("interval"),
+            "Must directly deliver performance metrics"
+        )
+    }
 }

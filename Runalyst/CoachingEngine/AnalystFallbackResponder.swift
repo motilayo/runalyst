@@ -85,9 +85,14 @@ enum AnalystFallbackResponder {
 
         // 6. Running Economy & Stride Efficiency
         if q.contains("economy") || q.contains("efficiency") {
-            let efFormatted = String(format: "%.2f", analysis.efficiencyFactor ?? 0.0)
-            let deltaNote = analysis.efficiencyFactorDeltaPercent.map { String(format: " (%+.1f%% vs baseline)", $0) } ?? ""
-            return "Your running Efficiency Factor was **\(efFormatted)**\(deltaNote), reflecting speed produced per heartbeat. Your stride archetype is **\(analysis.strideArchetype)** with an average cadence of **\(analysis.workingCadence) SPM** (calibrated against your **\(analysis.runnerProfile.heightAdjustedCadenceFloor) SPM** height floor)."
+            let floor = analysis.runnerProfile.heightAdjustedCadenceFloor
+            if let ef = analysis.efficiencyFactor, ef > 0 {
+                let efFormatted = String(format: "%.2f", ef)
+                let deltaNote = analysis.efficiencyFactorDeltaPercent.map { String(format: " (%+.1f%% vs baseline)", $0) } ?? ""
+                return "Your running Efficiency Factor was **\(efFormatted)**\(deltaNote), reflecting speed produced per heartbeat. Your stride archetype is **\(analysis.strideArchetype)** with an average cadence of **\(analysis.workingCadence) SPM** (calibrated against your **\(floor) SPM** height floor)."
+            } else {
+                return "Your stride archetype is **\(analysis.strideArchetype)** with an average cadence of **\(analysis.workingCadence) SPM** (calibrated against your **\(floor) SPM** height floor). At a working pace of **\(analysis.workingPaceFormatted)**, your stride turnover provided solid mechanical efficiency."
+            }
         }
 
         // 7. Training Goal Progress
@@ -106,7 +111,7 @@ enum AnalystFallbackResponder {
         }
 
         // 9. Splits, intervals, and pacing segments
-        let isSegmentEvalIntent = q.contains("split") || q.contains("interval") || q.contains("segment") || q.contains("lap") || q.contains("fastest") || q.contains("slowest") || q.contains("grade my performance") || q.contains("rep")
+        let isSegmentEvalIntent = q.contains("split") || q.contains("interval") || q.contains("segment") || q.contains("lap") || q.contains("fastest") || q.contains("slowest") || q.contains("performance") || q.contains("rep")
         if isSegmentEvalIntent {
             return analysis.formatPerformanceReport()
         }

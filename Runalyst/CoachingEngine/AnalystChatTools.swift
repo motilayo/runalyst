@@ -7,7 +7,7 @@ import FoundationModels
 @available(iOS 26.0, *)
 @Generable
 struct WorkoutAnalysisQuery: Sendable {
-    @Guide(description: "Specific query focus: 'verdicts', 'cadence_mechanics', 'cardiac_drift', 'splits', or 'full_telemetry'")
+    @Guide(description: "Specific query focus: 'verdicts', 'economy_and_efficiency', 'cadence_mechanics', 'cardiac_drift', 'splits', or 'full_telemetry'")
     var focus: String?
 }
 
@@ -48,7 +48,7 @@ struct FetchWorkoutAnalysisTool: Tool {
     typealias Output = String
 
     let name = "fetchWorkoutAnalysis"
-    let description = "Retrieves deterministic biomechanical and physiological analysis of the user's specific workout, including heart rate drift, cadence floor adherence, pacing consistency, and causal verdicts."
+    let description = "Retrieves deterministic biomechanical and physiological analysis of this specific workout: running economy, stride efficiency, efficiency factor, stride archetype, cadence, heart rate drift, pace, lap splits, and causal physiological verdicts."
 
     let provider: @MainActor @Sendable (WorkoutAnalysisQuery) async -> String
 

@@ -195,25 +195,37 @@ class AnalystChatEngine: ObservableObject {
     @available(iOS 26.0, *)
     func buildLeanSystemInstructions() -> String {
         let language = Locale.current.language.languageCode?.identifier ?? "en"
+        let runType = runRecord.detectedTypeRaw.isEmpty ? "Run" : runRecord.detectedTypeRaw
+        let isIndoor = runRecord.isIndoor ?? false
+        let envNote = isIndoor ? "Indoor Treadmill (belt-driven, static air)" : "Outdoors"
         return """
         You are my personal running coach and exercise physiologist.
         Speak directly to me ("you" / "your") like an experienced, objective running coach in natural conversation (1 to 3 short paragraphs). Clear, direct, perceptive, and data-backed. Never refer to me as "the runner" or in the third person.
 
+        WORKOUT CONTEXT:
+        Reviewing workout: \(runType) (\(envNote)).
+
         TOOLS & DATA ACCESS:
         You have access to 5 deterministic native tools to query my running math and physics:
-        1. `fetchWorkoutAnalysis`: Retrieves retrospective telemetry, lap splits, second-half cardiac drift, and deterministic physiological verdicts for continuous runs or overall session reviews.
+        1. `fetchWorkoutAnalysis`: Retrieves retrospective telemetry, running economy, efficiency factor, stride archetype, cadence, lap splits, second-half cardiac drift, and deterministic physiological verdicts. MANDATORY to call when evaluating running economy, stride efficiency, cadence, pacing, or overall workout performance.
         2. `fetchIntervalPerformance`: Retrieves discrete interval rep breakdown (work reps, paces, turnover, heart rates, active recovery phases, recovery heart rate drops, pace repeatability across sets, and belt vs road mechanics). MANDATORY to call when evaluating interval workouts or rep execution.
         3. `fetchWorkoutPhysics`: Retrieves modeled physical and physiological realities: treadmill belt kinetics and braking shock when cadence dips, indoor static air thermal build vs convective wind cooling, gravitational hill resistance, and cardiac lag.
         4. `fetchReadinessAndPrescription`: Retrieves current recovery timeline, rest days elapsed, readiness status, and the locked prescription table for upcoming sessions.
         5. `fetchAthleteProfile`: Retrieves my 30-day training load, experience level, and height-calibrated cadence floor.
 
-        TOOL USAGE RULES:
-        • MANDATORY: You have NO workout telemetry or heart rate data in your initial context. You MUST call the appropriate tool before answering questions about my past run, heart rate, cadence, pace, or performance.
-        • For interval workouts or questions about sets/reps: call `fetchIntervalPerformance`.
-        • For questions about treadmill vs outdoor mechanics, heat, hills, or physics: call `fetchWorkoutPhysics`.
-        • Before answering questions about whether I can run tomorrow, recovery, or next workout pacing: call `fetchReadinessAndPrescription`.
-        • For composite questions: call the necessary tools sequentially and address both aspects.
-        • For questions about general training volume or profile: call `fetchAthleteProfile`.
+        EXECUTION RULES — ZERO STALLING:
+        • SILENT, IMMEDIATE TOOL INVOCATION: You MUST invoke the appropriate tool immediately in your first turn to retrieve the facts.
+        • NEVER announce, promise, or narrate tool retrieval. NEVER say phrases like:
+          - "I need to pull your most recent workout analysis"
+          - "I'll retrieve the analysis" / "I will retrieve the analysis"
+          - "Let's start there"
+          - "To assess your ..., I need to ..."
+          - "Let me check your workout"
+        • Call the tool silently and immediately, receive the returned telemetry, and output ONLY your final coaching response once the tool returns data.
+        • For running economy, stride efficiency, cadence, or overall performance: call `fetchWorkoutAnalysis`.
+        • For interval reps, work/recovery splits, or pace consistency: call `fetchIntervalPerformance`.
+        • For treadmill physics, room heat, or biomechanics: call `fetchWorkoutPhysics`.
+        • For tomorrow's run, recovery, or readiness: call `fetchReadinessAndPrescription`.
         • For conceptual questions (e.g. "What is VO2 Max?", "What is cardiac drift?"): explain the concept simply using your internal knowledge. If relevant to my run, call tools to connect it to my data.
         • For out-of-scope questions unrelated to running, health, or fitness: do NOT call tools; answer in 1 concise sentence and redirect to training.
 
@@ -221,7 +233,7 @@ class AnalystChatEngine: ObservableObject {
         • Athlete Safety Override: If I mention physical illness, fever, flu, or sharp injury pain, SAFETY OVERRIDES ALL TRAINING. Advise rest and recovery immediately without calling training tools or prescribing workouts.
         • Deterministic Authority: The returned math and physics verdicts are your indisputable mathematical conclusions. Never contradict them or invent numbers outside the returned data.
         • Never claim a flat treadmill intensifies gravitational load (gravity is normal 1g); flat treadmill drift is thermal accumulation from zero convective airflow.
-        • Bold accent numbers and units (e.g. **156 SPM**, **7:15/km**).
+        • Bold accent numbers and units (e.g. **156 SPM**, **7:15/km**, **1.42**).
 
         Respond in \(language).
         """
@@ -284,9 +296,45 @@ class AnalystChatEngine: ObservableObject {
     @available(iOS 26.0, *)
     private func generateFoundationModelResponse(for userQuestion: String, turnContext: ManagedTurnContext) async throws -> String {
         let session = getOrCreateSession()
-        return try await session.respond(to: userQuestion).content
+        let response = try await session.respond(to: userQuestion)
+        let responseText = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Guard against LLM conversational stalling where the on-device model announces
+        // future retrieval intent instead of delivering completed analysis.
+        if Self.isStallResponse(responseText) {
+            return generateDataGroundedFallback(for: userQuestion, turnContext: turnContext)
+        }
+
+        return responseText
     }
     #endif
+
+    /// Evaluates whether an LLM generation stalled by announcing future data retrieval instead of answering.
+    static func isStallResponse(_ text: String) -> Bool {
+        let lower = text.lowercased()
+        let stallPatterns = [
+            "need to pull",
+            "pull your most recent",
+            "pull your workout",
+            "retrieve the analysis",
+            "retrieve your workout",
+            "i'll retrieve",
+            "i will retrieve",
+            "let's start there",
+            "lets start there",
+            "let me retrieve",
+            "let me pull",
+            "let me fetch",
+            "let me check",
+            "i need to check your workout",
+            "i need to fetch",
+            "to assess your running economy",
+            "to assess your"
+        ]
+        let matchesPattern = stallPatterns.contains { lower.contains($0) }
+        let containsNumbers = text.rangeOfCharacter(from: .decimalDigits) != nil
+        return matchesPattern && !containsNumbers
+    }
 
     /// Synthesizes 1,000-meter splits from phase segments if physical splits were not persisted.
     static func synthesizeSplitsFromSegments(_ segments: [PhaseSegment], splitDistanceMeters: Double = 1000.0) -> [RunSplit] {
