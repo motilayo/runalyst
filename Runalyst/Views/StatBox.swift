@@ -32,7 +32,8 @@ struct StatBox: View {
 
             HStack(alignment: .firstTextBaseline, spacing: 2) {
                 Text(value)
-                    .font(.title2.bold())
+                    .font(.system(size: 22, weight: .bold, design: .rounded))
+                    .monospacedDigit()
                 Text(unit)
                     .font(.caption)
                     .foregroundColor(.secondary)
@@ -61,7 +62,10 @@ struct StatBox: View {
         )
         .shadow(color: Color.black.opacity(0.03), radius: 4, x: 0, y: 2)
         .contentShape(Rectangle())
-        .onTapGesture { showingInfo = true }
+        .onTapGesture {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            showingInfo = true
+        }
         .sheet(isPresented: $showingInfo) {
             MetricExplainerSheet(
                 title: explainer.title,

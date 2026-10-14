@@ -531,6 +531,9 @@ struct DrillPrimerCardView: View {
                     }
                     .pickerStyle(.segmented)
                     .frame(maxWidth: 220)
+                    .onChange(of: selectedDuration) { _, _ in
+                        UISelectionFeedbackGenerator().selectionChanged()
+                    }
                 }
             }
 
@@ -571,6 +574,7 @@ struct DrillPrimerCardView: View {
 
             // Single Action Button: Start Drill
             Button(action: {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                 startDrill(title: displayTitle, purpose: purpose, targetCadence: targetCadence)
             }) {
                 HStack(spacing: 6) {
@@ -579,6 +583,7 @@ struct DrillPrimerCardView: View {
                 }
                 .font(.subheadline.bold())
                 .frame(maxWidth: .infinity)
+                .frame(minHeight: 44)
                 .padding(.vertical, 14)
                 .background(Color.accentColor)
                 .foregroundColor(.white)

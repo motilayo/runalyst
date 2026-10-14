@@ -50,6 +50,7 @@ struct RunListRowView: View {
 
                 Text(String(format: "%.2f %@ • %@", distanceConverted, distanceUnit, pace))
                     .font(.subheadline)
+                    .monospacedDigit()
                     .foregroundColor(.secondary)
 
                 Spacer()

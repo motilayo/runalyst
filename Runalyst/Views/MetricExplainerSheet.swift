@@ -80,10 +80,15 @@ struct MetricExplainerSheet: View {
                         }
                     }
                     Spacer()
-                    Button(action: { dismiss() }) {
+                    Button(action: {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        dismiss()
+                    }) {
                         Image(systemName: "xmark.circle.fill")
                             .font(.title2)
                             .foregroundColor(.secondary.opacity(0.6))
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
                     }
                 }
 
@@ -112,7 +117,10 @@ struct MetricExplainerSheet: View {
 
                 // Running Form & Biomechanics Guide (Progressive Disclosure)
                 if isBiomechanicsMetric {
-                    Button(action: { showingBiomechanicsModal = true }) {
+                    Button(action: {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        showingBiomechanicsModal = true
+                    }) {
                         HStack(spacing: 12) {
                             Image(systemName: "figure.run")
                                 .font(.subheadline.bold())
@@ -137,8 +145,10 @@ struct MetricExplainerSheet: View {
                                 .foregroundColor(.secondary)
                         }
                         .padding(12)
+                        .frame(minHeight: 44)
                         .background(Color(UIColor.secondarySystemFill))
                         .cornerRadius(12)
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .sheet(isPresented: $showingBiomechanicsModal) {

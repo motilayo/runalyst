@@ -40,12 +40,14 @@ struct ProactiveCoachCard: View {
                 Spacer()
 
                 NavigationLink(destination: DrillsLibraryView()) {
-                    HStack(spacing: 2) {
+                    HStack(spacing: 4) {
                         Text("All Drills")
                         Image(systemName: "chevron.right")
                     }
                     .font(.caption.bold())
                     .foregroundColor(.accentColor)
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
                 }
             }
 
@@ -114,6 +116,7 @@ struct ProactiveCoachCard: View {
 
             HStack(spacing: 12) {
                 Button(action: {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     openDrillReadout(primerId: primerId, template: template, computedTarget: computedTarget, baseCadence: baseCadence)
                 }) {
                     HStack(spacing: 6) {
@@ -122,6 +125,7 @@ struct ProactiveCoachCard: View {
                     }
                     .font(.subheadline.bold())
                     .frame(maxWidth: .infinity)
+                    .frame(minHeight: 44)
                     .padding(.vertical, 14)
                     .background(Color(UIColor.tertiarySystemFill))
                     .foregroundColor(.primary)
@@ -129,6 +133,7 @@ struct ProactiveCoachCard: View {
                 }
 
                 Button(action: {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     onTogglePrimerCompleted()
                 }) {
                     HStack(spacing: 6) {
@@ -137,6 +142,7 @@ struct ProactiveCoachCard: View {
                     }
                     .font(.subheadline.bold())
                     .frame(maxWidth: .infinity)
+                    .frame(minHeight: 44)
                     .padding(.vertical, 14)
                     .background(isPrimerCompletedToday ? Color.green.opacity(0.15) : Color.orange)
                     .foregroundColor(isPrimerCompletedToday ? .green : .white)

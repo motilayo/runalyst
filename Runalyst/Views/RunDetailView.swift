@@ -236,22 +236,25 @@ struct RunDetailView: View {
                 AIDisclaimerFooter()
 
                 Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     showingAnalystChat = true
                 } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "bubble.left.and.text.bubble.right.fill")
-                            .font(.caption.bold())
-                        Text("Ask AI Analyst about this run")
-                            .font(.caption.bold())
+                    HStack(spacing: 8) {
+                        Image(systemName: "sparkles")
+                            .font(.subheadline.bold())
+                        Text("Ask AI Coach about this run")
+                            .font(.subheadline.bold())
                         Spacer()
                         Image(systemName: "chevron.right")
                             .font(.caption2.bold())
                     }
                     .foregroundColor(.purple)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(Color.purple.opacity(0.1))
-                    .cornerRadius(8)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .frame(minHeight: 44)
+                    .background(Color.purple.opacity(0.12))
+                    .cornerRadius(12)
+                    .contentShape(Rectangle())
                 }
             }
         }
@@ -626,11 +629,19 @@ struct RunDetailView: View {
                         Text("Workout Stats").tag(true)
                     }
                     .pickerStyle(.segmented)
+                    .onChange(of: showRawMetrics) { _, _ in
+                        UISelectionFeedbackGenerator().selectionChanged()
+                    }
 
-                    Button(action: { showingToggleInfo = true }) {
+                    Button(action: {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        showingToggleInfo = true
+                    }) {
                         Image(systemName: "info.circle")
                             .font(.body)
                             .foregroundColor(.secondary)
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
                     }
                 }
                 .padding(.horizontal)

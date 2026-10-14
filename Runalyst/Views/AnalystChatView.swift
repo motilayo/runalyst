@@ -230,7 +230,7 @@ struct AnalystChatView: View {
             } else {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 5) {
-                        Image(systemName: "brain.head.profile")
+                        Image(systemName: "sparkles")
                             .font(.caption2.bold())
                             .foregroundColor(.purple)
                         Text("AI Coach")
@@ -262,30 +262,30 @@ struct AnalystChatView: View {
     private var quickPromptChips: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                chipButton("Why It Felt Challenging") {
-                    inputText = "Why did this run feel challenging, and did my mechanics break down?"
+                chipButton("Stride Rhythm", icon: "waveform.path") {
+                    inputText = "How was my cadence and rhythm during this run?"
                     submitQuestion()
                 }
-                chipButton("Running Economy") {
-                    inputText = "How was my running economy and stride efficiency during this run?"
+                chipButton("Heart Rate Drift", icon: "heart.fill") {
+                    inputText = "Did my heart rate stay steady, or did I start tiring out?"
                     submitQuestion()
                 }
-                chipButton("Should I Run Tomorrow?") {
+                chipButton("Pacing Consistency", icon: "speedometer") {
+                    inputText = "What does pacing consistency mean, and how was my pacing?"
+                    submitQuestion()
+                }
+                chipButton("Should I Run Tomorrow?", icon: "calendar") {
                     inputText = "Should I run tomorrow, and what kind of session should I focus on?"
                     submitQuestion()
                 }
-                chipButton("Goal Progress") {
-                    inputText = "How does this workout build toward my current training goal?"
-                    submitQuestion()
-                }
                 if runRecord.evaluationModality == .intervals {
-                    chipButton("Break Down Intervals") {
+                    chipButton("Break Down Intervals", icon: "repeat") {
                         inputText = "Grade my performance in each interval of this run"
                         submitQuestion()
                     }
                 }
                 if runRecord.isIndoor == true {
-                    chipButton("Treadmill Form") {
+                    chipButton("Treadmill Form", icon: "figure.run") {
                         inputText = "Did I overstride or reach too far on the treadmill?"
                         submitQuestion()
                     }
@@ -343,19 +343,21 @@ struct AnalystChatView: View {
 
     private func chipButton(_ title: String, icon: String = "sparkle", action: @escaping () -> Void) -> some View {
         Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
             dismissKeyboard()
             action()
         } label: {
             HStack(spacing: 5) {
                 Image(systemName: icon)
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.system(size: 11, weight: .semibold))
                     .foregroundColor(.purple)
                 Text(title)
                     .font(.caption.weight(.semibold))
                     .foregroundColor(.primary)
             }
             .padding(.horizontal, 12)
-            .padding(.vertical, 7)
+            .padding(.vertical, 8)
+            .frame(minHeight: 44)
             .background(Color(UIColor.secondarySystemGroupedBackground))
             .clipShape(Capsule())
             .overlay(
@@ -363,12 +365,14 @@ struct AnalystChatView: View {
                     .stroke(Color.purple.opacity(0.22), lineWidth: 1)
             )
             .shadow(color: Color.black.opacity(0.02), radius: 3, x: 0, y: 1)
+            .contentShape(Rectangle())
         }
     }
 
     private func submitQuestion() {
         let question = inputText.trimmingCharacters(in: .whitespaces)
         guard !question.isEmpty else { return }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         inputText = ""
         dismissKeyboard()
         Task {
