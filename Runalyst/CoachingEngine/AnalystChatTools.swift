@@ -28,6 +28,9 @@ public struct UnifiedWorkoutToolResponse: Codable, Sendable {
     // Indisputable causal physiological diagnoses computed locally in Swift
     public let physiological_verdicts: String
 
+    // Verification of sensor plausibility
+    public let heart_rate_confidence: String?
+
     public init(
         schema_name: String = "UNIFIED_WORKOUT_TOOL_RESPONSE",
         workout_type: String,
@@ -38,7 +41,8 @@ public struct UnifiedWorkoutToolResponse: Codable, Sendable {
         steady_state_scorecard: SteadyStateScorecard? = nil,
         splits: [SplitDetail]? = nil,
         background_session_totals: BlendedTotals,
-        physiological_verdicts: String
+        physiological_verdicts: String,
+        heart_rate_confidence: String? = nil
     ) {
         self.schema_name = schema_name
         self.workout_type = workout_type
@@ -50,6 +54,7 @@ public struct UnifiedWorkoutToolResponse: Codable, Sendable {
         self.splits = splits
         self.background_session_totals = background_session_totals
         self.physiological_verdicts = physiological_verdicts
+        self.heart_rate_confidence = heart_rate_confidence
     }
 }
 
@@ -205,6 +210,47 @@ public struct BlendedTotals: Codable, Sendable {
         self.aerobic_efficiency_factor = aerobic_efficiency_factor
         self.cardiac_drift = cardiac_drift
         self.stride_archetype = stride_archetype
+    }
+}
+
+/// The definitive structure returned to the LLM on readiness and prescription tool call.
+public struct ReadinessToolResponse: Codable, Sendable {
+    public let schema_name: String
+    public let readiness_verdict: String
+    public let recovery_status: String
+    public let prescribed_session_name: String
+    public let intensity_category: String
+    public let prescribed_pace_band: String
+    public let prescribed_duration_band: String
+    public let prescribed_cadence_band: String
+    public let session_rationale: String
+    public let forbidden_terms: [String]
+    public let coaching_directive: String
+
+    public init(
+        schema_name: String = "READINESS_AND_PRESCRIPTION_RESPONSE",
+        readiness_verdict: String,
+        recovery_status: String,
+        prescribed_session_name: String,
+        intensity_category: String,
+        prescribed_pace_band: String,
+        prescribed_duration_band: String,
+        prescribed_cadence_band: String,
+        session_rationale: String,
+        forbidden_terms: [String],
+        coaching_directive: String
+    ) {
+        self.schema_name = schema_name
+        self.readiness_verdict = readiness_verdict
+        self.recovery_status = recovery_status
+        self.prescribed_session_name = prescribed_session_name
+        self.intensity_category = intensity_category
+        self.prescribed_pace_band = prescribed_pace_band
+        self.prescribed_duration_band = prescribed_duration_band
+        self.prescribed_cadence_band = prescribed_cadence_band
+        self.session_rationale = session_rationale
+        self.forbidden_terms = forbidden_terms
+        self.coaching_directive = coaching_directive
     }
 }
 // swiftlint:enable identifier_name

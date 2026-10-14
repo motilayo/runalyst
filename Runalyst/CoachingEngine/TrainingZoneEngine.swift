@@ -10,10 +10,12 @@ struct LockedTrainingPrescription: Sendable, Equatable {
 
     // Immediate Next-Session Prescription
     let nextSessionName: String
+    let intensityCategory: String
     let prescribedDurationBand: String
     let prescribedPaceBand: String
     let prescribedCadenceBand: String
     let sessionRationale: String
+    let forbiddenTerms: [String]
 
     // Full Training Zone Matrix (Formatted in active unit system)
     let zone1RecoveryPace: String
@@ -21,6 +23,42 @@ struct LockedTrainingPrescription: Sendable, Equatable {
     let zone3SteadyPace: String
     let zone4ThresholdPace: String
     let zone5IntervalPace: String
+
+    init(
+        referencePaceSec: Double?,
+        activeGoal: String,
+        isSubjectiveOverride: Bool,
+        isColdStart: Bool,
+        nextSessionName: String,
+        prescribedDurationBand: String,
+        prescribedPaceBand: String,
+        prescribedCadenceBand: String,
+        sessionRationale: String,
+        zone1RecoveryPace: String,
+        zone2AerobicBasePace: String,
+        zone3SteadyPace: String,
+        zone4ThresholdPace: String,
+        zone5IntervalPace: String,
+        intensityCategory: String = "EASY_AEROBIC_ZONE_2",
+        forbiddenTerms: [String] = ["tempo", "threshold", "hard", "intervals", "fast", "speed work"]
+    ) {
+        self.referencePaceSec = referencePaceSec
+        self.activeGoal = activeGoal
+        self.isSubjectiveOverride = isSubjectiveOverride
+        self.isColdStart = isColdStart
+        self.nextSessionName = nextSessionName
+        self.intensityCategory = intensityCategory
+        self.prescribedDurationBand = prescribedDurationBand
+        self.prescribedPaceBand = prescribedPaceBand
+        self.prescribedCadenceBand = prescribedCadenceBand
+        self.sessionRationale = sessionRationale
+        self.forbiddenTerms = forbiddenTerms
+        self.zone1RecoveryPace = zone1RecoveryPace
+        self.zone2AerobicBasePace = zone2AerobicBasePace
+        self.zone3SteadyPace = zone3SteadyPace
+        self.zone4ThresholdPace = zone4ThresholdPace
+        self.zone5IntervalPace = zone5IntervalPace
+    }
 
     var promptDescription: String {
         var lines: [String] = []
@@ -36,10 +74,14 @@ struct LockedTrainingPrescription: Sendable, Equatable {
         }
 
         lines.append("- Next Recommended Session: \(nextSessionName)")
+        lines.append("- Intensity Category: \(intensityCategory)")
         lines.append("- Prescribed Duration: \(prescribedDurationBand)")
         lines.append("- Prescribed Target Pace: \(prescribedPaceBand)")
         lines.append("- Prescribed Target Cadence: \(prescribedCadenceBand)")
         lines.append("- Prescription Rationale: \(sessionRationale)")
+        if !forbiddenTerms.isEmpty {
+            lines.append("- FORBIDDEN DESCRIPTORS: Never use words such as [\(forbiddenTerms.joined(separator: ", "))] to describe this session.")
+        }
         lines.append("- Zone 1 (Recovery Flush): \(zone1RecoveryPace)")
         lines.append("- Zone 2 (Easy Aerobic Base): \(zone2AerobicBasePace)")
         lines.append("- Zone 3 (Steady Aerobic): \(zone3SteadyPace)")
@@ -116,7 +158,9 @@ enum TrainingZoneEngine {
                 zone2AerobicBasePace: "N/A",
                 zone3SteadyPace: "N/A",
                 zone4ThresholdPace: "N/A",
-                zone5IntervalPace: "N/A"
+                zone5IntervalPace: "N/A",
+                intensityCategory: "FULL_REST_OVERRIDE",
+                forbiddenTerms: ["tempo", "threshold", "push", "intervals", "speed", "run"]
             )
         }
 
@@ -164,7 +208,9 @@ enum TrainingZoneEngine {
                 zone2AerobicBasePace: "Easy Conversational (can talk in full sentences)",
                 zone3SteadyPace: "Moderate Effort",
                 zone4ThresholdPace: "Comfortably Hard",
-                zone5IntervalPace: "Brisk Strides"
+                zone5IntervalPace: "Brisk Strides",
+                intensityCategory: "EASY_AEROBIC_ASSESSMENT",
+                forbiddenTerms: ["tempo", "threshold", "hard", "intervals", "fast"]
             )
         }
 
@@ -210,6 +256,8 @@ enum TrainingZoneEngine {
         let nextPace: String
         let nextCad: String
         let rationale: String
+        let category: String
+        let forbidden: [String]
 
         if !input.readyForHard {
             nextName = "Zone 1 Active Recovery Flush"
@@ -217,18 +265,24 @@ enum TrainingZoneEngine {
             nextPace = z1Str
             nextCad = "\(input.heightAdjustedCadenceFloor - 2)–\(input.heightAdjustedCadenceFloor + 4) SPM"
             rationale = "You are currently in an active recovery window. Keep effort gentle to flush metabolic waste without muscular breakdown."
+            category = "RECOVERY_FLUSH_ZONE_1"
+            forbidden = ["tempo", "threshold", "hard", "intervals", "fast", "speed work"]
         } else if input.daysSinceWorkout >= 2 {
             nextName = "Zone 2 Easy Aerobic Base"
             nextDur = "35–45 minutes"
             nextPace = z2Str
             nextCad = "\(input.heightAdjustedCadenceFloor)–\(input.heightAdjustedCadenceFloor + 6) SPM"
             rationale = "You have had full rest days and are completely recovered. Ready to build aerobic capillary density at conversational pace."
+            category = "EASY_AEROBIC_ZONE_2"
+            forbidden = ["tempo", "threshold", "hard", "intervals", "fast", "speed work"]
         } else {
             nextName = "Zone 2 Easy Aerobic Maintenance"
             nextDur = "30–40 minutes"
             nextPace = z2Str
             nextCad = "\(input.heightAdjustedCadenceFloor)–\(input.heightAdjustedCadenceFloor + 6) SPM"
             rationale = "Cleared for training. Build continuous aerobic base toward your goal of \(input.activeGoal)."
+            category = "EASY_AEROBIC_ZONE_2"
+            forbidden = ["tempo", "threshold", "hard", "intervals", "fast", "speed work"]
         }
 
         return LockedTrainingPrescription(
@@ -245,7 +299,9 @@ enum TrainingZoneEngine {
             zone2AerobicBasePace: z2Str,
             zone3SteadyPace: z3Str,
             zone4ThresholdPace: z4Str,
-            zone5IntervalPace: z5Str
+            zone5IntervalPace: z5Str,
+            intensityCategory: category,
+            forbiddenTerms: forbidden
         )
     }
 

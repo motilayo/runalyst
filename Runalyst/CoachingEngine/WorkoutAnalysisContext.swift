@@ -276,10 +276,18 @@ struct WorkoutAnalysisContext {
         let normType = runRecord.normalizedClassification
         let intervalClassifications: Set<String> = ["Intervals", "Pyramids", "Fartlek", "Hill Repeats"]
         let sigClass = sig?.classification ?? ""
-        let isIntermittent = intervalClassifications.contains(normType)
+        let isIntermittent: Bool
+        if intervalClassifications.contains(normType)
             || intervalClassifications.contains(self.detectedType)
-            || intervalClassifications.contains(sigClass)
-            || work.count >= 2
+            || intervalClassifications.contains(sigClass) {
+            isIntermittent = true
+        } else if work.count >= 2, !rec.isEmpty {
+            let avgWorkPace = work.map(\.avgPace).reduce(0, +) / Double(work.count)
+            let avgRecPace = rec.map(\.avgPace).reduce(0, +) / Double(rec.count)
+            isIntermittent = (avgRecPace - avgWorkPace) >= 20.0
+        } else {
+            isIntermittent = false
+        }
 
         let modality: WorkoutEvaluationModality
         if isIntermittent {

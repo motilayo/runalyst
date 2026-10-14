@@ -263,8 +263,14 @@ actor FramboiseEngine {
         let medHR = validHRs.isEmpty ? 150.0 : validHRs[validHRs.count / 2]
 
         let p20 = validPaces.isEmpty ? medPace : validPaces[validPaces.count / 5]
-        let hasLargePaceRange = (medPace - p20) >= 35.0
-        let surgePaceThreshold = hasLargePaceRange ? min(medPace - 35.0, p20 + 35.0) : (medPace - 20.0)
+        let paceCV = calculatePaceCV(bucketPaces: validPaces)
+        let hasLargePaceRange = (medPace - p20) >= 30.0
+
+        // If pace variability across moving buckets is minimal (CV < 0.10 and pace spread < 20s),
+        // this is deterministically a uniform/steady run. Do not segment into fake work/recovery bouts.
+        let isUniformSteady = paceCV < 0.10 && (medPace - p20) < 20.0
+
+        let surgePaceThreshold = hasLargePaceRange ? min(medPace - 30.0, p20 + 20.0) : (medPace - 20.0)
         let surgeCadenceThreshold = hasLargePaceRange ? (medCad + 4.0) : (medCad + 2.0)
 
         var raw: [PhaseSegment] = []
@@ -279,12 +285,15 @@ actor FramboiseEngine {
                 && b.meanPaceSecPerKm > 0
                 && b.meanPaceSecPerKm <= medPace + 15.0
 
-            let isSurge = (b.meanPaceSecPerKm > 0 && b.meanPaceSecPerKm <= surgePaceThreshold && b.meanCadence >= medCad)
-                || (b.meanPaceSecPerKm > 0 && b.meanPaceSecPerKm <= p20 + 15.0)
+            let isSurge = !isUniformSteady && (
+                (b.meanPaceSecPerKm > 0 && b.meanPaceSecPerKm <= surgePaceThreshold && b.meanCadence >= medCad)
                 || (b.meanCadence >= surgeCadenceThreshold && b.meanPaceSecPerKm > 0 && b.meanPaceSecPerKm <= medPace - 15.0)
                 || isCardioInclineSurge
+            )
 
-            let isRec = b.meanPaceSecPerKm >= medPace + 20.0 || (b.meanCadence < medCad - 5.0 && b.meanCadence < cadenceFloor)
+            let isRec = !isUniformSteady && (
+                b.meanPaceSecPerKm >= medPace + 20.0 || (b.meanCadence < medCad - 5.0 && b.meanCadence < cadenceFloor)
+            )
 
             let kind = (b.meanCadence < cadenceFloor && b.meanCadence < 135.0) ? "walking" : (isSurge ? "work" : (isRec ? "recovery" : "steady"))
 
@@ -389,7 +398,25 @@ actor FramboiseEngine {
             }
         }
 
-        // Step 4: Coalesce adjacent identical kinds
+        // Step 4: Speed Contrast Validation between candidate work and recovery
+        let candidateWorks = filtered.filter { $0.kind == "work" && $0.avgPace > 0 }
+        let candidateRecs = filtered.filter { $0.kind == "recovery" && $0.avgPace > 0 }
+        if !candidateWorks.isEmpty && !candidateRecs.isEmpty {
+            let avgWorkPace = candidateWorks.map(\.avgPace).reduce(0, +) / Double(candidateWorks.count)
+            let avgRecPace = candidateRecs.map(\.avgPace).reduce(0, +) / Double(candidateRecs.count)
+            let contrast = avgRecPace - avgWorkPace
+            // If work bouts are not at least 20 s/km faster than recovery, these are not genuine interval reps
+            if contrast < 20.0 {
+                filtered = filtered.map { seg in
+                    if seg.kind == "work" || seg.kind == "recovery" {
+                        return PhaseSegment(startSeconds: seg.startSeconds, endSeconds: seg.endSeconds, kind: "steady", avgPace: seg.avgPace, avgCadence: seg.avgCadence, avgHR: seg.avgHR)
+                    }
+                    return seg
+                }
+            }
+        }
+
+        // Step 5: Coalesce adjacent identical kinds
         var finalSegments: [PhaseSegment] = []
         for seg in filtered {
             if let last = finalSegments.last, last.kind == seg.kind {

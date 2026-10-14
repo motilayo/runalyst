@@ -245,14 +245,20 @@ class AnalystChatEngine: ObservableObject {
         \(temporalGrounding)
         \(unitSystemInstruction)
 
-        TOOL CALLING:
-        Call deterministic native tools silently and immediately to fetch running telemetry and physics:
+        TOOL CALLING & SCOPE DISCIPLINE:
+        Call deterministic native tools silently and immediately to fetch verified telemetry and physics:
         • Workout telemetry, intervals, cadence, pacing, splits, or verdicts: `fetchWorkoutAnalysis` (or `fetchIntervalPerformance`).
           - When reviewing an interval workout, `fetchWorkoutAnalysis` delivers the primary `interval_scorecard` and full `reps` array in one call.
           - Prioritize `interval_scorecard` (active work pace, turnover, and recovery drops) as the true workload.
+          - If the session was a steady continuous run (`interval_scorecard` is null), evaluate the kilometer splits. NEVER invent phantom interval repetitions.
+          - If `heart_rate_confidence` indicates an unreliable sensor artifact (e.g. resting HR < 85 BPM during active running), do NOT evaluate cardiovascular load or praise resting heart rates.
           - The `background_session_totals` are blended totals across warm-up and cool-down—NEVER cite them as the interval work pace.
-        • Treadmill kinetics, room heat, or grade resistance: `fetchWorkoutPhysics`.
         • Tomorrow's run, recovery timeline, or readiness: `fetchReadinessAndPrescription` (call ONLY when I explicitly ask about tomorrow, next session, or readiness; NEVER volunteer unsolicited future prescriptions).
+          - When answering about tomorrow or upcoming training: Deliver the readiness verdict and prescribed session directly.
+          - SCOPE MANDATE: Do NOT recite past workout paces, cadences, heart rates, or interval drops when answering future planning questions unless I explicitly ask you to compare them.
+          - NEGATIVE CONSTRAINT: Strictly obey `forbidden_terms` and `intensity_category` from the `fetchReadinessAndPrescription` payload. If the category is `EASY_AEROBIC_ZONE_2`, NEVER call it a tempo, threshold, hard, or interval run.
+          - SINGLE DIRECTIVE: Deliver ONE decisive coaching verdict based on `readiness_verdict`. Never waffle between resting and pushing in the same answer.
+        • Treadmill kinetics, room heat, or grade resistance: `fetchWorkoutPhysics`.
         • Athlete experience, 30-day load, or cadence floor: `fetchAthleteProfile`.
         • Workout comparison, 30-day rankings, best/worst performance: `fetchHistoricalWorkout`.
         Never announce tool retrieval; call immediately and synthesize findings directly into your answer.
@@ -261,7 +267,7 @@ class AnalystChatEngine: ObservableObject {
         • Every pace, cadence, heart rate, interval split, and distance MUST come from a tool payload.
         • NEVER invent, guess, estimate, or extrapolate numbers. If you have retrieved `fetchWorkoutAnalysis`, use the exact reps, paces, and cadences returned.
         • All reps from `fetchWorkoutAnalysis` remain in your conversation memory for follow-up turns ("Tell me more", "Grade each interval", "Why?"). Use the loaded data directly without inventing new numbers.
-        • Do not volunteer unprompted interval splits or paces when answering general, conceptual, or out-of-scope questions.
+        • Answer strictly what was asked. Do not volunteer unprompted interval splits or paces when answering general, planning, or out-of-scope questions.
 
         COACHING RULES:
         • Human Voice & Demeanor: Speak like an empathetic trackside running coach (in the style of Apple Fitness+). Never use dense academic, clinical kinesiology, or statistical exercise-science jargon (STRICTLY BANISHED: "neuromuscular", "fast-twitch motor units", "effort calibration", "metabolic demand", "cardiovascular decoupling", "repeatability vs work mean"). Use visceral, relatable runner language: "leg turnover", "stride rhythm", "holding your speed", "quick feet", "pacing consistency".
@@ -305,12 +311,44 @@ class AnalystChatEngine: ObservableObject {
             guard let self else { return "" }
             self.toolsCalledThisTurn += 1
             let analysis = self.makeAnalysisContext()
+            let rx = analysis.lockedPrescription
+            let isReady = analysis.recoveryTimeline.readyForHard
+            let verdict = isReady ? "CLEARED_FOR_TRAINING" : "ACTIVE_RECOVERY_REQUIRED"
+            let recoveryStatus = isReady
+                ? "Fully recovered and cleared for training."
+                : "In active recovery until \(analysis.recoveryTimeline.earliestHardPhrase)."
+            let directive = isReady
+                ? "Runner is cleared for training. Prescribe \(rx.nextSessionName) directly. Focus strictly on upcoming training. Do NOT quote past workout heart rates, paces, or interval drops. Do NOT use any forbidden terms (\(rx.forbiddenTerms.joined(separator: ", ")))."
+                : "Runner is in active recovery. Prescribe gentle recovery flush or rest. Do NOT suggest hard pacing or tempo work."
+
+            let response = ReadinessToolResponse(
+                schema_name: "READINESS_AND_PRESCRIPTION_RESPONSE",
+                readiness_verdict: verdict,
+                recovery_status: recoveryStatus,
+                prescribed_session_name: rx.nextSessionName,
+                intensity_category: rx.intensityCategory,
+                prescribed_pace_band: rx.prescribedPaceBand,
+                prescribed_duration_band: rx.prescribedDurationBand,
+                prescribed_cadence_band: rx.prescribedCadenceBand,
+                session_rationale: rx.sessionRationale,
+                forbidden_terms: rx.forbiddenTerms,
+                coaching_directive: directive
+            )
+
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            if let data = try? encoder.encode(response),
+               let json = String(data: data, encoding: .utf8) {
+                return json
+            }
+
             return """
-            RECOVERY & UPCOMING SESSION PRESCRIPTION:
-            - Current Readiness: \(analysis.recoveryTimeline.state.rawValue)
-            - Recovery Status: \(analysis.recoveryTimeline.readyForHard ? "Fully recovered and cleared for training." : "In active recovery until \(analysis.recoveryTimeline.earliestHardPhrase).")
-            - Next Recommended Session: \(analysis.lockedPrescription.nextSessionName) (\(analysis.lockedPrescription.prescribedDurationBand) at \(analysis.lockedPrescription.prescribedPaceBand))
-            - Rationale: \(analysis.lockedPrescription.sessionRationale)
+            {
+              "readiness_verdict": "\(verdict)",
+              "prescribed_session_name": "\(rx.nextSessionName)",
+              "prescribed_pace_band": "\(rx.prescribedPaceBand)",
+              "intensity_category": "\(rx.intensityCategory)"
+            }
             """
         }
 

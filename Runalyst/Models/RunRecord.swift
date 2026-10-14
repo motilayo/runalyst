@@ -82,6 +82,12 @@ final class RunRecord {
         return speed / workingAvgHeartRate
     }
 
+    /// Evaluates whether active running heart rate is implausibly low (e.g. < 85 BPM during active running > 5 min).
+    var isHeartRateSensorLowConfidence: Bool {
+        guard duration >= 300.0, workingAvgPace > 0, workingAvgPace <= 540.0 else { return false }
+        return workingAvgHeartRate > 0 && workingAvgHeartRate < 85.0
+    }
+
     // MARK: - Framboise Mathematical Features
     /// Coefficient of variation for pace (sigma / mu)
     var paceCV: Double

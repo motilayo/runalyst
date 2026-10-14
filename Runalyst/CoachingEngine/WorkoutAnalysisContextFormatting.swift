@@ -567,6 +567,10 @@ extension WorkoutAnalysisContext {
             }
         }
 
+        let hrConfidence: String = runRecord.isHeartRateSensorLowConfidence
+            ? "unreliable_sensor_artifact (resting/cadence-lock HR < 85 BPM detected; do NOT evaluate or praise cardiovascular effort from this number)"
+            : "reliable"
+
         return UnifiedWorkoutToolResponse(
             schema_name: "UNIFIED_WORKOUT_TOOL_RESPONSE",
             workout_type: detectedType,
@@ -577,7 +581,8 @@ extension WorkoutAnalysisContext {
             steady_state_scorecard: steadyScorecard,
             splits: splitsList,
             background_session_totals: blendedTotals,
-            physiological_verdicts: physiologicalVerdicts.promptDescription
+            physiological_verdicts: physiologicalVerdicts.promptDescription,
+            heart_rate_confidence: hrConfidence
         )
     }
 

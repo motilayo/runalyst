@@ -2006,4 +2006,102 @@ final class IndoorIntelligenceTests: XCTestCase {
         XCTAssertFalse(turn3Response.contains("156 SPM"), "Must not fall back to blended 156 SPM Swift template")
         XCTAssertEqual(turnCount, 3, "All 3 turns must flow through model responder without template interception")
     }
+
+    // MARK: - Chat Data Path Alignment & Veracity Tests
+
+    @MainActor
+    func testSteadyJogIsNotSegmentedIntoIntervals() async {
+        let engine = FramboiseEngine()
+        let now = Date()
+        // Simulate a steady 7:17/km (437 s/km) run with minimal fluctuations (7:15 - 7:19) and 158 SPM
+        let steadyBuckets = (0..<20).map { i in
+            BucketData(
+                startTime: now.addingTimeInterval(Double(i * 30)),
+                distanceMeters: 68.6,
+                durationSeconds: 30.0,
+                meanPaceSecPerKm: 435.0 + Double(i % 3) * 2.0,
+                meanCadence: 158.0 + Double(i % 2),
+                meanHR: 74.0
+            )
+        }
+
+        let segments = await engine.generatePhaseSegments(from: steadyBuckets, cadenceFloor: 150.0)
+        let workSegments = segments.filter { $0.kind == "work" }
+        XCTAssertEqual(workSegments.count, 0, "A steady jog with minimal pace variance (< 10%) must never be segmented into phantom work reps")
+        XCTAssertTrue(segments.allSatisfy { $0.kind == "steady" }, "All moving segments must be steady")
+
+        let runRecord = RunRecord(
+            hkWorkoutID: UUID(),
+            date: now,
+            totalDistanceMeters: 4000,
+            duration: 1800,
+            rawAvgPace: 437,
+            rawAvgHeartRate: 74,
+            rawAvgCadence: 158,
+            workingAvgPace: 437,
+            workingAvgCadence: 158,
+            workingAvgHeartRate: 74,
+            isIndoor: false,
+            paceCV: 0.03,
+            paceSlope: 0.0,
+            percentZone4: 0.0,
+            detectedTypeRaw: "Steady Effort"
+        )
+        let chatEngine = AnalystChatEngine(runRecord: runRecord)
+        let context = chatEngine.makeAnalysisContext()
+        XCTAssertNotEqual(context.evaluationModality, WorkoutEvaluationModality.intervals, "Steady run must not be assigned interval evaluation modality")
+        let response = context.buildUnifiedWorkoutToolResponse()
+        XCTAssertNil(response.interval_scorecard, "Steady run tool response must not have an interval scorecard")
+        XCTAssertNil(response.reps, "Steady run tool response must not contain interval reps")
+        XCTAssertNotNil(response.steady_state_scorecard, "Steady run tool response must deliver steady_state_scorecard")
+    }
+
+    @MainActor
+    func testHeartRateLowConfidenceDetectionOnRestingRateRun() {
+        let now = Date()
+        let lowHRRun = RunRecord(
+            hkWorkoutID: UUID(),
+            date: now,
+            totalDistanceMeters: 4000,
+            duration: 1800,
+            rawAvgPace: 437, // 7:17/km
+            rawAvgHeartRate: 74,
+            rawAvgCadence: 158,
+            workingAvgPace: 437,
+            workingAvgCadence: 158,
+            workingAvgHeartRate: 74,
+            isIndoor: false,
+            paceCV: 0.03,
+            paceSlope: 0.0,
+            percentZone4: 0.0,
+            detectedTypeRaw: "Steady Effort"
+        )
+        XCTAssertTrue(lowHRRun.isHeartRateSensorLowConfidence, "74 BPM on an active 30-min run must be flagged as low confidence sensor data")
+
+        let normalRun = makeTestRunRecord(isIndoor: false)
+        XCTAssertFalse(normalRun.isHeartRateSensorLowConfidence, "Normal 150 BPM run must be reliable")
+
+        let chatEngine = AnalystChatEngine(runRecord: lowHRRun)
+        let context = chatEngine.makeAnalysisContext()
+        let payload = context.buildUnifiedWorkoutToolResponse()
+        XCTAssertTrue(payload.heart_rate_confidence?.contains("unreliable") == true, "Tool payload must explicitly flag low confidence HR sensor data")
+    }
+
+    @MainActor
+    func testReadinessToolPayloadReturnsStructuredCategoryAndForbiddenTerms() {
+        let runRecord = makeTestRunRecord(isIndoor: false)
+        let chatEngine = AnalystChatEngine(runRecord: runRecord)
+        let session = chatEngine.getOrCreateSession()
+        XCTAssertNotNil(session)
+
+        let analysis = chatEngine.makeAnalysisContext()
+        let rx = analysis.lockedPrescription
+        XCTAssertEqual(rx.intensityCategory, "EASY_AEROBIC_ZONE_2")
+        XCTAssertTrue(rx.forbiddenTerms.contains("tempo"), "Forbidden terms must include tempo for Zone 2 recovery")
+
+        let instructions = chatEngine.buildLeanSystemInstructions()
+        XCTAssertTrue(instructions.contains("NEGATIVE CONSTRAINT"), "Instructions must mandate negative constraint adherence")
+        XCTAssertTrue(instructions.contains("forbidden_terms"), "Instructions must mention forbidden_terms")
+        XCTAssertTrue(instructions.contains("SCOPE MANDATE"), "Instructions must mandate not reciting past metrics during future planning")
+    }
 }
