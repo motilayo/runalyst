@@ -39,6 +39,13 @@ struct AthleteProfileQuery: Sendable {
     var aspect: String?
 }
 
+@available(iOS 26.0, *)
+@Generable
+struct HistoricalWorkoutQuery: Sendable {
+    @Guide(description: "Search target for historical workout comparison: date string (e.g. 'September 14', 'yesterday'), relative term ('previous', 'last run'), or modality ('previous intervals', 'last tempo').")
+    var target: String?
+}
+
 // MARK: - FoundationModels Native Tools
 
 /// Tool providing deterministic retrospective workout telemetry, biomechanics, and physiological verdicts.
@@ -157,6 +164,30 @@ struct FetchAthleteProfileTool: Tool {
     }
 
     func call(arguments: AthleteProfileQuery) async throws -> String {
+        await provider(arguments)
+    }
+}
+
+/// Tool providing deterministic historical workout comparison telemetry.
+@available(iOS 26.0, *)
+struct FetchHistoricalWorkoutTool: Tool {
+    typealias Arguments = HistoricalWorkoutQuery
+    typealias Output = String
+
+    let name = "fetchHistoricalWorkout"
+    let description = "Retrieves stored historical workout telemetry for comparison: finds a prior run by date (e.g. 'September 14') or type, returns its pace, cadence, heart rate, distance, and exact comparative deltas against the current run."
+
+    let provider: @MainActor @Sendable (HistoricalWorkoutQuery) async -> String
+
+    init(provider: @escaping @MainActor @Sendable (HistoricalWorkoutQuery) async -> String) {
+        self.provider = provider
+    }
+
+    init(simpleProvider: @escaping @MainActor @Sendable () async -> String) {
+        self.provider = { _ in await simpleProvider() }
+    }
+
+    func call(arguments: HistoricalWorkoutQuery) async throws -> String {
         await provider(arguments)
     }
 }

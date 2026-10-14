@@ -210,12 +210,13 @@ class AnalystChatEngine: ObservableObject {
         Reviewing workout: \(runType) (\(envNote)).
 
         TOOLS & DATA ACCESS:
-        You have access to 5 deterministic native tools to query my running math and physics:
+        You have access to 6 deterministic native tools to query my running math and physics:
         1. `fetchWorkoutAnalysis`: Retrieves retrospective telemetry, running economy, efficiency factor, stride archetype, cadence, lap splits, second-half cardiac drift, and deterministic physiological verdicts. MANDATORY to call when evaluating running economy, stride efficiency, cadence, pacing, or overall workout performance.
         2. `fetchIntervalPerformance`: Retrieves discrete interval rep breakdown (work reps, paces, turnover, heart rates, active recovery phases, recovery heart rate drops, pace repeatability across sets, and belt vs road mechanics). MANDATORY to call when evaluating interval workouts or rep execution.
         3. `fetchWorkoutPhysics`: Retrieves modeled physical and physiological realities: treadmill belt kinetics and braking shock when cadence dips, indoor static air thermal build vs convective wind cooling, gravitational hill resistance, and cardiac lag.
         4. `fetchReadinessAndPrescription`: Retrieves current recovery timeline, rest days elapsed, readiness status, and the locked prescription table for upcoming sessions.
         5. `fetchAthleteProfile`: Retrieves my 30-day training load, experience level, and height-calibrated cadence floor.
+        6. `fetchHistoricalWorkout`: Retrieves stored historical workout telemetry to compare this session against a specific past workout (by date, e.g. 'September 14', or by type, e.g. 'previous intervals'). MANDATORY to call when comparing runs or evaluating progress vs a previous session.
 
         EXECUTION RULES — ZERO STALLING:
         • SILENT, IMMEDIATE TOOL INVOCATION: You MUST invoke the appropriate tool immediately in your first turn to retrieve the facts.
@@ -230,6 +231,7 @@ class AnalystChatEngine: ObservableObject {
         • For interval reps, work/recovery splits, or pace consistency: call `fetchIntervalPerformance`.
         • For treadmill physics, room heat, or biomechanics: call `fetchWorkoutPhysics`.
         • For tomorrow's run, recovery, or readiness: call `fetchReadinessAndPrescription`.
+        • For comparisons with a past run or specific date: call `fetchHistoricalWorkout`.
         • For conceptual questions (e.g. "What is VO2 Max?", "What is cardiac drift?"): explain the concept simply using your internal knowledge. If relevant to my run, call tools to connect it to my data.
         • For out-of-scope questions unrelated to running, health, or fitness: do NOT call tools; answer in 1 concise sentence and redirect to training.
 
@@ -286,7 +288,17 @@ class AnalystChatEngine: ObservableObject {
             """
         }
 
-        let tools: [any Tool] = [workoutTool, intervalTool, physicsTool, readinessTool, profileTool]
+        let historicalTool = FetchHistoricalWorkoutTool { [weak self] query in
+            guard let self else { return "No historical data available." }
+            let target = query.target ?? ""
+            if let priorRun = HistoricalRunMatcher.findRun(matching: target, relativeTo: self.runRecord, in: self.runRecord.modelContext) {
+                return HistoricalRunMatcher.compare(current: self.runRecord, with: priorRun).summary
+            } else {
+                return "No historical workout found matching '\(target)' in stored records."
+            }
+        }
+
+        let tools: [any Tool] = [workoutTool, intervalTool, physicsTool, readinessTool, profileTool, historicalTool]
         let instructions = buildLeanSystemInstructions()
         let session = LanguageModelSession(
             model: SystemLanguageModel.default,

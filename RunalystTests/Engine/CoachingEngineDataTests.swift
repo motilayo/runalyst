@@ -422,4 +422,109 @@ final class CoachingEngineDataTests: XCTestCase {
         XCTAssertTrue(promptSummary.contains("Rep 9 "))
         XCTAssertTrue(promptSummary.contains("Rep 10 "))
     }
+
+    func testHistoricalRunMatcherAndComparison() throws {
+        let schema = Schema([RunRecord.self])
+        let config = ModelConfiguration(isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        let context = ModelContext(container)
+
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .gmt
+
+        // Create September 14 run
+        var sep14Comps = DateComponents()
+        sep14Comps.year = 2026
+        sep14Comps.month = 9
+        sep14Comps.day = 14
+        sep14Comps.hour = 8
+        guard let sep14Date = calendar.date(from: sep14Comps) else {
+            XCTFail("Failed to build sep14Date")
+            return
+        }
+
+        let sep14Run = RunRecord(
+            hkWorkoutID: UUID(),
+            date: sep14Date,
+            totalDistanceMeters: 4500,
+            duration: 1800,
+            rawAvgPace: 400.0,
+            rawAvgHeartRate: 152.0,
+            rawAvgCadence: 150.0,
+            workingAvgPace: 400.0,
+            workingAvgCadence: 150.0,
+            workingAvgHeartRate: 152.0,
+            workingDistanceMeters: 4500,
+            workingDurationSeconds: 1800,
+            paceCV: 0.05,
+            paceSlope: 0.0,
+            percentZone4: 0.10,
+            detectedTypeRaw: "Steady Effort"
+        )
+        context.insert(sep14Run)
+
+        // Create October 13 run (Current run: Intervals, 6:25/km, 156 SPM, 147 BPM)
+        var oct13Comps = DateComponents()
+        oct13Comps.year = 2026
+        oct13Comps.month = 10
+        oct13Comps.day = 13
+        oct13Comps.hour = 7
+        guard let oct13Date = calendar.date(from: oct13Comps) else {
+            XCTFail("Failed to build oct13Date")
+            return
+        }
+
+        let currentRun = RunRecord(
+            hkWorkoutID: UUID(),
+            date: oct13Date,
+            totalDistanceMeters: 4680,
+            duration: 1800,
+            rawAvgPace: 385.0,
+            rawAvgHeartRate: 147.0,
+            rawAvgCadence: 156.0,
+            workingAvgPace: 385.0,
+            workingAvgCadence: 156.0,
+            workingAvgHeartRate: 147.0,
+            workingDistanceMeters: 4680,
+            workingDurationSeconds: 1800,
+            paceCV: 0.12,
+            paceSlope: 0.0,
+            percentZone4: 0.30,
+            detectedTypeRaw: "Intervals"
+        )
+        context.insert(currentRun)
+        try context.save()
+
+        // 1. Test finding by date query
+        let matched = try XCTUnwrap(HistoricalRunMatcher.findRun(matching: "Compare this run to my September 14 run", relativeTo: currentRun, in: context))
+        XCTAssertEqual(matched.id, sep14Run.id)
+
+        // 2. Test comparison math
+        let comparison = HistoricalRunMatcher.compare(current: currentRun, with: sep14Run)
+        XCTAssertEqual(comparison.paceDeltaSeconds, 15) // 400 - 385 = 15s faster
+        XCTAssertEqual(comparison.cadenceDelta, 6)      // 156 - 150 = +6 SPM
+        XCTAssertEqual(comparison.heartRateDelta, -5)   // 147 - 152 = -5 BPM
+
+        XCTAssertTrue(comparison.summary.contains("6:25/km"))
+        XCTAssertTrue(comparison.summary.contains("6:40/km"))
+        XCTAssertTrue(comparison.summary.contains("156 SPM"))
+        XCTAssertTrue(comparison.summary.contains("150 SPM"))
+        XCTAssertTrue(comparison.summary.contains("147 BPM"))
+        XCTAssertTrue(comparison.summary.contains("152 BPM"))
+        XCTAssertTrue(comparison.summary.contains("September 14"))
+
+        // 3. Test Fallback responder handles comparison intent
+        let timeline = RecoveryTimeline(now: Date(), lastHard: nil, hardSessionsLast72h: 0, requiredHours: 48, state: .productive)
+        let ctx = WorkoutAnalysisContext(runRecord: currentRun, runSignature: nil, macroProfile: nil, recoveryTimeline: timeline)
+        let response = AnalystFallbackResponder.generateResponse(
+            for: "Compare this run to my September 14 run",
+            turnContext: nil,
+            analysis: ctx,
+            runRecord: currentRun
+        )
+        XCTAssertTrue(response.contains("September 14"))
+        XCTAssertTrue(response.contains("6:25/km"))
+        XCTAssertTrue(response.contains("6:40/km"))
+        XCTAssertTrue(response.contains("156 SPM"))
+    }
 }

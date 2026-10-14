@@ -1,4 +1,5 @@
 import Foundation
+import SwiftData
 
 /// Generates data-grounded coaching responses when running in offline or fallback environments.
 @MainActor
@@ -19,6 +20,16 @@ enum AnalystFallbackResponder {
         // 2. Out-of-scope inquiry
         if turnContext?.turnDomain == .outOfScopeInquiry {
             return "I'm your personal running coach and exercise physiologist, so I specialize in your running biomechanics, training zones, and recovery. What would you like to explore regarding your runs?"
+        }
+
+        // 2.5. Workout Comparison (e.g. "compare this run to my September 14 run", "vs last week", "compare to previous intervals")
+        let isComparisonIntent = q.contains("compare") || q.contains("versus") || q.contains(" vs ") || q.contains(" vs. ") || q.contains("difference between") || q.contains("how does this compare")
+        if isComparisonIntent {
+            if let prior = HistoricalRunMatcher.findRun(matching: userQuestion, relativeTo: runRecord, in: runRecord.modelContext) {
+                return HistoricalRunMatcher.compare(current: runRecord, with: prior).summary
+            } else {
+                return "I looked through your workout history, but couldn't find a matching run to compare. If you have a specific date (e.g. 'September 14') or run type in mind, let me know!"
+            }
         }
 
         // 3. Composite Query: Workout Exertion / Heart Rate + Tomorrow Planning
@@ -260,5 +271,217 @@ enum AnalystFallbackResponder {
         let cad = Int(runRecord.workingAvgCadence)
         let hr = Int(runRecord.workingAvgHeartRate)
         return "During your **\(analysis.detectedType)** on **\(analysis.workoutWeekday)**, you held an average pace of **\(pace)** with a heart rate of **\(hr) BPM** and cadence of **\(cad) SPM**. \(analysis.overallGradeReport.sentence)"
+    }
+}
+
+// MARK: - Historical Run Matcher & Comparison
+
+/// Deterministic matching and mathematical comparison between the active workout and a historical workout.
+@MainActor
+struct HistoricalRunMatcher {
+
+    struct ComparisonReport: Sendable {
+        let currentRunDate: Date
+        let currentRunType: String
+        let currentPaceSec: Double
+        let currentCadence: Int
+        let currentHeartRate: Int
+        let currentDistanceMeters: Double
+        let currentDurationSeconds: Double
+
+        let priorRunDate: Date
+        let priorRunType: String
+        let priorPaceSec: Double
+        let priorCadence: Int
+        let priorHeartRate: Int
+        let priorDistanceMeters: Double
+        let priorDurationSeconds: Double
+        let priorIsIndoor: Bool
+
+        // Deltas
+        let paceDeltaSeconds: Int        // prior - current: positive = current is faster
+        let cadenceDelta: Int            // current - prior: positive = current is higher
+        let heartRateDelta: Int          // current - prior: positive = current is higher
+
+        // Formatted Text
+        let summary: String
+    }
+
+    /// Finds a historical run in the model context matching the user's natural language query.
+    static func findRun(
+        matching query: String,
+        relativeTo currentRun: RunRecord,
+        in context: ModelContext?
+    ) -> RunRecord? {
+        guard let context = context else { return nil }
+        let descriptor = FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)])
+        guard let allRuns = try? context.fetch(descriptor) else { return nil }
+
+        let otherRuns = allRuns.filter { $0.id != currentRun.id }
+        guard !otherRuns.isEmpty else { return nil }
+
+        let lower = query.lowercased()
+
+        // 1. Month + Day parsing (e.g., "September 14", "Sep 14", "Sept 14", "9/14")
+        let months: [(name: String, number: Int)] = [
+            ("january", 1), ("jan", 1),
+            ("february", 2), ("feb", 2),
+            ("march", 3), ("mar", 3),
+            ("april", 4), ("apr", 4),
+            ("may", 5),
+            ("june", 6), ("jun", 6),
+            ("july", 7), ("jul", 7),
+            ("august", 8), ("aug", 8),
+            ("september", 9), ("sept", 9), ("sep", 9),
+            ("october", 10), ("oct", 10),
+            ("november", 11), ("nov", 11),
+            ("december", 12), ("dec", 12)
+        ]
+
+        let matchedMonth = months.first(where: { lower.contains($0.name) })?.number
+
+        let calendar = Calendar.current
+        if let m = matchedMonth {
+            // Find integers in the query string
+            let tokens = lower.components(separatedBy: CharacterSet.alphanumerics.inverted)
+            for token in tokens {
+                let cleaned = token
+                    .replacingOccurrences(of: "st", with: "")
+                    .replacingOccurrences(of: "nd", with: "")
+                    .replacingOccurrences(of: "rd", with: "")
+                    .replacingOccurrences(of: "th", with: "")
+                if let day = Int(cleaned), day >= 1 && day <= 31 {
+                    // Look for exact month + day match
+                    if let exact = otherRuns.first(where: {
+                        let comps = calendar.dateComponents([.month, .day], from: $0.date)
+                        return comps.month == m && comps.day == day
+                    }) {
+                        return exact
+                    }
+                }
+            }
+
+            // Fallback: closest run in that month
+            if let monthRun = otherRuns.first(where: { calendar.component(.month, from: $0.date) == m }) {
+                return monthRun
+            }
+        }
+
+        // 2. Relative keywords (e.g. "previous run", "last run", "prior run")
+        if lower.contains("last run") || lower.contains("previous run") || lower.contains("prior run") {
+            return otherRuns.first(where: { $0.date < currentRun.date }) ?? otherRuns.first
+        }
+
+        // 3. Modality keywords (e.g. "previous intervals", "last tempo", "last long run")
+        let modalities = ["intervals", "tempo", "easy", "steady", "recovery", "pyramids", "fartlek", "progression", "hill repeats", "long run"]
+        for modality in modalities where lower.contains(modality) {
+            if let matched = otherRuns.first(where: {
+                $0.date < currentRun.date && $0.normalizedClassification.lowercased().contains(modality)
+            }) {
+                return matched
+            }
+        }
+
+        // 4. Default: most recent prior run before this one
+        return otherRuns.first(where: { $0.date < currentRun.date }) ?? otherRuns.first
+    }
+
+    /// Builds a deterministic comparison between the current run and a matched historical run.
+    static func compare(current: RunRecord, with prior: RunRecord) -> ComparisonReport {
+        let currentPace = current.workingAvgPace > 0 ? current.workingAvgPace : current.rawAvgPace
+        let priorPace = prior.workingAvgPace > 0 ? prior.workingAvgPace : prior.rawAvgPace
+        let paceDeltaSec = Int(priorPace - currentPace) // > 0 means current is faster
+
+        let currentCad = Int(current.workingAvgCadence > 0 ? current.workingAvgCadence : current.rawAvgCadence)
+        let priorCad = Int(prior.workingAvgCadence > 0 ? prior.workingAvgCadence : prior.rawAvgCadence)
+        let cadDelta = currentCad - priorCad
+
+        let currentHR = Int(current.workingAvgHeartRate > 0 ? current.workingAvgHeartRate : current.rawAvgHeartRate)
+        let priorHR = Int(prior.workingAvgHeartRate > 0 ? prior.workingAvgHeartRate : prior.rawAvgHeartRate)
+        let hrDelta = currentHR - priorHR
+
+        let dateFormatter = DateFormatter()
+        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+        dateFormatter.dateFormat = "EEEE, MMMM d"
+
+        let currentFormattedDate = dateFormatter.string(from: current.date)
+        let priorFormattedDate = dateFormatter.string(from: prior.date)
+
+        let currentPaceStr = PaceFormatter.formatPace(secondsPerKilometer: currentPace)
+        let priorPaceStr = PaceFormatter.formatPace(secondsPerKilometer: priorPace)
+
+        let paceChangeText: String
+        if paceDeltaSec > 0 {
+            paceChangeText = "**+\(paceDeltaSec)s/km faster**"
+        } else if paceDeltaSec < 0 {
+            paceChangeText = "**\(abs(paceDeltaSec))s/km slower**"
+        } else {
+            paceChangeText = "identical pace"
+        }
+
+        let cadChangeText: String
+        if cadDelta > 0 {
+            cadChangeText = "**+\(cadDelta) SPM** higher turnover"
+        } else if cadDelta < 0 {
+            cadChangeText = "**\(cadDelta) SPM** lower turnover"
+        } else {
+            cadChangeText = "matched turnover"
+        }
+
+        let hrChangeText: String
+        if hrDelta > 0 {
+            hrChangeText = "**+\(hrDelta) BPM** higher cardiac cost"
+        } else if hrDelta < 0 {
+            hrChangeText = "**\(abs(hrDelta)) BPM** lower cardiovascular cost"
+        } else {
+            hrChangeText = "identical average heart rate"
+        }
+
+        let currentType = current.detectedTypeRaw.isEmpty ? current.normalizedClassification : current.detectedTypeRaw
+        let priorType = prior.detectedTypeRaw.isEmpty ? prior.normalizedClassification : prior.detectedTypeRaw
+
+        // Takeaway synthesis
+        var takeaway: String
+        if paceDeltaSec > 0 && hrDelta <= 0 {
+            takeaway = "Clear aerobic efficiency progression: you sustained a faster pace with lower cardiovascular strain and \(cadChangeText)."
+        } else if paceDeltaSec > 0 && hrDelta > 0 {
+            takeaway = "You pushed the pace significantly faster, which naturally elevated cardiovascular demand."
+        } else if paceDeltaSec <= 0 && hrDelta < 0 {
+            takeaway = "Disciplined aerobic containment: you ran at an easier pace and kept your heart rate well controlled."
+        } else {
+            takeaway = "Consistent pacing and turnover relative to your prior session."
+        }
+
+        let summary = """
+        Comparing your **\(currentFormattedDate) \(currentType)** to your **\(priorFormattedDate) \(priorType)**:
+
+        • **Pace**: **\(currentPaceStr)** vs **\(priorPaceStr)** (\(paceChangeText))
+        • **Cadence**: **\(currentCad) SPM** vs **\(priorCad) SPM** (\(cadChangeText))
+        • **Heart Rate**: **\(currentHR) BPM** vs **\(priorHR) BPM** (\(hrChangeText))
+
+        \(takeaway)
+        """
+
+        return ComparisonReport(
+            currentRunDate: current.date,
+            currentRunType: currentType,
+            currentPaceSec: currentPace,
+            currentCadence: currentCad,
+            currentHeartRate: currentHR,
+            currentDistanceMeters: current.totalDistanceMeters,
+            currentDurationSeconds: current.duration,
+            priorRunDate: prior.date,
+            priorRunType: priorType,
+            priorPaceSec: priorPace,
+            priorCadence: priorCad,
+            priorHeartRate: priorHR,
+            priorDistanceMeters: prior.totalDistanceMeters,
+            priorDurationSeconds: prior.duration,
+            priorIsIndoor: prior.isIndoor ?? false,
+            paceDeltaSeconds: paceDeltaSec,
+            cadenceDelta: cadDelta,
+            heartRateDelta: hrDelta,
+            summary: summary
+        )
     }
 }
