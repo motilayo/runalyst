@@ -236,7 +236,7 @@ class AnalystChatEngine: ObservableObject {
         TOOL CALLING:
         Call deterministic native tools silently and immediately to fetch running telemetry and physics:
         • Overall telemetry, cadence, running economy, or verdicts: `fetchWorkoutAnalysis`.
-        • Interval work reps, pace spread, or recovery HR drops: `fetchIntervalPerformance`.
+        • Interval work reps, pace spread, or recovery HR drops: `fetchIntervalPerformance` (call this immediately whenever I ask about intervals, reps, pacing spread, or rep-by-rep grades).
         • Treadmill kinetics, room heat, or grade resistance: `fetchWorkoutPhysics`.
         • Tomorrow's run, recovery timeline, or readiness: `fetchReadinessAndPrescription` (call ONLY when I explicitly ask about tomorrow, next session, or readiness; NEVER volunteer unsolicited future prescriptions).
         • Athlete experience, 30-day load, or cadence floor: `fetchAthleteProfile`.
@@ -250,7 +250,7 @@ class AnalystChatEngine: ObservableObject {
 
         COACHING RULES:
         • Topic Continuity: When I ask follow-ups ("That's all?", "Tell me more", "Why?"), elaborate deeply on the ACTIVE topic previously discussed. Never reset to a generic overview or volunteer tomorrow's plan.
-        • Prose over Lists: Weave metrics into flowing, perceptive coaching sentences rather than mechanical bullet lists.
+        • Formatting: Weave metrics naturally into your coaching analysis. When I explicitly ask to break down, grade, or list each interval or split, present each rep/split clearly with its rep number, pace, cadence, and grade.
         • Metric Units: Cadence is ALWAYS in SPM (steps per minute). NEVER attach pace units (/km, /mi) to cadence. Pace is ALWAYS min/km or min/mi. Heart rate is ALWAYS BPM.
         • Bold accent numbers and units when presenting metrics.
         • Athlete Safety Override: If I report illness, fever, or sharp pain, safety overrides all training—advise rest immediately.
@@ -381,6 +381,15 @@ class AnalystChatEngine: ObservableObject {
             return Self.sanitizeOutOfScopeResponse(responseText, runType: runType)
         }
 
+        // If the user explicitly asked for an interval or split breakdown, but the model responded with
+        // vague summary text lacking individual rep data, intercept and deliver the authentic performance report.
+        if Self.isIntervalBreakdownRequest(userQuestion) && !Self.containsRepBreakdown(responseText) {
+            let report = makeAnalysisContext().formatPerformanceReport()
+            if !report.isEmpty {
+                return report
+            }
+        }
+
         // If no tools were called during this turn, the LLM has zero real telemetry context.
         // Any specific pace citations (e.g. 5:05/km), split intervals, or cadence figures are fabricated hallucinations.
         if toolsCalledThisTurn == 0 && turnContext.turnDomain != .elaborationOrFollowUp && Self.containsMetricTelemetry(responseText) {
@@ -493,6 +502,28 @@ class AnalystChatEngine: ObservableObject {
 
         let defaultPivot = "I'm your personal running coach and exercise physiologist, so I specialize in your running biomechanics and recovery."
         return "\(defaultPivot) What would you like to explore regarding your runs?"
+    }
+
+    /// Evaluates whether a user question is explicitly asking for an interval, rep, or split breakdown.
+    nonisolated static func isIntervalBreakdownRequest(_ text: String) -> Bool {
+        let lower = text.lowercased()
+        let intervalMarkers = [
+            "each interval", "break down each", "breakdown each", "grade each",
+            "grade my performance", "each rep", "each split", "break down the intervals",
+            "break down my intervals", "breakdown the intervals", "interval breakdown",
+            "split breakdown", "rep breakdown", "break down each interval",
+            "list each interval", "show each interval", "break down for me",
+            "break down each for me", "break it down for me", "how did i do on each",
+            "rate each", "break down each interval for me"
+        ]
+        return intervalMarkers.contains { lower.contains($0) }
+    }
+
+    /// Evaluates whether a generated response contains discrete rep or split breakdowns.
+    nonisolated static func containsRepBreakdown(_ text: String) -> Bool {
+        // Matches "Rep 1", "rep 2", "Interval 1", "km 1", "mile 1", "Set 1", "• Rep"
+        let repPattern = #"\b(rep\s*\d+|interval\s*\d+|km\s*\d+|mile\s*\d+|set\s*\d+)\b"#
+        return text.range(of: repPattern, options: [.regularExpression, .caseInsensitive]) != nil
     }
 
     // MARK: - Honest System Status (No Fake Canned Responses)

@@ -267,13 +267,41 @@ enum ConversationMemoryManager {
             )
         }
 
+        // 7.5. Interval & Split Performance Breakdown ("grade my performance in each interval", "break down each interval", "each rep", "splits")
+        let intervalKeywords = [
+            "each interval", "break down each", "breakdown each", "grade each",
+            "grade my performance", "each rep", "each split", "break down the intervals",
+            "break down my intervals", "breakdown the intervals", "interval breakdown",
+            "split breakdown", "rep breakdown", "how was each interval", "how was each rep",
+            "break down each interval for me", "break down each interval"
+        ]
+        if intervalKeywords.contains(where: { lower.contains($0) }) {
+            let guidance = """
+            TURN FOCUS: Discrete Interval Rep Breakdown & Performance Grading.
+            The runner is explicitly asking for a rep-by-rep breakdown and grading of their workout intervals or splits.
+            1. You MUST call `fetchIntervalPerformance` (or `fetchWorkoutAnalysis` for continuous splits) immediately.
+            2. Present each rep (Rep 1, Rep 2, etc.) clearly with its work pace, cadence, heart rate, and performance letter grade/observation from category_4_rep_by_rep_breakdown. Include recovery paces and heart rate drops between sets.
+            3. Conclude with the overall interval grade and pace spread.
+            4. DO NOT substitute vague, generic summary paragraphs without rep metrics—the runner specifically asked for each interval.
+            """
+            return ManagedTurnContext(
+                turnDomain: .workoutTelemetryAnalysis,
+                turnIndex: userTurnIndex,
+                isSubjectiveDistress: false,
+                cleanConversationDigest: summarizeHistory(messages),
+                turnGuidance: guidance,
+                stripWorkoutPayload: false,
+                prunePhysiologicalVerdicts: false
+            )
+        }
+
         // 8. Default: Workout Telemetry Analysis
         return ManagedTurnContext(
             turnDomain: .workoutTelemetryAnalysis,
             turnIndex: userTurnIndex,
             isSubjectiveDistress: false,
             cleanConversationDigest: summarizeHistory(messages),
-            turnGuidance: "TURN FOCUS: Workout Telemetry & Biomechanics. Explain what happened during this specific workout using the physiological verdicts.",
+            turnGuidance: "TURN FOCUS: Workout Telemetry & Biomechanics. Detail the workout's execution, pacing, cadence, and physiological verdicts using data from native tool calls.",
             stripWorkoutPayload: false,
             prunePhysiologicalVerdicts: false
         )

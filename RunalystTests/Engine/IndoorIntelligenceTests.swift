@@ -1785,4 +1785,66 @@ final class IndoorIntelligenceTests: XCTestCase {
             "Response must acknowledge dance or clarify running coach domain"
         )
     }
+
+    @MainActor
+    func testIntervalBreakdownIntentDetectionAndVerification() {
+        let q1 = "Grade my performance in each interval of this run"
+        let q2 = "Can you break down each interval for me?"
+        let qGeneral = "Ok, tell me about my Tuesday run"
+
+        XCTAssertTrue(AnalystChatEngine.isIntervalBreakdownRequest(q1))
+        XCTAssertTrue(AnalystChatEngine.isIntervalBreakdownRequest(q2))
+        XCTAssertFalse(AnalystChatEngine.isIntervalBreakdownRequest(qGeneral))
+
+        let vagueResponse = """
+        The analysis of your Tuesday, October 13 run confirms consistent pace execution across \
+        the interval structure, though subtle pacing fluctuations were noted. The system recorded \
+        moderate workload absorption, with minimal degradation in performance stability during repeated \
+        efforts. Recovery phases showed steady HR stabilization, indicating controlled physiological adaptation.
+        """
+        let structuredRepResponse = "• Rep 1 (4:10/km, 172 SPM, 165 BPM): Grade A- — Controlled surge"
+
+        XCTAssertFalse(AnalystChatEngine.containsRepBreakdown(vagueResponse), "Vague response must be flagged as lacking rep breakdown")
+        XCTAssertTrue(AnalystChatEngine.containsRepBreakdown(structuredRepResponse), "Structured rep response must be recognized")
+
+        let turnContext = ConversationMemoryManager.buildTurnContext(
+            userQuestion: q1,
+            messages: [],
+            recoveryStateDescription: "Productive",
+            daysSinceWorkout: 1
+        )
+        XCTAssertTrue(
+            turnContext.turnGuidance.contains("Discrete Interval Rep Breakdown & Performance Grading"),
+            "Turn guidance must direct the model to provide interval rep breakdown"
+        )
+    }
+
+    @MainActor
+    func testAnalystChatIntervalBreakdownDeliversDiscreteReps() async {
+        let runRecord = makeTestRunRecord(isIndoor: true)
+        let signature = RunSignature(
+            classification: "Intervals",
+            confidence: 0.95,
+            probabilities: ["Intervals": 0.95],
+            anomalies: [],
+            cadenceFloor: 150.0,
+            phaseSegments: [
+                PhaseSegment(startSeconds: 0, endSeconds: 240, kind: "work", avgPace: 270, avgCadence: 172, avgHR: 165),
+                PhaseSegment(startSeconds: 240, endSeconds: 360, kind: "recovery", avgPace: 380, avgCadence: 148, avgHR: 150),
+                PhaseSegment(startSeconds: 360, endSeconds: 600, kind: "work", avgPace: 255, avgCadence: 175, avgHR: 170)
+            ],
+            dataSource: "wrist",
+            isIndoor: true,
+            needsInclineReview: false
+        )
+        let chatEngine = AnalystChatEngine(runRecord: runRecord, runSignature: signature, macroProfile: nil)
+        await chatEngine.sendMessage("Grade my performance in each interval of this run")
+        let response = chatEngine.messages.last?.text ?? ""
+
+        XCTAssertTrue(
+            AnalystChatEngine.containsRepBreakdown(response),
+            "Response to interval breakdown request must contain discrete reps, not vague prose"
+        )
+        XCTAssertTrue(response.contains("Rep 1") && response.contains("Rep 2"), "Must report Rep 1 and Rep 2")
+    }
 }
