@@ -1632,13 +1632,67 @@ final class IndoorIntelligenceTests: XCTestCase {
             }
 
             let workoutResult = try await workoutTool.call(arguments: WorkoutAnalysisQuery(focus: "full_telemetry"))
-            XCTAssertTrue(workoutResult.contains("category_1_session_totals"))
-            XCTAssertTrue(workoutResult.contains("category_2_steady_state_performance"))
-            XCTAssertFalse(workoutResult.contains("category_3_recovery_performance"), "Steady runs must NOT emit recovery performance bucket")
-            XCTAssertFalse(workoutResult.contains("category_4_rep_by_rep_breakdown"), "Steady runs must NOT emit rep breakdown bucket")
+            XCTAssertTrue(workoutResult.contains("steady_state_scorecard"))
+            XCTAssertTrue(workoutResult.contains("background_session_totals"))
+            XCTAssertFalse(workoutResult.contains("interval_scorecard"), "Steady runs must NOT emit interval scorecard")
+            XCTAssertFalse(workoutResult.contains("\"reps\""), "Steady runs must NOT emit rep breakdown bucket")
 
             let intervalResult = try await intervalTool.call(arguments: IntervalPerformanceQuery(focus: "all"))
             XCTAssertTrue(intervalResult.contains("NOT_AN_INTERVAL_WORKOUT"))
+        }
+        #endif
+    }
+
+    @MainActor
+    func testWorkoutAnalysisUnifiedSchemaForIntervalsEmitsScorecardAndRepsAtTopLevel() async throws {
+        let runRecord = makeTestRunRecord(isIndoor: true)
+        runRecord.detectedTypeRaw = "Intervals"
+        let signature = RunSignature(
+            classification: "Intervals",
+            confidence: 0.95,
+            probabilities: ["Intervals": 0.95],
+            anomalies: [],
+            cadenceFloor: 150.0,
+            phaseSegments: [
+                PhaseSegment(startSeconds: 0, endSeconds: 240, kind: "work", avgPace: 270, avgCadence: 172, avgHR: 165),
+                PhaseSegment(startSeconds: 240, endSeconds: 360, kind: "recovery", avgPace: 380, avgCadence: 148, avgHR: 150),
+                PhaseSegment(startSeconds: 360, endSeconds: 600, kind: "work", avgPace: 255, avgCadence: 175, avgHR: 170)
+            ],
+            dataSource: "wrist",
+            isIndoor: true,
+            needsInclineReview: false
+        )
+        let chatEngine = AnalystChatEngine(runRecord: runRecord, runSignature: signature)
+
+        #if canImport(FoundationModels)
+        if #available(iOS 26.0, *) {
+            let workoutTool = FetchWorkoutAnalysisTool { _ in
+                let analysis = chatEngine.makeAnalysisContext()
+                return analysis.compactTelemetryAnalysis()
+            }
+
+            let workoutResult = try await workoutTool.call(arguments: WorkoutAnalysisQuery(focus: "full_telemetry"))
+            XCTAssertTrue(workoutResult.contains("interval_scorecard"), "Interval workouts must emit interval_scorecard at top level")
+            XCTAssertTrue(workoutResult.contains("active_work_pace"))
+            XCTAssertTrue(workoutResult.contains("active_turnover_spm"))
+            XCTAssertTrue(workoutResult.contains("total_work_reps"))
+            XCTAssertTrue(workoutResult.contains("reps"), "Interval workouts must emit full reps array in initial query")
+            XCTAssertTrue(workoutResult.contains("background_session_totals"), "Blended totals must be demoted under background_session_totals")
+            XCTAssertFalse(workoutResult.contains("steady_state_scorecard"), "Interval workouts must NOT emit steady state scorecard")
+
+            // Verify strong typing by decoding JSON into UnifiedWorkoutToolResponse
+            let data = try XCTUnwrap(workoutResult.data(using: .utf8))
+            let decoded = try JSONDecoder().decode(UnifiedWorkoutToolResponse.self, from: data)
+            XCTAssertEqual(decoded.workout_type, "Intervals")
+            XCTAssertNotNil(decoded.interval_scorecard)
+            XCTAssertEqual(decoded.interval_scorecard?.total_work_reps, 2)
+            XCTAssertEqual(decoded.interval_scorecard?.active_turnover_spm, 173)
+            XCTAssertEqual(decoded.reps?.count, 2)
+            XCTAssertEqual(decoded.reps?.first?.rep_number, 1)
+            XCTAssertEqual(decoded.reps?.first?.work_cadence_spm, 172)
+            XCTAssertEqual(decoded.reps?.last?.rep_number, 2)
+            XCTAssertEqual(decoded.reps?.last?.work_cadence_spm, 175)
+            XCTAssertNil(decoded.steady_state_scorecard)
         }
         #endif
     }
@@ -1838,5 +1892,118 @@ final class IndoorIntelligenceTests: XCTestCase {
             "Response to interval breakdown request must contain discrete reps, not vague prose"
         )
         XCTAssertTrue(response.contains("Rep 1") && response.contains("Rep 2"), "Must report Rep 1 and Rep 2")
+    }
+
+    @MainActor
+    func testDualBrainEliminationAndUnifiedToolCallingMultiTurnFlow() async throws {
+        let runRecord = makeTestRunRecord(isIndoor: true)
+        runRecord.detectedTypeRaw = "Intervals"
+        runRecord.workingAvgPace = 385.0 // 6:25/km blended session pace
+        runRecord.workingAvgCadence = 156.0 // 156 SPM blended cadence
+        runRecord.workingAvgHeartRate = 147.0 // 147 BPM blended HR
+
+        // Create an authentic 9-rep interval workout matching RCA (5:42/km = 342s/km, 162 SPM, recovery 7:15/km = 435s/km)
+        var segments: [PhaseSegment] = []
+        for i in 0..<9 {
+            let startW = Double(i * 240)
+            let endW = startW + 120
+            segments.append(PhaseSegment(
+                startSeconds: startW,
+                endSeconds: endW,
+                kind: "work",
+                avgPace: 342.0, // 5:42/km
+                avgCadence: 162.0, // 162 SPM
+                avgHR: 165.0
+            ))
+            let startR = endW
+            let endR = startR + 120
+            segments.append(PhaseSegment(
+                startSeconds: startR,
+                endSeconds: endR,
+                kind: "recovery",
+                avgPace: 435.0, // 7:15/km
+                avgCadence: 140.0,
+                avgHR: 155.0
+            ))
+        }
+
+        let signature = RunSignature(
+            classification: "Intervals",
+            confidence: 0.98,
+            probabilities: ["Intervals": 0.98],
+            anomalies: [],
+            cadenceFloor: 150.0,
+            phaseSegments: segments,
+            dataSource: "wrist",
+            isIndoor: true,
+            needsInclineReview: false
+        )
+
+        let chatEngine = AnalystChatEngine(runRecord: runRecord, runSignature: signature)
+        let analysis = chatEngine.makeAnalysisContext()
+
+        // 1. Validate Unified Tool Response Structure (Step 2 & Step 3 RCA)
+        let unifiedResponse = analysis.buildUnifiedWorkoutToolResponse()
+        XCTAssertEqual(unifiedResponse.workout_type, "Intervals")
+
+        // PRIMARY OBJECT: IntervalScorecard must report true active workload
+        let scorecard = try XCTUnwrap(unifiedResponse.interval_scorecard)
+        XCTAssertEqual(scorecard.total_work_reps, 9)
+        XCTAssertEqual(scorecard.active_work_pace, "5:42/km")
+        XCTAssertEqual(scorecard.active_turnover_spm, 162)
+
+        // THE 9-REP ARRAY: Must persist all 9 reps in session payload
+        let reps = try XCTUnwrap(unifiedResponse.reps)
+        XCTAssertEqual(reps.count, 9)
+        for (idx, rep) in reps.enumerated() {
+            XCTAssertEqual(rep.rep_number, idx + 1)
+            XCTAssertEqual(rep.work_pace, "5:42/km")
+            XCTAssertEqual(rep.work_cadence_spm, 162)
+            XCTAssertEqual(rep.recovery_pace, "7:15/km")
+        }
+
+        // SECONDARY BACKGROUND: Blended session data is demoted
+        XCTAssertEqual(unifiedResponse.background_session_totals.blended_session_avg_pace, "6:25/km")
+        XCTAssertEqual(unifiedResponse.background_session_totals.blended_session_avg_cadence_spm, 156)
+        XCTAssertTrue(unifiedResponse.background_session_totals._description.contains("SECONDARY"))
+
+        // 2. Validate Multi-Turn Chat Flow without Swift Template Interception (Step 1 RCA)
+        var turnCount = 0
+        chatEngine.modelResponder = { instructions, userPrompt in
+            turnCount += 1
+            if userPrompt.contains("Unpack it") {
+                // Must command native tool calling and prioritize interval_scorecard
+                XCTAssertTrue(instructions.contains("fetchWorkoutAnalysis"))
+                XCTAssertTrue(instructions.contains("interval_scorecard"))
+                return "During your 9-rep Intervals on Tuesday, you held an active work pace of **5:42/km** at **162 SPM** with crisp rhythm."
+            } else if userPrompt.contains("Tell me more") {
+                // Reads 9 reps from memory context without hallucinating 180 SPM
+                return "Looking closer across your 9 reps, you locked onto **5:42/km** and **162 SPM** with steady stride control throughout."
+            } else if userPrompt.contains("180 spm") {
+                // Must NOT get intercepted by legacy 156 SPM fallback template
+                return "You held **162 SPM** across all 9 work reps—comfortably above your **150 SPM** floor. 180 SPM was never recorded."
+            }
+            return "Coaching observation."
+        }
+
+        // Turn 1: Unpack it
+        await chatEngine.sendMessage("Unpack it")
+        let turn1Response = chatEngine.messages.last?.text ?? ""
+        XCTAssertTrue(turn1Response.contains("5:42/km"))
+        XCTAssertTrue(turn1Response.contains("162 SPM"))
+        XCTAssertFalse(turn1Response.contains("6:25/km"), "Must not quote blended pace for intervals")
+
+        // Turn 2: Tell me more
+        await chatEngine.sendMessage("Tell me more")
+        let turn2Response = chatEngine.messages.last?.text ?? ""
+        XCTAssertTrue(turn2Response.contains("162 SPM"))
+        XCTAssertFalse(turn2Response.contains("180 SPM"), "Must not hallucinate 180 SPM")
+
+        // Turn 3: 180 spm??? Are you sure
+        await chatEngine.sendMessage("180 spm??? Are you sure")
+        let turn3Response = chatEngine.messages.last?.text ?? ""
+        XCTAssertTrue(turn3Response.contains("162 SPM"))
+        XCTAssertFalse(turn3Response.contains("156 SPM"), "Must not fall back to blended 156 SPM Swift template")
+        XCTAssertEqual(turnCount, 3, "All 3 turns must flow through model responder without template interception")
     }
 }
