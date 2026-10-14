@@ -2,6 +2,25 @@
 
 This `AGENTS.md` file acts as the primary repository of architectural context, technical rules, and best practices for developing and maintaining the Runalyst iOS application. It is primarily intended for AI assistants, but serves as useful documentation for human developers.
 
+> [!IMPORTANT]
+> **The Runalyst Product & Architecture Blueprint**: All feature development and UI/UX design must adhere to the product manifesto enshrined in [docs/BLUEPRINT.md](file:///Users/motilayo/workspace/runalyzer/docs/BLUEPRINT.md), synthesizing Aarron Walter's Hierarchy of Needs, the "Thick Client, Thin AI" architectural doctrine, and Apple-centric "Sweaty Hands" User-Centered Design.
+
+## 0. Product & UX Core Doctrine (UCD & Walter's Hierarchy)
+
+- **Target Persona & Mandates**: Designed specifically for the *Data-Rich, Insight-Poor Runner*. Three foundational mandates govern every feature:
+  - *Translation Mandate*: Convert raw Apple HealthKit telemetry into empathetic, actionable coaching English.
+  - *Protection Mandate*: Prioritize human biological safety over rigid data through subjective overrides and deterministically calculated recovery timelines.
+  - *Progression Mandate*: Replace algorithmic guesswork with locked, mathematically proven pacing and duration bands.
+- **Thick Client, Thin AI**: The backend is deterministic and local. Swift does the math, the physics engine models mechanical realities, and on-device iOS `FoundationModels` perform semantic translation and conversational synthesis. The LLM never hallucinates numbers.
+- **Sweaty Hands UX (Usable & Pleasurable)**:
+  - *One Metric Primary View*: High signal-to-noise ratio. The top area delivers today's single clear directive; deep data progressively discloses.
+  - *Glass-Box Modals*: Tapping highlighted metrics (e.g., 156 SPM) opens native bottom sheets revealing the exact Swift math behind the recommendation.
+  - *Subconscious Data Binding*: Universally consistent Apple-native color tokens:
+    - **Neon Pink** for Heart Rate
+    - **Electric Blue** for Pace
+    - **Vibrant Green** for Cadence
+  - *Situational Accessibility (A11y)*: 44x44pt minimum hit targets for shaking hands, `SF Pro Rounded` paired with strictly `.monospacedDigit()` to eliminate horizontal jitter, `UIImpactFeedbackGenerator` tactile scrub ticks, and combined semantic VoiceOver labels.
+
 ## 1. SwiftData & Concurrency Architecture
 
 - **Thread Safety with ModelContext**: SwiftData `PersistentModel` and `ModelContext` are not `Sendable` and cannot be safely accessed across `await` boundaries within unstructured or detached tasks. To perform async operations (like LLM generation), extract necessary properties into a `Sendable` struct beforehand, await the operation, and then apply updates back on the `MainActor` or within a dedicated `@ModelActor`.
