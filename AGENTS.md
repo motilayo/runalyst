@@ -96,6 +96,7 @@ This `AGENTS.md` file acts as the primary repository of architectural context, t
   - For responsive grids, use `GridItem(.adaptive(minimum: 140), spacing: 16)`.
   - To prevent SwiftUI `ScrollView` content from bleeding under custom top navigation bars with transparent backgrounds, apply `.background(.regularMaterial.ignoresSafeArea(edges: .top))` to the header stack.
   - Use `.safeAreaInset(edge: .bottom, spacing: 80)` instead of `.overlay()` for floating persistent UI elements over a `ScrollView`.
+  - **iPad vs. iPhone Proportionality (`horizontalSizeClass`)**: Never stretch single-column phone layouts across wide tablet displays. In `RunDetailView`, leverage `renderDualCardLayout` on `.regular` size classes to place diagnostic scorecards (`IntervalPerformanceCard`, `DrillExecutionScorecard`) side-by-side with conversational AI Coaching (`aiRunAnalysisCard`) in an `HStack`. For metric grids, adapt dynamically from 2 columns on iPhone to 4 columns on iPad (`LazyVGrid`). In `IntervalPerformanceCard`, adapt expanded sets into a balanced 2-column grid (`LazyVGrid`) on `.regular` size classes.
 - **UI Element Specs**:
   - Use tap-to-alert pattern involving `.contentShape(Rectangle())`, `.onTapGesture { showingInfo = true }`, and `.alert` modifier for metric definitions. Do not trigger explainer popups automatically on picker/segmented control changes — only show them when the user explicitly taps the info (ⓘ) icon.
   - Dashboard cards display 30-Day Average SPM and Average Pace rather than static VO2 Max.

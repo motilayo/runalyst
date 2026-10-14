@@ -58,4 +58,19 @@ Accessibility in Runalyst accounts for temporary situational impairments like su
 
 ---
 
+### 6. Proportionality & Adaptive Display: iPad vs. iPhone
+
+An iPad is not a giant iPhone. Designing for physical real estate requires intentional architectural proportionality:
+
+* **Size-Class Responsive Architecture (`horizontalSizeClass`):**
+  * **iPhone (`.compact`)**: Single-column vertical thumb-flow optimized for one-handed operation during runs or fatigue ("Sweaty Hands").
+  * **iPad (`.regular`)**: Multi-column companion layouts. Dual-card side-by-side structures (`HStack(alignment: .top, spacing: 16)`) pair the diagnostic scorecard (e.g., `IntervalPerformanceCard` or `DrillExecutionScorecard`) directly alongside the conversational AI Coaching card (`aiRunAnalysisCard`), turning the iPad into an elite coaching workstation.
+* **Bounded Content Measure:**
+  * Unconstrained lines of text spanning 1,000+ points cause extreme eye strain and violate typographic hierarchy. Standalone cards on iPad use balanced margins or max content bounding (~700–900pt) to preserve ideal reading line lengths (60–75 characters).
+* **Adaptive Grids over Endless Stacks:**
+  * Metrics grids dynamically expand from 2 columns on iPhone to 4 columns on iPad (`LazyVGrid`).
+  * Rep sets and workout intervals expand into a balanced 2-column grid on iPad rather than towering single-column lists.
+
+---
+
 By strictly enforcing this blueprint, Runalyst ceases to be a generic AI wrapper and becomes a definitive, Apple-native sports science tool—where the technology entirely disappears, leaving only the coaching.

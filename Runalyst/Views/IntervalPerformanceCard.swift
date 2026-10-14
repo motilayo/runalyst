@@ -8,6 +8,7 @@ struct IntervalPerformanceCard: View {
     let runRecord: RunRecord
     var baselineCadence: Double?
 
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var isExpanded: Bool = false
     @State private var expandedRepIndices: Set<Int> = []
 
@@ -136,9 +137,17 @@ struct IntervalPerformanceCard: View {
                 }
 
                 let displayedReps = isExpanded ? evaluations : Array(evaluations.prefix(3))
-                VStack(spacing: 8) {
-                    ForEach(displayedReps) { rep in
-                        repRow(rep, cadenceFloor: cadenceFloor)
+                if horizontalSizeClass == .regular && isExpanded {
+                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                        ForEach(displayedReps) { rep in
+                            repRow(rep, cadenceFloor: cadenceFloor)
+                        }
+                    }
+                } else {
+                    VStack(spacing: 8) {
+                        ForEach(displayedReps) { rep in
+                            repRow(rep, cadenceFloor: cadenceFloor)
+                        }
                     }
                 }
             }
