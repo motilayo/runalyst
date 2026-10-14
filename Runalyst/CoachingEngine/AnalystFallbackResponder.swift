@@ -19,6 +19,9 @@ enum AnalystFallbackResponder {
 
         // 2. Out-of-scope inquiry
         if turnContext?.turnDomain == .outOfScopeInquiry {
+            if q.contains("dougie") || q.contains("dance") {
+                return "I'm not equipped to teach dance moves, but I can help you optimize your running performance and recovery. What would you like to explore about your running form, pacing, or workouts?"
+            }
             return "I'm your personal running coach and exercise physiologist, so I specialize in your running biomechanics, training zones, and recovery. What would you like to explore regarding your runs?"
         }
 

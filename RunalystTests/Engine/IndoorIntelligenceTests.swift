@@ -1706,4 +1706,83 @@ final class IndoorIntelligenceTests: XCTestCase {
             "Must directly deliver performance metrics"
         )
     }
+
+    func testOutOfScopeQueryDetectionAndTurnContextGuidance() {
+        let dougieQuery = "Can you teach me how to dougie?"
+        let danceQuery = "Teach me how to dance"
+        let recipeQuery = "What is the recipe for chocolate chip pancakes?"
+
+        XCTAssertTrue(ConversationMemoryManager.isOutOfScopeQuery(dougieQuery))
+        XCTAssertTrue(ConversationMemoryManager.isOutOfScopeQuery(danceQuery))
+        XCTAssertTrue(ConversationMemoryManager.isOutOfScopeQuery(recipeQuery))
+
+        let turnContext = ConversationMemoryManager.buildTurnContext(
+            userQuestion: dougieQuery,
+            messages: [],
+            recoveryStateDescription: "Productive",
+            daysSinceWorkout: 1
+        )
+
+        XCTAssertEqual(turnContext.turnDomain, .outOfScopeInquiry)
+        XCTAssertTrue(
+            turnContext.turnGuidance.contains("NEVER invent, estimate, or quote workout metrics"),
+            "Turn guidance must prohibit inventing metrics"
+        )
+    }
+
+    @MainActor
+    func testContainsMetricTelemetryDetection() {
+        let paceMetric = "Your effort revealed 5:05/km for the first interval and 5:18/km for the second."
+        let cadenceMetric = "Your cadence averaged 160 SPM, which aligns with your 160-170 SPM cadence floor."
+        let hrMetric = "Your heart rate climbed to 175 BPM during the surge."
+        let naturalText = "I'm not equipped to teach dance moves, but I can help you optimize your running performance."
+
+        XCTAssertTrue(AnalystChatEngine.containsMetricTelemetry(paceMetric))
+        XCTAssertTrue(AnalystChatEngine.containsMetricTelemetry(cadenceMetric))
+        XCTAssertTrue(AnalystChatEngine.containsMetricTelemetry(hrMetric))
+        XCTAssertFalse(AnalystChatEngine.containsMetricTelemetry(naturalText))
+    }
+
+    @MainActor
+    func testSanitizeOutOfScopeResponsePreservesRedirectionWithoutHallucinatedMetrics() {
+        let rawHallucinated = """
+        I'm not equipped to teach dance moves, but I can help you optimize your running performance. \
+        Let's focus on what matters: your Tuesday, October 13 run. \
+        Your effort during that workout revealed 5:05/km for the first interval and 5:18/km for the second—metrics \
+        that show your system was working under load. Your cadence averaged 160 SPM, which aligns with your \
+        160-170 SPM cadence floor, meaning you're efficiently using your stride. The treadmill dynamics during that \
+        session also contributed to your running economy, so let's ensure you're maintaining that rhythm in your next \
+        effort. How can I help refine your technique or load management today?
+        """
+
+        let sanitized = AnalystChatEngine.sanitizeOutOfScopeResponse(rawHallucinated, runType: "Intervals")
+
+        XCTAssertTrue(
+            sanitized.contains("I'm not equipped to teach dance moves, but I can help you optimize your running performance."),
+            "Must preserve polite conversational redirection"
+        )
+        XCTAssertTrue(
+            sanitized.contains("How can I help refine your technique or load management today?"),
+            "Must preserve polite concluding question"
+        )
+        XCTAssertFalse(sanitized.contains("5:05/km"), "Must strip fabricated pace")
+        XCTAssertFalse(sanitized.contains("5:18/km"), "Must strip fabricated pace")
+        XCTAssertFalse(sanitized.contains("160 SPM"), "Must strip fabricated cadence")
+        XCTAssertFalse(sanitized.contains("160-170 SPM"), "Must strip fabricated cadence band")
+        XCTAssertFalse(AnalystChatEngine.containsMetricTelemetry(sanitized), "Sanitized output must be metric-free")
+    }
+
+    @MainActor
+    func testAnalystChatHandlesDanceQueryWithNaturalRedirectionAndNoFabricatedNumbers() async {
+        let runRecord = makeTestRunRecord(isIndoor: true)
+        let chatEngine = AnalystChatEngine(runRecord: runRecord)
+        await chatEngine.sendMessage("Can you teach me how to dougie?")
+        let response = chatEngine.messages.last?.text ?? ""
+
+        XCTAssertFalse(AnalystChatEngine.containsMetricTelemetry(response), "Response must not contain fabricated numbers")
+        XCTAssertTrue(
+            response.lowercased().contains("dance") || response.lowercased().contains("running coach"),
+            "Response must acknowledge dance or clarify running coach domain"
+        )
+    }
 }
