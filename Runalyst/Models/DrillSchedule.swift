@@ -46,9 +46,15 @@ struct DrillSchedule: Sendable, Equatable {
         avgWorkDuration: Double,
         avgRecoveryDuration: Double
     ) -> Bool {
-        // 1. Strict iteration count check: Runalyst drills have an exact number of prescribed intervals
-        guard detectedIterations == iterations else {
-            return false
+        // 1. Iteration count check: Allow exact match or +/- 1 tolerance for drills with >= 4 prescribed reps
+        if iterations >= 4 {
+            guard abs(detectedIterations - iterations) <= 1 else {
+                return false
+            }
+        } else {
+            guard detectedIterations == iterations else {
+                return false
+            }
         }
 
         // 2. Total duration category gate (workout duration must align with the duration category)

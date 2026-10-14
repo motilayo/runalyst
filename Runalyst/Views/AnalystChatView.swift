@@ -43,6 +43,9 @@ struct AnalystChatView: View {
                             if engine.messages.count <= 1 {
                                 quickPromptChips
                                     .transition(.opacity.combined(with: .move(edge: .top)))
+                            } else if !engine.isResponding && engine.messages.last?.sender == .analyst {
+                                followUpPromptChips
+                                    .transition(.opacity.combined(with: .move(edge: .bottom)))
                             }
 
                             if engine.isResponding {
@@ -209,7 +212,7 @@ struct AnalystChatView: View {
     private func messageBubble(_ message: AnalystChatMessage) -> some View {
         HStack {
             if message.sender == .user {
-                Spacer()
+                Spacer(minLength: 40)
                 Text(message.text)
                     .font(.subheadline)
                     .foregroundColor(.white)
@@ -224,9 +227,8 @@ struct AnalystChatView: View {
                     )
                     .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                     .shadow(color: Color.purple.opacity(0.25), radius: 4, x: 0, y: 2)
-                    .frame(maxWidth: 290, alignment: .trailing)
             } else {
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 5) {
                         Image(systemName: "brain.head.profile")
                             .font(.caption2.bold())
@@ -251,8 +253,7 @@ struct AnalystChatView: View {
                         .stroke(Color.white.opacity(0.06), lineWidth: 1)
                 )
                 .shadow(color: Color.black.opacity(0.03), radius: 5, x: 0, y: 1)
-                .frame(maxWidth: 320, alignment: .leading)
-                Spacer()
+                Spacer(minLength: 28)
             }
         }
         .padding(.horizontal)
@@ -277,6 +278,12 @@ struct AnalystChatView: View {
                     inputText = "How does this workout build toward my current training goal?"
                     submitQuestion()
                 }
+                if runRecord.evaluationModality == .intervals {
+                    chipButton("Break Down Intervals") {
+                        inputText = "Grade my performance in each interval of this run"
+                        submitQuestion()
+                    }
+                }
                 if runRecord.isIndoor == true {
                     chipButton("Treadmill Form") {
                         inputText = "Did I overstride or reach too far on the treadmill?"
@@ -288,13 +295,59 @@ struct AnalystChatView: View {
         }
     }
 
-    private func chipButton(_ title: String, action: @escaping () -> Void) -> some View {
+    private var followUpPromptChips: some View {
+        let askedText = engine.messages
+            .filter { $0.sender == .user }
+            .map { $0.text.lowercased() }
+            .joined(separator: " ")
+
+        let isInterval = runRecord.evaluationModality == .intervals
+        let splitChipTitle = isInterval ? "Break Down Intervals" : "Break Down Splits"
+        let splitChipPrompt = isInterval ? "Grade my performance in each interval of this run" : "Grade my performance in each split of this run"
+        let splitChipIcon = isInterval ? "waveform.path.ecg" : "chart.bar.xaxis"
+
+        let candidates: [(title: String, prompt: String, icon: String)] = [
+            ("Tomorrow's Plan", "Should I run tomorrow, and what kind of session should I focus on?", "calendar"),
+            (splitChipTitle, splitChipPrompt, splitChipIcon),
+            ("Recommended Drill", "Which drill would help improve my running form and cadence?", "figure.run"),
+            ("What to Improve", "What is the key area I should focus on improving?", "arrow.up.forward.circle"),
+            ("Running Economy", "How was my running economy and stride efficiency during this run?", "bolt.heart"),
+            ("Arm Drive", "How does arm drive help with rhythm and form?", "figure.walk")
+        ].filter { item in
+            !askedText.contains(item.title.lowercased()) && !askedText.contains(item.prompt.lowercased())
+        }
+
+        return Group {
+            if !candidates.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Suggested follow-ups")
+                        .font(.caption2.weight(.medium))
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal, 20)
+
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(candidates.prefix(4), id: \.title) { item in
+                                chipButton(item.title, icon: item.icon) {
+                                    inputText = item.prompt
+                                    submitQuestion()
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                    }
+                }
+            }
+        }
+    }
+
+    private func chipButton(_ title: String, icon: String = "sparkle", action: @escaping () -> Void) -> some View {
         Button {
             dismissKeyboard()
             action()
         } label: {
             HStack(spacing: 5) {
-                Image(systemName: "sparkle")
+                Image(systemName: icon)
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundColor(.purple)
                 Text(title)

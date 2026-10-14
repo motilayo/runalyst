@@ -21,108 +21,9 @@ enum DateFilter {
     case allTime
 }
 
-struct RunRecordDTO: Sendable {
-    let hkWorkoutID: UUID
-    let date: Date
-    let totalDistanceMeters: Double
-    let duration: TimeInterval
-    let rawAvgPace: Double
-    let rawAvgHeartRate: Double
-    let rawAvgCadence: Double
-    let workingAvgPace: Double
-    let workingAvgCadence: Double
-    let workingAvgHeartRate: Double
-    let rawAvgVerticalOscillation: Double?
-    let workingAvgVerticalOscillation: Double?
-    let rawAvgStrideLength: Double?
-    let workingAvgStrideLength: Double?
-    let workingDistanceMeters: Double?
-    let workingDurationSeconds: Double?
-    let isIndoor: Bool?
-    let paceCV: Double
-    let paceSlope: Double
-    let percentZone4: Double
-    let detectedTypeRaw: String
-    let framboiseTags: [String]
-    let dataSourceRaw: String?
-    let classificationConfidence: Double?
-    let classificationProbabilitiesData: Data?
-    let hrCV: Double?
-    let cadenceSlope: Double?
-    let needsInclineReview: Bool?
-    let runSignatureData: Data?
-    let ambientTemperatureCelsius: Double?
-    let ambientHumidity: Double?
-
-    init(
-        hkWorkoutID: UUID,
-        date: Date,
-        totalDistanceMeters: Double,
-        duration: TimeInterval,
-        rawAvgPace: Double,
-        rawAvgHeartRate: Double,
-        rawAvgCadence: Double,
-        workingAvgPace: Double,
-        workingAvgCadence: Double,
-        workingAvgHeartRate: Double,
-        rawAvgVerticalOscillation: Double? = nil,
-        workingAvgVerticalOscillation: Double? = nil,
-        rawAvgStrideLength: Double? = nil,
-        workingAvgStrideLength: Double? = nil,
-        workingDistanceMeters: Double? = nil,
-        workingDurationSeconds: Double? = nil,
-        isIndoor: Bool? = nil,
-        paceCV: Double,
-        paceSlope: Double,
-        percentZone4: Double,
-        detectedTypeRaw: String,
-        framboiseTags: [String] = [],
-        dataSourceRaw: String? = nil,
-        classificationConfidence: Double? = nil,
-        classificationProbabilitiesData: Data? = nil,
-        hrCV: Double? = nil,
-        cadenceSlope: Double? = nil,
-        needsInclineReview: Bool? = nil,
-        runSignatureData: Data? = nil,
-        ambientTemperatureCelsius: Double? = nil,
-        ambientHumidity: Double? = nil
-    ) {
-        self.hkWorkoutID = hkWorkoutID
-        self.date = date
-        self.totalDistanceMeters = totalDistanceMeters
-        self.duration = duration
-        self.rawAvgPace = rawAvgPace
-        self.rawAvgHeartRate = rawAvgHeartRate
-        self.rawAvgCadence = rawAvgCadence
-        self.workingAvgPace = workingAvgPace
-        self.workingAvgCadence = workingAvgCadence
-        self.workingAvgHeartRate = workingAvgHeartRate
-        self.rawAvgVerticalOscillation = rawAvgVerticalOscillation
-        self.workingAvgVerticalOscillation = workingAvgVerticalOscillation
-        self.rawAvgStrideLength = rawAvgStrideLength
-        self.workingAvgStrideLength = workingAvgStrideLength
-        self.workingDistanceMeters = workingDistanceMeters
-        self.workingDurationSeconds = workingDurationSeconds
-        self.isIndoor = isIndoor
-        self.paceCV = paceCV
-        self.paceSlope = paceSlope
-        self.percentZone4 = percentZone4
-        self.detectedTypeRaw = detectedTypeRaw
-        self.framboiseTags = framboiseTags
-        self.dataSourceRaw = dataSourceRaw
-        self.classificationConfidence = classificationConfidence
-        self.classificationProbabilitiesData = classificationProbabilitiesData
-        self.hrCV = hrCV
-        self.cadenceSlope = cadenceSlope
-        self.needsInclineReview = needsInclineReview
-        self.runSignatureData = runSignatureData
-        self.ambientTemperatureCelsius = ambientTemperatureCelsius
-        self.ambientHumidity = ambientHumidity
-    }
-}
-
 @MainActor
 class HealthKitManager: ObservableObject {
+    typealias RunBaselineData = Runalyst.RunBaselineData
     static let shared = HealthKitManager()
     var healthStore: HKHealthStoreProtocol?
     var isHealthDataAvailable: () -> Bool
@@ -484,15 +385,6 @@ class HealthKitManager: ObservableObject {
         }
     }
 
-struct RunBaselineData: Sendable {
-    let date: Date
-    let pace: Double
-    let hr: Double
-    let cadence: Double
-    var duration: Double = 0.0
-    var isPrescribedDrill: Bool = false
-}
-
     func extractRunRecord(from workout: HKWorkout, engine: FramboiseEngine, priorRuns: [RunBaselineData] = []) async throws -> RunRecordDTO {
         let duration = workout.duration
         let distance = workout.totalDistance?.doubleValue(for: .meter()) ?? 0.0
@@ -812,7 +704,12 @@ struct RunBaselineData: Sendable {
         }
 
         // Build and persist RunSignature for Workout Rhythm and RAG Analyst Chat
-        let phaseSegments = await engine.generatePhaseSegments(from: trimmed, cadenceFloor: 150.0)
+        let phaseSegments: [PhaseSegment]
+        if let nativeSegments = generatePhaseSegmentsFromActivities(workout: workout, buckets: trimmed) {
+            phaseSegments = nativeSegments
+        } else {
+            phaseSegments = await engine.generatePhaseSegments(from: trimmed, cadenceFloor: 150.0)
+        }
         let splits = await engine.calculateSplits(from: trimmed)
         let anomalies: [String] = (cv > 0.12 ? ["High Pace Variability"] : []) + (hrCV > 0.10 ? ["High Cardiac Strain"] : [])
         let signature = RunSignature(
@@ -864,6 +761,73 @@ struct RunBaselineData: Sendable {
             ambientTemperatureCelsius: weather.temperatureCelsius,
             ambientHumidity: weather.humidityPercent
         )
+    }
+
+    private func generatePhaseSegmentsFromActivities(
+        workout: HKWorkout,
+        buckets: [BucketData]
+    ) -> [PhaseSegment]? {
+        let activities = workout.workoutActivities.sorted { $0.startDate < $1.startDate }
+        guard activities.count >= 4 else { return nil }
+
+        let workoutStart = workout.startDate
+        var segments: [PhaseSegment] = []
+
+        let moving = buckets.filter { $0.meanCadence >= 120 }
+        let medCad = moving.isEmpty ? 160.0 : moving.map(\.meanCadence).sorted()[moving.count / 2]
+        let validPaces = moving.map(\.meanPaceSecPerKm).filter { $0 > 0 }.sorted()
+        let medPace = validPaces.isEmpty ? 300.0 : validPaces[validPaces.count / 2]
+
+        for act in activities {
+            let startSec = max(0, act.startDate.timeIntervalSince(workoutStart))
+            let actEnd = act.endDate ?? act.startDate.addingTimeInterval(act.duration)
+            let endSec = max(startSec + 1, actEnd.timeIntervalSince(workoutStart))
+            let actBuckets = buckets.filter { $0.startTime >= act.startDate && $0.startTime < actEnd }
+
+            let pSum = actBuckets.map(\.meanPaceSecPerKm).filter { $0 > 0 }
+            let avgP = pSum.isEmpty ? medPace : pSum.reduce(0, +) / Double(pSum.count)
+
+            let cSum = actBuckets.map(\.meanCadence).filter { $0 > 0 }
+            let avgC = cSum.isEmpty ? medCad : cSum.reduce(0, +) / Double(cSum.count)
+
+            let hSum = actBuckets.map(\.meanHR).filter { $0 > 0 }
+            let avgH = hSum.isEmpty ? 0.0 : hSum.reduce(0, +) / Double(hSum.count)
+
+            var kind = "steady"
+            if let meta = act.metadata {
+                for (_, v) in meta {
+                    let str = String(describing: v).lowercased()
+                    if str.contains("work") || str.contains("push") || str.contains("interval") || str.contains("surge") {
+                        kind = "work"
+                        break
+                    } else if str.contains("recovery") || str.contains("rest") {
+                        kind = "recovery"
+                        break
+                    }
+                }
+            }
+
+            if kind == "steady" {
+                if avgC >= medCad || (avgP > 0 && avgP <= medPace - 10.0) {
+                    kind = "work"
+                } else {
+                    kind = "recovery"
+                }
+            }
+
+            segments.append(PhaseSegment(
+                startSeconds: startSec,
+                endSeconds: endSec,
+                kind: kind,
+                avgPace: avgP,
+                avgCadence: avgC,
+                avgHR: avgH
+            ))
+        }
+
+        let workCount = segments.filter { $0.kind == "work" }.count
+        guard workCount >= 2 else { return nil }
+        return FramboiseEngine.consolidatePhaseSegments(segments)
     }
 
     func refreshWorkoutMetrics(for record: RunRecord, in context: ModelContext) async throws {

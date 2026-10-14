@@ -8,6 +8,7 @@ enum TurnDomain: Sendable, Equatable {
     case physiologicalEducation      // Concept explanation: VO2 Max, threshold, cadence
     case subjectiveDistressReported  // Illness, fever, sickness, acute injury, extreme exhaustion
     case outOfScopeInquiry           // Trivia, non-running topics, general chat
+    case elaborationOrFollowUp       // Follow-up: "That's all?", "Tell me more", "Why?"
 }
 
 /// Managed context and memory scoping synthesized for a single conversation turn.
@@ -100,6 +101,92 @@ enum ConversationMemoryManager {
                 turnGuidance: "The user is asking a general knowledge or non-running question. Answer concisely in 1–2 sentences, then politely pivot the conversation back to their personal running data and goals.",
                 stripWorkoutPayload: true,
                 prunePhysiologicalVerdicts: true
+            )
+        }
+
+        // 2.5. Follow-Up / Elaboration Detection ("That's all?", "Tell me more", "Why?", "Explain further")
+        let cleanLower = lower.replacingOccurrences(of: "’", with: "'")
+        let elaborationExactMatches: Set<String> = [
+            "that's all?", "that's all", "thats all?", "thats all", "is that all?", "is that all",
+            "tell me more", "tell me more.", "more details", "can you elaborate?", "can you elaborate",
+            "elaborate", "elaborate please", "why?", "why is that?", "why did that happen?",
+            "what else?", "what else", "go deeper", "break it down further", "anything else?",
+            "anything else", "continue", "explain further", "expand on that", "can you explain why?",
+            "so what does that mean?"
+        ]
+        let elaborationPrefixes = [
+            "that's all", "thats all", "is that all", "tell me more", "more details",
+            "can you elaborate", "elaborate on", "go deeper", "break it down further",
+            "explain further", "expand on", "what else can you tell"
+        ]
+        let isElaborationMatch = elaborationExactMatches.contains(cleanLower) ||
+            elaborationPrefixes.contains(where: { cleanLower.hasPrefix($0) })
+
+        if isElaborationMatch {
+            let substantive = messages.filter { $0.text.count > 10 }
+            let lastUserMsg = substantive.last(where: { $0.sender == .user })?.text.lowercased() ?? ""
+            let lastCoachMsg = substantive.last(where: { $0.sender == .analyst })?.text.lowercased() ?? ""
+
+            let isComparisonTopic = lastUserMsg.contains("compare") ||
+                lastUserMsg.contains("versus") ||
+                lastUserMsg.contains(" vs ") ||
+                lastCoachMsg.contains("comparing your") ||
+                lastCoachMsg.contains(" vs ") ||
+                lastCoachMsg.contains("faster in current") ||
+                lastCoachMsg.contains("slower in current")
+
+            let isIntervalTopic = lastUserMsg.contains("interval") ||
+                lastUserMsg.contains("rep") ||
+                lastCoachMsg.contains("interval") ||
+                lastCoachMsg.contains("rep ")
+
+            let isCardiacTopic = lastUserMsg.contains("heart") ||
+                lastUserMsg.contains("hr") ||
+                lastUserMsg.contains("drift") ||
+                lastCoachMsg.contains("cardiac drift") ||
+                lastCoachMsg.contains("decoupling")
+
+            let guidance: String
+            if isComparisonTopic {
+                guidance = """
+                TURN FOCUS: In-Depth Workout Comparison Elaboration.
+                The runner is asking for deeper insights on the comparison between this session and the historical run.
+                1. DO NOT reset the conversation to an unsolicited overall summary of this workout.
+                2. DO NOT prescribe tomorrow's workout or mention future readiness.
+                3. Contrast the underlying physiological and mechanical mechanisms:
+                   • Contrast workout modalities: discrete interval work bouts with active recovery valleys vs continuous steady/tempo threshold effort.
+                   • Explain why average heart rate was lower/higher: recovery intervals allow heart rate recovery, or continuous pacing maintains unbroken cardiac cost.
+                   • Contrast mechanical demands: motor-driven treadmill belt vs outdoor pavement propulsion, lack of air resistance vs convective wind cooling.
+                   • Explain what cadence and pace stability reveal about aerobic progress.
+                """
+            } else if isIntervalTopic {
+                guidance = """
+                TURN FOCUS: In-Depth Interval Performance Elaboration.
+                The runner is asking to go deeper into their interval rep execution.
+                1. DO NOT reset to a generic overview or prescribe tomorrow's session.
+                2. Analyze work rep pacing repeatability, recovery heart rate drops, and cadence maintenance through the late reps.
+                """
+            } else if isCardiacTopic {
+                guidance = """
+                TURN FOCUS: In-Depth Cardiovascular Decoupling Elaboration.
+                Explain the physiological drivers of cardiac drift (thermal accumulation, stroke volume reduction, aerobic decoupling).
+                DO NOT volunteer tomorrow's workout prescription.
+                """
+            } else {
+                guidance = """
+                TURN FOCUS: In-Depth Conversational Elaboration.
+                The runner wants deeper coaching on the previous topic. Provide advanced physiological and biomechanical insights without resetting to an unsolicited workout summary or prescribing tomorrow's session.
+                """
+            }
+
+            return ManagedTurnContext(
+                turnDomain: .elaborationOrFollowUp,
+                turnIndex: userTurnIndex,
+                isSubjectiveDistress: false,
+                cleanConversationDigest: summarizeHistory(messages),
+                turnGuidance: guidance,
+                stripWorkoutPayload: false,
+                prunePhysiologicalVerdicts: false
             )
         }
 

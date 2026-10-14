@@ -2,6 +2,25 @@
 
 This `AGENTS.md` file acts as the primary repository of architectural context, technical rules, and best practices for developing and maintaining the Runalyst iOS application. It is primarily intended for AI assistants, but serves as useful documentation for human developers.
 
+> [!IMPORTANT]
+> **The Runalyst Product & Architecture Blueprint**: All feature development and UI/UX design must adhere to the product manifesto enshrined in [docs/BLUEPRINT.md](file:///Users/motilayo/workspace/runalyzer/docs/BLUEPRINT.md), synthesizing Aarron Walter's Hierarchy of Needs, the "Thick Client, Thin AI" architectural doctrine, and Apple-centric "Sweaty Hands" User-Centered Design.
+
+## 0. Product & UX Core Doctrine (UCD & Walter's Hierarchy)
+
+- **Target Persona & Mandates**: Designed specifically for the *Data-Rich, Insight-Poor Runner*. Three foundational mandates govern every feature:
+  - *Translation Mandate*: Convert raw Apple HealthKit telemetry into empathetic, actionable coaching English.
+  - *Protection Mandate*: Prioritize human biological safety over rigid data through subjective overrides and deterministically calculated recovery timelines.
+  - *Progression Mandate*: Replace algorithmic guesswork with locked, mathematically proven pacing and duration bands.
+- **Thick Client, Thin AI**: The backend is deterministic and local. Swift does the math, the physics engine models mechanical realities, and on-device iOS `FoundationModels` perform semantic translation and conversational synthesis. The LLM never hallucinates numbers.
+- **Sweaty Hands UX (Usable & Pleasurable)**:
+  - *One Metric Primary View*: High signal-to-noise ratio. The top area delivers today's single clear directive; deep data progressively discloses.
+  - *Glass-Box Modals*: Tapping highlighted metrics (e.g., 156 SPM) opens native bottom sheets revealing the exact Swift math behind the recommendation.
+  - *Subconscious Data Binding*: Universally consistent Apple-native color tokens:
+    - **Neon Pink** for Heart Rate
+    - **Electric Blue** for Pace
+    - **Vibrant Green** for Cadence
+  - *Situational Accessibility (A11y)*: 44x44pt minimum hit targets for shaking hands, `SF Pro Rounded` paired with strictly `.monospacedDigit()` to eliminate horizontal jitter, `UIImpactFeedbackGenerator` tactile scrub ticks, and combined semantic VoiceOver labels.
+
 ## 1. SwiftData & Concurrency Architecture
 
 - **Thread Safety with ModelContext**: SwiftData `PersistentModel` and `ModelContext` are not `Sendable` and cannot be safely accessed across `await` boundaries within unstructured or detached tasks. To perform async operations (like LLM generation), extract necessary properties into a `Sendable` struct beforehand, await the operation, and then apply updates back on the `MainActor` or within a dedicated `@ModelActor`.
@@ -24,7 +43,11 @@ This `AGENTS.md` file acts as the primary repository of architectural context, t
 - **System Prompt & Tone**:
   - The system prompt enforces a conversational tone via the consolidated rule `conversational, motivational tone; speak directly to the runner`.
   - For AI prompt language localization, append instructions directly to the system prompt commanding the LLM to output in the user's active device language (e.g., `Respond entirely in \(Locale.current.language.languageCode)`).
-  - **Prompt Density**: Keep system prompts to ~10 rules max for on-device models. Consolidate redundant rules (e.g., merge tone + person rules). Fewer rules = higher adherence on small models.
+- **The Core Triad: Math, Physics, and Language**:
+  - **The Math (Swift)**: Deterministic, local computation of rolling window baselines, metric deltas, interval segmentation, cadence floors, pace variances, and recovery heart rate drops. Swift does the math so the AI never hallucinates numbers.
+  - **The Physics (Swift)**: Physiological and mechanical realities modeled directly in code—gravitational resistance on outdoor hill climbs, kinetic friction vs. moving treadmill belts (braking shock when cadence falls below floor), thermodynamics and lack of convective wind cooling indoors creating thermal accumulation, and cardiac lag.
+  - **The Language (The AI)**: Left entirely to FoundationModels. Swift feeds structured mathematical facts and physical findings into the prompt and tools; Swift must never generate canned coaching prose, narrative boilerplate paragraphs, or simulated conversational scripts.
+  - **Native Tool Calling Across the Board**: We use Apple FoundationModels Native Tool Calling (`@Generable` queries and `Tool` protocol conformances) across the board to give the LLM on-demand access to the math and the physics. The model is initialized with lean instructions and calls native tools (`fetchWorkoutAnalysis`, `fetchIntervalPerformance`, `fetchWorkoutPhysics`, `fetchReadinessAndPrescription`, `fetchAthleteProfile`) to fetch precise telemetry and physical findings rather than bloating upfront prompt contexts with raw dumps.
 - **Deterministic Math & Directives**:
   - AI AI coaching prioritizes actionable form metrics like cadence. Vertical Oscillation is mathematically linked to cadence. A high vertical oscillation (> 10 cm) indicates bounding/overstriding, prompting cadence relationship analysis and drills like 'Cadence Pyramids'.
   - Mathematical computations for baseline statistics, metric deltas, and drill targets must be completely deterministic and computed locally in Swift to prevent LLM math hallucinations. Inject explicit contextual English strings (e.g., '150 SPM (BELOW the 150 SPM floor)') instead of raw numbers.
@@ -59,7 +82,7 @@ This `AGENTS.md` file acts as the primary repository of architectural context, t
   - *Micro Scope (`RunDetailView`)*: Pull-to-refresh invokes `HealthKitManager.shared.refreshWorkoutMetrics(for:in:)` to re-query the authentic `HKWorkout`, re-extract metrics via `extractRunRecord()`, and mutate SwiftData in-place while strictly preserving user `TrainingCorrection` manual overrides and `"userLinkedDrill"` / `"userUnlinkedDrill"` tags. Ad-hoc repair loops scanning historical runs in view `.task` modifiers are strictly forbidden.
 - **Indoor Running & Treadmill Heuristics**: Treadmill runs (`isIndoor == true`) rely on wrist-based arm swing heuristics unless paired with GymKit ground-truth or an authentic footpod. Apply median pace filtering and 25% outlier clamping to damp erratic arm motion. Detect post-workout distance calibration mutations (> 5m) during HealthKit sync and reconcile SwiftData in-place via `refreshWorkoutMetrics()`. For indoor runs without footpods, omit vertical oscillation and stride length cards in `metricsGrid` rather than displaying empty dashes.
 - **Incline Inference & Mixed Effort Review**: Treadmills lack incline telemetry in HealthKit. When cardiovascular strain spikes while pace is flat and cadence drops, Swift deterministically flags `needsInclineReview` and prompts the runner ("Were you running incline intervals?"). If CoreML model confidence is below 75%, it assigns `"Mixed Effort (Review)"` with quick-select options.
-- **Interactive RAG AI Analyst**: FoundationModels chat utilizes precomputed `MacroProfile` (ACWR, acute/chronic load) and `RunSignature` (phase segmentation, cadence floor) injected as compact `key: value` lines (not JSON) to conserve TN3193 tokens. The chat strictly obeys Medical (PT referral), Hardware (indoor GPS explanation), and Subjective (biomechanics over gear) boundaries, rendering numbers in bold accent styling.
+- **Interactive RAG AI Analyst & Native Tool Calling**: FoundationModels chat uses native tool calling across the board to give the LLM on-demand access to deterministic math and physics (`fetchWorkoutAnalysis`, `fetchIntervalPerformance`, `fetchWorkoutPhysics`, `fetchReadinessAndPrescription`, `fetchAthleteProfile`). The chat strictly obeys Medical (PT referral), Hardware (indoor GPS explanation), and Subjective (biomechanics over gear) boundaries, rendering numbers in bold accent styling.
 
 ## 4. SwiftUI Presentation & Layout
 
@@ -73,6 +96,7 @@ This `AGENTS.md` file acts as the primary repository of architectural context, t
   - For responsive grids, use `GridItem(.adaptive(minimum: 140), spacing: 16)`.
   - To prevent SwiftUI `ScrollView` content from bleeding under custom top navigation bars with transparent backgrounds, apply `.background(.regularMaterial.ignoresSafeArea(edges: .top))` to the header stack.
   - Use `.safeAreaInset(edge: .bottom, spacing: 80)` instead of `.overlay()` for floating persistent UI elements over a `ScrollView`.
+  - **iPad vs. iPhone Proportionality (`horizontalSizeClass`)**: Never stretch single-column phone layouts across wide tablet displays. In `RunDetailView`, leverage `renderDualCardLayout` on `.regular` size classes to place diagnostic scorecards (`IntervalPerformanceCard`, `DrillExecutionScorecard`) side-by-side with conversational AI Coaching (`aiRunAnalysisCard`) in an `HStack`. For metric grids, adapt dynamically from 2 columns on iPhone to 4 columns on iPad (`LazyVGrid`). In `IntervalPerformanceCard`, adapt expanded sets into a balanced 2-column grid (`LazyVGrid`) on `.regular` size classes.
 - **UI Element Specs**:
   - Use tap-to-alert pattern involving `.contentShape(Rectangle())`, `.onTapGesture { showingInfo = true }`, and `.alert` modifier for metric definitions. Do not trigger explainer popups automatically on picker/segmented control changes — only show them when the user explicitly taps the info (ⓘ) icon.
   - Dashboard cards display 30-Day Average SPM and Average Pace rather than static VO2 Max.

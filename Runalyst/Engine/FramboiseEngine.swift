@@ -1,62 +1,6 @@
 import Foundation
 import HealthKit
 
-/// Represents a single slice of a run for analysis (nominally 60s, but can be 30s or variable).
-struct BucketData: Sendable {
-    let startTime: Date
-    let distanceMeters: Double
-    let durationSeconds: Double
-    let meanPaceSecPerKm: Double
-    let meanCadence: Double
-    let meanHR: Double
-    let meanVerticalOscillation: Double
-    let meanStrideLength: Double
-    let elevationGainMeters: Double
-
-    init(
-        startTime: Date,
-        distanceMeters: Double,
-        durationSeconds: Double = 60.0,
-        meanPaceSecPerKm: Double,
-        meanCadence: Double,
-        meanHR: Double,
-        meanVerticalOscillation: Double = 0.0,
-        meanStrideLength: Double = 0.0,
-        elevationGainMeters: Double = 0.0
-    ) {
-        self.startTime = startTime
-        self.distanceMeters = distanceMeters
-        self.durationSeconds = durationSeconds
-        self.meanPaceSecPerKm = meanPaceSecPerKm
-        self.meanCadence = meanCadence
-        self.meanHR = meanHR
-        self.meanVerticalOscillation = meanVerticalOscillation
-        self.meanStrideLength = meanStrideLength
-        self.elevationGainMeters = elevationGainMeters
-    }
-}
-
-/// Represents a detected work (surge) and recovery oscillation pair.
-struct SurgeRecoveryCycle: Sendable {
-    let workDuration: Double
-    let recoveryDuration: Double
-    let workCadence: Double
-    let recoveryCadence: Double
-    let workPace: Double
-    let recoveryPace: Double
-    let workHR: Double
-    let recoveryHR: Double
-    let isCorroborated: Bool
-}
-
-/// Structural topological analysis result for run classification.
-struct TopologicalSignature: Sendable {
-    let validCycles: [SurgeRecoveryCycle]
-    let regularityScore: Double
-    var validCycleCount: Int { validCycles.count }
-    var isIntermittent: Bool { validCycleCount >= 3 }
-}
-
 /// The deterministic math engine for Runalyst V2.
 /// Responsible for transforming raw HealthKit continuous streams into structured,
 /// noise-filtered metrics (working averages, CV, linear regression, and rule-based classification).
@@ -307,93 +251,168 @@ actor FramboiseEngine {
         return smoothedBuckets
     }
 
-    /// Segments continuous buckets into Work, Recovery, Steady, or Walking windows for the Variance Map.
+    /// Segments continuous buckets into Work, Recovery, Steady, or Walking windows for the Variance Map and Interval Card.
     func generatePhaseSegments(from buckets: [BucketData], cadenceFloor: Double = 150.0) -> [PhaseSegment] {
         guard !buckets.isEmpty else { return [] }
 
-        // Find baseline pace and cadence medians
-        let movingBuckets = buckets.filter { $0.meanCadence >= 120 }
-        let medianCadence: Double
-        let medianPace: Double
-        if !movingBuckets.isEmpty {
-            let sortedCad = movingBuckets.map(\.meanCadence).sorted()
-            let sortedPace = movingBuckets.map(\.meanPaceSecPerKm).filter { $0 > 0 }.sorted()
-            medianCadence = sortedCad[sortedCad.count / 2]
-            medianPace = sortedPace.isEmpty ? 300 : sortedPace[sortedPace.count / 2]
-        } else {
-            medianCadence = 160
-            medianPace = 300
-        }
+        let moving = buckets.filter { $0.meanCadence >= 120 }
+        let medCad = moving.isEmpty ? 160.0 : moving.map(\.meanCadence).sorted()[moving.count / 2]
+        let validPaces = moving.map(\.meanPaceSecPerKm).filter { $0 > 0 }.sorted()
+        let medPace = validPaces.isEmpty ? 300.0 : validPaces[validPaces.count / 2]
+        let validHRs = moving.map(\.meanHR).filter { $0 > 0 }.sorted()
+        let medHR = validHRs.isEmpty ? 150.0 : validHRs[validHRs.count / 2]
 
-        var segments: [PhaseSegment] = []
-        var currentKind = ""
+        let p20 = validPaces.isEmpty ? medPace : validPaces[validPaces.count / 5]
+        let hasLargePaceRange = (medPace - p20) >= 35.0
+        let surgePaceThreshold = hasLargePaceRange ? min(medPace - 35.0, p20 + 35.0) : (medPace - 20.0)
+        let surgeCadenceThreshold = hasLargePaceRange ? (medCad + 4.0) : (medCad + 2.0)
+
+        var raw: [PhaseSegment] = []
+        var curKind = ""
         var segStart: Double = 0
-        var segPaces: [Double] = []
-        var segCads: [Double] = []
-        var segHRs: [Double] = []
+        var pSum = 0.0, cSum = 0.0, hrSum = 0.0, count = 0.0, elapsed = 0.0
 
-        var elapsedSeconds: Double = 0
+        for b in buckets {
+            // Incline/Hill push on treadmill: pace remains near base pace, but cardiac strain spikes into Zone 4/5
+            let isCardioInclineSurge = b.meanHR >= max(155.0, medHR + 5.0)
+                && b.meanCadence >= cadenceFloor
+                && b.meanPaceSecPerKm > 0
+                && b.meanPaceSecPerKm <= medPace + 15.0
 
-        for bucket in buckets {
-            let kind: String
-            if bucket.meanCadence < cadenceFloor && bucket.meanCadence < 135 {
-                kind = "walking"
-            } else if bucket.meanCadence > medianCadence + 4 || (bucket.meanPaceSecPerKm > 0 && bucket.meanPaceSecPerKm < medianPace - 15) {
-                kind = "work"
-            } else if bucket.meanCadence < medianCadence - 4 || (bucket.meanPaceSecPerKm > 0 && bucket.meanPaceSecPerKm > medianPace + 20) {
-                kind = "recovery"
-            } else {
-                kind = "steady"
-            }
+            let isSurge = (b.meanPaceSecPerKm > 0 && b.meanPaceSecPerKm <= surgePaceThreshold && b.meanCadence >= medCad)
+                || (b.meanPaceSecPerKm > 0 && b.meanPaceSecPerKm <= p20 + 15.0)
+                || (b.meanCadence >= surgeCadenceThreshold && b.meanPaceSecPerKm > 0 && b.meanPaceSecPerKm <= medPace - 15.0)
+                || isCardioInclineSurge
 
-            if currentKind.isEmpty {
-                currentKind = kind
-                segStart = elapsedSeconds
-            } else if currentKind != kind && (elapsedSeconds - segStart) >= 30 {
-                // Finalize segment
-                let avgPace = segPaces.isEmpty ? 0 : segPaces.reduce(0, +) / Double(segPaces.count)
-                let avgCad = segCads.isEmpty ? 0 : segCads.reduce(0, +) / Double(segCads.count)
-                let avgHR = segHRs.isEmpty ? 0 : segHRs.reduce(0, +) / Double(segHRs.count)
+            let isRec = b.meanPaceSecPerKm >= medPace + 20.0 || (b.meanCadence < medCad - 5.0 && b.meanCadence < cadenceFloor)
 
-                segments.append(PhaseSegment(
+            let kind = (b.meanCadence < cadenceFloor && b.meanCadence < 135.0) ? "walking" : (isSurge ? "work" : (isRec ? "recovery" : "steady"))
+
+            if curKind.isEmpty {
+                curKind = kind
+                segStart = elapsed
+            } else if curKind != kind {
+                raw.append(PhaseSegment(
                     startSeconds: segStart,
-                    endSeconds: elapsedSeconds,
-                    kind: currentKind,
-                    avgPace: avgPace,
-                    avgCadence: avgCad,
-                    avgHR: avgHR
+                    endSeconds: elapsed,
+                    kind: curKind,
+                    avgPace: count > 0 ? pSum / count : 0,
+                    avgCadence: count > 0 ? cSum / count : 0,
+                    avgHR: count > 0 ? hrSum / count : 0
                 ))
-
-                currentKind = kind
-                segStart = elapsedSeconds
-                segPaces = []
-                segCads = []
-                segHRs = []
+                curKind = kind
+                segStart = elapsed
+                pSum = 0; cSum = 0; hrSum = 0; count = 0
             }
 
-            segPaces.append(bucket.meanPaceSecPerKm)
-            segCads.append(bucket.meanCadence)
-            if bucket.meanHR > 0 { segHRs.append(bucket.meanHR) }
-
-            elapsedSeconds += bucket.durationSeconds
+            pSum += b.meanPaceSecPerKm
+            cSum += b.meanCadence
+            if b.meanHR > 0 { hrSum += b.meanHR }
+            count += 1.0
+            elapsed += b.durationSeconds
         }
 
-        if !currentKind.isEmpty && elapsedSeconds > segStart {
-            let avgPace = segPaces.isEmpty ? 0 : segPaces.reduce(0, +) / Double(segPaces.count)
-            let avgCad = segCads.isEmpty ? 0 : segCads.reduce(0, +) / Double(segCads.count)
-            let avgHR = segHRs.isEmpty ? 0 : segHRs.reduce(0, +) / Double(segHRs.count)
-
-            segments.append(PhaseSegment(
+        if !curKind.isEmpty && elapsed > segStart {
+            raw.append(PhaseSegment(
                 startSeconds: segStart,
-                endSeconds: elapsedSeconds,
-                kind: currentKind,
-                avgPace: avgPace,
-                avgCadence: avgCad,
-                avgHR: avgHR
+                endSeconds: elapsed,
+                kind: curKind,
+                avgPace: count > 0 ? pSum / count : 0,
+                avgCadence: count > 0 ? cSum / count : 0,
+                avgHR: count > 0 ? hrSum / count : 0
             ))
         }
 
-        return segments
+        return Self.consolidatePhaseSegments(raw)
+    }
+
+    /// Merges fragmented work segments separated by brief dips and filters out stray warmup/cooldown surges.
+    static func consolidatePhaseSegments(_ segments: [PhaseSegment]) -> [PhaseSegment] {
+        guard !segments.isEmpty else { return [] }
+
+        // Step 1: Gap bridging: merge work segments separated by brief momentary flutter (<= 15s any or <= 20s high-cadence steady)
+        var bridged: [PhaseSegment] = []
+        for seg in segments {
+            if let last = bridged.last, last.kind == "work" && seg.kind == "work" {
+                bridged[bridged.count - 1] = mergeSegments(last, seg)
+            } else if bridged.count >= 2,
+                      seg.kind == "work",
+                      let gap = bridged.last,
+                      gap.kind != "work",
+                      gap.durationSeconds <= 15.0 || (gap.kind == "steady" && gap.durationSeconds <= 20.0 && gap.avgCadence >= 158.0),
+                      bridged[bridged.count - 2].kind == "work" {
+                _ = bridged.removeLast()
+                let prev = bridged.removeLast()
+                bridged.append(mergeSegments(prev, seg))
+            } else {
+                bridged.append(seg)
+            }
+        }
+
+        // Step 2: Outlier rejection: remove stray pickups vastly slower than true work reps
+        let workPaces = bridged.filter { $0.kind == "work" && $0.avgPace > 0 }.map(\.avgPace).sorted()
+        var filtered = bridged
+        if workPaces.count >= 4 {
+            let medWork = workPaces[workPaces.count / 2]
+            filtered = bridged.map { seg in
+                if seg.kind == "work" && ((seg.avgPace > medWork + 55.0 && seg.avgCadence < 160.0) || seg.durationSeconds < 14.0) {
+                    return PhaseSegment(startSeconds: seg.startSeconds, endSeconds: seg.endSeconds, kind: "steady", avgPace: seg.avgPace, avgCadence: seg.avgCadence, avgHR: seg.avgHR)
+                }
+                return seg
+            }
+        }
+
+        // Step 3: Isolated Warmup / Cooldown Strides (separated by >= 240s-300s from clustered work set)
+        let workIdxs = filtered.enumerated().filter { $0.element.kind == "work" }.map(\.offset)
+        if workIdxs.count >= 4 {
+            let workDurs = workIdxs.map { filtered[$0].durationSeconds }
+            let medWorkDur = workDurs.sorted()[workDurs.count / 2]
+
+            // Check warmup stride: must be separated by >= 240s steady gap AND be significantly shorter than set reps
+            let firstWork = workIdxs[0], secondWork = workIdxs[1]
+            let gapBeforeSet = filtered[secondWork].startSeconds - filtered[firstWork].endSeconds
+            var gaps: [Double] = []
+            for i in 1..<(workIdxs.count - 1) {
+                gaps.append(filtered[workIdxs[i + 1]].startSeconds - filtered[workIdxs[i]].endSeconds)
+            }
+            let medGap = gaps.isEmpty ? 90.0 : gaps.sorted()[gaps.count / 2]
+            if gapBeforeSet >= 240.0 && medGap <= 150.0 && filtered[firstWork].durationSeconds <= medWorkDur * 0.65 {
+                let w = filtered[firstWork]
+                filtered[firstWork] = PhaseSegment(startSeconds: w.startSeconds, endSeconds: w.endSeconds, kind: "steady", avgPace: w.avgPace, avgCadence: w.avgCadence, avgHR: w.avgHR)
+            }
+            // Check cooldown surge: must be separated by >= 300s steady gap AND be significantly shorter than set reps
+            let lastWork = workIdxs[workIdxs.count - 1], penWork = workIdxs[workIdxs.count - 2]
+            let gapAfterSet = filtered[lastWork].startSeconds - filtered[penWork].endSeconds
+            if gapAfterSet >= 300.0 && medGap <= 150.0 && filtered[lastWork].durationSeconds <= medWorkDur * 0.65 {
+                let w = filtered[lastWork]
+                filtered[lastWork] = PhaseSegment(startSeconds: w.startSeconds, endSeconds: w.endSeconds, kind: "steady", avgPace: w.avgPace, avgCadence: w.avgCadence, avgHR: w.avgHR)
+            }
+        }
+
+        // Step 4: Coalesce adjacent identical kinds
+        var finalSegments: [PhaseSegment] = []
+        for seg in filtered {
+            if let last = finalSegments.last, last.kind == seg.kind {
+                finalSegments[finalSegments.count - 1] = mergeSegments(last, seg)
+            } else {
+                finalSegments.append(seg)
+            }
+        }
+        return finalSegments
+    }
+
+    static func mergeSegments(_ a: PhaseSegment, _ b: PhaseSegment) -> PhaseSegment {
+        let durA = a.durationSeconds
+        let durB = b.durationSeconds
+        let activeDur = durA + durB
+        return PhaseSegment(
+            startSeconds: a.startSeconds,
+            endSeconds: b.endSeconds,
+            kind: a.kind,
+            avgPace: activeDur > 0 ? (a.avgPace * durA + b.avgPace * durB) / activeDur : a.avgPace,
+            avgCadence: activeDur > 0 ? (a.avgCadence * durA + b.avgCadence * durB) / activeDur : a.avgCadence,
+            avgHR: activeDur > 0 ? (a.avgHR * durA + b.avgHR * durB) / activeDur : a.avgHR
+        )
     }
 
     /// Calculates the fraction of time spent in Zone 4 (or higher).
@@ -774,17 +793,7 @@ actor FramboiseEngine {
             }
 
             let recoveryFloor = calculateRecoveryCadenceFloor(buckets: buckets, cycles: cycles)
-            if recoveryFloor < 120.0 {
-                return "Intervals"
-            } else if recoveryFloor >= 135.0 {
-                if regularityScore >= 0.65 {
-                    return "Intervals"
-                } else {
-                    return "Fartlek"
-                }
-            } else {
-                return regularityScore >= 0.65 ? "Intervals" : "Fartlek"
-            }
+            return (recoveryFloor < 120.0 || regularityScore >= 0.65) ? "Intervals" : "Fartlek"
         }
 
         // LAYER 4: Continuous Structural Archetypes (Volume & Fatigue)
@@ -793,50 +802,31 @@ actor FramboiseEngine {
         }
 
         // LAYER 5: Continuous Intensity Matrix (Zone 4 + HR Strain + Pace Delta)
-        // Calculate normalized Intensity Score (0 to 100)
         let z4Score = min(100.0, zone4 * 125.0)
 
-        let hrScore: Double
-        if let hr = averageHR {
-            if hr >= 170 {
-                hrScore = min(100.0, 85.0 + (hr - 170.0) * 1.5)
-            } else if hr >= 160 {
-                hrScore = 70.0 + (hr - 160.0) * 1.5
-            } else if hr >= 145 {
-                hrScore = 45.0 + (hr - 145.0) * 1.6
-            } else if hr >= 130 {
-                hrScore = 25.0 + (hr - 130.0) * 1.3
-            } else {
-                hrScore = max(10.0, hr - 110.0)
+        let hrScore: Double = {
+            if let hr = averageHR {
+                if hr >= 170 { return min(100.0, 85.0 + (hr - 170.0) * 1.5) }
+                if hr >= 160 { return 70.0 + (hr - 160.0) * 1.5 }
+                if hr >= 145 { return 45.0 + (hr - 145.0) * 1.6 }
+                if hr >= 130 { return 25.0 + (hr - 130.0) * 1.3 }
+                return max(10.0, hr - 110.0)
+            } else if let delta = hrDelta {
+                if delta >= 15 { return min(100.0, 85.0 + (delta - 15.0) * 1.5) }
+                if delta >= 5 { return 65.0 + (delta - 5.0) * 2.0 }
+                if delta >= -5 { return 45.0 + (delta + 5.0) * 2.0 }
+                return max(10.0, 30.0 + delta)
             }
-        } else if let delta = hrDelta {
-            if delta >= 15 {
-                hrScore = min(100.0, 85.0 + (delta - 15.0) * 1.5)
-            } else if delta >= 5 {
-                hrScore = 65.0 + (delta - 5.0) * 2.0
-            } else if delta >= -5 {
-                hrScore = 45.0 + (delta + 5.0) * 2.0
-            } else {
-                hrScore = max(10.0, 30.0 + delta)
-            }
-        } else {
-            hrScore = z4Score
-        }
+            return z4Score
+        }()
 
-        let paceScore: Double
-        if let pDelta = paceDelta {
-            if pDelta <= -30 {
-                paceScore = 90.0
-            } else if pDelta <= -10 {
-                paceScore = 70.0
-            } else if pDelta <= 10 {
-                paceScore = 50.0
-            } else {
-                paceScore = max(15.0, 30.0 - (pDelta - 10.0))
-            }
-        } else {
-            paceScore = hrScore
-        }
+        let paceScore: Double = {
+            guard let pDelta = paceDelta else { return hrScore }
+            if pDelta <= -30 { return 90.0 }
+            if pDelta <= -10 { return 70.0 }
+            if pDelta <= 10 { return 50.0 }
+            return max(15.0, 30.0 - (pDelta - 10.0))
+        }()
 
         // Weighted combination: 45% Zone 4, 35% HR Strain, 20% Pace Effort
         let totalIntensity = (0.45 * z4Score) + (0.35 * hrScore) + (0.20 * paceScore)
@@ -925,93 +915,12 @@ actor FramboiseEngine {
         var splits: [RunSplit] = []
         var currentSplitIndex = 1
 
-        var accumulatedDistance: Double = 0.0
-        var accumulatedDuration: Double = 0.0
-        var accumulatedWeightedHR: Double = 0.0
-        var accumulatedWeightedCadence: Double = 0.0
-        var accumulatedElevation: Double = 0.0
+        var accumulatedDistance = 0.0, accumulatedDuration = 0.0
+        var accumulatedWeightedHR = 0.0, accumulatedWeightedCadence = 0.0, accumulatedElevation = 0.0
 
-        for bucket in buckets {
-            var bucketDistance = bucket.distanceMeters
-            var bucketDuration = bucket.durationSeconds
-            guard bucketDistance > 0 || bucketDuration > 0 else { continue }
-
-            let bucketHR = bucket.meanHR
-            let bucketCadence = bucket.meanCadence
-            var bucketElevation = bucket.elevationGainMeters
-
-            while bucketDistance > 0 {
-                let distanceNeeded = splitDistanceMeters - accumulatedDistance
-
-                if bucketDistance <= distanceNeeded {
-                    accumulatedDistance += bucketDistance
-                    accumulatedDuration += bucketDuration
-                    accumulatedWeightedHR += bucketHR * bucketDuration
-                    accumulatedWeightedCadence += bucketCadence * bucketDuration
-                    accumulatedElevation += bucketElevation
-
-                    if accumulatedDistance >= splitDistanceMeters {
-                        let pace = accumulatedDistance > 0 ? (accumulatedDuration / (accumulatedDistance / 1000.0)) : 0.0
-                        let hr = accumulatedDuration > 0 ? (accumulatedWeightedHR / accumulatedDuration) : 0.0
-                        let cad = accumulatedDuration > 0 ? (accumulatedWeightedCadence / accumulatedDuration) : 0.0
-                        splits.append(RunSplit(
-                            index: currentSplitIndex,
-                            distanceMeters: accumulatedDistance,
-                            durationSeconds: accumulatedDuration,
-                            paceSecondsPerKm: pace,
-                            avgHeartRate: hr,
-                            avgCadence: cad,
-                            elevationGainMeters: accumulatedElevation
-                        ))
-                        currentSplitIndex += 1
-                        accumulatedDistance = 0.0
-                        accumulatedDuration = 0.0
-                        accumulatedWeightedHR = 0.0
-                        accumulatedWeightedCadence = 0.0
-                        accumulatedElevation = 0.0
-                    }
-                    break
-                } else {
-                    let fraction = distanceNeeded / bucketDistance
-                    let splitDurationPart = bucketDuration * fraction
-                    let splitElevationPart = bucketElevation * fraction
-
-                    accumulatedDistance += distanceNeeded
-                    accumulatedDuration += splitDurationPart
-                    accumulatedWeightedHR += bucketHR * splitDurationPart
-                    accumulatedWeightedCadence += bucketCadence * splitDurationPart
-                    accumulatedElevation += splitElevationPart
-
-                    let pace = accumulatedDistance > 0 ? (accumulatedDuration / (accumulatedDistance / 1000.0)) : 0.0
-                    let hr = accumulatedDuration > 0 ? (accumulatedWeightedHR / accumulatedDuration) : 0.0
-                    let cad = accumulatedDuration > 0 ? (accumulatedWeightedCadence / accumulatedDuration) : 0.0
-
-                    splits.append(RunSplit(
-                        index: currentSplitIndex,
-                        distanceMeters: accumulatedDistance,
-                        durationSeconds: accumulatedDuration,
-                        paceSecondsPerKm: pace,
-                        avgHeartRate: hr,
-                        avgCadence: cad,
-                        elevationGainMeters: accumulatedElevation
-                    ))
-                    currentSplitIndex += 1
-
-                    bucketDistance -= distanceNeeded
-                    bucketDuration -= splitDurationPart
-                    bucketElevation -= splitElevationPart
-
-                    accumulatedDistance = 0.0
-                    accumulatedDuration = 0.0
-                    accumulatedWeightedHR = 0.0
-                    accumulatedWeightedCadence = 0.0
-                    accumulatedElevation = 0.0
-                }
-            }
-        }
-
-        if accumulatedDistance >= 100.0 {
-            let pace = accumulatedDistance > 0 ? (accumulatedDuration / (accumulatedDistance / 1000.0)) : 0.0
+        func flushSplit() {
+            guard accumulatedDistance > 0 else { return }
+            let pace = accumulatedDuration / (accumulatedDistance / 1000.0)
             let hr = accumulatedDuration > 0 ? (accumulatedWeightedHR / accumulatedDuration) : 0.0
             let cad = accumulatedDuration > 0 ? (accumulatedWeightedCadence / accumulatedDuration) : 0.0
             splits.append(RunSplit(
@@ -1023,8 +932,48 @@ actor FramboiseEngine {
                 avgCadence: cad,
                 elevationGainMeters: accumulatedElevation
             ))
+            currentSplitIndex += 1
+            accumulatedDistance = 0; accumulatedDuration = 0
+            accumulatedWeightedHR = 0; accumulatedWeightedCadence = 0; accumulatedElevation = 0
         }
 
+        for bucket in buckets {
+            var bucketDistance = bucket.distanceMeters
+            var bucketDuration = bucket.durationSeconds
+            guard bucketDistance > 0 || bucketDuration > 0 else { continue }
+            let bucketHR = bucket.meanHR, bucketCadence = bucket.meanCadence
+            var bucketElevation = bucket.elevationGainMeters
+
+            while bucketDistance > 0 {
+                let distanceNeeded = splitDistanceMeters - accumulatedDistance
+                if bucketDistance <= distanceNeeded {
+                    accumulatedDistance += bucketDistance
+                    accumulatedDuration += bucketDuration
+                    accumulatedWeightedHR += bucketHR * bucketDuration
+                    accumulatedWeightedCadence += bucketCadence * bucketDuration
+                    accumulatedElevation += bucketElevation
+                    if accumulatedDistance >= splitDistanceMeters { flushSplit() }
+                    break
+                } else {
+                    let fraction = distanceNeeded / bucketDistance
+                    let splitDurationPart = bucketDuration * fraction
+                    let splitElevationPart = bucketElevation * fraction
+
+                    accumulatedDistance += distanceNeeded
+                    accumulatedDuration += splitDurationPart
+                    accumulatedWeightedHR += bucketHR * splitDurationPart
+                    accumulatedWeightedCadence += bucketCadence * splitDurationPart
+                    accumulatedElevation += splitElevationPart
+                    flushSplit()
+
+                    bucketDistance -= distanceNeeded
+                    bucketDuration -= splitDurationPart
+                    bucketElevation -= splitElevationPart
+                }
+            }
+        }
+
+        if accumulatedDistance >= 100.0 { flushSplit() }
         return splits
     }
 }

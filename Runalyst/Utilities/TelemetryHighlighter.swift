@@ -10,14 +10,21 @@ enum TelemetryHighlighter {
         var attributed = (try? AttributedString(markdown: preprocessed, options: options)) ?? AttributedString(text)
 
         let plainText = String(attributed.characters)
-        let patterns = [
-            #"\b\d{2,3}\s?(?:SPM|spm)\b"#,
-            #"\b\d{2,3}\s?(?:BPM|bpm)\b"#,
-            #"\b\d{1,2}:\d{2}(?:\s?(?:/km|/mi|min/km|min/mi))?\b"#,
-            #"\b\d+(?:\.\d+)?\s?(?:cm|m|km|mi|ms|%)\b"#
+
+        // Subconscious Data Binding: Universally consistent Apple-native color tokens
+        let hrPink = Color(red: 1.0, green: 0.18, blue: 0.55)      // Neon Pink for Heart Rate
+        let paceBlue = Color(red: 0.0, green: 0.55, blue: 1.0)     // Electric Blue for Pace
+        let cadGreen = Color(red: 0.18, green: 0.82, blue: 0.35)   // Vibrant Green for Cadence
+
+        let typedPatterns: [(pattern: String, color: Color)] = [
+            (#"\b\d{2,3}\s?(?:SPM|spm)\b"#, cadGreen),
+            (#"\b\d{2,3}\s?(?:BPM|bpm)\b"#, hrPink),
+            (#"\b\d{1,2}:\d{2}(?:\s?(?:/km|/mi|min/km|min/mi))?\b"#, paceBlue),
+            (#"\b\d{1,2}(?:s|sec)\s*/\s*(?:km|mi)\b"#, paceBlue),
+            (#"\b\d+(?:\.\d+)?\s?(?:cm|m|km|mi|ms|%)\b"#, accentColor)
         ]
 
-        for pattern in patterns {
+        for (pattern, color) in typedPatterns {
             guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else { continue }
             let nsString = plainText as NSString
             let matches = regex.matches(in: plainText, options: [], range: NSRange(location: 0, length: nsString.length))
@@ -25,8 +32,8 @@ enum TelemetryHighlighter {
             for match in matches {
                 if let stringRange = Range(match.range, in: plainText),
                    let attrRange = Range(stringRange, in: attributed) {
-                    attributed[attrRange].font = .system(size: 15, weight: .bold, design: .rounded)
-                    attributed[attrRange].foregroundColor = accentColor
+                    attributed[attrRange].font = .system(size: 15, weight: .bold, design: .rounded).monospacedDigit()
+                    attributed[attrRange].foregroundColor = color
                 }
             }
         }

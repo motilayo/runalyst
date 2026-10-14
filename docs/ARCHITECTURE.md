@@ -2,6 +2,8 @@
 
 Runalyst V2 is built around a unidirectional data flow: fetching from Apple Health, mathematically normalizing the data, running it through CoreML classifiers, and feeding the structured output into Apple FoundationModels for natural language coaching.
 
+For the overarching product manifesto and User-Centered Design philosophy, see [The Runalyst Product & Architecture Blueprint](BLUEPRINT.md).
+
 ## High-Level Data Flow
 
 The following Mermaid diagram illustrates the lifecycle of a `RunRecord` from extraction to UI presentation.

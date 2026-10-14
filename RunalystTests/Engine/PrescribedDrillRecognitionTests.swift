@@ -1299,4 +1299,53 @@ final class PrescribedDrillRecognitionTests: XCTestCase {
         XCTAssertFalse(initialRecord.framboiseTags.contains("drill:Rhythm Intervals"))
         XCTAssertFalse(WorkoutBridge.recentIntents().contains { $0.matchedWorkoutID == workoutID })
     }
+
+    func testDrillIntervalEvaluator_NineIntervalsOnEightIterationPreset_PreservesAllNineReps() {
+        var segments: [DrillIntervalEvaluator.DrillSegment] = []
+
+        // Warmup: 240s at 150 SPM
+        segments.append(DrillIntervalEvaluator.DrillSegment(
+            avgCadence: 150.0,
+            avgHR: 135.0,
+            duration: 240.0,
+            isWorkHint: nil
+        ))
+
+        // 8 pairs of Work (30s at 182 SPM) + Recovery (90s at 135 SPM)
+        for _ in 1...8 {
+            segments.append(DrillIntervalEvaluator.DrillSegment(
+                avgCadence: 182.0,
+                avgHR: 172.0,
+                duration: 30.0,
+                isWorkHint: nil
+            ))
+            segments.append(DrillIntervalEvaluator.DrillSegment(
+                avgCadence: 135.0,
+                avgHR: 140.0,
+                duration: 90.0,
+                isWorkHint: nil
+            ))
+        }
+
+        // Final 9th work interval (30s at 184 SPM, workout ends on work rep)
+        segments.append(DrillIntervalEvaluator.DrillSegment(
+            avgCadence: 184.0,
+            avgHR: 175.0,
+            duration: 30.0,
+            isWorkHint: nil
+        ))
+
+        let context = DrillIntervalEvaluator.Context(
+            drillId: .strides,
+            effectiveRange: 178...195,
+            baselineCadence: 160,
+            durationCategory: .thirtyMinutes // Preset has 8 iterations
+        )
+
+        let summary = DrillIntervalEvaluator.evaluateSegments(segments, context: context)
+        XCTAssertNotNil(summary, "Must evaluate interval summary")
+        XCTAssertEqual(summary?.totalIntervals, 9, "Must evaluate all 9 intervals, not cap or prune to 8")
+        XCTAssertEqual(summary?.reps.count, 9, "Reps array must contain exactly 9 intervals")
+        XCTAssertEqual(summary?.intervalsMet, 9, "All 9 intervals met stride cadence target")
+    }
 }

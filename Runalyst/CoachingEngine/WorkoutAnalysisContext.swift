@@ -1,6 +1,34 @@
 import Foundation
 import SwiftData
 
+/// The authentic evaluation modality dictated by the workout's classification.
+enum WorkoutEvaluationModality: String, Sendable, Equatable {
+    case intervals      // Intervals, Pyramids, Fartlek, Hill Repeats
+    case aerobicBase    // Easy Run, Recovery Run (Zone 2)
+    case progression    // Progression Run
+    case steadySplits   // Steady Effort, Tempo Run, Long Run
+}
+
+/// Structured dynamic evaluation for an individual interval rep and its recovery cycle.
+struct IntervalRepEvaluation: Sendable, Equatable, Identifiable {
+    var id: Int { repIndex }
+    let repIndex: Int
+    let workPaceSecondsPerKm: Double
+    let workPaceFormatted: String
+    let workCadence: Int
+    let workHeartRate: Int
+    let durationSeconds: Double
+    let recoveryPaceSecondsPerKm: Double?
+    let recoveryPaceFormatted: String?
+    let recoveryCadence: Int?
+    let recoveryHeartRate: Int?
+    let recoveryHeartRateDrop: Int?
+    let recoveryDurationSeconds: Double?
+    let paceDeltaVsAverageWorkSec: Int
+    let letterGrade: String
+    let observation: String
+}
+
 /// Structured dynamic evaluation for an individual kilometer split.
 struct SplitEvaluation: Sendable, Equatable {
     let index: Int
@@ -38,6 +66,7 @@ struct WorkoutAnalysisContext {
     let detectedType: String
 
     // Pacing Profile
+    let evaluationModality: WorkoutEvaluationModality
     let fastestSplit: RunSplit?
     let slowestSplit: RunSplit?
     let splitEvaluations: [SplitEvaluation]
@@ -69,6 +98,7 @@ struct WorkoutAnalysisContext {
     let fastestWorkRep: PhaseSegment?
     let slowestWorkRep: PhaseSegment?
     let workRepPaceSpreadSec: Double
+    let intervalEvaluations: [IntervalRepEvaluation]
 
     // Longitudinal Contrast
     let baselinePaceDeltaSec: Int?
@@ -164,12 +194,13 @@ struct WorkoutAnalysisContext {
         }
 
         let sig = runSignature ?? runRecord.signature
-        self.phaseSegments = sig?.phaseSegments ?? []
+        let rawSegments = sig?.phaseSegments ?? []
+        self.phaseSegments = FramboiseEngine.consolidatePhaseSegments(rawSegments)
 
         // Resolve Splits
         var resolvedSplits = sig?.splits ?? []
         if resolvedSplits.isEmpty && !self.phaseSegments.isEmpty {
-            resolvedSplits = AnalystChatEngine.synthesizeSplitsFromSegments(self.phaseSegments)
+            resolvedSplits = RunSplit.synthesize(from: self.phaseSegments)
         }
         self.splits = resolvedSplits
 
@@ -179,7 +210,7 @@ struct WorkoutAnalysisContext {
         self.workingHR = Int(runRecord.workingAvgHeartRate)
         self.percentZone4 = Int((runRecord.percentZone4 * 100).rounded())
         self.isIndoor = runRecord.isIndoor ?? false
-        self.detectedType = runRecord.detectedTypeRaw.isEmpty ? "Run" : runRecord.detectedTypeRaw
+        self.detectedType = !runRecord.detectedTypeRaw.isEmpty ? runRecord.detectedTypeRaw : (sig?.classification ?? "Run")
 
         // Biomechanics & Height Calibration
         self.isSubFloorCadence = self.workingCadence < self.runnerProfile.heightAdjustedCadenceFloor
@@ -240,6 +271,118 @@ struct WorkoutAnalysisContext {
         } else {
             self.workRepPaceSpreadSec = 0
         }
+
+        // Evaluation Modality Determination
+        let normType = runRecord.normalizedClassification
+        let intervalClassifications: Set<String> = ["Intervals", "Pyramids", "Fartlek", "Hill Repeats"]
+        let sigClass = sig?.classification ?? ""
+        let isIntermittent = intervalClassifications.contains(normType)
+            || intervalClassifications.contains(self.detectedType)
+            || intervalClassifications.contains(sigClass)
+            || work.count >= 2
+
+        let modality: WorkoutEvaluationModality
+        if isIntermittent {
+            modality = .intervals
+        } else if normType.localizedCaseInsensitiveContains("easy")
+            || normType.localizedCaseInsensitiveContains("recovery")
+            || normType.localizedCaseInsensitiveContains("zone 2")
+            || self.detectedType.localizedCaseInsensitiveContains("easy")
+            || self.detectedType.localizedCaseInsensitiveContains("recovery") {
+            modality = .aerobicBase
+        } else if normType.localizedCaseInsensitiveContains("progression")
+            || self.detectedType.localizedCaseInsensitiveContains("progression") {
+            modality = .progression
+        } else {
+            modality = .steadySplits
+        }
+        self.evaluationModality = modality
+
+        // Interval Work & Recovery Evaluations
+        var iEvals: [IntervalRepEvaluation] = []
+        if !work.isEmpty {
+            let meanWorkPace = work.reduce(0.0) { $0 + $1.avgPace } / Double(work.count)
+            for (idx, wSeg) in work.enumerated() {
+                var nextRec: PhaseSegment?
+                if let wIndexInAll = self.phaseSegments.firstIndex(where: { $0.id == wSeg.id }) {
+                    for cand in self.phaseSegments[(wIndexInAll + 1)...] {
+                        if cand.kind == "recovery" {
+                            nextRec = cand
+                            break
+                        } else if cand.kind == "work" {
+                            break
+                        }
+                    }
+                } else if idx < rec.count {
+                    nextRec = rec[idx]
+                }
+
+                let wPaceFormatted = PaceFormatter.formatPace(secondsPerKilometer: wSeg.avgPace)
+                let paceDeltaVsMean = Int(meanWorkPace - wSeg.avgPace)
+                let wCadence = Int(wSeg.avgCadence)
+                let wHR = Int(wSeg.avgHR)
+
+                let rPaceFormatted = nextRec.map { PaceFormatter.formatPace(secondsPerKilometer: $0.avgPace) }
+                let rCadence = nextRec.map { Int($0.avgCadence) }
+                let rHR = nextRec.map { Int($0.avgHR) }
+                let hrDrop: Int? = {
+                    guard let recHR = rHR, wHR > 0, recHR > 0 else { return nil }
+                    return wHR - recHR
+                }()
+
+                let grade: String
+                let observation: String
+                let isFastestRep = self.fastestWorkRep?.id == wSeg.id && work.count > 1
+                let isSlowestRep = self.slowestWorkRep?.id == wSeg.id && work.count > 1
+
+                if isFastestRep {
+                    grade = "A+"
+                    observation = self.isIndoor
+                        ? "Fastest work rep on belt (\(wPaceFormatted)) • \(wCadence) SPM"
+                        : "Fastest work rep (\(wPaceFormatted)) • \(wCadence) SPM"
+                } else if isSlowestRep && paceDeltaVsMean <= -12 {
+                    grade = "B"
+                    observation = self.isIndoor
+                        ? "Pace fade: -\(abs(paceDeltaVsMean))s/km vs mean (indoor thermal strain)"
+                        : "Pace fade: -\(abs(paceDeltaVsMean))s/km vs mean"
+                } else if abs(paceDeltaVsMean) <= 6 && wCadence >= 150 {
+                    grade = "A"
+                    observation = self.isIndoor
+                        ? "Repeatability: ±\(abs(paceDeltaVsMean))s/km vs work mean (belt-paced)"
+                        : "Repeatability: ±\(abs(paceDeltaVsMean))s/km vs work mean"
+                } else if wCadence < 150 {
+                    grade = "B-"
+                    observation = self.isIndoor
+                        ? "Sub-floor cadence: \(wCadence) SPM (braking shock on belt)"
+                        : "Sub-floor cadence: \(wCadence) SPM"
+                } else if paceDeltaVsMean > 6 {
+                    grade = "A"
+                    observation = "Acceleration: +\(paceDeltaVsMean)s/km faster than work mean"
+                } else {
+                    grade = "A-"
+                    observation = "Work effort: \(wPaceFormatted) • \(wCadence) SPM"
+                }
+
+                iEvals.append(IntervalRepEvaluation(
+                    repIndex: idx + 1,
+                    workPaceSecondsPerKm: wSeg.avgPace,
+                    workPaceFormatted: wPaceFormatted,
+                    workCadence: wCadence,
+                    workHeartRate: wHR,
+                    durationSeconds: wSeg.durationSeconds,
+                    recoveryPaceSecondsPerKm: nextRec?.avgPace,
+                    recoveryPaceFormatted: rPaceFormatted,
+                    recoveryCadence: rCadence,
+                    recoveryHeartRate: rHR,
+                    recoveryHeartRateDrop: hrDrop,
+                    recoveryDurationSeconds: nextRec?.durationSeconds,
+                    paceDeltaVsAverageWorkSec: paceDeltaVsMean,
+                    letterGrade: grade,
+                    observation: observation
+                ))
+            }
+        }
+        self.intervalEvaluations = iEvals
 
         // Split Extremes & Half Paces
         let fastest = resolvedSplits.min(by: { $0.paceSecondsPerKm < $1.paceSecondsPerKm })
@@ -354,39 +497,85 @@ struct WorkoutAnalysisContext {
             let priorSplit = i > 0 ? resolvedSplits[i - 1] : nil
             let hrDeltaVsPrior = priorSplit.map { Int(s.avgHeartRate - $0.avgHeartRate) }
 
-            // Dynamic Assessment Narrative
+            // Dynamic Assessment Narrative tailored to workout evaluation modality
             let note: String
             let grade: String
 
-            if isFast && resolvedSplits.count > 1 {
-                grade = "A"
-                if cadDelta >= 3 {
-                    note = "fastest split with sharp \(cadDelta) SPM cadence surge and decisive pace control"
+            switch self.evaluationModality {
+            case .aerobicBase:
+                // Zone 2 / Easy Run: prioritize aerobic ceiling adherence, low cardiac drift, cadence above floor
+                if s.avgCadence < 150 {
+                    grade = "B-"
+                    note = "cadence dipped to \(Int(s.avgCadence)) SPM below the 150 SPM floor"
+                } else if let hrDelta = hrDeltaVsPrior, hrDelta >= 8 && paceDelta <= 0 {
+                    grade = "B"
+                    note = "aerobic decoupling with heart rate climbing +\(hrDelta) BPM despite steady pace"
+                } else if abs(paceDelta) <= 8 {
+                    grade = "A"
+                    note = "disciplined aerobic rhythm at \(pFormatted) with steady \(Int(s.avgCadence)) SPM turnover"
+                } else if paceDelta >= 12 {
+                    grade = "B+"
+                    note = "effort accelerated ahead of easy aerobic pace; cardiovascular effort managed"
+                } else if isSlow && i == 0 {
+                    grade = "A-"
+                    note = "opening kilometer, controlled pace as you settled into your aerobic rhythm"
                 } else {
-                    note = "fastest split of the run with strong pace discipline"
+                    grade = "A-"
+                    note = "comfortable aerobic pace maintaining steady \(Int(s.avgCadence)) SPM turnover"
                 }
-            } else if isSlow && resolvedSplits.count > 1 {
-                grade = "B"
-                if i == 0 {
-                    note = "opening kilometer, controlled pace as you settled into your stride"
+
+            case .progression:
+                // Progression Run: prioritize progressive negative splits
+                if let prior = priorSplit, s.paceSecondsPerKm < prior.paceSecondsPerKm - 3 {
+                    grade = "A"
+                    let gain = Int(prior.paceSecondsPerKm - s.paceSecondsPerKm)
+                    note = "clean negative split, accelerating by \(gain)s/km with sharp turnover"
+                } else if isFast && i == resolvedSplits.count - 1 {
+                    grade = "A+"
+                    note = "fastest split of the run with strong finishing acceleration"
+                } else if let prior = priorSplit, s.paceSecondsPerKm > prior.paceSecondsPerKm + 6 {
+                    grade = "B"
+                    note = "progression stalled slightly; pace dropped back by \(Int(s.paceSecondsPerKm - prior.paceSecondsPerKm))s/km"
+                } else if s.avgCadence < 150 {
+                    grade = "B-"
+                    note = "cadence dipped to \(Int(s.avgCadence)) SPM below floor"
                 } else {
-                    note = "slowest split, pacing eased back while maintaining turnover"
+                    grade = "A-"
+                    note = "maintained pace discipline as you built into your progression"
                 }
-            } else if s.avgCadence < 150 {
-                grade = "B-"
-                note = "cadence dipped to \(Int(s.avgCadence)) SPM below the 150 SPM floor"
-            } else if let hrDelta = hrDeltaVsPrior, hrDelta >= 7 && paceDelta <= -3 {
-                grade = "B"
-                note = "aerobic decoupling with heart rate climbing +\(hrDelta) BPM despite slower pace"
-            } else if paceDelta >= 5 {
-                grade = "A-"
-                note = "strong sustained surge (\(paceDelta)s/km faster than run average)"
-            } else if paceDelta <= -5 {
-                grade = "B"
-                note = "pacing eased back by \(abs(paceDelta))s/km to manage cardiovascular effort"
-            } else {
-                grade = "A-"
-                note = "even metronomic pacing at \(pFormatted) with steady \(Int(s.avgCadence)) SPM turnover"
+
+            case .steadySplits, .intervals:
+                // Standard continuous metronomic rubric
+                if isFast && resolvedSplits.count > 1 {
+                    grade = "A"
+                    if cadDelta >= 3 {
+                        note = "fastest split with sharp \(cadDelta) SPM cadence surge and decisive pace control"
+                    } else {
+                        note = "fastest split of the run with strong pace discipline"
+                    }
+                } else if isSlow && resolvedSplits.count > 1 {
+                    grade = "B"
+                    if i == 0 {
+                        note = "opening kilometer, controlled pace as you settled into your stride"
+                    } else {
+                        note = "slowest split, pacing eased back while maintaining turnover"
+                    }
+                } else if s.avgCadence < 150 {
+                    grade = "B-"
+                    note = "cadence dipped to \(Int(s.avgCadence)) SPM below the 150 SPM floor"
+                } else if let hrDelta = hrDeltaVsPrior, hrDelta >= 7 && paceDelta <= -3 {
+                    grade = "B"
+                    note = "aerobic decoupling with heart rate climbing +\(hrDelta) BPM despite slower pace"
+                } else if paceDelta >= 5 {
+                    grade = "A-"
+                    note = "strong sustained surge (\(paceDelta)s/km faster than run average)"
+                } else if paceDelta <= -5 {
+                    grade = "B"
+                    note = "pacing eased back by \(abs(paceDelta))s/km to manage cardiovascular effort"
+                } else {
+                    grade = "A-"
+                    note = "even metronomic pacing at \(pFormatted) with steady \(Int(s.avgCadence)) SPM turnover"
+                }
             }
 
             evals.append(SplitEvaluation(
@@ -458,245 +647,5 @@ struct WorkoutAnalysisContext {
             totalHistoricalRunsCount: totalHistoricalRunsCount
         )
         self.lockedPrescription = TrainingZoneEngine.computePrescription(tzInput)
-    }
-
-    // MARK: - Formatted Dynamic Text Presentations
-
-    /// Builds a rich-text split-by-split report with zero canned boilerplate.
-    func formatSplitReport() -> String {
-        guard !splitEvaluations.isEmpty else {
-            return overallGradeReport.sentence
-        }
-
-        var lines = ["Here is the breakdown of your splits:"]
-        for s in splitEvaluations.prefix(8) {
-            lines.append("• km \(s.index) (\(s.paceFormatted), \(s.cadence) SPM, \(s.heartRate) BPM): \(s.letterGrade) — \(s.observation)")
-        }
-
-        if let f = fastestSplit, let s = slowestSplit, splitEvaluations.count >= 2 {
-            var fStartSec: Double = 0
-            for split in splits.prefix(while: { $0.index < f.index }) {
-                fStartSec += split.durationSeconds
-            }
-            let fMinStart = Int(fStartSec / 60)
-            let fMinEnd = Int((fStartSec + f.durationSeconds) / 60)
-
-            var sStartSec: Double = 0
-            for split in splits.prefix(while: { $0.index < s.index }) {
-                sStartSec += split.durationSeconds
-            }
-            let sMinStart = Int(sStartSec / 60)
-            let sMinEnd = Int((sStartSec + s.durationSeconds) / 60)
-
-            let fPace = PaceFormatter.formatPace(secondsPerKilometer: f.paceSecondsPerKm)
-            let sPace = PaceFormatter.formatPace(secondsPerKilometer: s.paceSecondsPerKm)
-            lines.append("")
-            lines.append("Overall split execution: \(overallGradeReport.grade). \(pacingTrendDescription). Fastest split was km \(f.index) (min \(fMinStart)–\(fMinEnd)) at \(fPace); slowest was km \(s.index) (min \(sMinStart)–\(sMinEnd)) at \(sPace).")
-        }
-
-        if let fRep = fastestWorkRep, let sRep = slowestWorkRep, workSegments.count >= 2 {
-            let fIdx = (workSegments.firstIndex(where: { $0.id == fRep.id }) ?? 0) + 1
-            let sIdx = (workSegments.firstIndex(where: { $0.id == sRep.id }) ?? 0) + 1
-            let fRepPace = PaceFormatter.formatPace(secondsPerKilometer: fRep.avgPace)
-            let sRepPace = PaceFormatter.formatPace(secondsPerKilometer: sRep.avgPace)
-            let fRepStart = Int(fRep.startSeconds / 60)
-            let fRepEnd = Int(fRep.endSeconds / 60)
-            let sRepStart = Int(sRep.startSeconds / 60)
-            let sRepEnd = Int(sRep.endSeconds / 60)
-            lines.append("For your intervals, fastest work rep was Rep \(fIdx) (min \(fRepStart)–\(fRepEnd)) at \(fRepPace); slowest was Rep \(sIdx) (min \(sRepStart)–\(sRepEnd)) at \(sRepPace).")
-        }
-
-        return lines.joined(separator: "\n")
-    }
-
-    /// Formats precomputed analytical findings into a compact context block for the on-device language model.
-    func groundedPromptSummary(turnContext: ManagedTurnContext? = nil) -> String {
-        if let tc = turnContext, tc.stripWorkoutPayload {
-            var lines = ["ATHLETE IDENTITY & CURRENT LOAD:"]
-            lines.append("- Athletic Experience Level: \(runnerProfile.experienceLevel)")
-            lines.append("- Active Training Goal: \(runnerProfile.trainingGoal)")
-            lines.append("- Current Date (Today): \(currentWeekday), \(currentDateFormatted)")
-            lines.append("")
-            lines.append(tc.promptHeader)
-            return lines.joined(separator: "\n")
-        }
-
-        if let tc = turnContext, tc.turnDomain == .futureSessionPlanning || tc.prunePhysiologicalVerdicts {
-            var lines = ["ATHLETE IDENTITY & CURRENT LOAD:"]
-            lines.append("- Athletic Experience Level: \(runnerProfile.experienceLevel)")
-            lines.append("- Active Training Goal: \(runnerProfile.trainingGoal)")
-            lines.append("- Current 30-Day Training Load: \(runnerProfile.loadSummary)")
-            lines.append("- Runner Height: \(Int(runnerProfile.userHeightCm)) cm (Height-calibrated cadence floor: \(runnerProfile.heightAdjustedCadenceFloor) SPM)")
-            lines.append("")
-            lines.append("CALENDAR & TEMPORAL CONTEXT:")
-            lines.append("- Current Date (Today): \(currentWeekday), \(currentDateFormatted)")
-            let elapsedNote: String = {
-                if isWorkoutToday { return "logged earlier today" }
-                if isWorkoutYesterday { return "logged yesterday" }
-                return "\(daysSinceWorkout) days ago on \(workoutWeekday), \(workoutDateFormatted)"
-            }()
-            lines.append("- Workout Date: \(workoutWeekday), \(workoutDateFormatted) (\(elapsedNote))")
-            if isWorkoutToday {
-                lines.append("- Activity Status: This workout took place today.")
-            } else {
-                let todayStatus = hasRunToday ? "Logged another run today." : "Did NOT run today."
-                let yesterdayStatus = hasRunYesterday ? "Logged a run yesterday." : "Did NOT run yesterday."
-                let restNote = daysSinceWorkout > 1 ? "\(daysSinceWorkout) days of rest since this session (fully rested and fresh)." : "1 day of rest since this session."
-                lines.append("- Recent Activity: \(todayStatus) \(yesterdayStatus) (\(restNote))")
-            }
-            let durationMin = max(1, Int((runRecord.duration / 60.0).rounded()))
-            let distKm = String(format: "%.1f km", runRecord.totalDistanceMeters / 1000.0)
-            lines.append("")
-            lines.append("RECENT SESSION CONTEXT (Brief reference for last logged session):")
-            lines.append("- Last Session (\(workoutWeekday)): \(detectedType) (\(isIndoor ? "Treadmill" : "Outdoors")), \(distKm) in \(durationMin) min, Working Pace: \(workingPaceFormatted), Working HR: \(workingHR) BPM")
-            lines.append("")
-            lines.append("FUTURE TRAINING & READINESS:")
-            lines.append("- Current Readiness: \(recoveryTimeline.state.rawValue)")
-            if recoveryTimeline.readyForHard {
-                lines.append("- Recovery Status: FULLY RECOVERED and fresh. Cleared for any workout including speed, tempo, or intervals (last hard session was \(Int(hoursSinceWorkout))h ago; required was only \(Int(recoveryTimeline.requiredHours))h). Zero residual fatigue remains.")
-            } else if let cap = recoveryTimeline.easyCap {
-                lines.append("- Recovery Status: In active recovery window until \(recoveryTimeline.earliestHardPhrase). Keep next run easy (cap: \(cap.lowerBound)–\(cap.upperBound) min).")
-            }
-            lines.append("")
-            lines.append(lockedPrescription.promptDescription)
-            if let drill = runRecord.insight?.drillRecommendations?.first ?? runRecord.insight?.drillRecommendation {
-                lines.append("- Pre-Run Technique Drill Option: \(drill.drillTitle) (warm-up turnover prep, not mandatory rehab)")
-            }
-            lines.append("")
-            lines.append(tc.promptHeader)
-            return lines.joined(separator: "\n")
-        }
-
-        var lines: [String] = []
-
-        // Athlete Identity & Current Load
-        lines.append("ATHLETE IDENTITY & CURRENT LOAD:")
-        lines.append("- Athletic Experience Level: \(runnerProfile.experienceLevel)")
-        lines.append("- Active Training Goal: \(runnerProfile.trainingGoal)")
-        lines.append("- Current 30-Day Training Load: \(runnerProfile.loadSummary)")
-        lines.append("- Runner Height: \(Int(runnerProfile.userHeightCm)) cm (Height-calibrated cadence floor: \(runnerProfile.heightAdjustedCadenceFloor) SPM)")
-        lines.append("")
-
-        // Calendar & Temporal Grounding
-        lines.append("CALENDAR & TEMPORAL CONTEXT:")
-        lines.append("- Current Date (Today): \(currentWeekday), \(currentDateFormatted)")
-        let elapsedNote: String = {
-            if isWorkoutToday { return "logged earlier today" }
-            if isWorkoutYesterday { return "logged yesterday" }
-            return "\(daysSinceWorkout) days ago on \(workoutWeekday), \(workoutDateFormatted)"
-        }()
-        lines.append("- Workout Date: \(workoutWeekday), \(workoutDateFormatted) (\(elapsedNote))")
-        if isWorkoutToday {
-            lines.append("- Activity Status: This workout took place today.")
-        } else {
-            let todayStatus = hasRunToday ? "Logged another run today." : "Did NOT run today."
-            let yesterdayStatus = hasRunYesterday ? "Logged a run yesterday." : "Did NOT run yesterday."
-            let restNote = daysSinceWorkout > 1 ? "\(daysSinceWorkout) days of rest since this session (fully rested and fresh)." : "1 day of rest since this session."
-            lines.append("- Recent Activity: \(todayStatus) \(yesterdayStatus) (\(restNote))")
-        }
-
-        let durationMin = max(1, Int((runRecord.duration / 60.0).rounded()))
-        let distKm = String(format: "%.1f km", runRecord.totalDistanceMeters / 1000.0)
-
-        lines.append("")
-        lines.append("WORKOUT PROFILE (\(workoutWeekday), \(workoutDateFormatted)):")
-        lines.append("- Type: \(detectedType) (\(isIndoor ? "Treadmill" : "Outdoors"))")
-        lines.append("- Volume: \(distKm) in \(durationMin) min (Working Pace: \(workingPaceFormatted))")
-        let floorStr = runnerProfile.heightAdjustedCadenceFloor == 150 ? "150 floor" : "\(runnerProfile.heightAdjustedCadenceFloor) floor (height-adjusted)"
-        lines.append("- Biomechanics: Cadence \(workingCadence) SPM (\(isSubFloorCadence ? "BELOW \(floorStr)" : "healthy turnover above floor"))")
-        if let osc = verticalOscillationCM {
-            lines.append("- Vertical Oscillation: \(String(format: "%.1f", osc)) cm")
-        }
-        if let str = strideLengthM {
-            lines.append("- Stride Length: \(String(format: "%.2f", str)) m")
-        }
-        if let vr = verticalRatio {
-            lines.append("- Vertical Ratio: \(String(format: "%.1f", vr))% (vertical bounce relative to stride length; ideal: 6–8%)")
-        }
-        lines.append("- Stride Archetype: \(strideArchetype)")
-        if let ef = efficiencyFactor {
-            var efDeltaText = ""
-            if let delta = efficiencyFactorDeltaPercent {
-                let sign = delta >= 0 ? "+" : ""
-                efDeltaText = String(format: " (%@%.1f%% vs 30-day baseline)", sign, delta)
-            }
-            lines.append("- Aerobic Efficiency Factor: \(String(format: "%.2f", ef)) m/heartbeat\(efDeltaText)")
-        }
-        if let env = environmentModifier {
-            lines.append("- Terrain & Environment Modifier: \(env)")
-        }
-        lines.append("- Cardiovascular Strain: Working HR \(workingHR) BPM; \(percentZone4)% in Zone 4 (Threshold)")
-
-        // Physiological Deterministic Causal Verdicts
-        lines.append("")
-        lines.append("PHYSIOLOGICAL & BIOMECHANICAL VERDICTS (ROOT-CAUSE DIAGNOSIS):")
-        lines.append(physiologicalVerdicts.promptDescription)
-
-        // Pacing & Splits
-        if !splitEvaluations.isEmpty {
-            lines.append("")
-            lines.append("PACING & SPLIT FINDINGS (\(splitEvaluations.count) splits):")
-            lines.append("- Trend: \(pacingTrendDescription)")
-            if let f = fastestSplit {
-                lines.append("- Fastest Split: km \(f.index) at \(PaceFormatter.formatPace(secondsPerKilometer: f.paceSecondsPerKm)) (\(Int(f.avgCadence)) SPM, \(Int(f.avgHeartRate)) BPM)")
-            }
-            if let s = slowestSplit {
-                lines.append("- Slowest Split: km \(s.index) at \(PaceFormatter.formatPace(secondsPerKilometer: s.paceSecondsPerKm)) (\(Int(s.avgCadence)) SPM, \(Int(s.avgHeartRate)) BPM)")
-            }
-            if hasCardiacDrift {
-                lines.append("- Physiological Decoupling: Cardiac drift detected (+\(cardiacDriftMagnitudeBPM) BPM HR rise in second half despite steady/fading pace; indicates fatigue or thermal drift, not acceleration)")
-            }
-            lines.append("Split Details:")
-            for s in splitEvaluations.prefix(8) {
-                lines.append("  • km \(s.index): \(s.paceFormatted), \(s.cadence) SPM, \(s.heartRate) BPM — \(s.observation)")
-            }
-        }
-
-        // Interval Work Reps
-        if !workSegments.isEmpty {
-            lines.append("")
-            lines.append("INTERVAL EXECUTION (\(workSegments.count) work reps):")
-            if let f = fastestWorkRep, let s = slowestWorkRep {
-                lines.append("- Rep Pace Range: \(PaceFormatter.formatPace(secondsPerKilometer: f.avgPace)) to \(PaceFormatter.formatPace(secondsPerKilometer: s.avgPace)) (spread: \(Int(workRepPaceSpreadSec))s/km)")
-            }
-            if workRepPaceSpreadSec <= 8.0 {
-                lines.append("- Rep Repeatability: Disciplined, tightly controlled interval pacing")
-            } else {
-                lines.append("- Rep Repeatability: Wide pace spread (\(Int(workRepPaceSpreadSec))s/km difference between fastest and slowest reps; indicates pacing inconsistency or late-rep fatigue)")
-            }
-        }
-
-        // Baseline Context
-        if let diag = longitudinalDiagnosis {
-            lines.append("")
-            lines.append("30-DAY BASELINE CONTRAST:")
-            lines.append("- \(diag)")
-        }
-
-        // Future Training & Recovery (Included only when runner asks about upcoming runs or readiness)
-        let isFutureTurn = turnContext?.turnDomain == .futureSessionPlanning || turnContext?.turnDomain == .compositeWorkoutAndPlanning
-        if isFutureTurn || turnContext == nil {
-            lines.append("")
-            lines.append("[FUTURE TRAINING & READINESS]:")
-            lines.append("- Current Readiness: \(recoveryTimeline.state.rawValue)")
-            if recoveryTimeline.readyForHard {
-                lines.append("- Recovery Status: FULLY RECOVERED and fresh. Cleared for any workout including speed, tempo, or intervals (last hard session was \(Int(hoursSinceWorkout))h ago; required was only \(Int(recoveryTimeline.requiredHours))h). Zero residual fatigue remains.")
-            } else if let cap = recoveryTimeline.easyCap {
-                lines.append("- Recovery Status: In active recovery window until \(recoveryTimeline.earliestHardPhrase). Keep next run easy (cap: \(cap.lowerBound)–\(cap.upperBound) min).")
-            }
-            lines.append("")
-            lines.append(lockedPrescription.promptDescription)
-
-            if let drill = runRecord.insight?.drillRecommendations?.first ?? runRecord.insight?.drillRecommendation {
-                lines.append("- Pre-Run Technique Drill Option: \(drill.drillTitle) (warm-up turnover prep, not mandatory rehab)")
-            }
-        }
-
-        if let tc = turnContext {
-            lines.append("")
-            lines.append(tc.promptHeader)
-        }
-
-        return lines.joined(separator: "\n")
     }
 }

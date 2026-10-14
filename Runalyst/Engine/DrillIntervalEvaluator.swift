@@ -412,14 +412,17 @@ enum DrillIntervalEvaluator {
             }
         }
 
-        // 2. Strip Cooldown bookend if present
+        // 2. Strip Cooldown bookend if present (only if the last segment is truly a cooldown/rest, not a work rep)
         if working.count >= 2 {
-            if working.count == 2 * expectedIterations + 1 {
-                working.removeLast()
-            } else if working.count > 2 * expectedIterations && working.count % 2 == 1 {
-                working.removeLast()
-            } else if working.count % 2 == 1, let last = working.last, last.duration >= 90.0 {
-                working.removeLast()
+            let last = working[working.count - 1]
+            let isCooldown = last.isWorkHint == false ||
+                last.duration >= 90.0 ||
+                (last.duration >= 45.0 && last.avgCadence < Double(context.baselineCadence) - 8.0)
+
+            if isCooldown {
+                if working.count % 2 == 1 || working.count == 2 * expectedIterations + 2 {
+                    working.removeLast()
+                }
             }
         }
 
@@ -456,10 +459,12 @@ enum DrillIntervalEvaluator {
             ))
         }
 
-        // Odd trailing work interval without recovery
-        if working.count % 2 == 1 && reps.count < expectedIterations {
+        // Odd trailing work interval without recovery (e.g. runner finishes workout on the final work rep)
+        if working.count % 2 == 1 {
             let trailingWork = working[working.count - 1]
-            if trailingWork.duration >= 15.0 && trailingWork.avgCadence >= Double(context.baselineCadence) - 5.0 {
+            let isWorkCadence = trailingWork.isWorkHint == true ||
+                trailingWork.avgCadence >= Double(context.baselineCadence) - 8.0
+            if trailingWork.duration >= 10.0 && isWorkCadence {
                 reps.append(makeRep(
                     repIndex: reps.count + 1,
                     work: trailingWork,
@@ -590,6 +595,28 @@ enum DrillIntervalEvaluator {
             let dur = currentBuckets.map(\.durationSeconds).reduce(0, +)
             segments.append(WaveformSegment(isWork: currentIsWork, duration: dur, buckets: currentBuckets))
         }
+
+        // Debounce / gap bridge: merge work segments separated by brief momentary dip (<= 15s)
+        var debounced: [WaveformSegment] = []
+        for seg in segments {
+            if let last = debounced.last, last.isWork == seg.isWork {
+                debounced[debounced.count - 1].duration += seg.duration
+                debounced[debounced.count - 1].buckets.append(contentsOf: seg.buckets)
+            } else if debounced.count >= 2,
+                      seg.isWork,
+                      let gap = debounced.last,
+                      !gap.isWork,
+                      gap.duration <= 15.0,
+                      debounced[debounced.count - 2].isWork {
+                let removedGap = debounced.removeLast()
+                debounced[debounced.count - 1].duration += (removedGap.duration + seg.duration)
+                debounced[debounced.count - 1].buckets.append(contentsOf: removedGap.buckets)
+                debounced[debounced.count - 1].buckets.append(contentsOf: seg.buckets)
+            } else {
+                debounced.append(seg)
+            }
+        }
+        segments = debounced
 
         // Filter valid interval work segments (duration >= 15s and <= 300s)
         var reps: [DrillIntervalRep] = []

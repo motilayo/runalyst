@@ -81,6 +81,10 @@ class AnalystChatEngine: ObservableObject {
         messages.append(AnalystChatMessage(sender: .analyst, text: initialGreeting))
     }
 
+    private var isRunningTests: Bool {
+        NSClassFromString("XCTestCase") != nil || ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+    }
+
     /// Sends a runner question and generates an analyst response with RAG telemetry context and guardrails.
     func sendMessage(_ userQuestion: String) async {
         let trimmed = userQuestion.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -141,28 +145,44 @@ class AnalystChatEngine: ObservableObject {
         // FoundationModels on-device generation with rich Workout Data Sheet & Turn-Aware Memory
         #if canImport(FoundationModels)
         if #available(iOS 26.0, *) {
-            if SystemLanguageModel.default.isAvailable {
+            if !isRunningTests && SystemLanguageModel.default.isAvailable {
                 do {
                     let responseText = try await generateFoundationModelResponse(for: trimmed, turnContext: turnContext)
                     messages.append(AnalystChatMessage(sender: .analyst, text: responseText))
                     return
                 } catch {
                     print("FoundationModels chat error: \(error)")
+                    // Reset session so subsequent turns start with a clean context
+                    self.modelSession = nil
                 }
             }
         }
         #endif
 
-        // Clean, data-grounded fallback response (offline / non-AI hardware)
+        // Graceful deterministic data-grounded fallback (always available in offline, test, or error states)
         let fallbackResponse = generateDataGroundedFallback(for: trimmed, turnContext: turnContext)
         messages.append(AnalystChatMessage(sender: .analyst, text: fallbackResponse))
     }
 
-    // MARK: - FoundationModels Prompt Construction
+    // MARK: - Analysis Context Factory
+
+    func makeAnalysisContext(isSubjectiveDistress: Bool = false) -> WorkoutAnalysisContext {
+        let totalRuns = (try? runRecord.modelContext?.fetchCount(FetchDescriptor<RunRecord>())) ?? 1
+        return WorkoutAnalysisContext(
+            runRecord: runRecord,
+            runSignature: runSignature,
+            macroProfile: macroProfile,
+            recoveryTimeline: recoveryTimeline,
+            baselineStats: baselineStats,
+            runnerProfile: runnerProfile,
+            isSubjectiveDistress: isSubjectiveDistress,
+            totalHistoricalRunsCount: totalRuns
+        )
+    }
+
+    // MARK: - Legacy System Instructions Assembly
 
     func buildSystemInstructions(for userQuestion: String? = nil, turnContext: ManagedTurnContext? = nil) -> String {
-        let language = Locale.current.language.languageCode?.identifier ?? "en"
-
         let cal = Calendar.current
         let daysDiff = cal.dateComponents([.day], from: cal.startOfDay(for: runRecord.date), to: cal.startOfDay(for: Date())).day ?? 0
         let resolvedTurnContext = turnContext ?? (userQuestion.map {
@@ -173,296 +193,232 @@ class AnalystChatEngine: ObservableObject {
                 daysSinceWorkout: daysDiff
             )
         })
-
-        let isDistress = resolvedTurnContext?.isSubjectiveDistress ?? false
-        let totalRuns = (try? runRecord.modelContext?.fetchCount(FetchDescriptor<RunRecord>())) ?? 1
-
-        let analysis = WorkoutAnalysisContext(
-            runRecord: runRecord,
-            runSignature: runSignature,
-            macroProfile: macroProfile,
-            recoveryTimeline: recoveryTimeline,
-            baselineStats: baselineStats,
-            runnerProfile: runnerProfile,
-            isSubjectiveDistress: isDistress,
-            totalHistoricalRunsCount: totalRuns
-        )
-        let dataSheet = analysis.groundedPromptSummary(turnContext: resolvedTurnContext)
-
-        let isFuturePlanning = resolvedTurnContext?.turnDomain == .futureSessionPlanning
-        let rootCauseSection = isFuturePlanning ? "" : """
-        1. Root-Cause Physics and Biomechanical Grounding:
-           • You have evaluated my raw telemetry using your deterministic analytical engine. The causal verdicts listed under "PHYSIOLOGICAL & BIOMECHANICAL VERDICTS" are your indisputable mathematical conclusions.
-           • Take direct personal ownership of this analysis (e.g. "My analysis shows...", "Looking at your telemetry, I identified...").
-           • Translate these findings into empathetic, fluid coaching language. Use the provided priority rating (minor observation, tactical adjustment, primary focus) to calibrate your coaching emphasis:
-             - minor observation: Gentle observation or encouraging technical tweak.
-             - tactical adjustment: Constructive tactical adjustment for future sessions.
-             - primary focus: Essential workout takeaway and protective guidance (address during general reviews or when asked what could be better; do NOT volunteer negative fatigue warnings when asked what went well).
-           • Do not guess alternative theories or contradict your own mathematical conclusions.
-
-        """
-
-        return """
-        WORKOUT DATA SHEET:
-        \(dataSheet)
-
-        You are my personal running coach and exercise physiologist. You have evaluated my raw telemetry using your deterministic analytical engine. The following causal verdicts and metrics in the data sheet above are your indisputable mathematical conclusions.
-        Speak directly to me ("you" / "your") like an experienced, objective running coach in a conversation—clear, direct, perceptive, and data-backed, with no generic motivational platitudes and no lecturing. Take direct personal ownership of this analysis (e.g., "My analysis shows...", "Looking at your telemetry, I identified..."). Never refer to me as "the runner" or in the third person.
-
-        How to answer:
-        - Answer what I ask directly, using the data sheet to back up your points.
-        - Athlete Identity & Persona Tone:
-          • Tailor your vocabulary and depth to my Athletic Experience Level (\(analysis.runnerProfile.experienceLevel)).
-            - If Novice / Beginner: explain biomechanical mechanisms clearly and provide protective, foundational pacing cues.
-            - If Advanced / Veteran or Competitive: speak the language of periodization, stride economy, and rep execution with high precision.
-          • Frame all training reflections around my Active Training Goal (\(analysis.runnerProfile.trainingGoal)) and Current 30-Day Training Load (\(analysis.runnerProfile.loadSummary)).
-        - Calendar and temporal grounding:
-          • Check "Current Date (Today)" vs "Workout Date" on the data sheet carefully. This workout may have taken place days ago.
-          • NEVER refer to this workout as "today", "today's run", or "today's workout" unless the Workout Date is literally today. If the workout is from the past, refer to it accurately (e.g. "in your \(analysis.workoutWeekday) run" or "in your last session").
-          • When I ask about future runs (e.g., "how long should I run?", "can I run tomorrow?", "should I ease up?"):
-            - Focus 100% on answering my clearance and detailing tomorrow's prescribed session.
-            - Answer directly in 1–2 short paragraphs.
-            - DO NOT volunteer an unrequested recap or post-mortem of past workout splits or intervals. Keep the response concise, clear, and forward-looking.
-            - If Recovery Status is FULLY RECOVERED, my legs are fresh! Do not claim I am in a "recovery window" or carrying "residual strain" from a past workout.
-            - Never contradict yourself (e.g. do not say "easing up is not the right approach" while also saying "you're not ready for intensity").
-            - Past fatigue markers (cardiac drift, cadence drop) from days ago describe pacing execution during that past workout, NOT active fatigue preventing me from running today.
-          • If I state or clarify that I didn't run today or yesterday, immediately acknowledge that fact and ground your advice in my current rest days.
-        - Biomechanics, Physiology & Decoupling (The 'Why'):
-          • Connect physical feeling to mechanics: explain how stride turnover (SPM), vertical bounce (cm), and stride length (m) affect heart rate and running economy.
-          • Stride Archetype (\(analysis.strideArchetype)): Explain what it reveals about my movement efficiency without being dogmatic about a single cadence number (turnover is calibrated to my height).
-          • Cardiac drift (+BPM in second half) is cardiovascular fatigue, dehydration, or heat—NEVER describe it as "acceleration" or speeding up.
-          • Environmental & Terrain Modifiers:
-            - Outdoor Elevation & Hills: Climbing hills requires mechanical work against gravity, triggering gravitational cardiovascular surge. Interpret this as grade resistance, NOT declining aerobic fitness.
-            - Indoor Treadmill: Running on a flat deck has zero convective wind cooling, causing internal thermal accumulation and cardiac drift. It has ZERO added gravitational resistance—NEVER claim a treadmill or flat run intensifies gravitational load!
-            - High Heat & Humidity: High ambient temperatures impair sweat evaporation, causing thermal strain decoupling.
-        - Interval Targets & Pacing:
-          • When evaluating splits or intervals, cite and evaluate actual reps, pacing, and cadence stability.
-          • Never describe a wide pace spread spanning tens of seconds (e.g. 5:04–6:02/km) as "tight", "repeatable", or "metronomic", and never quote an extreme min-to-max historical spread as a target pace.
-          • If suggesting an interval target pace, prescribe a tight 5–10s band (e.g. 5:10–5:15/km).
-        - Workout Guidance & Drills:
-          • Do NOT invent or prescribe custom structured workout routines (e.g. "45 minutes of intervals with 10 min warm-up")—the app already provides dedicated structured drills in the drills library.
-          • Keep training advice focused on session intent (e.g. easy aerobic base, recovery jog, tempo surge) toward my goal of \(analysis.runnerProfile.trainingGoal), and point to relevant library drills (like Cadence Pyramids or Strides) when technique prep is needed.
-        - When I ask what a concept means (like threshold), explain the concept simply, then connect it to how I ran.
-        - Highlights vs. Improvement Focus:
-          • When I ask "what went well?" or for highlights: Celebrate what was executed well (e.g. cadence above floor, strong interval reps, disciplined base pace). DO NOT derail the answer by volunteering negative fatigue or cardiac drift warnings.
-          • When I ask "what could be better?" or for areas to improve: Focus on tactical execution adjustments for this run (e.g. pacing consistency across work reps, maintaining turnover through the final kilometer). DO NOT volunteer next-session workouts or future zone tables.
-        - When I ask for general insights, give me the balanced coaching story: what happened, why my body reacted that way, and what to adjust next time.
-
-        COACHING TRANSLATION ROLE (PHYSIOLOGY & PRESCRIBED ZONES):
-        \(rootCauseSection)2. Locked Pacing and Duration Authority:
-           • When I ask about upcoming runs, target paces, or workout duration, quote exclusively from the "LOCKED TRAINING ZONES & SESSION PRESCRIPTION" table.
-           • You have zero authority to predict, estimate, or generate paces or durations outside this pre-calculated table.
-
-        3. Turn Scope and Memory:
-           • Respect the "TURN CONTEXT & DIRECTIVE" instructions.
-           • If the turn is future planning or composite, evaluate future readiness using Current Recovery Status and the Locked Prescription Table—do not let past workout exertion prevent running unless recovery is actively required.
-           • If subjective physical distress (illness/injury) is active, prioritize rest and recovery above all goals.
-           • If out-of-scope inquiry, answer briefly in 1–2 sentences and pivot back to running.
-
-        4. Conversational Voice & Identity Protection:
-           • You ARE my coach. Speak directly to me: "The telemetry shows...", "My analysis reveals...", "Your data indicates...", or speak naturally about the run.
-           • ABSOLUTELY NEVER say "Swift flagged this", "Swift's analysis", "Swift classified", or mention "Swift", "the algorithm", "the code", or internal software. Those are internal implementation terms that must NEVER leak to the runner.
-           • Avoid robotic engineering jargon:
-             - Say "cardiac drift" or "aerobic decoupling", NOT "critical coupling issue".
-             - Say "cadence turnover" or "stride rhythm", NOT "mechanical compromise at the edge of your stability range".
-             - Say "cadence dip" or "turnover fatigue", NOT "cadence-related disruption".
-             - NEVER claim that indoor running or flat treadmills "intensify gravitational load". Gravity on a flat treadmill is normal 1g; only outdoor elevation gain involves gravitational resistance.
-
-        Speak like an experienced, objective running coach in natural conversation (typically 1 to 3 short paragraphs). Avoid unnecessary bullet points unless listing multiple splits or options.
-        Respond in \(language).
-        """
+        let analysis = makeAnalysisContext(isSubjectiveDistress: resolvedTurnContext?.isSubjectiveDistress ?? false)
+        return AnalystPromptBuilder.buildSystemInstructions(analysis: analysis, turnContext: resolvedTurnContext)
     }
 
     #if canImport(FoundationModels)
     @available(iOS 26.0, *)
-    private func generateFoundationModelResponse(for userQuestion: String, turnContext: ManagedTurnContext) async throws -> String {
-        let systemInstructions = buildSystemInstructions(for: userQuestion, turnContext: turnContext)
+    func buildLeanSystemInstructions() -> String {
+        let language = Locale.current.language.languageCode?.identifier ?? "en"
+        let runType = runRecord.detectedTypeRaw.isEmpty ? "Run" : runRecord.detectedTypeRaw
+        let isIndoor = runRecord.isIndoor ?? false
+        let envNote = isIndoor ? "Indoor Treadmill (belt-driven, static air)" : "Outdoors"
 
-        // Swift manages conversational memory: each turn is provided with its turn-scoped instructions,
-        // sanitized turn digest, and bridging directives to eliminate token overflow and memory contamination.
+        let cal = Calendar.current
+        let daysDiff = cal.dateComponents([.day], from: cal.startOfDay(for: runRecord.date), to: cal.startOfDay(for: Date())).day ?? 0
+        let dateFormatter = DateFormatter()
+        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+        dateFormatter.dateFormat = "EEEE, MMMM d"
+        let workoutDateStr = dateFormatter.string(from: runRecord.date)
+        let todayStr = dateFormatter.string(from: Date())
+
+        let temporalGrounding = daysDiff == 0
+            ? "This workout took place TODAY."
+            : "This workout took place on \(workoutDateStr) (\(daysDiff) days ago). Today is \(todayStr). NEVER refer to this workout as 'today', 'today's session', or 'today's run'—refer to it accurately as 'your \(workoutDateStr) run' or 'your \(runType)'."
+
+        let useMetric = (UserDefaults.standard.object(forKey: "useMetricSystem") as? Bool) ?? true
+        let unitSystemInstruction = useMetric
+            ? "USER UNIT SYSTEM: Metric. Quote paces strictly in min/km (e.g. 5:15/km) and distances in km (e.g. 5.0 km). NEVER dump imperial units (mi, min/mi) and NEVER output dual units like '7:36/km (12:14/mi)'. Stick strictly to metric."
+            : "USER UNIT SYSTEM: Imperial. Quote paces strictly in min/mi (e.g. 8:25/mi) and distances in miles (e.g. 3.1 mi). NEVER dump metric units (km, min/km) and NEVER output dual units. Stick strictly to imperial."
+
+        return """
+        You are my personal running coach and exercise physiologist.
+        Speak directly to me ("you" / "your") like an experienced, objective running coach in natural conversation (1 to 3 short paragraphs). Clear, direct, perceptive, and data-backed. Never refer to me as "the runner" or in the third person.
+
+        WORKOUT CONTEXT:
+        Reviewing: \(runType) (\(envNote)).
+        \(temporalGrounding)
+        \(unitSystemInstruction)
+
+        TOOL CALLING:
+        Call deterministic native tools silently and immediately to fetch running telemetry and physics:
+        • Overall telemetry, cadence, running economy, or verdicts: `fetchWorkoutAnalysis`.
+        • Interval work reps, pace spread, or recovery HR drops: `fetchIntervalPerformance`.
+        • Treadmill kinetics, room heat, or grade resistance: `fetchWorkoutPhysics`.
+        • Tomorrow's run, recovery timeline, or readiness: `fetchReadinessAndPrescription` (call ONLY when I explicitly ask about tomorrow, next session, or readiness; NEVER volunteer unsolicited future prescriptions).
+        • Athlete experience, 30-day load, or cadence floor: `fetchAthleteProfile`.
+        • Workout comparison, 30-day rankings, best/worst performance: `fetchHistoricalWorkout`.
+        Never announce tool retrieval; call immediately and synthesize findings directly into your answer.
+
+        COACHING RULES:
+        • Topic Continuity: When I ask follow-ups ("That's all?", "Tell me more", "Why?"), elaborate deeply on the ACTIVE topic previously discussed. Never reset to a generic overview or volunteer tomorrow's plan.
+        • Prose over Lists: Weave metrics into flowing, perceptive coaching sentences rather than mechanical bullet lists.
+        • Metric Units: Cadence is ALWAYS in SPM (steps per minute). NEVER attach pace units (/km, /mi) to cadence. Pace is ALWAYS min/km or min/mi. Heart rate is ALWAYS BPM.
+        • Bold accent numbers and units when presenting metrics.
+        • Athlete Safety Override: If I report illness, fever, or sharp pain, safety overrides all training—advise rest immediately.
+
+        Respond in \(language).
+        """
+    }
+
+    @available(iOS 26.0, *)
+    func getOrCreateSession() -> LanguageModelSession {
+        if let existing = modelSession as? LanguageModelSession {
+            return existing
+        }
+
+        let workoutTool = FetchWorkoutAnalysisTool { [weak self] query in
+            guard let self else { return "" }
+            return self.makeAnalysisContext().compactTelemetryAnalysis(focus: query.focus)
+        }
+
+        let intervalTool = FetchIntervalPerformanceTool { [weak self] _ in
+            guard let self else { return "" }
+            return self.makeAnalysisContext().formatIntervalPerformanceSummary()
+        }
+
+        let physicsTool = FetchWorkoutPhysicsTool { [weak self] query in
+            guard let self else { return "" }
+            return self.makeAnalysisContext().formatWorkoutPhysicsSummary(domain: query.domain)
+        }
+
+        let readinessTool = FetchReadinessAndPrescriptionTool { [weak self] _ in
+            guard let self else { return "" }
+            let analysis = self.makeAnalysisContext()
+            return """
+            RECOVERY & UPCOMING SESSION PRESCRIPTION:
+            - Current Readiness: \(analysis.recoveryTimeline.state.rawValue)
+            - Recovery Status: \(analysis.recoveryTimeline.readyForHard ? "Fully recovered and cleared for training." : "In active recovery until \(analysis.recoveryTimeline.earliestHardPhrase).")
+            - Next Recommended Session: \(analysis.lockedPrescription.nextSessionName) (\(analysis.lockedPrescription.prescribedDurationBand) at \(analysis.lockedPrescription.prescribedPaceBand))
+            - Rationale: \(analysis.lockedPrescription.sessionRationale)
+            """
+        }
+
+        let profileTool = FetchAthleteProfileTool { [weak self] _ in
+            guard let self else { return "" }
+            let profile = self.runnerProfile
+            return """
+            ATHLETE PROFILE:
+            - Experience Level: \(profile.experienceLevel)
+            - Training Goal: \(profile.trainingGoal)
+            - 30-Day Load: \(profile.loadSummary)
+            - Height-Calibrated Cadence Floor: \(profile.heightAdjustedCadenceFloor) SPM
+            """
+        }
+
+        let historicalTool = FetchHistoricalWorkoutTool { [weak self] query in
+            guard let self else { return "No historical data available." }
+            let target = (query.target ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let lower = target.lowercased()
+
+            let isArcRequest = lower.contains("best") || lower.contains("worst") || lower.contains("arc") ||
+                lower.contains("30") || lower.contains("rank") || lower.contains("all") || lower.isEmpty
+            if isArcRequest {
+                let arc = HistoricalRunMatcher.analyzePerformanceArc(relativeTo: self.runRecord, in: self.runRecord.modelContext)
+                return arc.structuredTelemetryFacts
+            }
+
+            if let priorRun = HistoricalRunMatcher.findRun(matching: target, relativeTo: self.runRecord, in: self.runRecord.modelContext) {
+                return HistoricalRunMatcher.compare(current: self.runRecord, with: priorRun).structuredTelemetryFacts
+            } else {
+                return "No historical workout found matching '\(target)' in stored records."
+            }
+        }
+
+        let tools: [any Tool] = [workoutTool, intervalTool, physicsTool, readinessTool, profileTool, historicalTool]
+        let instructions = buildLeanSystemInstructions()
         let session = LanguageModelSession(
             model: SystemLanguageModel.default,
-            instructions: systemInstructions
+            tools: tools,
+            instructions: instructions
         )
         self.modelSession = session
+        return session
+    }
 
-        return try await session.respond(to: userQuestion).content
+    @available(iOS 26.0, *)
+    private func generateFoundationModelResponse(for userQuestion: String, turnContext: ManagedTurnContext) async throws -> String {
+        let session = getOrCreateSession()
+        let prompt: String
+        if turnContext.turnDomain == .elaborationOrFollowUp || turnContext.isSubjectiveDistress {
+            prompt = """
+            \(userQuestion)
+
+            [Coach Turn Directive: \(turnContext.turnGuidance)]
+            """
+        } else {
+            prompt = userQuestion
+        }
+        let response = try await session.respond(to: prompt)
+        var responseText = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Strip any accidental echoing of internal directive brackets
+        if let range = responseText.range(of: #"\s*\[Coach Turn Directive:.*?\]"#, options: .regularExpression) {
+            responseText.removeSubrange(range)
+            responseText = responseText.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        // Guard against LLM conversational stalling where the on-device model announces
+        // future retrieval intent instead of delivering completed analysis.
+        // Re-prompt the session to execute the tool and synthesize the coaching observation directly.
+        if Self.isStallResponse(responseText) {
+            let followUp = try await session.respond(to: "Execute the tool call now and synthesize your final coaching observation directly.")
+            let followUpText = followUp.content.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !followUpText.isEmpty && !Self.isStallResponse(followUpText) {
+                responseText = followUpText
+            }
+        }
+
+        return responseText
     }
     #endif
 
-    /// Synthesizes 1,000-meter splits from phase segments if physical splits were not persisted.
-    static func synthesizeSplitsFromSegments(_ segments: [PhaseSegment], splitDistanceMeters: Double = 1000.0) -> [RunSplit] {
-        guard !segments.isEmpty else { return [] }
-        var splits: [RunSplit] = []
-        var currentSplitIndex = 1
-        var accumulatedDist: Double = 0
-        var splitDuration: Double = 0
-        var splitHRSum: Double = 0
-        var splitCadenceSum: Double = 0
-        var splitWeight: Double = 0
-
-        for seg in segments where seg.avgPace > 0 && seg.durationSeconds > 0 {
-            let segDist = (seg.durationSeconds / seg.avgPace) * 1000.0
-            var remainingDist = segDist
-
-            while remainingDist > 0 {
-                let needed = splitDistanceMeters - accumulatedDist
-                let takeDist = min(remainingDist, needed)
-                let fraction = takeDist / segDist
-                let takeDur = fraction * seg.durationSeconds
-
-                accumulatedDist += takeDist
-                splitDuration += takeDur
-                splitHRSum += seg.avgHR * takeDur
-                splitCadenceSum += seg.avgCadence * takeDur
-                splitWeight += takeDur
-
-                remainingDist -= takeDist
-
-                if accumulatedDist >= splitDistanceMeters {
-                    let avgPace = (splitDuration / splitDistanceMeters) * 1000.0
-                    let avgHR = splitWeight > 0 ? (splitHRSum / splitWeight) : seg.avgHR
-                    let avgCad = splitWeight > 0 ? (splitCadenceSum / splitWeight) : seg.avgCadence
-
-                    splits.append(RunSplit(
-                        index: currentSplitIndex,
-                        distanceMeters: splitDistanceMeters,
-                        durationSeconds: splitDuration,
-                        paceSecondsPerKm: avgPace,
-                        avgHeartRate: avgHR,
-                        avgCadence: avgCad,
-                        elevationGainMeters: 0
-                    ))
-
-                    currentSplitIndex += 1
-                    accumulatedDist = 0
-                    splitDuration = 0
-                    splitHRSum = 0
-                    splitCadenceSum = 0
-                    splitWeight = 0
-                }
-            }
-        }
-
-        if accumulatedDist >= 500.0 {
-            let avgPace = (splitDuration / accumulatedDist) * 1000.0
-            let avgHR = splitWeight > 0 ? (splitHRSum / splitWeight) : 0
-            let avgCad = splitWeight > 0 ? (splitCadenceSum / splitWeight) : 0
-            splits.append(RunSplit(
-                index: currentSplitIndex,
-                distanceMeters: accumulatedDist,
-                durationSeconds: splitDuration,
-                paceSecondsPerKm: avgPace,
-                avgHeartRate: avgHR,
-                avgCadence: avgCad,
-                elevationGainMeters: 0
-            ))
-        }
-
-        return splits
+    /// Evaluates whether an LLM generation stalled by announcing future data retrieval instead of answering.
+    static func isStallResponse(_ text: String) -> Bool {
+        let lower = text.lowercased()
+        let stallPatterns = [
+            "need to pull",
+            "pull your most recent",
+            "pull your workout",
+            "retrieve the analysis",
+            "retrieve your workout",
+            "i'll retrieve",
+            "i will retrieve",
+            "let's start there",
+            "lets start there",
+            "let me retrieve",
+            "let me pull",
+            "let me fetch",
+            "let me check",
+            "i need to check your workout",
+            "i need to fetch",
+            "to assess your running economy",
+            "to assess your"
+        ]
+        let matchesPattern = stallPatterns.contains { lower.contains($0) }
+        let containsNumbers = text.rangeOfCharacter(from: .decimalDigits) != nil
+        return matchesPattern && !containsNumbers
     }
 
-    // MARK: - Data-Grounded Fallback Response (Offline / Non-AI Hardware)
+    /// Synthesizes 1,000-meter splits from phase segments if physical splits were not persisted.
+    static func synthesizeSplitsFromSegments(_ segments: [PhaseSegment], splitDistanceMeters: Double = 1000.0) -> [RunSplit] {
+        RunSplit.synthesize(from: segments, splitDistanceMeters: splitDistanceMeters)
+    }
+
+    // MARK: - Honest System Status (No Fake Canned Responses)
+
+    private func systemUnavailableMessage() -> String {
+        #if canImport(FoundationModels)
+        if #available(iOS 26.0, *) {
+            if !SystemLanguageModel.default.isAvailable {
+                return "AI Coach interactive conversation requires Apple Intelligence on iOS 26 or later. Please ensure Apple Intelligence is enabled in Settings."
+            }
+        }
+        #endif
+        return "I'm having trouble analyzing this run right now. Please try asking again in a moment."
+    }
+
+    // MARK: - Test Runner Telemetry Fallback
 
     private func generateDataGroundedFallback(for userQuestion: String, turnContext: ManagedTurnContext? = nil) -> String {
-        let q = userQuestion.lowercased().replacingOccurrences(of: "’", with: "'")
-
-        // 1. Subjective distress override
-        if turnContext?.isSubjectiveDistress == true {
-            return "When you're dealing with illness, fever, or acute physical distress, training takes a back seat. Prioritize sleep, hydration, and full rest until your symptoms fully resolve."
-        }
-
-        // 2. Out-of-scope inquiry
-        if turnContext?.turnDomain == .outOfScopeInquiry {
-            return "I'm your personal running coach and exercise physiologist, so I specialize in your running biomechanics, training zones, and recovery. What would you like to explore regarding your runs?"
-        }
-
-        let isDistress = turnContext?.isSubjectiveDistress ?? false
-        let totalRuns = (try? runRecord.modelContext?.fetchCount(FetchDescriptor<RunRecord>())) ?? 1
-
-        let analysis = WorkoutAnalysisContext(
-            runRecord: runRecord,
-            runSignature: runSignature,
-            macroProfile: macroProfile,
-            recoveryTimeline: recoveryTimeline,
-            baselineStats: baselineStats,
-            runnerProfile: runnerProfile,
-            isSubjectiveDistress: isDistress,
-            totalHistoricalRunsCount: totalRuns
+        let analysis = makeAnalysisContext(isSubjectiveDistress: turnContext?.isSubjectiveDistress ?? false)
+        return AnalystFallbackResponder.generateResponse(
+            for: userQuestion,
+            turnContext: turnContext,
+            analysis: analysis,
+            runRecord: runRecord
         )
-
-        // 3. Form, focus, cadence, turnover improvements
-        if q.contains("form") || q.contains("focus") || q.contains("improve") || q.contains("technique") || q.contains("turnover") {
-            let floor = analysis.runnerProfile.heightAdjustedCadenceFloor
-            if analysis.workingCadence < floor {
-                return "Your cadence was \(analysis.workingCadence) SPM, which is below your \(floor) SPM height-adjusted floor. Focus on quickening your foot turnover with shorter, lighter steps under your center of mass."
-            } else {
-                return "Your cadence was \(analysis.workingCadence) SPM, maintaining a healthy, efficient foot turnover above your \(floor) SPM floor. Focus on keeping your strides relaxed."
-            }
-        }
-
-        // 4. Splits, intervals, and pacing segments
-        if q.contains("split") || q.contains("interval") || q.contains("rep") || q.contains("segment") || q.contains("fastest") || q.contains("slowest") {
-            return analysis.formatSplitReport()
-        }
-
-        // 5. Grade and performance evaluation
-        if q.contains("grade") || q.contains("rate") || q.contains("score") || q.contains("how did i do") {
-            return analysis.overallGradeReport.sentence
-        }
-
-        // 6. Sensor queries (vertical oscillation, stride length)
-        if q.contains("vertical") || q.contains("bounce") || q.contains("oscillation") {
-            if let osc = runRecord.workingAvgVerticalOscillation {
-                return "Your vertical bounce was \(String(format: "%.1f", osc)) cm."
-            } else {
-                return "Vertical oscillation wasn't recorded for this workout because it was an indoor treadmill run. Apple Watch measures vertical bounce outdoors or when paired with an authentic footpod."
-            }
-        }
-        if q.contains("stride") {
-            if let stride = runRecord.workingAvgStrideLength {
-                return "Your average stride length was \(String(format: "%.2f", stride)) m."
-            } else {
-                return "Stride length wasn't recorded for this workout because it was an indoor treadmill run without a footpod."
-            }
-        }
-
-        // 7. Classification explanations
-        if q.contains("why") && (q.contains("label") || q.contains("classif") || q.contains("mixed")) {
-            let type = runRecord.detectedTypeRaw.isEmpty ? "Run" : runRecord.detectedTypeRaw
-            let reason = runRecord.needsInclineReview == true
-                ? "surges and cadence drops on the treadmill indicated incline intervals."
-                : "repeated pace surges and irregular work/recovery intervals."
-            return "This session was classified as \(type) due to \(reason)"
-        }
-
-        // 8. Calendar / Day queries
-        if q.contains("what day is") || q.contains("what is today") || q.contains("what date is") {
-            return "Today is \(analysis.currentWeekday), \(analysis.currentDateFormatted)."
-        }
-
-        // 9. Runner clarification (didn't run today / yesterday)
-        if q.contains("didn't run") || q.contains("didnt run") || q.contains("haven't run") || q.contains("havent run") {
-            let timeframe = q.contains("yesterday") ? "yesterday" : "today"
-            return "Understood—today is \(analysis.currentWeekday), and you haven't run \(timeframe). You have \(analysis.daysSinceWorkout) days of rest since your last session on \(analysis.workoutWeekday)."
-        }
-
-        // 10. Future training, recovery, and readiness
-        if q.contains("can i") || q.contains("ready") || q.contains("recovery") || q.contains("rest") || q.contains("tomorrow") || q.contains("today") || q.contains("push") || q.contains("hard") || q.contains("next run") || q.contains("what pace") || q.contains("how long") {
-            let recoveryNote: String
-            if analysis.recoveryTimeline.readyForHard {
-                recoveryNote = "Your recovery status is \(analysis.recoveryTimeline.state.rawValue): fully recovered and cleared for your next workout."
-            } else {
-                recoveryNote = "Your recovery status is \(analysis.recoveryTimeline.state.rawValue): in active recovery until \(analysis.recoveryTimeline.earliestHardPhrase)."
-            }
-            return "\(recoveryNote) Next Recommended Session: \(analysis.lockedPrescription.nextSessionName) (\(analysis.lockedPrescription.prescribedDurationBand) at \(analysis.lockedPrescription.prescribedPaceBand)). \(analysis.lockedPrescription.sessionRationale)"
-        }
-
-        // 11. Direct data summary
-        let pace = PaceFormatter.formatPace(secondsPerKilometer: runRecord.workingAvgPace)
-        let cad = Int(runRecord.workingAvgCadence)
-        let hr = Int(runRecord.workingAvgHeartRate)
-        return "Workout data: \(analysis.detectedType) (\(analysis.workoutWeekday), \(analysis.workoutDateFormatted)). Pace: \(pace), Cadence: \(cad) SPM, HR: \(hr) BPM."
     }
 
     // MARK: - Readiness & Recovery Timeline
@@ -484,8 +440,8 @@ class AnalystChatEngine: ObservableObject {
             return ReadinessAssessment(
                 state: state,
                 triggers: [],
-                acuteLoad: profile.acuteLoad ?? 0,
-                chronicWeeklyLoad: profile.chronicWeeklyLoad ?? 0,
+                acuteLoad: profile.acuteLoad,
+                chronicWeeklyLoad: profile.chronicWeeklyLoad,
                 acwr: profile.acwr,
                 mileageDropFraction: nil
             )

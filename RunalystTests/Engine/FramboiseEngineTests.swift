@@ -673,4 +673,165 @@ final class FramboiseEngineTests: XCTestCase {
         XCTAssertEqual(splits[2].durationSeconds, 120.0, accuracy: 0.01)
         XCTAssertEqual(splits[2].paceSecondsPerKm, 300.0, accuracy: 0.01)
     }
+
+    func testGeneratePhaseSegments_BridgesMomentaryRepHesitation_ExactNineReps() async {
+        // Authentically simulate 9 x 400m intervals where Rep 4 experiences a momentary
+        // 20-second track-curve / watch-check hesitation (pace dips to steady).
+        var buckets: [BucketData] = []
+        var now = Date()
+
+        // 1. Warm-up: 5 minutes at steady 330 s/km (5:30/km), 160 SPM
+        for _ in 0..<10 {
+            buckets.append(BucketData(startTime: now, distanceMeters: 90.9, durationSeconds: 30, meanPaceSecPerKm: 330, meanCadence: 160, meanHR: 135))
+            now = now.addingTimeInterval(30)
+        }
+
+        // 2. 9 Interval Reps: Reps 1 to 3, Reps 5 to 9 are clean 90s work (210 s/km, 185 SPM) + 90s recovery (390 s/km, 140 SPM)
+        // Rep 4 has a 20s hesitation in the middle.
+        for rep in 1...9 {
+            if rep == 4 {
+                // First half of Rep 4: 35s work
+                buckets.append(BucketData(startTime: now, distanceMeters: 166.7, durationSeconds: 35, meanPaceSecPerKm: 210, meanCadence: 185, meanHR: 168))
+                now = now.addingTimeInterval(35)
+                // Hesitation / curve: 20s steady
+                buckets.append(BucketData(startTime: now, distanceMeters: 64.5, durationSeconds: 20, meanPaceSecPerKm: 310, meanCadence: 162, meanHR: 164))
+                now = now.addingTimeInterval(20)
+                // Second half of Rep 4: 35s work
+                buckets.append(BucketData(startTime: now, distanceMeters: 166.7, durationSeconds: 35, meanPaceSecPerKm: 210, meanCadence: 185, meanHR: 170))
+                now = now.addingTimeInterval(35)
+            } else {
+                // Standard 90s work rep (3 buckets of 30s)
+                for _ in 0..<3 {
+                    buckets.append(BucketData(startTime: now, distanceMeters: 142.8, durationSeconds: 30, meanPaceSecPerKm: 210, meanCadence: 185, meanHR: 170))
+                    now = now.addingTimeInterval(30)
+                }
+            }
+
+            // Recovery: 90s (3 buckets of 30s)
+            for _ in 0..<3 {
+                buckets.append(BucketData(startTime: now, distanceMeters: 76.9, durationSeconds: 30, meanPaceSecPerKm: 390, meanCadence: 140, meanHR: 138))
+                now = now.addingTimeInterval(30)
+            }
+        }
+
+        // 3. Cool-down: 5 minutes at steady 360 s/km (6:00/km)
+        for _ in 0..<10 {
+            buckets.append(BucketData(startTime: now, distanceMeters: 83.3, durationSeconds: 30, meanPaceSecPerKm: 360, meanCadence: 155, meanHR: 130))
+            now = now.addingTimeInterval(30)
+        }
+
+        let phaseSegments = await engine.generatePhaseSegments(from: buckets)
+        let workSegments = phaseSegments.filter { $0.kind == "work" }
+
+        XCTAssertEqual(workSegments.count, 9, "Engine must bridge the 20s hesitation in Rep 4 and yield exactly 9 work intervals, not 10")
+    }
+
+    func testGeneratePhaseSegments_FiltersIsolatedWarmupStride_ExactNineReps() async {
+        // Authentically simulate 10 minutes of warmup with an isolated 25s stride at minute 3
+        // followed by 6 minutes of steady jogging before the 9-rep interval set begins.
+        var buckets: [BucketData] = []
+        var now = Date()
+
+        // 1. Warm-up Part 1: 3 minutes steady (6 buckets of 30s) at 330 s/km, 160 SPM
+        for _ in 0..<6 {
+            buckets.append(BucketData(startTime: now, distanceMeters: 90.9, durationSeconds: 30, meanPaceSecPerKm: 330, meanCadence: 160, meanHR: 135))
+            now = now.addingTimeInterval(30)
+        }
+
+        // 2. Warm-up Stride: 25s surge at 220 s/km, 184 SPM
+        buckets.append(BucketData(startTime: now, distanceMeters: 113.6, durationSeconds: 25, meanPaceSecPerKm: 220, meanCadence: 184, meanHR: 148))
+        now = now.addingTimeInterval(25)
+
+        // 3. Warm-up Part 2: 6 minutes steady (12 buckets of 30s) at 330 s/km before workout begins
+        for _ in 0..<12 {
+            buckets.append(BucketData(startTime: now, distanceMeters: 90.9, durationSeconds: 30, meanPaceSecPerKm: 330, meanCadence: 160, meanHR: 138))
+            now = now.addingTimeInterval(30)
+        }
+
+        // 4. Main 9 Interval Reps: 90s work (215 s/km) + 90s recovery (390 s/km)
+        for _ in 1...9 {
+            for _ in 0..<3 {
+                buckets.append(BucketData(startTime: now, distanceMeters: 139.5, durationSeconds: 30, meanPaceSecPerKm: 215, meanCadence: 184, meanHR: 168))
+                now = now.addingTimeInterval(30)
+            }
+            for _ in 0..<3 {
+                buckets.append(BucketData(startTime: now, distanceMeters: 76.9, durationSeconds: 30, meanPaceSecPerKm: 390, meanCadence: 140, meanHR: 138))
+                now = now.addingTimeInterval(30)
+            }
+        }
+
+        let phaseSegments = await engine.generatePhaseSegments(from: buckets)
+        let workSegments = phaseSegments.filter { $0.kind == "work" }
+
+        XCTAssertEqual(workSegments.count, 9, "Engine must filter out the isolated warmup stride and yield exactly 9 work intervals, not 10")
+    }
+
+    func testConsolidatePhaseSegments_ReplacesFragmentedOrOutlierSegments() {
+        // Direct test of FramboiseEngine.consolidatePhaseSegments on an existing 10-segment payload
+        let rawSegments: [PhaseSegment] = [
+            PhaseSegment(startSeconds: 0, endSeconds: 300, kind: "steady", avgPace: 330, avgCadence: 160, avgHR: 135),
+            // Rep 1
+            PhaseSegment(startSeconds: 300, endSeconds: 390, kind: "work", avgPace: 210, avgCadence: 185, avgHR: 168),
+            PhaseSegment(startSeconds: 390, endSeconds: 480, kind: "recovery", avgPace: 390, avgCadence: 140, avgHR: 138),
+            // Rep 2
+            PhaseSegment(startSeconds: 480, endSeconds: 570, kind: "work", avgPace: 212, avgCadence: 185, avgHR: 169),
+            PhaseSegment(startSeconds: 570, endSeconds: 660, kind: "recovery", avgPace: 390, avgCadence: 140, avgHR: 138),
+            // Rep 3
+            PhaseSegment(startSeconds: 660, endSeconds: 750, kind: "work", avgPace: 210, avgCadence: 186, avgHR: 170),
+            PhaseSegment(startSeconds: 750, endSeconds: 840, kind: "recovery", avgPace: 390, avgCadence: 140, avgHR: 139),
+            // Rep 4 (Fragmented by a 20s steady gap)
+            PhaseSegment(startSeconds: 840, endSeconds: 875, kind: "work", avgPace: 210, avgCadence: 185, avgHR: 169),
+            PhaseSegment(startSeconds: 875, endSeconds: 895, kind: "steady", avgPace: 310, avgCadence: 162, avgHR: 165),
+            PhaseSegment(startSeconds: 895, endSeconds: 930, kind: "work", avgPace: 210, avgCadence: 185, avgHR: 171),
+            PhaseSegment(startSeconds: 930, endSeconds: 1020, kind: "recovery", avgPace: 390, avgCadence: 140, avgHR: 140),
+            // Reps 5 to 9
+            PhaseSegment(startSeconds: 1020, endSeconds: 1110, kind: "work", avgPace: 211, avgCadence: 185, avgHR: 171),
+            PhaseSegment(startSeconds: 1110, endSeconds: 1200, kind: "recovery", avgPace: 390, avgCadence: 140, avgHR: 141),
+            PhaseSegment(startSeconds: 1200, endSeconds: 1290, kind: "work", avgPace: 210, avgCadence: 185, avgHR: 172),
+            PhaseSegment(startSeconds: 1290, endSeconds: 1380, kind: "recovery", avgPace: 390, avgCadence: 140, avgHR: 141),
+            PhaseSegment(startSeconds: 1380, endSeconds: 1470, kind: "work", avgPace: 209, avgCadence: 186, avgHR: 173),
+            PhaseSegment(startSeconds: 1470, endSeconds: 1560, kind: "recovery", avgPace: 390, avgCadence: 140, avgHR: 142),
+            PhaseSegment(startSeconds: 1560, endSeconds: 1650, kind: "work", avgPace: 208, avgCadence: 186, avgHR: 174),
+            PhaseSegment(startSeconds: 1650, endSeconds: 1740, kind: "recovery", avgPace: 390, avgCadence: 140, avgHR: 142),
+            PhaseSegment(startSeconds: 1740, endSeconds: 1830, kind: "work", avgPace: 205, avgCadence: 188, avgHR: 176),
+            PhaseSegment(startSeconds: 1830, endSeconds: 1920, kind: "recovery", avgPace: 390, avgCadence: 140, avgHR: 143),
+            PhaseSegment(startSeconds: 1920, endSeconds: 2220, kind: "steady", avgPace: 360, avgCadence: 155, avgHR: 130)
+        ]
+
+        let consolidated = FramboiseEngine.consolidatePhaseSegments(rawSegments)
+        let work = consolidated.filter { $0.kind == "work" }
+        XCTAssertEqual(work.count, 9, "Consolidated segments must coalesce the fragmented Rep 4 into 1 rep, totaling exactly 9 work segments")
+    }
+
+    func testConsolidatePhaseSegments_NineIntervalsWithExtendedRest_PreservesAllNineReps() {
+        var segments: [PhaseSegment] = []
+        var t: Double = 0
+
+        // Warmup: 300s steady
+        segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 300, kind: "steady", avgPace: 330, avgCadence: 160, avgHR: 135))
+        t += 300
+
+        // 8 intervals of 60s work + 60s recovery
+        for _ in 1...8 {
+            segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 60, kind: "work", avgPace: 210, avgCadence: 185, avgHR: 170))
+            t += 60
+            segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 60, kind: "recovery", avgPace: 380, avgCadence: 140, avgHR: 140))
+            t += 60
+        }
+
+        // Extended recovery before rep 9 (180s recovery)
+        segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 180, kind: "recovery", avgPace: 400, avgCadence: 135, avgHR: 135))
+        t += 180
+
+        // Rep 9: 60s work at 186 SPM
+        segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 60, kind: "work", avgPace: 208, avgCadence: 186, avgHR: 174))
+        t += 60
+
+        // Cooldown: 300s steady
+        segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 300, kind: "steady", avgPace: 360, avgCadence: 155, avgHR: 130))
+
+        let consolidated = FramboiseEngine.consolidatePhaseSegments(segments)
+        let work = consolidated.filter { $0.kind == "work" }
+        XCTAssertEqual(work.count, 9, "Engine must preserve all 9 work intervals and not drop the 9th rep due to extended rest")
+    }
 }
