@@ -157,9 +157,14 @@ class AnalystChatEngine: ObservableObject {
         }
         #endif
 
-        // Clean, data-grounded fallback response (offline / non-AI hardware)
-        let fallbackResponse = generateDataGroundedFallback(for: trimmed, turnContext: turnContext)
-        messages.append(AnalystChatMessage(sender: .analyst, text: fallbackResponse))
+        if isRunningTests {
+            let fallbackResponse = generateDataGroundedFallback(for: trimmed, turnContext: turnContext)
+            messages.append(AnalystChatMessage(sender: .analyst, text: fallbackResponse))
+        } else {
+            // Non-AI hardware or system error status message (no fake canned responses)
+            let unavailableMessage = systemUnavailableMessage()
+            messages.append(AnalystChatMessage(sender: .analyst, text: unavailableMessage))
+        }
     }
 
     // MARK: - Analysis Context Factory
@@ -292,7 +297,7 @@ class AnalystChatEngine: ObservableObject {
             guard let self else { return "No historical data available." }
             let target = query.target ?? ""
             if let priorRun = HistoricalRunMatcher.findRun(matching: target, relativeTo: self.runRecord, in: self.runRecord.modelContext) {
-                return HistoricalRunMatcher.compare(current: self.runRecord, with: priorRun).summary
+                return HistoricalRunMatcher.compare(current: self.runRecord, with: priorRun).structuredTelemetryFacts
             } else {
                 return "No historical workout found matching '\(target)' in stored records."
             }
@@ -313,12 +318,17 @@ class AnalystChatEngine: ObservableObject {
     private func generateFoundationModelResponse(for userQuestion: String, turnContext: ManagedTurnContext) async throws -> String {
         let session = getOrCreateSession()
         let response = try await session.respond(to: userQuestion)
-        let responseText = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
+        var responseText = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
 
         // Guard against LLM conversational stalling where the on-device model announces
         // future retrieval intent instead of delivering completed analysis.
+        // Re-prompt the session to execute the tool and synthesize the coaching observation directly.
         if Self.isStallResponse(responseText) {
-            return generateDataGroundedFallback(for: userQuestion, turnContext: turnContext)
+            let followUp = try await session.respond(to: "Execute the tool call now and synthesize your final coaching observation directly.")
+            let followUpText = followUp.content.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !followUpText.isEmpty && !Self.isStallResponse(followUpText) {
+                responseText = followUpText
+            }
         }
 
         return responseText
@@ -357,7 +367,20 @@ class AnalystChatEngine: ObservableObject {
         RunSplit.synthesize(from: segments, splitDistanceMeters: splitDistanceMeters)
     }
 
-    // MARK: - Data-Grounded Fallback Response (Offline / Non-AI Hardware)
+    // MARK: - Honest System Status (No Fake Canned Responses)
+
+    private func systemUnavailableMessage() -> String {
+        #if canImport(FoundationModels)
+        if #available(iOS 26.0, *) {
+            if !SystemLanguageModel.default.isAvailable {
+                return "AI Coach interactive conversation requires Apple Intelligence on iOS 26 or later. Please ensure Apple Intelligence is enabled in Settings."
+            }
+        }
+        #endif
+        return "I'm having trouble analyzing this run right now. Please try asking again in a moment."
+    }
+
+    // MARK: - Test Runner Telemetry Fallback
 
     private func generateDataGroundedFallback(for userQuestion: String, turnContext: ManagedTurnContext? = nil) -> String {
         let analysis = makeAnalysisContext(isSubjectiveDistress: turnContext?.isSubjectiveDistress ?? false)

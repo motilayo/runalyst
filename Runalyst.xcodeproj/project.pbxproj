@@ -25,6 +25,7 @@
 		B1110016D4E5F60718293A16 /* Runalyst/CoachingEngine/ConversationMemoryManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110016D4E5F60718293A16 /* Runalyst/CoachingEngine/ConversationMemoryManager.swift */; };
 		B1110017D4E5F60718293A17 /* Runalyst/CoachingEngine/AnalystChatTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110017D4E5F60718293A17 /* Runalyst/CoachingEngine/AnalystChatTools.swift */; };
 		B1110018D4E5F60718293A18 /* Runalyst/CoachingEngine/AnalystFallbackResponder.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110018D4E5F60718293A18 /* Runalyst/CoachingEngine/AnalystFallbackResponder.swift */; };
+		B1110099D4E5F60718293A99 /* Runalyst/CoachingEngine/HistoricalRunMatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110099D4E5F60718293A99 /* Runalyst/CoachingEngine/HistoricalRunMatcher.swift */; };
 		B1110019D4E5F60718293A19 /* Runalyst/CoachingEngine/AnalystPromptBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110019D4E5F60718293A19 /* Runalyst/CoachingEngine/AnalystPromptBuilder.swift */; };
 		B1110020D4E5F60718293A20 /* Runalyst/CoachingEngine/WorkoutAnalysisContextFormatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110020D4E5F60718293A20 /* Runalyst/CoachingEngine/WorkoutAnalysisContextFormatting.swift */; };
 		B1110021D4E5F60718293A21 /* Runalyst/Utilities/RunSplitSynthesis.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110021D4E5F60718293A21 /* Runalyst/Utilities/RunSplitSynthesis.swift */; };
@@ -149,6 +150,7 @@
 		A1110016D4E5F60718293A16 /* Runalyst/CoachingEngine/ConversationMemoryManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/CoachingEngine/ConversationMemoryManager.swift; sourceTree = SOURCE_ROOT; };
 		A1110017D4E5F60718293A17 /* Runalyst/CoachingEngine/AnalystChatTools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/CoachingEngine/AnalystChatTools.swift; sourceTree = SOURCE_ROOT; };
 		A1110018D4E5F60718293A18 /* Runalyst/CoachingEngine/AnalystFallbackResponder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/CoachingEngine/AnalystFallbackResponder.swift; sourceTree = SOURCE_ROOT; };
+		A1110099D4E5F60718293A99 /* Runalyst/CoachingEngine/HistoricalRunMatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/CoachingEngine/HistoricalRunMatcher.swift; sourceTree = SOURCE_ROOT; };
 		A1110019D4E5F60718293A19 /* Runalyst/CoachingEngine/AnalystPromptBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/CoachingEngine/AnalystPromptBuilder.swift; sourceTree = SOURCE_ROOT; };
 		A1110020D4E5F60718293A20 /* Runalyst/CoachingEngine/WorkoutAnalysisContextFormatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/CoachingEngine/WorkoutAnalysisContextFormatting.swift; sourceTree = SOURCE_ROOT; };
 		A1110021D4E5F60718293A21 /* Runalyst/Utilities/RunSplitSynthesis.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Utilities/RunSplitSynthesis.swift; sourceTree = SOURCE_ROOT; };
@@ -480,6 +482,7 @@
 				A1110016D4E5F60718293A16 /* Runalyst/CoachingEngine/ConversationMemoryManager.swift */,
 				A1110017D4E5F60718293A17 /* Runalyst/CoachingEngine/AnalystChatTools.swift */,
 				A1110018D4E5F60718293A18 /* Runalyst/CoachingEngine/AnalystFallbackResponder.swift */,
+				A1110099D4E5F60718293A99 /* Runalyst/CoachingEngine/HistoricalRunMatcher.swift */,
 				A1110019D4E5F60718293A19 /* Runalyst/CoachingEngine/AnalystPromptBuilder.swift */,
 				A1110020D4E5F60718293A20 /* Runalyst/CoachingEngine/WorkoutAnalysisContextFormatting.swift */,
 				A1110021D4E5F60718293A21 /* Runalyst/Utilities/RunSplitSynthesis.swift */,
@@ -639,6 +642,7 @@
 				B1110016D4E5F60718293A16 /* Runalyst/CoachingEngine/ConversationMemoryManager.swift in Sources */,
 				B1110017D4E5F60718293A17 /* Runalyst/CoachingEngine/AnalystChatTools.swift in Sources */,
 				B1110018D4E5F60718293A18 /* Runalyst/CoachingEngine/AnalystFallbackResponder.swift in Sources */,
+				B1110099D4E5F60718293A99 /* Runalyst/CoachingEngine/HistoricalRunMatcher.swift in Sources */,
 				B1110019D4E5F60718293A19 /* Runalyst/CoachingEngine/AnalystPromptBuilder.swift in Sources */,
 				B1110020D4E5F60718293A20 /* Runalyst/CoachingEngine/WorkoutAnalysisContextFormatting.swift in Sources */,
 				B1110021D4E5F60718293A21 /* Runalyst/Utilities/RunSplitSynthesis.swift in Sources */,

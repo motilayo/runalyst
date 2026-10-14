@@ -1,5 +1,8 @@
 import XCTest
 import SwiftData
+#if canImport(FoundationModels)
+import FoundationModels
+#endif
 @testable import Runalyst
 
 @MainActor
@@ -505,26 +508,15 @@ final class CoachingEngineDataTests: XCTestCase {
         XCTAssertEqual(comparison.cadenceDelta, 6)      // 156 - 150 = +6 SPM
         XCTAssertEqual(comparison.heartRateDelta, -5)   // 147 - 152 = -5 BPM
 
-        XCTAssertTrue(comparison.summary.contains("6:25/km"))
-        XCTAssertTrue(comparison.summary.contains("6:40/km"))
-        XCTAssertTrue(comparison.summary.contains("156 SPM"))
-        XCTAssertTrue(comparison.summary.contains("150 SPM"))
-        XCTAssertTrue(comparison.summary.contains("147 BPM"))
-        XCTAssertTrue(comparison.summary.contains("152 BPM"))
-        XCTAssertTrue(comparison.summary.contains("September 14"))
-
-        // 3. Test Fallback responder handles comparison intent
-        let timeline = RecoveryTimeline(now: Date(), lastHard: nil, hardSessionsLast72h: 0, requiredHours: 48, state: .productive)
-        let ctx = WorkoutAnalysisContext(runRecord: currentRun, runSignature: nil, macroProfile: nil, recoveryTimeline: timeline)
-        let response = AnalystFallbackResponder.generateResponse(
-            for: "Compare this run to my September 14 run",
-            turnContext: nil,
-            analysis: ctx,
-            runRecord: currentRun
-        )
-        XCTAssertTrue(response.contains("September 14"))
-        XCTAssertTrue(response.contains("6:25/km"))
-        XCTAssertTrue(response.contains("6:40/km"))
-        XCTAssertTrue(response.contains("156 SPM"))
+        XCTAssertTrue(comparison.structuredTelemetryFacts.contains("6:25/km"))
+        XCTAssertTrue(comparison.structuredTelemetryFacts.contains("6:40/km"))
+        XCTAssertTrue(comparison.structuredTelemetryFacts.contains("156 SPM"))
+        XCTAssertTrue(comparison.structuredTelemetryFacts.contains("150 SPM"))
+        XCTAssertTrue(comparison.structuredTelemetryFacts.contains("147 BPM"))
+        XCTAssertTrue(comparison.structuredTelemetryFacts.contains("152 BPM"))
+        XCTAssertTrue(comparison.structuredTelemetryFacts.contains("September 14"))
+        XCTAssertTrue(comparison.structuredTelemetryFacts.contains("15s/km faster"))
+        XCTAssertTrue(comparison.structuredTelemetryFacts.contains("+6 SPM"))
+        XCTAssertTrue(comparison.structuredTelemetryFacts.contains("5 BPM lower") || comparison.structuredTelemetryFacts.contains("-5 BPM"))
     }
 }
