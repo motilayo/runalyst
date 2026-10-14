@@ -236,7 +236,7 @@ class AnalystChatEngine: ObservableObject {
         TOOL CALLING:
         Call deterministic native tools silently and immediately to fetch running telemetry and physics:
         • Overall telemetry, cadence, running economy, or verdicts: `fetchWorkoutAnalysis`.
-        • Interval work reps, pace spread, or recovery HR drops: `fetchIntervalPerformance`.
+        • Interval work reps, pace spread, or recovery HR drops: `fetchIntervalPerformance` (call this immediately whenever I ask about intervals, reps, pacing spread, or rep-by-rep grades).
         • Treadmill kinetics, room heat, or grade resistance: `fetchWorkoutPhysics`.
         • Tomorrow's run, recovery timeline, or readiness: `fetchReadinessAndPrescription` (call ONLY when I explicitly ask about tomorrow, next session, or readiness; NEVER volunteer unsolicited future prescriptions).
         • Athlete experience, 30-day load, or cadence floor: `fetchAthleteProfile`.
@@ -250,7 +250,7 @@ class AnalystChatEngine: ObservableObject {
 
         COACHING RULES:
         • Topic Continuity: When I ask follow-ups ("That's all?", "Tell me more", "Why?"), elaborate deeply on the ACTIVE topic previously discussed. Never reset to a generic overview or volunteer tomorrow's plan.
-        • Prose over Lists: Weave metrics into flowing, perceptive coaching sentences rather than mechanical bullet lists.
+        • Formatting: Weave metrics naturally into your coaching analysis. When I explicitly ask to break down, grade, or list each interval or split, present each rep/split clearly with its rep number, pace, cadence, and grade.
         • Metric Units: Cadence is ALWAYS in SPM (steps per minute). NEVER attach pace units (/km, /mi) to cadence. Pace is ALWAYS min/km or min/mi. Heart rate is ALWAYS BPM.
         • Bold accent numbers and units when presenting metrics.
         • Athlete Safety Override: If I report illness, fever, or sharp pain, safety overrides all training—advise rest immediately.
@@ -344,24 +344,8 @@ class AnalystChatEngine: ObservableObject {
     private func generateFoundationModelResponse(for userQuestion: String, turnContext: ManagedTurnContext) async throws -> String {
         let session = getOrCreateSession()
         toolsCalledThisTurn = 0
-        let prompt: String
-        if !turnContext.turnGuidance.isEmpty {
-            prompt = """
-            \(userQuestion)
-
-            [Coach Turn Directive: \(turnContext.turnGuidance)]
-            """
-        } else {
-            prompt = userQuestion
-        }
-        let response = try await session.respond(to: prompt)
+        let response = try await session.respond(to: userQuestion)
         var responseText = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        // Strip any accidental echoing of internal directive brackets
-        if let range = responseText.range(of: #"\s*\[Coach Turn Directive:.*?\]"#, options: .regularExpression) {
-            responseText.removeSubrange(range)
-            responseText = responseText.trimmingCharacters(in: .whitespacesAndNewlines)
-        }
 
         // Guard against LLM conversational stalling where the on-device model announces
         // future retrieval intent instead of delivering completed analysis.
@@ -493,6 +477,13 @@ class AnalystChatEngine: ObservableObject {
 
         let defaultPivot = "I'm your personal running coach and exercise physiologist, so I specialize in your running biomechanics and recovery."
         return "\(defaultPivot) What would you like to explore regarding your runs?"
+    }
+
+    /// Evaluates whether a generated response contains discrete rep or split breakdowns.
+    nonisolated static func containsRepBreakdown(_ text: String) -> Bool {
+        // Matches "Rep 1", "rep 2", "Interval 1", "km 1", "mile 1", "Set 1", "• Rep"
+        let repPattern = #"\b(rep\s*\d+|interval\s*\d+|km\s*\d+|mile\s*\d+|set\s*\d+)\b"#
+        return text.range(of: repPattern, options: [.regularExpression, .caseInsensitive]) != nil
     }
 
     // MARK: - Honest System Status (No Fake Canned Responses)

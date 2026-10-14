@@ -55,7 +55,7 @@ struct FetchWorkoutAnalysisTool: Tool {
     typealias Output = String
 
     let name = "fetchWorkoutAnalysis"
-    let description = "Retrieves deterministic biomechanical and physiological analysis of this workout partitioned into strongly-typed namespaces (session_totals, steady_state_performance, or active_work_performance and recovery_performance) with explicit metadata descriptions and causal physiological verdicts."
+    let description = "Retrieves deterministic overall workout telemetry and causal physiological diagnoses for this run, including total distance, duration, average pace, cadence, heart rate, cadence floor adherence, aerobic efficiency, and cardiac drift."
 
     let provider: @MainActor @Sendable (WorkoutAnalysisQuery) async -> String
 
@@ -79,7 +79,7 @@ struct FetchIntervalPerformanceTool: Tool {
     typealias Output = String
 
     let name = "fetchIntervalPerformance"
-    let description = "Retrieves discrete interval performance partitioned into strongly-typed namespaces: active_work_performance (high-intensity intervals), recovery_performance (rest jogs and HR drops), and rep_by_rep_breakdown with separated work and recovery phases."
+    let description = "Retrieves detailed interval workout performance, including individual rep-by-rep breakdowns (work pace, cadence, heart rate, letter grade, and observation for each repetition), recovery jog paces and heart rate drops between sets, and pace consistency across reps."
 
     let provider: @MainActor @Sendable (IntervalPerformanceQuery) async -> String
 
@@ -103,7 +103,7 @@ struct FetchWorkoutPhysicsTool: Tool {
     typealias Output = String
 
     let name = "fetchWorkoutPhysics"
-    let description = "Retrieves modeled physical and physiological realities: treadmill belt kinetics and braking shock, indoor thermal accumulation in static room air vs outdoor convective wind cooling, gravitational resistance on hills, and cardiac lag."
+    let description = "Retrieves modeled biomechanical and environmental physics for this workout: treadmill belt kinetics vs road push-off, indoor heat accumulation and lack of convective cooling vs outdoor wind, hill slope resistance, and cardiac lag."
 
     let provider: @MainActor @Sendable (WorkoutPhysicsQuery) async -> String
 
@@ -127,7 +127,7 @@ struct FetchReadinessAndPrescriptionTool: Tool {
     typealias Output = String
 
     let name = "fetchReadinessAndPrescription"
-    let description = "Retrieves the runner's current recovery timeline, readiness state, hours of rest, and the locked training prescription for their upcoming session."
+    let description = "Retrieves the runner's current recovery timeline, readiness to train, and the mathematically locked prescription for their upcoming workout (session type, pace band, duration band, and rationale)."
 
     let provider: @MainActor @Sendable (ReadinessQuery) async -> String
 
@@ -151,7 +151,7 @@ struct FetchAthleteProfileTool: Tool {
     typealias Output = String
 
     let name = "fetchAthleteProfile"
-    let description = "Retrieves the runner's 30-day cumulative training load, athletic experience level, active training goal, and height-calibrated cadence floor."
+    let description = "Retrieves the athlete's 30-day cumulative training volume, experience level, active training goal, and height-calibrated cadence floor."
 
     let provider: @MainActor @Sendable (AthleteProfileQuery) async -> String
 
@@ -175,7 +175,7 @@ struct FetchHistoricalWorkoutTool: Tool {
     typealias Output = String
 
     let name = "fetchHistoricalWorkout"
-    let description = "Retrieves stored historical workout telemetry for comparisons or rankings: evaluates 30-day best and worst performances, or finds a prior run by date or type, returning exact deterministic telemetry facts and deltas."
+    let description = "Retrieves historical workout telemetry to compare against past runs, rank 30-day performances, or evaluate training progress over time."
 
     let provider: @MainActor @Sendable (HistoricalWorkoutQuery) async -> String
 

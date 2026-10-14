@@ -273,7 +273,7 @@ enum ConversationMemoryManager {
             turnIndex: userTurnIndex,
             isSubjectiveDistress: false,
             cleanConversationDigest: summarizeHistory(messages),
-            turnGuidance: "TURN FOCUS: Workout Telemetry & Biomechanics. Explain what happened during this specific workout using the physiological verdicts.",
+            turnGuidance: "TURN FOCUS: Workout Telemetry & Biomechanics. Detail the workout's execution, pacing, cadence, and physiological verdicts using data from native tool calls.",
             stripWorkoutPayload: false,
             prunePhysiologicalVerdicts: false
         )
