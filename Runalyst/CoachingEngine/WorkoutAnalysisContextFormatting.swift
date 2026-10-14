@@ -219,9 +219,9 @@ extension WorkoutAnalysisContext {
                 lines.append("- Rep Pace Range: \(PaceFormatter.formatPace(secondsPerKilometer: f.avgPace)) to \(PaceFormatter.formatPace(secondsPerKilometer: s.avgPace)) (spread: \(Int(workRepPaceSpreadSec))s/km)")
             }
             if workRepPaceSpreadSec <= 8.0 {
-                lines.append("- Rep Repeatability: Disciplined, tightly controlled interval pacing")
+                lines.append("- Pacing Consistency: Disciplined, tightly controlled interval pacing")
             } else {
-                lines.append("- Rep Repeatability: Wide pace spread (\(Int(workRepPaceSpreadSec))s/km difference between fastest and slowest reps; indicates late-rep fatigue)")
+                lines.append("- Pacing Consistency: Wide pace spread (\(Int(workRepPaceSpreadSec))s/km difference between fastest and slowest reps; indicates late-rep fatigue)")
             }
             lines.append("Interval Rep Details (Evaluate by these reps, NOT arbitrary distance splits):")
             for rep in intervalEvaluations.prefix(24) {
@@ -252,7 +252,7 @@ extension WorkoutAnalysisContext {
                 lines.append("- Slowest Split: km \(s.index) at \(PaceFormatter.formatPace(secondsPerKilometer: s.paceSecondsPerKm)) (\(Int(s.avgCadence)) SPM, \(Int(s.avgHeartRate)) BPM)")
             }
             if hasCardiacDrift {
-                lines.append("- Physiological Decoupling: Cardiac drift detected (+\(cardiacDriftMagnitudeBPM) BPM HR rise in second half despite steady/fading pace; indicates fatigue or thermal drift, not acceleration)")
+                lines.append("- Heart Rate Drift: Cardiac drift detected (+\(cardiacDriftMagnitudeBPM) BPM HR rise in second half despite steady/fading pace; indicates fatigue or thermal drift, not acceleration)")
             }
             lines.append("Split Details:")
             for s in splitEvaluations.prefix(8) {
@@ -344,7 +344,9 @@ extension WorkoutAnalysisContext {
         if let f = fastestWorkRep, let s = slowestWorkRep {
             workPerf["work_pace_range"] = "\(PaceFormatter.formatPace(secondsPerKilometer: f.avgPace)) to \(PaceFormatter.formatPace(secondsPerKilometer: s.avgPace)) (spread: \(Int(workRepPaceSpreadSec))s/km)"
         }
-        workPerf["work_repeatability"] = workRepPaceSpreadSec <= 8.0 ? "Disciplined (tight ±\(Int(workRepPaceSpreadSec / 2.0))s/km spread)" : "Variable (\(Int(workRepPaceSpreadSec))s/km spread; late rep fatigue)"
+        let pacingConsistencySummary = workRepPaceSpreadSec <= 8.0 ? "Disciplined (tight ±\(Int(workRepPaceSpreadSec / 2.0))s/km spread)" : "Variable (\(Int(workRepPaceSpreadSec))s/km spread; late rep fatigue)"
+        workPerf["work_pacing_consistency"] = pacingConsistencySummary
+        workPerf["work_repeatability"] = pacingConsistencySummary
         workPerf["work_avg_cadence"] = "\(avgCad) SPM"
         workPerf["work_turnover_adherence"] = "Work average \(avgCad) SPM vs \(floor) SPM height floor (\(avgCad >= floor ? "above floor" : "sub-floor"))"
         workPerf["work_avg_heart_rate"] = "\(avgHR) BPM"
@@ -432,7 +434,7 @@ extension WorkoutAnalysisContext {
             let humStr = runRecord.ambientHumidity.map { "\($0 <= 1.0 ? Int($0 * 100) : Int($0))%" } ?? "ambient"
             lines.append("- Heat Dissipation: Natural convective wind cooling assists sweat evaporation (\(tempStr), \(humStr) humidity).")
             if (runRecord.ambientTemperatureCelsius ?? 0) >= 22.0 {
-                lines.append("- High Ambient Heat: Elevated temperature blunts evaporative cooling, triggering cardiac decoupling.")
+                lines.append("- High Ambient Heat: Elevated temperature blunts evaporative cooling, triggering heart rate drift.")
             }
         }
 
@@ -449,14 +451,14 @@ extension WorkoutAnalysisContext {
             }
         }
 
-        // 4. Cardiac Lag & Decoupling
+        // 4. Cardiac Lag & Heart Rate Drift
         lines.append("")
-        lines.append("4. Cardiac Lag & Cardiovascular Coupling:")
+        lines.append("4. Cardiac Lag & Heart Rate Drift:")
         lines.append("- Physiological Delay: Heart rate naturally lags pace changes by 15–30 seconds due to autonomic circulatory kinetics.")
         if hasCardiacDrift {
-            lines.append("- Decoupling: Cardiac drift detected (+\(cardiacDriftMagnitudeBPM) BPM in second half despite flat/fading pace). Cause: thermal strain or glycogen depletion, not speeding up.")
+            lines.append("- Drift: Cardiac drift detected (+\(cardiacDriftMagnitudeBPM) BPM in second half despite flat/fading pace). Cause: thermal strain or glycogen depletion, not speeding up.")
         } else {
-            lines.append("- Coupling: Stable cardiac coupling (heart rate remained in lockstep with mechanical output).")
+            lines.append("- Stability: Heart rate stayed stable and in lockstep with pace.")
         }
 
         return lines.joined(separator: "\n")
@@ -507,7 +509,9 @@ extension WorkoutAnalysisContext {
             if let f = fastestWorkRep, let s = slowestWorkRep {
                 workPerf["work_pace_range"] = "\(PaceFormatter.formatPace(secondsPerKilometer: f.avgPace)) to \(PaceFormatter.formatPace(secondsPerKilometer: s.avgPace)) (spread: \(Int(workRepPaceSpreadSec))s/km)"
             }
-            workPerf["work_repeatability"] = workRepPaceSpreadSec <= 8.0 ? "Disciplined consistency (tight spread)" : "Wide spread (\(Int(workRepPaceSpreadSec))s/km; late rep fatigue)"
+            let pacingConsistencyText = workRepPaceSpreadSec <= 8.0 ? "Disciplined consistency (tight spread)" : "Wide spread (\(Int(workRepPaceSpreadSec))s/km; late rep fatigue)"
+            workPerf["work_pacing_consistency"] = pacingConsistencyText
+            workPerf["work_repeatability"] = pacingConsistencyText
             workPerf["work_avg_turnover"] = "\(avgWorkCad) SPM (Floor: \(floor) SPM, \(avgWorkCad >= floor ? "above floor" : "sub-floor"))"
             workPerf["work_avg_heart_rate"] = "\(avgWorkHR) BPM"
             workPerf["overall_execution_grade"] = "\(overallGradeReport.grade), \(overallGradeReport.sentence)"

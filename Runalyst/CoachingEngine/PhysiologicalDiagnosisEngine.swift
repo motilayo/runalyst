@@ -105,7 +105,7 @@ enum CadenceCausalVerdict: Sendable, Equatable {
         case .gradeResistance(let drop, let elev, let severity):
             return "Grade resistance deceleration (dropped \(drop) SPM over +\(Int(elev))m elevation climb; priority: \(severity.rawValue))"
         case .lateNeuromuscularFatigue(let decay, let pace, let severity):
-            return "Late neuromuscular turnover fatigue (turnover slowed by \(decay) SPM while pace faded by \(pace)s/km; priority: \(severity.rawValue))"
+            return "Late-run turnover fatigue (turnover slowed by \(decay) SPM while pace faded by \(pace)s/km; priority: \(severity.rawValue))"
         case .subFloorStridePattern(let working, let floor, let severity):
             return "Sub-floor cadence pattern (\(working) SPM vs \(floor) SPM height floor; priority: \(severity.rawValue))"
         case .stableHeightCalibratedTurnover(let working):

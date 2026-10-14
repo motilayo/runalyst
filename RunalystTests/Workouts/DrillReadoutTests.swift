@@ -53,7 +53,7 @@ final class DrillReadoutTests: XCTestCase {
         XCTAssertEqual(readout.subtitle, "Interval Pre-Run • 15 min")
         XCTAssertEqual(
             readout.overview,
-            "In this drill, you will complete a neuromuscular wake-up to prime your fast-twitch fibers."
+            "In this drill, you will wake up your leg turnover and find a quick, springy rhythm before your run."
         )
         XCTAssertEqual(
             readout.breakdown,
@@ -172,7 +172,7 @@ final class DrillReadoutTests: XCTestCase {
             )
             XCTAssertEqual(
                 readout.overview,
-                "In this drill, you will complete a quick-step activation to sharpen muscle reaction time and prime your nervous system."
+                "In this drill, you will complete quick-step bursts to wake up fast turnover and keep your stride springy and light."
             )
             XCTAssertEqual(readout.durationMinutes, duration.rawValue)
             let totalSeconds = readout.phases.reduce(0) { $0 + $1.durationSeconds }

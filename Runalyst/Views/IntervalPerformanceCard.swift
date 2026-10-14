@@ -293,7 +293,7 @@ struct IntervalPerformanceCard: View {
                         telemetryPill(
                             label: "Pacing",
                             value: paceDeltaString(rep.paceDeltaVsAverageWorkSec),
-                            color: abs(rep.paceDeltaVsAverageWorkSec) <= 5 ? .green : .orange
+                            color: abs(rep.paceDeltaVsAverageWorkSec) <= 5 ? .blue : .orange
                         )
 
                         let cadenceDelta = rep.workCadence - cadenceFloor
@@ -307,7 +307,7 @@ struct IntervalPerformanceCard: View {
                             telemetryPill(
                                 label: "HR Drop",
                                 value: "-\(drop) BPM",
-                                color: drop >= 10 ? Color(red: 0.0, green: 0.75, blue: 0.65) : .secondary
+                                color: drop >= 10 ? Color(red: 1.0, green: 0.22, blue: 0.55) : .secondary
                             )
                         }
                     }
@@ -387,11 +387,11 @@ struct IntervalPerformanceCard: View {
 
     private func paceDeltaString(_ delta: Int) -> String {
         if delta == 0 {
-            return "±0s vs mean"
+            return "On target"
         } else if delta > 0 {
-            return "+\(delta)s vs mean"
+            return "+\(delta)s vs avg"
         } else {
-            return "\(delta)s vs mean"
+            return "\(delta)s vs avg"
         }
     }
 
