@@ -197,24 +197,51 @@ struct DashboardView: View {
 
     @ViewBuilder
     private var filterControlsSection: some View {
-        VStack(spacing: 12) {
+        HStack(spacing: 10) {
             Picker("Time Range", selection: $timeRange) {
                 Text("7 Days").tag("7 Days")
                 Text("30 Days").tag("30 Days")
                 Text("All Time").tag("All Time")
             }
             .pickerStyle(.segmented)
-            .padding(.horizontal)
-
-            VStack(alignment: .leading) {
-                Text("Min Distance: \(String(format: "%.1f", minimumRunDistance)) \(useMetricSystem ? "km" : "mi")")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                Slider(value: $minimumRunDistance, in: useMetricSystem ? 0.5...10.0 : 0.3...6.0, step: 0.1)
+            .onChange(of: timeRange) { _, _ in
+                UISelectionFeedbackGenerator().selectionChanged()
             }
-            .padding(.horizontal)
+
+            Menu {
+                Section("Minimum Distance") {
+                    ForEach([0.5, 1.0, 2.0, 3.0, 5.0, 10.0], id: \.self) { dist in
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            minimumRunDistance = dist
+                        } label: {
+                            HStack {
+                                Text("\(String(format: "%.1f", dist)) \(useMetricSystem ? "km" : "mi")")
+                                if abs(minimumRunDistance - dist) < 0.05 {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "line.3.horizontal.decrease.circle")
+                        .font(.system(size: 14, weight: .semibold))
+                    Text("\(String(format: "%.1f", minimumRunDistance))\(useMetricSystem ? "k" : "m")")
+                        .font(.caption2.bold())
+                        .monospacedDigit()
+                }
+                .foregroundColor(.secondary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .background(Color(UIColor.secondarySystemFill))
+                .clipShape(Capsule())
+            }
+            .accessibilityLabel("Filter by minimum distance: \(String(format: "%.1f", minimumRunDistance)) \(useMetricSystem ? "km" : "mi")")
         }
-        .padding(.vertical, 8)
+        .padding(.horizontal)
+        .padding(.vertical, 6)
     }
 
     @ViewBuilder
@@ -682,7 +709,10 @@ struct DashboardView: View {
         if !availableFilters.isEmpty {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    Button(action: { selectedFilter = nil }) {
+                    Button(action: {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        selectedFilter = nil
+                    }) {
                         Text("All")
                             .font(.caption.bold())
                             .padding(.horizontal, 12)
@@ -698,6 +728,7 @@ struct DashboardView: View {
 
                     ForEach(availableFilters, id: \.self) { filter in
                         Button(action: {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
                             if selectedFilter == filter {
                                 selectedFilter = nil
                             } else {

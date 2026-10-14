@@ -19,7 +19,7 @@ struct FitnessBaselineCard: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 Image(systemName: "heart.fill")
-                    .foregroundColor(.red)
+                    .foregroundColor(Color(red: 1.0, green: 0.22, blue: 0.55))
                     .font(.caption)
                 Text("VO2 MAX")
                     .font(.caption.bold())
@@ -61,6 +61,7 @@ struct FitnessBaselineCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
         .onTapGesture {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
             activeExplainer = MetricExplainerInfo(
                 explainer: MetricDetailExplainer.explainer(for: "VO2 Max", isWorkoutStats: false),
                 mode: "Working Stats"
@@ -73,7 +74,7 @@ struct FitnessBaselineCard: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 Image(systemName: "figure.run")
-                    .foregroundColor(.blue)
+                    .foregroundColor(Color(red: 0.0, green: 0.75, blue: 0.65))
                     .font(.caption)
                 Text("AVG CADENCE")
                     .font(.caption.bold())
@@ -115,6 +116,7 @@ struct FitnessBaselineCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
         .onTapGesture {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
             activeExplainer = MetricExplainerInfo(
                 explainer: MetricDetailExplainer.explainer(for: "Average Cadence", isWorkoutStats: false),
                 mode: "Working Stats"
@@ -127,7 +129,7 @@ struct FitnessBaselineCard: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 Image(systemName: "speedometer")
-                    .foregroundColor(.teal)
+                    .foregroundColor(.blue)
                     .font(.caption)
                 Text("AVG PACE")
                     .font(.caption.bold())
@@ -170,6 +172,7 @@ struct FitnessBaselineCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
         .onTapGesture {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
             activeExplainer = MetricExplainerInfo(
                 explainer: MetricDetailExplainer.explainer(for: "Average Pace", isWorkoutStats: false),
                 mode: "Working Stats"
@@ -204,6 +207,7 @@ struct FitnessBaselineCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
         .onTapGesture {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
             activeExplainer = MetricExplainerInfo(
                 explainer: MetricDetailExplainer.explainer(for: "Workout Density", isWorkoutStats: false),
                 mode: "Working Stats"
