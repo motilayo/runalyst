@@ -464,102 +464,138 @@ extension WorkoutAnalysisContext {
         return lines.joined(separator: "\n")
     }
 
-    /// Builds a compact, token-efficient telemetry summary for on-device FoundationModels tool calling.
-    /// Caps output to respect Apple's TN3193 session limit and partitions data into strongly-typed namespaces
-    /// with explicit metadata descriptions and dynamic adaptation by workout modality.
-    func compactTelemetryAnalysis(focus: String? = nil) -> String {
+    /// Builds the definitive, strongly-typed unified workout tool response.
+    /// For interval workouts, places `interval_scorecard` and full `reps` array at the top level
+    /// while strictly demoting blended session aggregates to `background_session_totals`.
+    func buildUnifiedWorkoutToolResponse() -> UnifiedWorkoutToolResponse {
         let distKm = String(format: "%.1f km", runRecord.totalDistanceMeters / 1000.0)
         let durMin = max(1, Int((runRecord.duration / 60.0).rounded()))
         let floor = runnerProfile.heightAdjustedCadenceFloor
+        let envString = isIndoor
+            ? "Indoor Treadmill (belt-driven, static room air)"
+            : "Outdoors (road/track)"
 
-        var root: [String: Any] = [:]
-        root["schema_name"] = "WORKOUT_TELEMETRY_ANALYSIS"
-        root["workout_date"] = "\(workoutWeekday), \(workoutDateFormatted)"
-        root["workout_type"] = detectedType
-        root["environment"] = isIndoor ? "Indoor Treadmill (belt-driven, static room air)" : "Outdoors (road/track)"
+        let blendedTotals = BlendedTotals(
+            _description: "Contains blended averages for the entire session (warm-up, work bouts, recovery jogs, and cooldown combined). SECONDARY: Do NOT cite these as the interval workload or active pace.",
+            total_distance: distKm,
+            total_duration: "\(durMin) min",
+            blended_session_avg_pace: workingPaceFormatted,
+            blended_session_avg_cadence_spm: workingCadence,
+            blended_session_avg_heart_rate_bpm: workingHR,
+            height_cadence_floor_spm: floor,
+            aerobic_efficiency_factor: efficiencyFactor.map { String(format: "%.2f m/beat", $0) },
+            cardiac_drift: hasCardiacDrift ? "+\(cardiacDriftMagnitudeBPM) BPM rise in second half" : nil,
+            stride_archetype: strideArchetype
+        )
 
-        // Category 1: Overall Session Totals (Always present)
-        var sessionTotals: [String: Any] = [:]
-        sessionTotals["_description"] = "Contains the blended averages for the entire run (warm-up, work reps, recovery jogs, and cooldown combined). Do not use these metrics to evaluate the runner's active exertion or interval form."
-        sessionTotals["total_distance"] = distKm
-        sessionTotals["total_duration"] = "\(durMin) min"
-        sessionTotals["blended_session_avg_pace"] = workingPaceFormatted
-        sessionTotals["blended_session_avg_cadence"] = "\(workingCadence) SPM"
-        sessionTotals["blended_session_avg_heart_rate"] = "\(workingHR) BPM"
-        sessionTotals["height_calibrated_cadence_floor"] = "\(floor) SPM (\(isSubFloorCadence ? "BELOW floor" : "healthy turnover"))"
-        if let ef = efficiencyFactor {
-            sessionTotals["aerobic_efficiency_factor"] = String(format: "%.2f m/beat", ef)
-        }
-        sessionTotals["stride_archetype"] = strideArchetype
-        if hasCardiacDrift {
-            sessionTotals["cardiac_drift"] = "+\(cardiacDriftMagnitudeBPM) BPM rise in second half"
-        }
-        root["category_1_session_totals"] = sessionTotals
+        let isIntervals = evaluationModality == .intervals && !intervalEvaluations.isEmpty
 
-        if evaluationModality == .intervals && !intervalEvaluations.isEmpty {
-            // Category 2: Active Work Performance
-            var workPerf: [String: Any] = [:]
-            workPerf["_description"] = "Exclusively contains data from the high-intensity intervals. Prioritize these metrics when evaluating the runner's work pace, interval turnover, and primary workload."
-            workPerf["work_reps_detected"] = intervalEvaluations.count
-            workPerf["work_reps_detected_summary"] = "\(intervalEvaluations.count) Work Reps Detected"
-            let avgWorkCad = workSegments.isEmpty ? 0 : Int(workSegments.reduce(0.0) { $0 + $1.avgCadence } / Double(workSegments.count))
-            let avgWorkHR = workSegments.isEmpty ? 0 : Int(workSegments.reduce(0.0) { $0 + $1.avgHR } / Double(workSegments.count))
-            let meanWorkPaceSec = workSegments.isEmpty ? 0 : workSegments.reduce(0.0) { $0 + $1.avgPace } / Double(workSegments.count)
-            workPerf["work_avg_pace"] = PaceFormatter.formatPace(secondsPerKilometer: meanWorkPaceSec)
-            if let f = fastestWorkRep, let s = slowestWorkRep {
-                workPerf["work_pace_range"] = "\(PaceFormatter.formatPace(secondsPerKilometer: f.avgPace)) to \(PaceFormatter.formatPace(secondsPerKilometer: s.avgPace)) (spread: \(Int(workRepPaceSpreadSec))s/km)"
-            }
-            let pacingConsistencyText = workRepPaceSpreadSec <= 8.0 ? "Disciplined consistency (tight spread)" : "Wide spread (\(Int(workRepPaceSpreadSec))s/km; late rep fatigue)"
-            workPerf["work_pacing_consistency"] = pacingConsistencyText
-            workPerf["work_repeatability"] = pacingConsistencyText
-            workPerf["work_avg_turnover"] = "\(avgWorkCad) SPM (Floor: \(floor) SPM, \(avgWorkCad >= floor ? "above floor" : "sub-floor"))"
-            workPerf["work_avg_heart_rate"] = "\(avgWorkHR) BPM"
-            workPerf["overall_execution_grade"] = "\(overallGradeReport.grade), \(overallGradeReport.sentence)"
-            root["category_2_active_work_performance"] = workPerf
+        let intervalScorecard: IntervalScorecard?
+        let repsList: [IntervalRepDetail]?
+        let steadyScorecard: SteadyStateScorecard?
+        let splitsList: [SplitDetail]?
 
-            // Category 3: Recovery Performance
-            var recPerf: [String: Any] = [:]
-            recPerf["_description"] = "Exclusively contains the resting and recovery jog phases between work reps. Slower paces and heart rate drops live here. Do not narrate these as the workload."
-            recPerf["recovery_modality"] = "Active recovery jog between work sets to clear lactate"
-            let recWithPace = recoverySegments.filter { $0.avgPace > 0 }
-            if !recWithPace.isEmpty {
-                let avgRecPaceSec = recWithPace.reduce(0.0) { $0 + $1.avgPace } / Double(recWithPace.count)
-                recPerf["recovery_avg_pace"] = PaceFormatter.formatPace(secondsPerKilometer: avgRecPaceSec)
-            }
+        if isIntervals {
+            let avgWorkCad = workSegments.isEmpty ? workingCadence : Int(workSegments.reduce(0.0) { $0 + $1.avgCadence } / Double(workSegments.count))
+            let avgWorkHR = workSegments.isEmpty ? workingHR : Int(workSegments.reduce(0.0) { $0 + $1.avgHR } / Double(workSegments.count))
+            let meanWorkPaceSec = workSegments.isEmpty ? runRecord.workingAvgPace : workSegments.reduce(0.0) { $0 + $1.avgPace } / Double(workSegments.count)
+            let activeWorkPace = PaceFormatter.formatPace(secondsPerKilometer: meanWorkPaceSec)
+
             let validDrops = intervalEvaluations.compactMap(\.recoveryHeartRateDrop)
-            if !validDrops.isEmpty {
-                let avgDrop = Int((Double(validDrops.reduce(0, +)) / Double(validDrops.count)).rounded())
-                recPerf["recovery_avg_hr_drop"] = "-\(avgDrop) BPM drop between sets"
+            let avgDrop = validDrops.isEmpty ? 0 : Int((Double(validDrops.reduce(0, +)) / Double(validDrops.count)).rounded())
+            let signedAvgDrop = -abs(avgDrop)
+
+            let consistency = workRepPaceSpreadSec <= 8.0
+                ? "Disciplined (tight ±\(max(1, Int(workRepPaceSpreadSec / 2.0)))s/km spread)"
+                : "Variable (\(Int(workRepPaceSpreadSec))s/km spread; late rep fatigue)"
+
+            intervalScorecard = IntervalScorecard(
+                active_work_pace: activeWorkPace,
+                active_turnover_spm: avgWorkCad,
+                average_hr_drop: signedAvgDrop,
+                total_work_reps: intervalEvaluations.count,
+                session_grade: overallGradeReport.grade,
+                pacing_consistency: consistency,
+                active_avg_heart_rate_bpm: avgWorkHR,
+                cadence_floor_status: "\(avgWorkCad) SPM vs \(floor) SPM floor (\(avgWorkCad >= floor ? "above floor" : "sub-floor"))"
+            )
+
+            repsList = intervalEvaluations.prefix(24).map { rep in
+                let recPace = rep.recoveryPaceFormatted ?? "controlled recovery jog"
+                let recDrop = rep.recoveryHeartRateDrop.map { -$0 } ?? 0
+                return IntervalRepDetail(
+                    rep_number: rep.repIndex,
+                    work_pace: rep.workPaceFormatted,
+                    work_cadence_spm: rep.workCadence,
+                    rep_grade: rep.letterGrade,
+                    recovery_pace: recPace,
+                    recovery_hr_drop_bpm: recDrop,
+                    work_heart_rate_bpm: rep.workHeartRate,
+                    observation: rep.observation
+                )
             }
-            if isIndoor {
-                recPerf["indoor_thermal_impact"] = "Static room air blunts evaporative cooling and elevates recovery cardiac strain"
-            }
-            root["category_3_recovery_performance"] = recPerf
+
+            steadyScorecard = nil
+            splitsList = nil
         } else {
-            // Steady-State Runs: Omit Category 2 & 3, replace with Category 2: Steady State Performance
-            var steadyPerf: [String: Any] = [:]
-            steadyPerf["_description"] = "Exclusively contains steady-state continuous running metrics and kilometer splits. There are no interval sets or recovery phases in this workout."
-            steadyPerf["pacing_trend"] = pacingTrendDescription
-            steadyPerf["overall_grade"] = overallGradeReport.grade
-            if let f = fastestSplit {
-                steadyPerf["fastest_split"] = "km \(f.index) at \(PaceFormatter.formatPace(secondsPerKilometer: f.paceSecondsPerKm)) (\(Int(f.avgCadence)) SPM, \(Int(f.avgHeartRate)) BPM)"
+            intervalScorecard = nil
+            repsList = nil
+
+            let fSplitDesc = fastestSplit.map { "km \($0.index) at \(PaceFormatter.formatPace(secondsPerKilometer: $0.paceSecondsPerKm)) (\(Int($0.avgCadence)) SPM, \(Int($0.avgHeartRate)) BPM)" }
+            let sSplitDesc = slowestSplit.map { "km \($0.index) at \(PaceFormatter.formatPace(secondsPerKilometer: $0.paceSecondsPerKm)) (\(Int($0.avgCadence)) SPM, \(Int($0.avgHeartRate)) BPM)" }
+
+            steadyScorecard = SteadyStateScorecard(
+                avg_pace: workingPaceFormatted,
+                avg_turnover_spm: workingCadence,
+                avg_heart_rate_bpm: workingHR,
+                session_grade: overallGradeReport.grade,
+                pacing_trend: pacingTrendDescription,
+                cadence_floor_status: "\(workingCadence) SPM vs \(floor) SPM floor (\(workingCadence >= floor ? "above floor" : "sub-floor"))",
+                fastest_split: fSplitDesc,
+                slowest_split: sSplitDesc
+            )
+
+            splitsList = splitEvaluations.prefix(24).map { split in
+                SplitDetail(
+                    split_index: split.index,
+                    pace: split.paceFormatted,
+                    cadence_spm: split.cadence,
+                    heart_rate_bpm: split.heartRate,
+                    grade: split.letterGrade,
+                    observation: split.observation
+                )
             }
-            if let s = slowestSplit {
-                steadyPerf["slowest_split"] = "km \(s.index) at \(PaceFormatter.formatPace(secondsPerKilometer: s.paceSecondsPerKm)) (\(Int(s.avgCadence)) SPM, \(Int(s.avgHeartRate)) BPM)"
-            }
-            root["category_2_steady_state_performance"] = steadyPerf
         }
 
-        // Physiological Verdicts
-        var verdictsDict: [String: Any] = [:]
-        verdictsDict["_description"] = "Deterministic causal physiological diagnoses computed locally in Swift. Indisputable facts."
-        verdictsDict["summary"] = physiologicalVerdicts.promptDescription
-        root["physiological_verdicts"] = verdictsDict
+        return UnifiedWorkoutToolResponse(
+            schema_name: "UNIFIED_WORKOUT_TOOL_RESPONSE",
+            workout_type: detectedType,
+            date: "\(workoutWeekday), \(workoutDateFormatted)",
+            environment: envString,
+            interval_scorecard: intervalScorecard,
+            reps: repsList,
+            steady_state_scorecard: steadyScorecard,
+            splits: splitsList,
+            background_session_totals: blendedTotals,
+            physiological_verdicts: physiologicalVerdicts.promptDescription
+        )
+    }
 
-        if let data = try? JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys]),
+    /// Serializes the unified workout response into clean, pretty-printed JSON.
+    func unifiedWorkoutAnalysisJSON() -> String {
+        let response = buildUnifiedWorkoutToolResponse()
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        if let data = try? encoder.encode(response),
            let str = String(data: data, encoding: .utf8) {
             return str
         }
-        return root.description
+        return "{\n  \"workout_type\": \"\(detectedType)\",\n  \"date\": \"\(workoutWeekday), \(workoutDateFormatted)\"\n}"
+    }
+
+    /// Builds a compact, token-efficient telemetry summary for on-device FoundationModels tool calling.
+    /// Returns the unified workout analysis schema with interval scorecards and full rep arrays.
+    func compactTelemetryAnalysis(focus: String? = nil) -> String {
+        unifiedWorkoutAnalysisJSON()
     }
 }

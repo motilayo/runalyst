@@ -39,6 +39,8 @@ class AnalystChatEngine: ObservableObject {
     private var modelSession: Any? // LanguageModelSession on iOS 26+
     /// Number of tools executed during the active conversation turn.
     private(set) var toolsCalledThisTurn: Int = 0
+    /// Tracks whether workout telemetry analysis has been executed and persisted to the session transcript.
+    private(set) var sessionHasLoadedWorkoutAnalysis: Bool = false
     #endif
 
     #if DEBUG
@@ -134,7 +136,16 @@ class AnalystChatEngine: ObservableObject {
         #if DEBUG
         if let responder = modelResponder {
             do {
+                #if canImport(FoundationModels)
+                let systemInstructions: String
+                if #available(iOS 26.0, *) {
+                    systemInstructions = buildLeanSystemInstructions()
+                } else {
+                    systemInstructions = buildSystemInstructions(for: trimmed, turnContext: turnContext)
+                }
+                #else
                 let systemInstructions = buildSystemInstructions(for: trimmed, turnContext: turnContext)
+                #endif
                 let responseText = try await responder(systemInstructions, trimmed)
                 messages.append(AnalystChatMessage(sender: .analyst, text: responseText))
                 return
@@ -156,6 +167,7 @@ class AnalystChatEngine: ObservableObject {
                     print("FoundationModels chat error: \(error)")
                     // Reset session so subsequent turns start with a clean context
                     self.modelSession = nil
+                    self.sessionHasLoadedWorkoutAnalysis = false
                 }
             }
         }
@@ -235,17 +247,20 @@ class AnalystChatEngine: ObservableObject {
 
         TOOL CALLING:
         Call deterministic native tools silently and immediately to fetch running telemetry and physics:
-        • Overall telemetry, cadence, running economy, or verdicts: `fetchWorkoutAnalysis`.
-        • Interval work reps, pace spread, or recovery HR drops: `fetchIntervalPerformance` (call this immediately whenever I ask about intervals, reps, pacing spread, or rep-by-rep grades).
+        • Workout telemetry, intervals, cadence, pacing, splits, or verdicts: `fetchWorkoutAnalysis` (or `fetchIntervalPerformance`).
+          - When reviewing an interval workout, `fetchWorkoutAnalysis` delivers the primary `interval_scorecard` and full `reps` array in one call.
+          - Prioritize `interval_scorecard` (active work pace, turnover, and recovery drops) as the true workload.
+          - The `background_session_totals` are blended totals across warm-up and cool-down—NEVER cite them as the interval work pace.
         • Treadmill kinetics, room heat, or grade resistance: `fetchWorkoutPhysics`.
         • Tomorrow's run, recovery timeline, or readiness: `fetchReadinessAndPrescription` (call ONLY when I explicitly ask about tomorrow, next session, or readiness; NEVER volunteer unsolicited future prescriptions).
         • Athlete experience, 30-day load, or cadence floor: `fetchAthleteProfile`.
         • Workout comparison, 30-day rankings, best/worst performance: `fetchHistoricalWorkout`.
         Never announce tool retrieval; call immediately and synthesize findings directly into your answer.
 
-        ZERO-HALLUCINATION MANDATE:
-        • Every pace, cadence, heart rate, interval split, and distance MUST be fetched via a tool call.
-        • NEVER invent, guess, estimate, or extrapolate numbers. If you have not executed a tool call to retrieve the exact metrics for this run, DO NOT cite specific paces or cadences.
+        ZERO-HALLUCINATION & MEMORY MANDATE:
+        • Every pace, cadence, heart rate, interval split, and distance MUST come from a tool payload.
+        • NEVER invent, guess, estimate, or extrapolate numbers. If you have retrieved `fetchWorkoutAnalysis`, use the exact reps, paces, and cadences returned.
+        • All reps from `fetchWorkoutAnalysis` remain in your conversation memory for follow-up turns ("Tell me more", "Grade each interval", "Why?"). Use the loaded data directly without inventing new numbers.
         • Do not volunteer unprompted interval splits or paces when answering general, conceptual, or out-of-scope questions.
 
         COACHING RULES:
@@ -269,13 +284,15 @@ class AnalystChatEngine: ObservableObject {
         let workoutTool = FetchWorkoutAnalysisTool { [weak self] query in
             guard let self else { return "" }
             self.toolsCalledThisTurn += 1
+            self.sessionHasLoadedWorkoutAnalysis = true
             return self.makeAnalysisContext().compactTelemetryAnalysis(focus: query.focus)
         }
 
         let intervalTool = FetchIntervalPerformanceTool { [weak self] _ in
             guard let self else { return "" }
             self.toolsCalledThisTurn += 1
-            return self.makeAnalysisContext().formatIntervalPerformanceSummary()
+            self.sessionHasLoadedWorkoutAnalysis = true
+            return self.makeAnalysisContext().compactTelemetryAnalysis()
         }
 
         let physicsTool = FetchWorkoutPhysicsTool { [weak self] query in
@@ -359,17 +376,21 @@ class AnalystChatEngine: ObservableObject {
             }
         }
 
+        // If the workout analysis hasn't been loaded into session memory yet and the user asks about the workout,
+        // re-prompt the session to execute the native tool call so the telemetry is written into session memory.
+        if !sessionHasLoadedWorkoutAnalysis && turnContext.turnDomain == .workoutTelemetryAnalysis && toolsCalledThisTurn == 0 && (Self.isStallResponse(responseText) || !Self.containsMetricTelemetry(responseText)) {
+            let followUp = try await session.respond(to: "Call fetchWorkoutAnalysis now to load the verified telemetry for this run, then provide your coaching analysis.")
+            let followUpText = followUp.content.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !followUpText.isEmpty && !Self.isStallResponse(followUpText) {
+                responseText = followUpText
+            }
+        }
+
         // Swift-side Hallucination Verifier:
         // If the turn is out-of-scope and the response contains fabricated metrics:
         if turnContext.turnDomain == .outOfScopeInquiry && Self.containsMetricTelemetry(responseText) {
             let runType = runRecord.detectedTypeRaw.isEmpty ? "workout" : runRecord.detectedTypeRaw
             return Self.sanitizeOutOfScopeResponse(responseText, runType: runType)
-        }
-
-        // If no tools were called during this turn, the LLM has zero real telemetry context.
-        // Any specific pace citations (e.g. 5:05/km), split intervals, or cadence figures are fabricated hallucinations.
-        if toolsCalledThisTurn == 0 && turnContext.turnDomain != .elaborationOrFollowUp && Self.containsMetricTelemetry(responseText) {
-            return generateDataGroundedFallback(for: userQuestion, turnContext: turnContext)
         }
 
         return responseText

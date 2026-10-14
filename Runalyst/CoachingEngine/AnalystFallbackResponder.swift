@@ -225,8 +225,16 @@ enum AnalystFallbackResponder {
 
         // 14. Effort & Workout Exertion (Past session inquiry)
         if q.contains("effort") || q.contains("exertion") || q.contains("intensity") {
-            let hr = Int(runRecord.workingAvgHeartRate)
-            let pace = PaceFormatter.formatPace(secondsPerKilometer: runRecord.workingAvgPace)
+            let pace: String
+            let hr: Int
+            if analysis.evaluationModality == .intervals && !analysis.workSegments.isEmpty {
+                let meanWorkPaceSec = analysis.workSegments.reduce(0.0) { $0 + $1.avgPace } / Double(analysis.workSegments.count)
+                pace = PaceFormatter.formatPace(secondsPerKilometer: meanWorkPaceSec)
+                hr = Int(analysis.workSegments.reduce(0.0) { $0 + $1.avgHR } / Double(analysis.workSegments.count))
+            } else {
+                hr = Int(runRecord.workingAvgHeartRate)
+                pace = PaceFormatter.formatPace(secondsPerKilometer: runRecord.workingAvgPace)
+            }
             let driftNote = analysis.cardiacDriftMagnitudeBPM >= 8
                 ? "You experienced **+\(analysis.cardiacDriftMagnitudeBPM) BPM** of cardiac drift in the second half, indicating late fatigue."
                 : "Your cardiovascular system maintained stable aerobic coupling throughout."
@@ -237,10 +245,13 @@ enum AnalystFallbackResponder {
         let mentionsForm = (q.contains("form") && !q.contains("performance")) || q.contains("technique")
         if q.contains("cadence") || q.contains("rhythm") || q.contains("turnover") || q.contains("spm") || mentionsForm {
             let floor = analysis.runnerProfile.heightAdjustedCadenceFloor
-            if analysis.workingCadence < floor {
-                return "Your cadence was **\(analysis.workingCadence) SPM**, which is below your **\(floor) SPM** height-adjusted floor. Focus on shorter, lighter steps under your hips to improve turnover."
+            let cad = (analysis.evaluationModality == .intervals && !analysis.workSegments.isEmpty)
+                ? Int(analysis.workSegments.reduce(0.0) { $0 + $1.avgCadence } / Double(analysis.workSegments.count))
+                : analysis.workingCadence
+            if cad < floor {
+                return "Your cadence was **\(cad) SPM**, which is below your **\(floor) SPM** height-adjusted floor. Focus on shorter, lighter steps under your hips to improve turnover."
             } else {
-                return "Your cadence was **\(analysis.workingCadence) SPM**, maintaining a healthy turnover above your **\(floor) SPM** height-adjusted floor. Stride rhythm remained disciplined."
+                return "Your cadence was **\(cad) SPM**, maintaining a healthy turnover above your **\(floor) SPM** height-adjusted floor. Stride rhythm remained disciplined."
             }
         }
 
@@ -305,6 +316,15 @@ enum AnalystFallbackResponder {
         }
 
         // 23. Default: Coach overview
+        if analysis.evaluationModality == .intervals && !analysis.intervalEvaluations.isEmpty {
+            let meanWorkPaceSec = analysis.workSegments.isEmpty ? runRecord.workingAvgPace : analysis.workSegments.reduce(0.0) { $0 + $1.avgPace } / Double(analysis.workSegments.count)
+            let workPace = PaceFormatter.formatPace(secondsPerKilometer: meanWorkPaceSec)
+            let workCad = analysis.workSegments.isEmpty ? Int(runRecord.workingAvgCadence) : Int(analysis.workSegments.reduce(0.0) { $0 + $1.avgCadence } / Double(analysis.workSegments.count))
+            let workHR = analysis.workSegments.isEmpty ? Int(runRecord.workingAvgHeartRate) : Int(analysis.workSegments.reduce(0.0) { $0 + $1.avgHR } / Double(analysis.workSegments.count))
+            let repsCount = analysis.intervalEvaluations.count
+            return "During your **\(repsCount)-rep \(analysis.detectedType)** on **\(analysis.workoutWeekday)**, you held an active work pace of **\(workPace)** with a heart rate of **\(workHR) BPM** and cadence of **\(workCad) SPM**. \(analysis.overallGradeReport.sentence)"
+        }
+
         let pace = PaceFormatter.formatPace(secondsPerKilometer: runRecord.workingAvgPace)
         let cad = Int(runRecord.workingAvgCadence)
         let hr = Int(runRecord.workingAvgHeartRate)
