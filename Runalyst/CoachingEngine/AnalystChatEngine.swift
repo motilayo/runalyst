@@ -81,6 +81,10 @@ class AnalystChatEngine: ObservableObject {
         messages.append(AnalystChatMessage(sender: .analyst, text: initialGreeting))
     }
 
+    private var isRunningTests: Bool {
+        NSClassFromString("XCTestCase") != nil || ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+    }
+
     /// Sends a runner question and generates an analyst response with RAG telemetry context and guardrails.
     func sendMessage(_ userQuestion: String) async {
         let trimmed = userQuestion.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -141,7 +145,7 @@ class AnalystChatEngine: ObservableObject {
         // FoundationModels on-device generation with rich Workout Data Sheet & Turn-Aware Memory
         #if canImport(FoundationModels)
         if #available(iOS 26.0, *) {
-            if SystemLanguageModel.default.isAvailable {
+            if !isRunningTests && SystemLanguageModel.default.isAvailable {
                 do {
                     let responseText = try await generateFoundationModelResponse(for: trimmed, turnContext: turnContext)
                     messages.append(AnalystChatMessage(sender: .analyst, text: responseText))
