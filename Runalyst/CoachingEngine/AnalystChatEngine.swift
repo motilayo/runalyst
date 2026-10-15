@@ -287,6 +287,9 @@ class AnalystChatEngine: ObservableObject {
 
         COACHING RULES:
         • Human Voice & Demeanor: Speak like an empathetic trackside running coach (in the style of Apple Fitness+). Never use dense academic, clinical kinesiology, or statistical exercise-science jargon (STRICTLY BANISHED: "neuromuscular", "fast-twitch motor units", "effort calibration", "metabolic demand", "cardiovascular decoupling", "repeatability vs work mean"). Use visceral, relatable runner language: "leg turnover", "stride rhythm", "holding your speed", "quick feet", "pacing consistency".
+        • Tone Mandate: Always speak in a calm, thoughtful, professional, and encouraging voice.
+          - STRICTLY FORBIDDEN CLICHÉS: NEVER begin any response with quippy, aggressive, or drill-sergeant phrases like "Alright, listen up", "Listen up", "Alright runner", "Listen here", "Here's the deal", or "Look,".
+          - Never announce data retrieval (e.g. NEVER say "I'm pulling the raw data" or "Let me pull the metrics"). Start immediately with your actual coaching answer.
         • Topic Continuity: When I ask follow-ups ("That's all?", "Tell me more", "Why?"), elaborate deeply on the ACTIVE topic previously discussed. Never reset to a generic overview or volunteer tomorrow's plan.
         • Formatting: Weave metrics naturally into your coaching analysis (1 to 2 concise, focused paragraphs). When I explicitly ask to break down, grade, or list each interval or split, present each rep/split clearly with its rep number, pace, cadence, and grade.
         • Metric Units: Cadence is ALWAYS in SPM (steps per minute). NEVER attach pace units (/km, /mi) to cadence. Pace is ALWAYS min/km or min/mi. Heart rate is ALWAYS BPM.
@@ -394,6 +397,8 @@ class AnalystChatEngine: ObservableObject {
             let followUpText = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
             if !followUpText.isEmpty && !Self.isStallResponse(followUpText) {
                 responseText = followUpText
+            } else {
+                return Self.stripQuippyOpeners(generateDataGroundedFallback(for: userQuestion, turnContext: turnContext))
             }
         }
 
@@ -412,24 +417,67 @@ class AnalystChatEngine: ObservableObject {
         // Any numbers in responseText are GUARANTEED to be hallucinated.
         // Never show hallucinated metrics to the user. Fall back to authentic Swift telemetry!
         if !sessionHasLoadedWorkoutAnalysis && turnContext.turnDomain == .workoutTelemetryAnalysis && toolsCalledThisTurn == 0 {
-            return generateDataGroundedFallback(for: userQuestion, turnContext: turnContext)
+            return Self.stripQuippyOpeners(generateDataGroundedFallback(for: userQuestion, turnContext: turnContext))
+        }
+
+        // ZERO-HALLUCINATION FUTURE READINESS SAFETY GATE:
+        // If the turn is asking about tomorrow, next run, or readiness, and the model failed to call fetchReadinessAndPrescription:
+        if (turnContext.turnDomain == .futureSessionPlanning || turnContext.turnDomain == .compositeWorkoutAndPlanning) && toolsCalledThisTurn == 0 {
+            response = try await session.respond(to: "Call fetchReadinessAndPrescription now to get the verified readiness verdict and locked prescription for tomorrow. Do NOT invent durations or paces.")
+            let followUpText = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !followUpText.isEmpty && !Self.isStallResponse(followUpText) && toolsCalledThisTurn > 0 {
+                responseText = followUpText
+            } else {
+                return Self.stripQuippyOpeners(generateDataGroundedFallback(for: userQuestion, turnContext: turnContext))
+            }
         }
 
         // Swift-side Hallucination Verifier:
         // If the turn is out-of-scope and the response contains fabricated metrics:
         if turnContext.turnDomain == .outOfScopeInquiry && Self.containsMetricTelemetry(responseText) {
             let runType = runRecord.detectedTypeRaw.isEmpty ? "workout" : runRecord.detectedTypeRaw
-            return Self.sanitizeOutOfScopeResponse(responseText, runType: runType)
+            return Self.stripQuippyOpeners(Self.sanitizeOutOfScopeResponse(responseText, runType: runType))
         }
 
-        return responseText
+        return Self.stripQuippyOpeners(responseText)
     }
     #endif
+
+    /// Strips conversational quippy/drill-sergeant openers (e.g. "Alright, listen up—") that on-device models sometimes emit.
+    nonisolated static func stripQuippyOpeners(_ text: String) -> String {
+        var cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let quippyPatterns = [
+            #"^alright,?\s+listen\s+up[—–\-:,.]?\s*"#,
+            #"^listen\s+up[—–\-:,.]?\s*"#,
+            #"^here's\s+the\s+deal[—–\-:,.]?\s*"#,
+            #"^listen\s+here[—–\-:,.]?\s*"#,
+            #"^alright\s+runner[—–\-:,.]?\s*"#,
+            #"^look,[—–\-:,.]?\s*"#
+        ]
+        for pattern in quippyPatterns {
+            if let range = cleaned.range(of: pattern, options: [.regularExpression, .caseInsensitive]) {
+                cleaned = String(cleaned[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+                if let first = cleaned.first {
+                    cleaned = first.uppercased() + cleaned.dropFirst()
+                }
+                break
+            }
+        }
+        return cleaned
+    }
 
     /// Evaluates whether an LLM generation stalled by announcing future data retrieval instead of answering.
     nonisolated static func isStallResponse(_ text: String) -> Bool {
         let lower = text.lowercased()
         let stallPatterns = [
+            "pulling the raw data",
+            "pulling the data",
+            "pulling raw data",
+            "i'm pulling",
+            "im pulling",
+            "pulling now",
+            "pull the raw data",
+            "checking the raw data",
             "need to pull",
             "pull your most recent",
             "pull your workout",
@@ -449,8 +497,10 @@ class AnalystChatEngine: ObservableObject {
             "to assess your"
         ]
         let matchesPattern = stallPatterns.contains { lower.contains($0) }
-        let containsNumbers = text.rangeOfCharacter(from: .decimalDigits) != nil
-        return matchesPattern && !containsNumbers
+        guard matchesPattern else { return false }
+        // If it announces pulling/retrieving data, it's a stall unless it already contains actual telemetry (pace with colon e.g. 5:42/km or SPM/BPM)
+        let hasActualTelemetry = containsMetricTelemetry(text) || lower.contains("bpm") || lower.contains("spm")
+        return !hasActualTelemetry
     }
 
     /// Synthesizes 1,000-meter splits from phase segments if physical splits were not persisted.

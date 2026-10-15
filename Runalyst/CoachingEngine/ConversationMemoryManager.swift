@@ -108,7 +108,8 @@ enum ConversationMemoryManager {
             "elaborate", "elaborate please", "why?", "why is that?", "why did that happen?",
             "what else?", "what else", "go deeper", "break it down further", "anything else?",
             "anything else", "continue", "explain further", "expand on that", "can you explain why?",
-            "so what does that mean?"
+            "so what does that mean?", "so what's the verdict?", "so what's the verdict",
+            "what's the verdict?", "what's the verdict", "what is the verdict?", "what is the verdict"
         ]
         let elaborationPrefixes = [
             "that's all", "thats all", "is that all", "tell me more", "more details",
@@ -122,6 +123,25 @@ enum ConversationMemoryManager {
             let substantive = messages.filter { $0.text.count > 10 }
             let lastUserMsg = substantive.last(where: { $0.sender == .user })?.text.lowercased() ?? ""
             let lastCoachMsg = substantive.last(where: { $0.sender == .analyst })?.text.lowercased() ?? ""
+
+            let isFuturePlanningTopic = lastUserMsg.contains("tomorrow") ||
+                lastUserMsg.contains("next run") ||
+                lastUserMsg.contains("green light") ||
+                lastCoachMsg.contains("tomorrow") ||
+                lastCoachMsg.contains("readiness") ||
+                lastCoachMsg.contains("standing")
+
+            if isFuturePlanningTopic {
+                return ManagedTurnContext(
+                    turnDomain: .futureSessionPlanning,
+                    turnIndex: userTurnIndex,
+                    isSubjectiveDistress: false,
+                    cleanConversationDigest: summarizeHistory(messages, pruneRetrospectiveDetail: true),
+                    turnGuidance: "TURN FOCUS: Future Training & Readiness. The runner is asking for the final readiness verdict on running tomorrow. Ground your answer strictly in fetchReadinessAndPrescription without quoting past workout metrics.",
+                    stripWorkoutPayload: false,
+                    prunePhysiologicalVerdicts: true
+                )
+            }
 
             let isComparisonTopic = lastUserMsg.contains("compare") ||
                 lastUserMsg.contains("versus") ||
@@ -187,8 +207,17 @@ enum ConversationMemoryManager {
         }
 
         // 3. Composite Intent Detection (Workout Telemetry + Future Planning)
-        let workoutMarkers = ["heart rate", "hr", "cadence", "split", "fade", "bounce", "oscillation", "today's run", "that run", "my run", "why did"]
-        let futureMarkers = ["tomorrow", "next run", "should i rest", "should i run", "can i run", "how long", "what pace", "take a rest day"]
+        let workoutMarkers = [
+            "heart rate", "hr", "cadence", "split", "fade", "bounce", "oscillation",
+            "today's run", "that run", "my run", "why did", "interval", "intervals",
+            "rep", "reps", "work pace", "turnover"
+        ]
+        let futureMarkers = [
+            "tomorrow", "next run", "should i rest", "should i run", "can i run",
+            "how long", "what pace", "take a rest day", "green light", "run again",
+            "run similar", "run another", "run a similar", "verdict", "what's the verdict",
+            "whats the verdict", "ready to push", "ready for a similar"
+        ]
 
         let hasWorkoutIntent = workoutMarkers.contains(where: { lower.contains($0) })
         let hasFutureIntent = futureMarkers.contains(where: { lower.contains($0) })
