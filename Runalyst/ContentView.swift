@@ -36,7 +36,7 @@ struct ContentView: View {
                 })
                 .task {
                     guard NSClassFromString("XCTestCase") == nil else { return }
-                    Task {
+                     Task {
                         await syncData()
                     }
 
