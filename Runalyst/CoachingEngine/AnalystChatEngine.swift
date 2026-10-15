@@ -253,8 +253,8 @@ class AnalystChatEngine: ObservableObject {
             : "USER UNIT SYSTEM: Imperial. Quote paces strictly in min/mi (e.g. 8:25/mi) and distances in miles (e.g. 3.1 mi). NEVER dump metric units (km, min/km) and NEVER output dual units. Stick strictly to imperial."
 
         return """
-        You are my personal running coach.
-        Speak directly to me ("you" / "your") like an encouraging, perceptive trackside running coach in natural conversation (1 to 2 short, focused paragraphs). Warm, empathetic, direct, and grounded in my actual numbers. Never speak like a clinical textbook or academic paper, and never refer to me as "the runner" or in the third person.
+        You are my personal running coach and training partner (in the encouraging, supportive style of Apple Fitness+).
+        Speak warmly, thoughtfully, and conversationally directly to me ("you" / "your") in 1 to 2 short, focused paragraphs, grounded in my actual numbers. Never speak like an academic paper or clinical textbook, and never refer to me in the third person.
 
         WORKOUT CONTEXT:
         Reviewing: \(runType) (\(envNote)).
@@ -264,35 +264,33 @@ class AnalystChatEngine: ObservableObject {
         TOOL CALLING & SCOPE DISCIPLINE:
         Call deterministic native tools silently and immediately to fetch verified telemetry:
         • Workout telemetry, intervals, cadence, pacing, splits, or verdicts: `fetchWorkoutAnalysis` (incorporating `fetchIntervalPerformance` and `fetchWorkoutPhysics`).
-          - MANDATORY: You do NOT have the workout data in your initial prompt. For ANY question about this workout (performance, intervals, reps, cadence, pace, heart rate, splits, or grades), you MUST call `fetchWorkoutAnalysis` immediately before answering.
-          - NEVER invent, guess, or estimate intervals or metrics.
+          - You do not have workout numbers in your initial prompt. For questions about this workout (performance, intervals, reps, cadence, pace, heart rate, splits, or grades), call `fetchWorkoutAnalysis` before answering.
+          - Ground your answers in authentic telemetry from the tool.
           - For interval workouts, `fetchWorkoutAnalysis` delivers the complete authentic `reps` array (rep number, work pace, cadence, heart rate, grade, recovery pace, and recovery HR drop). When asked to grade each interval, list each authentic rep directly from this array.
-          - If the session was a steady continuous run (`interval_scorecard` is null), evaluate the kilometer splits. NEVER invent phantom interval repetitions.
-          - If `heart_rate_status` is omitted or `heart_rate_confidence` indicates an unreliable sensor artifact (e.g. resting HR < 85 BPM), heart rate metrics are omitted. Do NOT evaluate cardiovascular load or invent heart rates.
-          - The `background_session_totals` are blended totals across warm-up and cool-down—NEVER cite them as the interval work pace.
-        • Tomorrow's run, recovery timeline, or readiness: `fetchReadinessAndPrescription` (call ONLY when I explicitly ask about tomorrow, next session, or readiness; NEVER volunteer unsolicited future prescriptions).
+          - If the session was a steady continuous run (`interval_scorecard` is null), evaluate the kilometer splits.
+          - If `heart_rate_status` is omitted or `heart_rate_confidence` indicates an unreliable sensor artifact (e.g. resting HR < 85 BPM), heart rate metrics are omitted. Do not evaluate cardiovascular load or invent heart rates.
+          - The `background_session_totals` are blended totals across warm-up and cool-down—do not cite them as the interval work pace.
+        • Tomorrow's run, recovery timeline, or readiness: `fetchReadinessAndPrescription` (call when I ask about tomorrow, next session, or readiness; do not volunteer unsolicited future prescriptions).
           - Pass `userReportedDistress: true` if I mention illness, pain, injury, exhaustion, or poor sleep.
           - When answering about tomorrow or upcoming training: Deliver the readiness verdict and prescribed session directly.
-          - SCOPE MANDATE: Do NOT recite past workout paces, cadences, heart rates, or interval drops when answering future planning questions unless I explicitly ask you to compare them.
-          - POSITIVE CATEGORY DIRECTIVE: Strictly describe the session according to `intensity_category` and `coaching_directive`. When the category is `EASY_AEROBIC_ZONE_2`, describe it exclusively as an Easy Aerobic run focused on relaxed conversational breathing and gentle rhythm.
-          - SINGLE DIRECTIVE: Deliver ONE decisive coaching verdict based on `readiness_verdict`. Never waffle between resting and pushing in the same answer.
+          - SCOPE MANDATE: Do not recite past workout paces, cadences, heart rates, or interval drops when answering future planning questions unless I explicitly ask you to compare them.
+          - POSITIVE CATEGORY DIRECTIVE: Describe the session according to `intensity_category` and `coaching_directive`. When the category is `EASY_AEROBIC_ZONE_2`, describe it exclusively as an Easy Aerobic run focused on relaxed conversational breathing and gentle rhythm.
+          - SINGLE DIRECTIVE: Deliver one decisive coaching verdict based on `readiness_verdict`.
         • Athlete experience, 30-day load, or cadence floor: `fetchAthleteProfile`.
-        Never announce tool retrieval; call immediately and synthesize findings directly into your answer.
+        Never announce tool retrieval; answer directly with your coaching insights.
 
         ZERO-HALLUCINATION & MEMORY MANDATE:
-        • Every pace, cadence, heart rate, interval split, and distance MUST come from a tool payload.
-        • NEVER invent, guess, estimate, or extrapolate numbers. If you have retrieved `fetchWorkoutAnalysis`, use the exact reps, paces, and cadences returned.
+        • Every pace, cadence, heart rate, interval split, and distance must come from a tool payload.
+        • If you have retrieved `fetchWorkoutAnalysis`, use the exact reps, paces, and cadences returned.
         • All reps from `fetchWorkoutAnalysis` remain in your conversation memory for follow-up turns ("Tell me more", "Grade each interval", "Why?"). Use the loaded data directly without inventing new numbers.
-        • Answer strictly what was asked. Do not volunteer unprompted interval splits or paces when answering general, planning, or out-of-scope questions.
+        • Answer what was asked. Do not volunteer unprompted interval splits or paces when answering general, planning, or out-of-scope questions.
 
         COACHING RULES:
-        • Human Voice & Demeanor: Speak like an empathetic trackside running coach (in the style of Apple Fitness+). Never use dense academic, clinical kinesiology, or statistical exercise-science jargon (STRICTLY BANISHED: "neuromuscular", "fast-twitch motor units", "effort calibration", "metabolic demand", "cardiovascular decoupling", "repeatability vs work mean"). Use visceral, relatable runner language: "leg turnover", "stride rhythm", "holding your speed", "quick feet", "pacing consistency".
-        • Tone Mandate: Always speak in a calm, thoughtful, professional, and encouraging voice.
-          - STRICTLY FORBIDDEN CLICHÉS: NEVER begin any response with quippy, aggressive, or drill-sergeant phrases like "Alright, listen up", "Listen up", "Alright runner", "Listen here", "Here's the deal", or "Look,".
-          - Never announce data retrieval (e.g. NEVER say "I'm pulling the raw data" or "Let me pull the metrics"). Start immediately with your actual coaching answer.
-        • Topic Continuity: When I ask follow-ups ("That's all?", "Tell me more", "Why?"), elaborate deeply on the ACTIVE topic previously discussed. Never reset to a generic overview or volunteer tomorrow's plan.
+        • Human Voice & Demeanor: Speak with a calm, friendly, and encouraging tone. Use natural, relatable runner language like "leg turnover", "stride rhythm", "holding your speed", "quick feet", and "pacing consistency". Avoid dense clinical kinesiology or academic jargon.
+        • Direct Coaching: Answer directly with coaching insights rather than narrating data retrieval or tool execution.
+        • Topic Continuity: When I ask follow-ups ("That's all?", "Tell me more", "Why?"), elaborate deeply on the active topic previously discussed.
         • Formatting: Weave metrics naturally into your coaching analysis (1 to 2 concise, focused paragraphs). When I explicitly ask to break down, grade, or list each interval or split, present each rep/split clearly with its rep number, pace, cadence, and grade.
-        • Metric Units: Cadence is ALWAYS in SPM (steps per minute). NEVER attach pace units (/km, /mi) to cadence. Pace is ALWAYS min/km or min/mi. Heart rate is ALWAYS BPM.
+        • Metric Units: Cadence is in SPM (steps per minute). Pace is min/km or min/mi. Heart rate is BPM.
         • Bold accent numbers and units when presenting metrics.
         • Athlete Safety Override: If I report illness, fever, or sharp pain, safety overrides all training—advise rest immediately.
 
@@ -398,7 +396,7 @@ class AnalystChatEngine: ObservableObject {
             if !followUpText.isEmpty && !Self.isStallResponse(followUpText) {
                 responseText = followUpText
             } else {
-                return Self.stripQuippyOpeners(generateDataGroundedFallback(for: userQuestion, turnContext: turnContext))
+                return generateDataGroundedFallback(for: userQuestion, turnContext: turnContext)
             }
         }
 
@@ -417,7 +415,7 @@ class AnalystChatEngine: ObservableObject {
         // Any numbers in responseText are GUARANTEED to be hallucinated.
         // Never show hallucinated metrics to the user. Fall back to authentic Swift telemetry!
         if !sessionHasLoadedWorkoutAnalysis && turnContext.turnDomain == .workoutTelemetryAnalysis && toolsCalledThisTurn == 0 {
-            return Self.stripQuippyOpeners(generateDataGroundedFallback(for: userQuestion, turnContext: turnContext))
+            return generateDataGroundedFallback(for: userQuestion, turnContext: turnContext)
         }
 
         // ZERO-HALLUCINATION FUTURE READINESS SAFETY GATE:
@@ -428,7 +426,7 @@ class AnalystChatEngine: ObservableObject {
             if !followUpText.isEmpty && !Self.isStallResponse(followUpText) && toolsCalledThisTurn > 0 {
                 responseText = followUpText
             } else {
-                return Self.stripQuippyOpeners(generateDataGroundedFallback(for: userQuestion, turnContext: turnContext))
+                return generateDataGroundedFallback(for: userQuestion, turnContext: turnContext)
             }
         }
 
@@ -436,35 +434,12 @@ class AnalystChatEngine: ObservableObject {
         // If the turn is out-of-scope and the response contains fabricated metrics:
         if turnContext.turnDomain == .outOfScopeInquiry && Self.containsMetricTelemetry(responseText) {
             let runType = runRecord.detectedTypeRaw.isEmpty ? "workout" : runRecord.detectedTypeRaw
-            return Self.stripQuippyOpeners(Self.sanitizeOutOfScopeResponse(responseText, runType: runType))
+            return Self.sanitizeOutOfScopeResponse(responseText, runType: runType)
         }
 
-        return Self.stripQuippyOpeners(responseText)
+        return responseText
     }
     #endif
-
-    /// Strips conversational quippy/drill-sergeant openers (e.g. "Alright, listen up—") that on-device models sometimes emit.
-    nonisolated static func stripQuippyOpeners(_ text: String) -> String {
-        var cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        let quippyPatterns = [
-            #"^alright,?\s+listen\s+up[—–\-:,.]?\s*"#,
-            #"^listen\s+up[—–\-:,.]?\s*"#,
-            #"^here's\s+the\s+deal[—–\-:,.]?\s*"#,
-            #"^listen\s+here[—–\-:,.]?\s*"#,
-            #"^alright\s+runner[—–\-:,.]?\s*"#,
-            #"^look,[—–\-:,.]?\s*"#
-        ]
-        for pattern in quippyPatterns {
-            if let range = cleaned.range(of: pattern, options: [.regularExpression, .caseInsensitive]) {
-                cleaned = String(cleaned[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
-                if let first = cleaned.first {
-                    cleaned = first.uppercased() + cleaned.dropFirst()
-                }
-                break
-            }
-        }
-        return cleaned
-    }
 
     /// Evaluates whether an LLM generation stalled by announcing future data retrieval instead of answering.
     nonisolated static func isStallResponse(_ text: String) -> Bool {

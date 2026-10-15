@@ -97,7 +97,7 @@ struct LockedTrainingPrescription: Sendable, Equatable {
         lines.append("- Zone 3 (Steady Aerobic): \(zone3SteadyPace)")
         lines.append("- Zone 4 (Lactate Threshold): \(zone4ThresholdPace)")
         lines.append("- Zone 5 (Goal Interval Reps): \(zone5IntervalPace)")
-        lines.append("RULE: You must quote paces and durations exclusively from this pre-calculated table. You have zero authority to invent or guess custom target numbers.")
+        lines.append("RULE: Quote paces and durations directly from this pre-calculated table.")
         return lines.joined(separator: "\n")
     }
 }
