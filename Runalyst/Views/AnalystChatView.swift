@@ -1,11 +1,22 @@
+import SwiftData
 import SwiftUI
+import WorkoutKit
 
 /// Interactive chat view allowing athletes to converse with the AI Biomechanics Analyst.
 struct AnalystChatView: View {
     @Environment(\.dismiss) private var dismiss
+    @Query(sort: \RunRecord.date, order: .reverse) private var runRecords: [RunRecord]
     @StateObject private var engine: AnalystChatEngine
     @State private var inputText: String = ""
     @FocusState private var isInputFocused: Bool
+
+    @State private var activeReadoutItem: ActiveDrillReadoutItem?
+    @State private var activeWorkoutPlan: WorkoutPlan = PreRunDrill(id: .strides).buildWorkoutPlan()
+    @State private var pendingWatchDrillDTO: DrillPrescriptionDTO?
+    @State private var isShowingWorkoutPreview: Bool = false
+    @State private var isShowingDrillsLibrary: Bool = false
+    @AppStorage("lastWatchExportTimestamp") private var lastWatchExportTimestamp: Double = 0
+    @AppStorage("lastExportedDrillId") private var lastExportedDrillId: String = ""
 
     let runRecord: RunRecord
 
@@ -156,6 +167,21 @@ struct AnalystChatView: View {
             .navigationTitle("AI Coach")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        dismissKeyboard()
+                        isShowingDrillsLibrary = true
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "figure.run.circle")
+                                .font(.system(size: 16, weight: .semibold))
+                            Text("Drills")
+                                .font(.subheadline.weight(.semibold))
+                        }
+                        .foregroundColor(.primary)
+                    }
+                }
+
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         dismissKeyboard()
@@ -166,6 +192,34 @@ struct AnalystChatView: View {
                             .symbolRenderingMode(.hierarchical)
                             .foregroundStyle(.secondary)
                     }
+                }
+            }
+            .sheet(item: $activeReadoutItem) { item in
+                DrillInterstitialReadoutView(
+                    readout: item.readout,
+                    workoutPlan: item.plan,
+                    prescriptionDTO: item.dto,
+                    onCommitToWatch: { plan, dto in
+                        activeWorkoutPlan = plan
+                        pendingWatchDrillDTO = dto
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                            isShowingWorkoutPreview = true
+                        }
+                    }
+                )
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+            }
+            .workoutPreview(activeWorkoutPlan, isPresented: $isShowingWorkoutPreview)
+            .onChange(of: isShowingWorkoutPreview) { oldValue, newValue in
+                if oldValue && !newValue, let dto = pendingWatchDrillDTO {
+                    pendingWatchDrillDTO = nil
+                    scheduleToWatch(dto: dto)
+                }
+            }
+            .sheet(isPresented: $isShowingDrillsLibrary) {
+                NavigationStack {
+                    DrillsLibraryView()
                 }
             }
             .task {
@@ -249,29 +303,41 @@ struct AnalystChatView: View {
                         }
                     }
             } else {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(TelemetryHighlighter.highlight(message.text))
-                        .font(.subheadline)
-                        .foregroundColor(.primary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .lineSpacing(3)
-                        .textSelection(.enabled)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 14)
-                .background(Color(UIColor.secondarySystemGroupedBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .stroke(Color.white.opacity(0.06), lineWidth: 1)
-                )
-                .shadow(color: Color.black.opacity(0.03), radius: 5, x: 0, y: 1)
-                .contextMenu {
-                    Button {
-                        UIPasteboard.general.string = message.text
-                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    } label: {
-                        Label("Copy", systemImage: "doc.on.doc")
+                VStack(alignment: .leading, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(TelemetryHighlighter.highlight(message.text))
+                            .font(.subheadline)
+                            .foregroundColor(.primary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .lineSpacing(3)
+                            .textSelection(.enabled)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 14)
+                    .background(Color(UIColor.secondarySystemGroupedBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .stroke(Color.white.opacity(0.06), lineWidth: 1)
+                    )
+                    .shadow(color: Color.black.opacity(0.03), radius: 5, x: 0, y: 1)
+                    .contextMenu {
+                        Button {
+                            UIPasteboard.general.string = message.text
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        } label: {
+                            Label("Copy", systemImage: "doc.on.doc")
+                        }
+                    }
+
+                    if let drillId = detectedDrill(for: message) {
+                        InlineChatDrillCard(
+                            drillId: drillId,
+                            runRecord: runRecord,
+                            onOpenReadout: {
+                                openDrillReadout(drillId: drillId)
+                            }
+                        )
                     }
                 }
                 Spacer(minLength: 28)
@@ -404,5 +470,231 @@ struct AnalystChatView: View {
     private func dismissKeyboard() {
         isInputFocused = false
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+
+    private func openDrillReadout(drillId: PreRunDrillId) {
+        let matchingRec = runRecord.insight?.drillRecommendations?.first { rec in
+            rec.preRunDrillId == drillId.rawValue ||
+            rec.drillTitle.localizedCaseInsensitiveContains(drillId.title)
+        }
+        let template = DrillTemplate.template(for: drillId)
+        let baseline = matchingRec?.previousCadence ?? (Int(runRecord.workingAvgCadence) > 0 ? Int(runRecord.workingAvgCadence) : 155)
+        let target = matchingRec?.targetCadence?.replacingOccurrences(of: " SPM", with: "") ?? template.calculateTargetCadence(baseline)
+        let cue = matchingRec?.drillCues ?? template.generateInstructionalCue(target)
+
+        let dto = DrillPrescriptionDTO(
+            title: drillId.title,
+            preRunDrillId: drillId.rawValue,
+            purpose: matchingRec?.drillPurpose ?? template.defaultPurpose,
+            targetCadence: target,
+            previousCadence: baseline > 0 ? baseline : nil,
+            durationMinutes: drillId.defaultDuration.rawValue
+        )
+        let readiness = ReadinessEvaluator.assess(runRecords: runRecords)
+        activeReadoutItem = ActiveDrillReadoutItem.adaptive(
+            dto: dto,
+            readiness: readiness,
+            customCoachingTip: cue.isEmpty ? nil : cue
+        )
+    }
+
+    private func scheduleToWatch(dto: DrillPrescriptionDTO) {
+        Task {
+            if #available(iOS 17.0, *) {
+                do {
+                    let bridge = WorkoutBridge()
+                    try await bridge.scheduleDrill(dto: dto)
+                    await MainActor.run {
+                        self.lastWatchExportTimestamp = Date().timeIntervalSince1970
+                        self.lastExportedDrillId = dto.preRunDrillId ?? ""
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    }
+                } catch {
+                    print("[AnalystChatView] Failed to schedule drill: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+
+    private func detectedDrill(for message: AnalystChatMessage) -> PreRunDrillId? {
+        guard message.sender == .analyst else { return nil }
+        let text = message.text.lowercased()
+
+        let drillMatches: [(pattern: String, id: PreRunDrillId)] = [
+            ("cadence pyramid", .cadencePyramids),
+            ("cadence pyramids", .cadencePyramids),
+            ("rhythm interval", .rhythmIntervals),
+            ("rhythm intervals", .rhythmIntervals),
+            ("tempo surge", .tempoSurges),
+            ("tempo surges", .tempoSurges),
+            ("strides", .strides),
+            ("stride", .strides),
+            ("form primer", .neuromuscularPrimer),
+            ("neuromuscular primer", .neuromuscularPrimer),
+            ("aerobic flush", .aerobicFlush),
+            ("hill bounds", .hillBounds),
+            ("recovery jog", .recoveryJog),
+            ("zone 2 run", .zone2Run)
+        ]
+
+        let triggerWords = [
+            "drill", "recommend", "prescrib", "start with", "try", "incorporate",
+            "warm-up", "warm up", "target", "phase", "structure", "pyramid", "stride"
+        ]
+        let containsTrigger = triggerWords.contains(where: { text.contains($0) })
+
+        for match in drillMatches where text.contains(match.pattern) && containsTrigger {
+            return match.id
+        }
+
+        if text.contains("drill") && (text.contains("recommend") || text.contains("effective")) {
+            if let rec = runRecord.insight?.drillRecommendations?.first,
+               let preRunId = rec.preRunDrillId.flatMap(PreRunDrillId.init(rawValue:)) {
+                return preRunId
+            }
+            return .cadencePyramids
+        }
+
+        return nil
+    }
+}
+
+/// An inline, interactive card surfaced directly inside chat messages when a corrective drill is recommended.
+struct InlineChatDrillCard: View {
+    let drillId: PreRunDrillId
+    let runRecord: RunRecord
+    let onOpenReadout: () -> Void
+
+    @Query(sort: \RunRecord.date, order: .reverse) private var runRecords: [RunRecord]
+
+    private var matchingDrillRec: DrillRecommendation? {
+        runRecord.insight?.drillRecommendations?.first { rec in
+            rec.preRunDrillId == drillId.rawValue ||
+            rec.drillTitle.localizedCaseInsensitiveContains(drillId.title)
+        } ?? runRecord.insight?.drillRecommendations?.first
+    }
+
+    private var baselineCadence: Int {
+        matchingDrillRec?.previousCadence ?? (Int(runRecord.workingAvgCadence) > 0 ? Int(runRecord.workingAvgCadence) : 155)
+    }
+
+    private var targetCadenceDisplay: String {
+        let template = DrillTemplate.template(for: drillId)
+        let rawTarget = matchingDrillRec?.targetCadence?.replacingOccurrences(of: " SPM", with: "") ?? template.calculateTargetCadence(baselineCadence)
+        let readiness = ReadinessEvaluator.assess(runRecords: runRecords)
+        let adapted = ReadinessModifier.adaptTarget(rawTarget, baselineCadence: baselineCadence, drillId: drillId, state: readiness.state)
+        return adapted.targetCadence ?? rawTarget
+    }
+
+    private var displayTitle: String {
+        let title = matchingDrillRec?.formattedTitle ?? ""
+        return title.isEmpty ? drillId.title : title
+    }
+
+    private var displayCue: String? {
+        if let cue = matchingDrillRec?.drillCues, !cue.isEmpty {
+            return cue
+        }
+        let template = DrillTemplate.template(for: drillId)
+        let cue = template.generateInstructionalCue(targetCadenceDisplay)
+        return cue.isEmpty ? nil : cue
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            // Header: Icon + Title + Duration + Target Badge
+            HStack(spacing: 10) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(drillId.iconColor.opacity(0.15))
+                        .frame(width: 38, height: 38)
+                    Image(systemName: drillId.iconName)
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(drillId.iconColor)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(displayTitle)
+                        .font(.headline)
+                        .foregroundColor(.primary)
+                    Text("\(drillId.defaultDuration.title) • Form & Biomechanics")
+                        .font(.caption2.weight(.medium))
+                        .foregroundColor(.secondary)
+                }
+
+                Spacer()
+
+                HStack(spacing: 4) {
+                    Image(systemName: "target")
+                        .font(.caption2.bold())
+                    Text(targetCadenceDisplay.contains("SPM") ? targetCadenceDisplay : "\(targetCadenceDisplay) SPM")
+                        .font(.caption2.bold().monospacedDigit())
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Color(red: 0.18, green: 0.82, blue: 0.35).opacity(0.15))
+                .foregroundColor(Color(red: 0.18, green: 0.82, blue: 0.35))
+                .clipShape(Capsule())
+            }
+
+            // Coaching Cue Box
+            if let cue = displayCue {
+                HStack(alignment: .top, spacing: 6) {
+                    Image(systemName: "sparkles")
+                        .font(.caption2)
+                        .foregroundColor(drillId.iconColor)
+                        .padding(.top, 2)
+                    Text(cue)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(UIColor.tertiarySystemGroupedBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            }
+
+            // Visual Phase Timeline
+            WorkoutPhaseTimelineView(phases: PreRunDrill(id: drillId).generatePhases(), showHeader: false)
+                .padding(.vertical, 2)
+
+            // Primary Action Button (Sweaty Hands minimum 44pt height target)
+            Button(action: {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                onOpenReadout()
+            }) {
+                HStack(spacing: 8) {
+                    Image(systemName: "applewatch")
+                        .font(.subheadline.weight(.semibold))
+                    Text("Preview & Start on Watch")
+                        .font(.subheadline.weight(.semibold))
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption.bold())
+                }
+                .foregroundColor(.white)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .frame(minHeight: 44)
+                .background(
+                    LinearGradient(
+                        colors: [Color.purple, Color.indigo],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(14)
+        .background(Color(UIColor.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(drillId.iconColor.opacity(0.3), lineWidth: 1)
+        )
+        .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
     }
 }
