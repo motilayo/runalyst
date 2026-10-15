@@ -1818,11 +1818,53 @@ final class IndoorIntelligenceTests: XCTestCase {
     func testStallResponseDetectionRecognizesAnnouncementsWithoutData() {
         let stall1 = "To assess your running economy and stride efficiency, I need to pull your most recent workout analysis. Let's start there."
         let stall2 = "Your performance is directly tied to your most recent workout. I'll retrieve the analysis to see how your pacing, heart rate, and cadence matched the expected efficiency."
+        let stallFromScreenshot = "I’m not a doctor or physical therapist, but I can analyze your telemetry to see if overstriding or braking impact might be contributing to your discomfort. To assess this, I’ll look at your cadence, pace, and vertical oscillation data from your Tuesday, October 13 run. First, I’ll pull your current workout analysis to see your cadence stability and stride mechanics."
         let validCoaching = "Your running Efficiency Factor was **1.42** (+2.1% vs baseline), reflecting speed produced per heartbeat. Average cadence was **162 SPM**."
 
         XCTAssertTrue(AnalystChatEngine.isStallResponse(stall1), "Must flag stall announcement")
         XCTAssertTrue(AnalystChatEngine.isStallResponse(stall2), "Must flag retrieve announcement")
+        XCTAssertTrue(AnalystChatEngine.isStallResponse(stallFromScreenshot), "Must flag future retrieval announcement as stall")
         XCTAssertFalse(AnalystChatEngine.isStallResponse(validCoaching), "Must not flag legitimate data-grounded coaching")
+    }
+
+    func testDrillDetectionInChatSelectsOnlyWhenPrescribedAndIgnoresStrideTelemetry() {
+        // Screenshot preamble should never trigger a drill card
+        let preamble = "First, I’ll pull your current workout analysis to see your cadence stability and stride mechanics."
+        XCTAssertNil(AnalystChatView.detectedDrill(text: preamble), "Preamble mentioning stride mechanics must not trigger drill card")
+
+        // Pure telemetry inquiries/observations should not trigger
+        let telemetryObservation = "Your stride length was 1.15m and vertical oscillation was 9.8cm with slight overstriding."
+        XCTAssertNil(AnalystChatView.detectedDrill(text: telemetryObservation), "Biomechanical telemetry without prescription must not trigger drill card")
+
+        let nonAnalyst = "Can you recommend cadence pyramids?"
+        XCTAssertNil(AnalystChatView.detectedDrill(text: nonAnalyst, sender: .user), "User messages must never trigger drill card")
+
+        // Prescriptions should correctly trigger the corresponding drill
+        let cadencePyramidsPrescription = "To quicken your turnover and avoid overstriding, I recommend Cadence Pyramids before your next session."
+        XCTAssertEqual(AnalystChatView.detectedDrill(text: cadencePyramidsPrescription), .cadencePyramids)
+
+        let stridesPrescription = "Before your next run, try doing 4-6 strides to wake up fast-twitch turnover."
+        XCTAssertEqual(AnalystChatView.detectedDrill(text: stridesPrescription), .strides)
+
+        let rhythmIntervalsPrescription = "Prescribed drill: Rhythm Intervals to stabilize your 160 SPM cadence rhythm."
+        XCTAssertEqual(AnalystChatView.detectedDrill(text: rhythmIntervalsPrescription), .rhythmIntervals)
+    }
+
+    @MainActor
+    func testDeterministicRunAnalysisSummaryProvidesRichPhysiologicalContext() {
+        let runRecord = makeTestRunRecord(isIndoor: true)
+        let detailView = RunDetailView(runRecord: runRecord)
+        guard let summary = detailView.deterministicRunAnalysisSummary else {
+            XCTFail("deterministicRunAnalysisSummary must not be nil for run with biometrics")
+            return
+        }
+
+        // Must explain turnover relative to mechanical floor
+        XCTAssertTrue(summary.contains("mechanical floor"), "Must explain cadence relative to mechanical floor")
+        // Must explain indoor environment thermal buildup or cardiovascular coupling
+        XCTAssertTrue(summary.contains("convective") || summary.contains("thermal") || summary.contains("aerobic"), "Must explain cardiovascular/environmental context")
+        // Must not be a shallow 1-sentence repetition
+        XCTAssertTrue(summary.count > 100, "Summary must be a rich multi-sentence coaching explanation, not a 1-sentence recitation")
     }
 
     @MainActor

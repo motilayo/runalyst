@@ -25,6 +25,8 @@ struct AnalystChatMessage: Identifiable, Equatable {
     }
 }
 
+typealias AnalystChatSender = AnalystChatMessage.MessageSender
+
 /// Actor managing the interactive RAG Analyst Chat session with FoundationModels and strict operational guardrails.
 @MainActor
 class AnalystChatEngine: ObservableObject {
@@ -249,6 +251,7 @@ class AnalystChatEngine: ObservableObject {
 
         GUIDANCE:
         • Ground observations directly in data returned by tools.
+        • IMMEDIATE TOOL EXECUTION WITHOUT PREAMBLE: When answering questions regarding telemetry, cadence, pace, vertical oscillation, overstriding, heart rate, or intervals, execute the required tool call (`fetchWorkoutAnalysis`, etc.) IMMEDIATELY during your first generation. NEVER output preamble or conversational announcements declaring future intent (e.g. NEVER say 'First, I'll pull your workout analysis', 'I'll look at your cadence and pace', or 'Let me check your telemetry'). Perform the lookup invisibly via the tool and deliver your synthesized analysis and conclusions directly.
         • Athletic Program vs Coding: The term 'program' in runner conversation refers exclusively to an athletic training schedule, workout structure, or running plan—never computer software or coding.
         • Proactive Workout Prescriptions: When the runner asks to adjust, modify, or 'dial up' a session, immediately provide the calibrated prescription in one turn via `fetchReadinessAndPrescription`. Weave safety or pain checks as conditional caveats rather than asking multiple rounds of blocking questions.
         • Progression Delivery without Stalling: Do not end responses with redundant meta-offers (e.g., 'Would you like me to outline a sample progression plan?') when you have already provided or outlined the progression. Deliver the actionable details directly.
@@ -442,6 +445,9 @@ class AnalystChatEngine: ObservableObject {
             "need to pull",
             "pull your most recent",
             "pull your workout",
+            "pull your current workout",
+            "pull your current",
+            "pulling your",
             "retrieve the analysis",
             "retrieve your workout",
             "i'll retrieve",
@@ -455,7 +461,29 @@ class AnalystChatEngine: ObservableObject {
             "i need to check your workout",
             "i need to fetch",
             "to assess your running economy",
-            "to assess your"
+            "to assess your",
+            "to assess this, i'll",
+            "to assess this, ill",
+            "to assess this, let me",
+            "to assess this, i will",
+            "first, i'll pull",
+            "first i'll pull",
+            "first, ill pull",
+            "first ill pull",
+            "first, i'll",
+            "first i'll",
+            "first, let me",
+            "first let me",
+            "i'll pull",
+            "ill pull",
+            "i will pull",
+            "i'll look at",
+            "ill look at",
+            "i will look at",
+            "let's look at",
+            "lets look at",
+            "i'll analyze your telemetry",
+            "i will analyze your telemetry"
         ]
         let matchesPattern = stallPatterns.contains { lower.contains($0) }
         guard matchesPattern else { return false }

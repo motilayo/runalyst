@@ -181,11 +181,9 @@ struct RunDetailView: View {
         }
     }
 
-    private var deterministicRunAnalysisSummary: String? {
+    var deterministicRunAnalysisSummary: String? {
         guard runRecord.workingAvgCadence > 0 || runRecord.workingAvgHeartRate > 0 else { return nil }
-        let dayOfWeek = runRecord.date.formatted(Date.FormatStyle().weekday(.wide))
         let isIndoor = runRecord.isIndoor ?? false
-        let envPrefix = isIndoor ? "treadmill " : ""
 
         let context = WorkoutAnalysisContext(
             runRecord: runRecord,
@@ -201,20 +199,45 @@ struct RunDetailView: View {
             baselineStats: baselineCadence.map { (avgPace: runRecord.workingAvgPace, avgCadence: $0, avgHR: runRecord.workingAvgHeartRate) }
         )
         let grade = context.overallGradeReport.grade
+        let floor = context.runnerProfile.heightAdjustedCadenceFloor
+        let cad = context.workingCadence
 
+        var components: [String] = []
+
+        // 1. Cadence & Biomechanics
+        if cad > 0 {
+            if cad >= floor {
+                components.append("Turnover averaged \(cad) SPM, safely above your \(floor) SPM mechanical floor. This cadence helps keep foot strikes underneath your hips and cushions joint impact\(isIndoor ? " on the treadmill belt" : "").")
+            } else {
+                components.append("Turnover averaged \(cad) SPM, dipping below your \(floor) SPM mechanical floor. Increasing step rate will shorten your stride and cushion joint landing\(isIndoor ? " on the moving belt" : "").")
+            }
+        }
+
+        // 2. Cardiovascular Effort & Decoupling
+        if context.workingHR > 0 {
+            if isIndoor {
+                components.append("Running indoors without convective airflow accelerates thermal buildup; your \(context.workingHR) BPM average reflects steady aerobic conditioning under indoor heat accumulation.")
+            } else if context.hasCardiacDrift {
+                components.append("Heart rate climbed +\(context.cardiacDriftMagnitudeBPM) BPM over the duration, reflecting cardiovascular drift and internal fatigue as the session progressed.")
+            } else {
+                components.append("Heart rate averaged \(context.workingHR) BPM with stable cardiovascular coupling, demonstrating controlled aerobic efficiency throughout.")
+            }
+        }
+
+        // 3. Modality Execution & Grade
         if runRecord.evaluationModality == .intervals && hasIntervalWorkReps {
             let workSegments = runRecord.signature?.phaseSegments.filter { $0.kind == "work" && $0.avgPace > 0 } ?? []
-            guard !workSegments.isEmpty else { return nil }
-            let meanWorkPace = workSegments.reduce(0.0) { $0 + $1.avgPace } / Double(workSegments.count)
-            let paceStr = PaceFormatter.formatPace(secondsPerKilometer: meanWorkPace)
-            let avgCad = Int(workSegments.reduce(0.0) { $0 + $1.avgCadence } / Double(workSegments.count))
-            return "Your \(dayOfWeek) \(envPrefix)intervals hit \(paceStr) work pace with \(avgCad) SPM turnover, earning a Grade \(grade)."
-        } else {
-            let paceStr = PaceFormatter.formatPace(secondsPerKilometer: runRecord.workingAvgPace)
-            let cad = Int(round(runRecord.workingAvgCadence))
-            let cadStr = cad > 0 ? " with \(cad) SPM turnover" : ""
-            return "Your \(dayOfWeek) \(envPrefix)run averaged \(paceStr)\(cadStr), earning a Grade \(grade)."
+            if !workSegments.isEmpty {
+                let meanWorkPace = workSegments.reduce(0.0) { $0 + $1.avgPace } / Double(workSegments.count)
+                let paceStr = PaceFormatter.formatPace(secondsPerKilometer: meanWorkPace)
+                let avgWorkCad = Int(workSegments.reduce(0.0) { $0 + $1.avgCadence } / Double(workSegments.count))
+                components.append("Active work reps hit \(paceStr) at \(avgWorkCad) SPM, earning a Grade \(grade) for pacing control.")
+            }
+        } else if !components.isEmpty {
+            components.append("Overall execution earned a Grade \(grade).")
         }
+
+        return components.joined(separator: " ")
     }
 
     @ViewBuilder
@@ -243,20 +266,22 @@ struct RunDetailView: View {
                 .padding(.vertical, 2)
             } else {
                 VStack(alignment: .leading, spacing: 8) {
-                    if let groundedSummary = deterministicRunAnalysisSummary {
-                        Text(groundedSummary)
-                            .font(.body)
-                            .foregroundColor(.primary)
-                    } else if let insight = runRecord.insight {
+                    if let insight = runRecord.insight, !insight.longitudinalObservation.isEmpty || !insight.headline.isEmpty {
+                        if !insight.headline.isEmpty {
+                            Text(insight.headline)
+                                .font(.headline)
+                                .foregroundColor(.primary)
+                        }
                         if !insight.longitudinalObservation.isEmpty {
                             Text(insight.longitudinalObservation)
                                 .font(.subheadline)
                                 .foregroundColor(.secondary)
                                 .lineSpacing(2)
-                        } else if !insight.headline.isEmpty {
-                            Text(insight.headline)
-                                .font(.body)
-                                .foregroundColor(.primary)
+                        } else if let groundedSummary = deterministicRunAnalysisSummary {
+                            Text(groundedSummary)
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                                .lineSpacing(2)
                         }
                     } else if isGeneratingInsight {
                         AnimatedLoadingView(
@@ -268,6 +293,11 @@ struct RunDetailView: View {
                         )
                         .foregroundColor(.secondary)
                         .padding(.vertical, 8)
+                    } else if let groundedSummary = deterministicRunAnalysisSummary {
+                        Text(groundedSummary)
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                            .lineSpacing(2)
                     }
                 }
             }
