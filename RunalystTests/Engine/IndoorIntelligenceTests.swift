@@ -2361,4 +2361,119 @@ final class IndoorIntelligenceTests: XCTestCase {
         XCTAssertTrue(mechanicsResponse.contains("motor-driven belt"), "Must explain belt kinetics")
         XCTAssertTrue(mechanicsResponse.contains("convective wind cooling") || mechanicsResponse.contains("heat accumulation"), "Must explain static air thermodynamics")
     }
+
+    func testWorkoutMathCalculatorDeterministicCalculations() {
+        // 1. Pace subtraction (6:25/km vs 6:14/km)
+        let paceResult = WorkoutMathCalculator.calculate(operation: "pace_delta", valueA: "6:25", valueB: "6:14")
+        XCTAssertEqual(paceResult.delta, "+11 s/km")
+        XCTAssertTrue(paceResult.summary.contains("11 seconds/km slower"), "Must correctly state 11 seconds/km slower")
+        XCTAssertTrue(paceResult.summary.contains("Value A is slower than Value B"))
+
+        // Faster pace subtraction (6:02/km vs 6:14/km)
+        let fasterPaceResult = WorkoutMathCalculator.calculate(operation: "pace_delta", valueA: "6:02", valueB: "6:14")
+        XCTAssertEqual(fasterPaceResult.delta, "-12 s/km")
+        XCTAssertTrue(fasterPaceResult.summary.contains("12 seconds/km faster"))
+
+        // 2. Distance delta with aligned precision (6.64 km - 5.09 km)
+        let distResult = WorkoutMathCalculator.calculate(operation: "distance_delta", valueA: "6.64", valueB: "5.09")
+        XCTAssertEqual(distResult.delta, "+1.55 km")
+        XCTAssertEqual(distResult.deltaNumeric ?? 0.0, 1.55, accuracy: 0.001)
+        XCTAssertTrue(distResult.summary.contains("+1.55 km longer"))
+
+        // 3. Heart rate delta (147 BPM vs 157 BPM)
+        let hrResult = WorkoutMathCalculator.calculate(operation: "heart_rate_delta", valueA: "147", valueB: "157")
+        XCTAssertEqual(hrResult.delta, "-10 BPM")
+        XCTAssertTrue(hrResult.summary.contains("10 BPM lower cardiovascular demand"))
+
+        // 4. Cadence delta (156 SPM vs 152 SPM)
+        let cadResult = WorkoutMathCalculator.calculate(operation: "cadence_delta", valueA: "156", valueB: "152")
+        XCTAssertEqual(cadResult.delta, "+4 SPM")
+        XCTAssertTrue(cadResult.summary.contains("+4 SPM higher turnover"))
+    }
+
+    @MainActor
+    func testCrossRunComparisonExactUnitPrecisionAndAttribution() throws {
+        let schema = Schema([RunRecord.self])
+        let config = ModelConfiguration(isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        let context = ModelContext(container)
+
+        let calendar = Calendar.current
+        let today = Date()
+
+        // 1. Outdoor run on September 30 (5094m -> 5.09 km displayed)
+        let outdoorDate = calendar.date(byAdding: .day, value: -14, to: today) ?? today.addingTimeInterval(-14 * 86400)
+        let outdoorRun = RunRecord(
+            hkWorkoutID: UUID(),
+            date: outdoorDate,
+            totalDistanceMeters: 5094,
+            duration: 2040,
+            rawAvgPace: 374,
+            rawAvgHeartRate: 157,
+            rawAvgCadence: 152,
+            workingAvgPace: 374,
+            workingAvgCadence: 152,
+            workingAvgHeartRate: 157,
+            isIndoor: false,
+            paceCV: 0.04,
+            paceSlope: 0.0,
+            percentZone4: 0.15,
+            detectedTypeRaw: "Steady Effort"
+        )
+        context.insert(outdoorRun)
+
+        // 2. Indoor run on October 13 (6638m -> 6.64 km displayed)
+        let indoorRun = RunRecord(
+            hkWorkoutID: UUID(),
+            date: today,
+            totalDistanceMeters: 6638,
+            duration: 2700,
+            rawAvgPace: 385,
+            rawAvgHeartRate: 147,
+            rawAvgCadence: 156,
+            workingAvgPace: 385,
+            workingAvgCadence: 156,
+            workingAvgHeartRate: 147,
+            isIndoor: true,
+            paceCV: 0.09,
+            paceSlope: 0.0,
+            percentZone4: 0.20,
+            detectedTypeRaw: "Intervals"
+        )
+        context.insert(indoorRun)
+        try context.save()
+
+        // 3. Test parsing comparison targets
+        let query = "Compare my last indoor run to my last outdoor run. What are your observations?"
+        let targets = try XCTUnwrap(HistoricalRunMatcher.parseComparisonTargets(from: query))
+        XCTAssertEqual(targets.targetA, "indoor")
+        XCTAssertEqual(targets.targetB, "outdoor")
+
+        // 4. Test compareRuns execution
+        let comparison = try XCTUnwrap(
+            HistoricalRunMatcher.compareRuns(queryA: targets.targetA, queryB: targets.targetB, relativeTo: indoorRun, in: context)
+        )
+
+        // Verify exact unit precision alignment with displayed numbers: 6.64 - 5.09 = 1.55 km (NOT 1.54)
+        let facts = comparison.structuredTelemetryFacts
+        XCTAssertTrue(facts.contains("+1.55 km longer"), "Distance delta must match displayed precision 6.64 - 5.09 = 1.55 km")
+        XCTAssertFalse(facts.contains("+1.54 km longer"), "Distance delta must not suffer from unrounded float subtraction")
+
+        // Verify pace readability: no raw engine seconds clutter like 384s/km or 374s/km
+        XCTAssertFalse(facts.contains("385s/km") || facts.contains("374s/km"), "Must omit raw seconds/km representation for clean runner readability")
+        XCTAssertTrue(facts.contains("11s/km slower"), "Must correctly state 11s/km slower")
+
+        // Verify unambiguous environment attribution for cadence and heart rate
+        XCTAssertTrue(facts.contains("156 SPM in Indoor Treadmill vs 152 SPM in Outdoor"), "Must explicitly attribute cadence directionality")
+        XCTAssertTrue(facts.contains("147 BPM in Indoor Treadmill vs 157 BPM in Outdoor"), "Must explicitly attribute heart rate demand")
+
+        // 5. Verify fallback responder output
+        let chatEngine = AnalystChatEngine(runRecord: indoorRun)
+        let analysis = chatEngine.makeAnalysisContext()
+        let fallback = AnalystFallbackResponder.generateResponse(for: query, analysis: analysis, runRecord: indoorRun)
+        XCTAssertTrue(fallback.contains("+1.55 km longer"), "Fallback must produce +1.55 km longer")
+        XCTAssertTrue(fallback.contains("11s/km slower"), "Fallback must quote 11s/km slower")
+        XCTAssertTrue(fallback.contains("+4 SPM higher turnover in Indoor Treadmill"), "Fallback must attribute cadence turnover to indoor treadmill")
+        XCTAssertTrue(fallback.contains("10 BPM lower cardiovascular demand in Indoor Treadmill"), "Fallback must attribute heart rate reduction to indoor treadmill")
+    }
 }

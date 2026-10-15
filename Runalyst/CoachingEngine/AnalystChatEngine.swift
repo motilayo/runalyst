@@ -242,12 +242,13 @@ class AnalystChatEngine: ObservableObject {
 
         DATA & TOOL API SPECIFICATION:
         • `fetchWorkoutAnalysis` (incorporating `fetchIntervalPerformance`, `fetchWorkoutPhysics`, and `interval_scorecard`): Retrieves current workout telemetry, interval scorecards, rep-by-rep splits, modeled physics, and causal physiological verdicts.
-        • `fetchHistoricalWorkout`: Queries, filters, and retrieves past workouts from athlete history (filter by target: 'outdoor' for last outdoor run, 'indoor' for treadmill, 'recent' to list workouts, 'previous' for last run, specific date 'September 14', or 'best_and_worst' for 30-day rankings) and calculates exact telemetry deltas, duration/volume comparisons, and environmental contrasts.
+        • `fetchHistoricalWorkout`: Queries, filters, and retrieves past workouts from athlete history (filter by target: 'outdoor' for last outdoor run, 'indoor' for treadmill, 'recent' to list workouts, 'previous' for last run, specific date 'September 30', or 'best_and_worst' for 30-day rankings). Use `compareWith` to compare two specific workouts (e.g. target: 'last indoor run', compareWith: 'last outdoor run') for exact Swift mathematical deltas and environmental contrasts.
+        • `computeWorkoutMath`: Performs exact deterministic math on running metrics (pace deltas, percentage changes, heart rate differences, distance gaps).
         • `fetchReadinessAndPrescription`: Retrieves recovery timeline, training readiness, and prescribed upcoming sessions. Set `userReportedDistress: true` if runner reports pain, soreness, illness, or fatigue.
         • `fetchAthleteProfile`: Retrieves athlete baseline, experience level, 30-day cumulative training volume, and height-calibrated cadence floor.
 
         GUIDANCE:
-        • Ground numbers strictly in tool data.
+        • Ground observations directly in data returned by tools.
         • Health, Wellbeing & Safety (Athlete Safety Override): If the runner reports joint or knee pain, soreness, or injury, clarify you are an AI interpreter and not a doctor or physical therapist, advise medical care, and analyze their telemetry (cadence, pace, vertical oscillation) to see if overstriding or braking impact is a factor. If they want to run, recommend an appropriate form drill next (e.g. Cadence Pyramids or Strides).
         • All other inquiries not related to running or health and wellbeing should be handled with care and caution.
 
@@ -272,6 +273,33 @@ class AnalystChatEngine: ObservableObject {
             guard let self else { return "" }
             self.toolsCalledThisTurn += 1
             let target = query.target ?? ""
+            let compareWith = query.compareWith ?? ""
+
+            // 1. Explicit cross-run comparison: target vs compareWith
+            if !compareWith.isEmpty {
+                if let comparison = HistoricalRunMatcher.compareRuns(
+                    queryA: target,
+                    queryB: compareWith,
+                    relativeTo: self.runRecord,
+                    in: self.runRecord.modelContext
+                ) {
+                    return comparison.structuredTelemetryFacts
+                }
+            }
+
+            // 2. Compound query in target alone (e.g. "last outdoor run to last indoor run" or "outdoor vs indoor")
+            if let compound = HistoricalRunMatcher.parseComparisonTargets(from: target) {
+                if let comparison = HistoricalRunMatcher.compareRuns(
+                    queryA: compound.targetA,
+                    queryB: compound.targetB,
+                    relativeTo: self.runRecord,
+                    in: self.runRecord.modelContext
+                ) {
+                    return comparison.structuredTelemetryFacts
+                }
+            }
+
+            // 3. Performance arc, recent catalog, or single-run comparison
             let lower = target.lowercased()
             if lower.contains("best") || lower.contains("worst") || lower.contains("arc") || lower.contains("30_day") || lower.contains("rank") {
                 let arc = HistoricalRunMatcher.analyzePerformanceArc(relativeTo: self.runRecord, in: self.runRecord.modelContext)
@@ -284,6 +312,18 @@ class AnalystChatEngine: ObservableObject {
             } else {
                 return "No historical workout matching '\(target)' was found in stored records. Available context: current run is the only matching record."
             }
+        }
+
+        let mathTool = ComputeWorkoutMathTool { [weak self] query in
+            guard let self else { return "" }
+            self.toolsCalledThisTurn += 1
+            let result = WorkoutMathCalculator.calculate(
+                operation: query.operation,
+                valueA: query.valueA,
+                valueB: query.valueB,
+                metricType: query.metricType
+            )
+            return result.structuredFacts
         }
 
         let readinessTool = FetchReadinessAndPrescriptionTool { [weak self] query in
@@ -344,7 +384,7 @@ class AnalystChatEngine: ObservableObject {
             """
         }
 
-        let tools: [any Tool] = [workoutTool, historyTool, readinessTool, profileTool]
+        let tools: [any Tool] = [workoutTool, historyTool, mathTool, readinessTool, profileTool]
         let instructions = buildLeanSystemInstructions()
         let session = LanguageModelSession(
             model: SystemLanguageModel.default,

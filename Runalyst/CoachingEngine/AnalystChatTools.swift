@@ -316,8 +316,27 @@ struct AthleteProfileQuery: Sendable {
 @available(iOS 26.0, *)
 @Generable
 struct HistoricalWorkoutQuery: Sendable {
-    @Guide(description: "Search target for comparison or ranking: 'outdoor' (for last outdoor run), 'indoor' (for treadmill), 'best_and_worst' (or 'arc', '30_days') to rank past 30 days workouts, or specific date (e.g. 'September 14' or 'MM/DD'), relative term ('previous', 'last run'), or modality ('tempo', 'intervals').")
+    @Guide(description: "Search target for comparison or ranking: 'outdoor' (for last outdoor run), 'indoor' (for treadmill), 'best_and_worst' (or 'arc', '30_days') to rank past 30 days workouts, or specific date (e.g. 'September 30' or 'MM/DD'), relative term ('previous', 'last run'), or modality ('tempo', 'intervals').")
     var target: String?
+
+    @Guide(description: "Optional second workout target to compare against target. For example, if target is 'last indoor run', set compareWith to 'last outdoor run' or 'September 30' to get exact Swift mathematical comparison deltas between the two.")
+    var compareWith: String?
+}
+
+@available(iOS 26.0, *)
+@Generable
+struct WorkoutMathQuery: Sendable {
+    @Guide(description: "Mathematical operation to perform: 'pace_delta' (e.g. between '6:25' and '6:14'), 'distance_delta' (e.g. between '6.64' and '5.09'), 'heart_rate_delta' (e.g. between '147' and '157'), 'cadence_delta' (e.g. between '156' and '152'), 'difference' (valueA - valueB), or 'percentage_change'.")
+    var operation: String
+
+    @Guide(description: "First value or primary metric string (e.g. '6:25', '6.64', '156', '147')")
+    var valueA: String
+
+    @Guide(description: "Second value or baseline metric string (e.g. '6:14', '5.09', '152', '157')")
+    var valueB: String
+
+    @Guide(description: "Optional metric type: 'pace' (min:sec/km or min:sec/mi), 'heart_rate' (BPM), 'cadence' (SPM), 'distance' (km or mi), 'duration' (minutes or seconds)")
+    var metricType: String?
 }
 
 // MARK: - FoundationModels Native Tools
@@ -486,6 +505,26 @@ struct FetchHistoricalWorkoutTool: Tool {
     }
 
     func call(arguments: HistoricalWorkoutQuery) async throws -> String {
+        await provider(arguments)
+    }
+}
+
+/// Tool providing deterministic running math calculations: pace deltas, distance gaps, heart rate changes, and percentages.
+@available(iOS 26.0, *)
+struct ComputeWorkoutMathTool: Tool {
+    typealias Arguments = WorkoutMathQuery
+    typealias Output = String
+
+    let name = "computeWorkoutMath"
+    let description = "Calculates exact deterministic running math: pace deltas (seconds/km and percentage differences), distance deltas with consistent precision, heart rate gaps, cadence differences, and percentage changes between any two workout metrics. Call this instead of calculating numbers mentally."
+
+    let provider: @MainActor @Sendable (WorkoutMathQuery) async -> String
+
+    init(provider: @escaping @MainActor @Sendable (WorkoutMathQuery) async -> String) {
+        self.provider = provider
+    }
+
+    func call(arguments: WorkoutMathQuery) async throws -> String {
         await provider(arguments)
     }
 }

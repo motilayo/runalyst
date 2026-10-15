@@ -79,7 +79,10 @@ enum AnalystFallbackResponder {
             q.contains("previous run") || q.contains("prior run") || q.contains("earlier run") ||
             (q.contains("outdoor") && (q.contains("activity") || q.contains("history") || q.contains("run") || q.contains("workout")))
         if isHistoricalOrComparisonIntent {
-            if let prior = HistoricalRunMatcher.findRun(matching: userQuestion, relativeTo: runRecord, in: runRecord.modelContext) {
+            if let compound = HistoricalRunMatcher.parseComparisonTargets(from: userQuestion),
+               let comparison = HistoricalRunMatcher.compareRuns(queryA: compound.targetA, queryB: compound.targetB, relativeTo: runRecord, in: runRecord.modelContext) {
+                return comparison.coachingComparisonSummary
+            } else if let prior = HistoricalRunMatcher.findRun(matching: userQuestion, relativeTo: runRecord, in: runRecord.modelContext) {
                 return HistoricalRunMatcher.compare(current: runRecord, with: prior).coachingComparisonSummary
             } else {
                 return "No historical workout matching '\(userQuestion)' was found in stored records."

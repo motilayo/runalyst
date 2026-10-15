@@ -225,7 +225,7 @@ struct RunDetailView: View {
             HStack {
                 Image(systemName: "sparkles")
                     .foregroundColor(hasBiometrics ? .purple : .secondary)
-                Text(hasBiometrics ? "AI Coach Run Analysis" : "Sensor Data Limited")
+                Text(hasBiometrics ? "What the Numbers Mean" : "Sensor Data Limited")
                     .font(.subheadline.bold())
                     .foregroundColor(hasBiometrics ? .purple : .secondary)
             }
