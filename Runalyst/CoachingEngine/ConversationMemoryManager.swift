@@ -220,6 +220,40 @@ enum ConversationMemoryManager {
             )
         }
 
+        // 2.8. Session & Drill Sequencing ("Which order should I do both runs?", "Which one first?")
+        let isSequencingIntent = lower.contains("which order") ||
+            lower.contains("what order") ||
+            lower.contains("order should i") ||
+            lower.contains("in what order") ||
+            lower.contains("which one first") ||
+            lower.contains("which should i do first") ||
+            lower.contains("which run first") ||
+            lower.contains("both runs") ||
+            lower.contains("both sessions") ||
+            lower.contains("both workouts") ||
+            lower.contains("before or after") ||
+            lower.contains("same day") ||
+            (lower.contains("order") && (lower.contains("run") || lower.contains("drill") || lower.contains("session") || lower.contains("both")))
+
+        if isSequencingIntent {
+            let guidance = """
+            TURN FOCUS: Session & Drill Sequencing.
+            The runner is asking about the order, scheduling, or combination of recommended sessions and form drills.
+            1. Recommend completing the recovery session (e.g. Zone 1 Active Recovery Flush) first to allow fatigue to clear.
+            2. Recommend scheduling the form drill (e.g. Cadence Pyramids or Strides) during the warm-up of their next active training session when neuromuscular coordination is fresh.
+            3. DO NOT reset the conversation or recite past workout metrics. Answer their sequencing question directly.
+            """
+            return ManagedTurnContext(
+                turnDomain: .futureSessionPlanning,
+                turnIndex: userTurnIndex,
+                isSubjectiveDistress: false,
+                cleanConversationDigest: summarizeHistory(messages, pruneRetrospectiveDetail: true),
+                turnGuidance: guidance,
+                stripWorkoutPayload: false,
+                prunePhysiologicalVerdicts: true
+            )
+        }
+
         // 3. Composite Intent Detection (Workout Telemetry + Future Planning)
         let workoutMarkers = [
             "heart rate", "hr", "cadence", "split", "fade", "bounce", "oscillation",
@@ -230,7 +264,9 @@ enum ConversationMemoryManager {
             "tomorrow", "next run", "should i rest", "should i run", "can i run",
             "how long", "what pace", "take a rest day", "green light", "run again",
             "run similar", "run another", "run a similar", "verdict", "what's the verdict",
-            "whats the verdict", "ready to push", "ready for a similar"
+            "whats the verdict", "ready to push", "ready for a similar",
+            "which order", "what order", "both runs", "both sessions", "which one first",
+            "which should i do first", "before or after", "same day", "schedule", "routine"
         ]
 
         let hasWorkoutIntent = workoutMarkers.contains(where: { lower.contains($0) })

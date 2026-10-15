@@ -414,9 +414,9 @@ class AnalystChatEngine: ObservableObject {
             }
         }
 
-        // If the turn is asking about workout telemetry and the workout analysis has never been loaded,
+        // If the turn is asking explicitly about workout telemetry and the workout analysis has never been loaded,
         // and the model failed to call the tool (toolsCalledThisTurn == 0):
-        if !sessionHasLoadedWorkoutAnalysis && turnContext.turnDomain == .workoutTelemetryAnalysis && toolsCalledThisTurn == 0 {
+        if !sessionHasLoadedWorkoutAnalysis && turnContext.turnDomain == .workoutTelemetryAnalysis && isExplicitWorkoutTelemetryInquiry(userQuestion) && toolsCalledThisTurn == 0 {
             response = try await session.respond(to: "Call fetchWorkoutAnalysis now to load the verified telemetry and interval reps for this run, then provide your coaching analysis. Do NOT guess numbers.")
             let followUpText = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
             if !followUpText.isEmpty && !Self.isStallResponse(followUpText) {
@@ -425,16 +425,16 @@ class AnalystChatEngine: ObservableObject {
         }
 
         // ABSOLUTE ZERO-HALLUCINATION SAFETY GATE:
-        // If the turn is workout telemetry and the model STILL never called the tool:
+        // If the turn is asking explicitly for workout telemetry and the model STILL never called the tool:
         // Any numbers in responseText are GUARANTEED to be hallucinated.
         // Never show hallucinated metrics to the user. Fall back to authentic Swift telemetry!
-        if !sessionHasLoadedWorkoutAnalysis && turnContext.turnDomain == .workoutTelemetryAnalysis && toolsCalledThisTurn == 0 {
+        if !sessionHasLoadedWorkoutAnalysis && turnContext.turnDomain == .workoutTelemetryAnalysis && isExplicitWorkoutTelemetryInquiry(userQuestion) && toolsCalledThisTurn == 0 {
             return generateDataGroundedFallback(for: userQuestion, turnContext: turnContext)
         }
 
         // ZERO-HALLUCINATION FUTURE READINESS SAFETY GATE:
-        // If the turn is asking about tomorrow, next run, or readiness, and the model failed to call fetchReadinessAndPrescription:
-        if (turnContext.turnDomain == .futureSessionPlanning || turnContext.turnDomain == .compositeWorkoutAndPlanning) && toolsCalledThisTurn == 0 {
+        // If the turn is asking explicitly about tomorrow, next run, or readiness, and the model failed to call fetchReadinessAndPrescription:
+        if (turnContext.turnDomain == .futureSessionPlanning || turnContext.turnDomain == .compositeWorkoutAndPlanning) && isExplicitReadinessOrPrescriptionInquiry(userQuestion) && toolsCalledThisTurn == 0 {
             response = try await session.respond(to: "Call fetchReadinessAndPrescription now to get the verified readiness verdict and locked prescription for tomorrow. Do NOT invent durations or paces.")
             let followUpText = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
             if !followUpText.isEmpty && !Self.isStallResponse(followUpText) && toolsCalledThisTurn > 0 {
@@ -452,6 +452,29 @@ class AnalystChatEngine: ObservableObject {
         }
 
         return responseText
+    }
+
+    private func isExplicitWorkoutTelemetryInquiry(_ query: String) -> Bool {
+        let lower = query.lowercased()
+        let keywords = [
+            "how was my run", "analyze my run", "analyze this run", "break down",
+            "telemetry", "split", "splits", "pace", "paces", "heart rate", "hr", "cadence",
+            "turnover", "interval", "intervals", "rep", "reps", "bounce", "oscillation",
+            "stride", "cardiac drift", "decoupling", "working stats", "workout stats",
+            "grade", "how did i do", "rate my run", "score", "performance", "effort"
+        ]
+        return keywords.contains(where: { lower.contains($0) })
+    }
+
+    private func isExplicitReadinessOrPrescriptionInquiry(_ query: String) -> Bool {
+        let lower = query.lowercased()
+        let keywords = [
+            "can i run", "should i run", "should i rest", "take a rest",
+            "ready", "readiness", "tomorrow", "next run", "green light",
+            "what's the verdict", "whats the verdict", "verdict", "push hard",
+            "how hard", "how long should i run", "what pace should i run"
+        ]
+        return keywords.contains(where: { lower.contains($0) })
     }
     #endif
 

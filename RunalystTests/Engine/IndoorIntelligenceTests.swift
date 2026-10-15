@@ -1286,6 +1286,39 @@ final class IndoorIntelligenceTests: XCTestCase {
         XCTAssertTrue(ctxElaboration.turnGuidance.contains("Workout Comparison Elaboration"))
         XCTAssertTrue(ctxElaboration.turnGuidance.contains("DO NOT reset the conversation"))
         XCTAssertTrue(ctxElaboration.turnGuidance.contains("DO NOT prescribe tomorrow's workout"))
+
+        // 6. Session and drill sequencing inquiry ("Which order should I do both runs?")
+        let recommendationHistory = [
+            AnalystChatMessage(sender: .user, text: "Compare my most recent interval runs"),
+            AnalystChatMessage(sender: .analyst, text: "Current run was 23s slower per km with 17 BPM lower demand..."),
+            AnalystChatMessage(sender: .user, text: "Yes"),
+            AnalystChatMessage(sender: .analyst, text: "I recommend a Zone 1 Active Recovery Flush session... For form refinement, I recommend a Cadence Pyramids drill... Would you like me to guide you through that?")
+        ]
+        let ctxSequencing = ConversationMemoryManager.buildTurnContext(
+            userQuestion: "Which order should I do both runs?",
+            messages: recommendationHistory,
+            recoveryStateDescription: "Acute Fatigue",
+            daysSinceWorkout: 1
+        )
+        XCTAssertEqual(ctxSequencing.turnDomain, .futureSessionPlanning)
+        XCTAssertTrue(ctxSequencing.turnGuidance.contains("Session & Drill Sequencing"))
+        XCTAssertTrue(ctxSequencing.turnGuidance.contains("DO NOT reset the conversation"))
+    }
+
+    @MainActor
+    func testAnalystFallbackResponderSessionSequencingOrder() {
+        let runRecord = makeTestRunRecord(isIndoor: true)
+        let chatEngine = AnalystChatEngine(runRecord: runRecord)
+        let analysis = chatEngine.makeAnalysisContext()
+        let response = AnalystFallbackResponder.generateResponse(
+            for: "Which order should I do both runs?",
+            turnContext: nil,
+            analysis: analysis,
+            runRecord: runRecord
+        )
+        XCTAssertTrue(response.contains("First (Recovery)"))
+        XCTAssertTrue(response.contains("Second (Form Refinement)"))
+        XCTAssertFalse(response.contains("During your 9-rep Intervals"))
     }
 
     // MARK: - 5. RAG Payloads

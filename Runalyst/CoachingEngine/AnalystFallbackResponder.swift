@@ -263,6 +263,27 @@ enum AnalystFallbackResponder {
             }
         }
 
+        // 12.5. Session & Drill Sequencing ("Which order should I do both runs?", "Which one first?")
+        let isSequencingIntent = q.contains("which order") || q.contains("what order") ||
+            q.contains("order should i") || q.contains("in what order") ||
+            q.contains("which one first") || q.contains("which should i do first") ||
+            q.contains("which run first") || q.contains("both runs") ||
+            q.contains("both sessions") || q.contains("both workouts") ||
+            q.contains("before or after") || q.contains("same day") ||
+            (q.contains("order") && (q.contains("run") || q.contains("drill") || q.contains("session") || q.contains("both")))
+
+        if isSequencingIntent {
+            let drillTitle = runRecord.insight?.drillRecommendations?.first?.drillTitle ?? "Cadence Pyramids"
+            let sessionName = analysis.lockedPrescription.nextSessionName
+            let paceBand = analysis.lockedPrescription.prescribedPaceBand
+            return """
+            Do them in this order:
+
+            1. **First (Recovery)**: Complete your **\(sessionName)** session first (at **\(paceBand)**). This flushes metabolic waste and lowers cardiovascular fatigue without heavy impact.
+            2. **Second (Form Refinement)**: Save the **\(drillTitle)** drill for your next active training session, performing it during your warm-up once your neuromuscular system is fully recovered and fresh.
+            """
+        }
+
         // 13. Future Training, Recovery & Readiness
         if q.contains("can i") || q.contains("ready") || q.contains("recovery") || q.contains("rest") || q.contains("tomorrow") || q.contains("next run") || q.contains("what pace") || q.contains("how long") || q.contains("push hard") || q.contains("how hard") || q.contains("push") {
             let recoveryNote: String
