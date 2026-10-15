@@ -249,6 +249,10 @@ class AnalystChatEngine: ObservableObject {
 
         GUIDANCE:
         • Ground observations directly in data returned by tools.
+        • Athletic Program vs Coding: The term 'program' in runner conversation refers exclusively to an athletic training schedule, workout structure, or running plan—never computer software or coding.
+        • Proactive Workout Prescriptions: When the runner asks to adjust, modify, or 'dial up' a session, immediately provide the calibrated prescription in one turn via `fetchReadinessAndPrescription`. Weave safety or pain checks as conditional caveats rather than asking multiple rounds of blocking questions.
+        • Progression Delivery without Stalling: Do not end responses with redundant meta-offers (e.g., 'Would you like me to outline a sample progression plan?') when you have already provided or outlined the progression. Deliver the actionable details directly.
+        • Explaining Interval Grading: When asked to explain interval grading or evaluation, explain the core criteria: Pace Repeatability (spread ≤ 8 s/km between work reps), Cadence Stability (holding turnover above height floor without late drop-offs), Cardiac Drift (< 8 BPM across reps), and recovery HR drop between intervals.
         • Health, Wellbeing & Safety (Athlete Safety Override): If the runner reports joint or knee pain, soreness, or injury, clarify you are an AI interpreter and not a doctor or physical therapist, advise medical care, and analyze their telemetry (cadence, pace, vertical oscillation) to see if overstriding or braking impact is a factor. If they want to run, recommend an appropriate form drill next (e.g. Cadence Pyramids or Strides).
         • All other inquiries not related to running or health and wellbeing should be handled with care and caution.
 
@@ -339,7 +343,7 @@ class AnalystChatEngine: ObservableObject {
                 : (isDistress ? "Subjective fatigue/distress reported. Mandatory recovery prescribed." : "In active recovery until \(analysis.recoveryTimeline.earliestHardPhrase).")
             let directive = isReady
                 ? "Runner is cleared for training. Prescribe \(rx.nextSessionName) directly (\(rx.prescribedDurationBand) at \(rx.prescribedPaceBand)). Focus strictly on upcoming training. Do NOT quote past workout heart rates, paces, or interval drops."
-                : "Runner is in active recovery. Prescribe gentle recovery flush or rest. Keep all movement strictly light and conversational."
+                : "Runner is in an active recovery window. Advise avoiding hard, high-intensity workouts. Prescribe \(rx.nextSessionName) (\(rx.prescribedDurationBand) at \(rx.prescribedPaceBand)) as gentle, conversational recovery movement (light jog or walk). Do NOT say 'avoid running' while prescribing a running session."
 
             let response = ReadinessToolResponse(
                 schema_name: "READINESS_AND_PRESCRIPTION_RESPONSE",
@@ -409,38 +413,6 @@ class AnalystChatEngine: ObservableObject {
             let followUpText = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
             if !followUpText.isEmpty && !Self.isStallResponse(followUpText) {
                 responseText = followUpText
-            } else {
-                return generateDataGroundedFallback(for: userQuestion, turnContext: turnContext)
-            }
-        }
-
-        // If the turn is asking explicitly about workout telemetry and the workout analysis has never been loaded,
-        // and the model failed to call the tool (toolsCalledThisTurn == 0):
-        if !sessionHasLoadedWorkoutAnalysis && turnContext.turnDomain == .workoutTelemetryAnalysis && isExplicitWorkoutTelemetryInquiry(userQuestion) && toolsCalledThisTurn == 0 {
-            response = try await session.respond(to: "Call fetchWorkoutAnalysis now to load the verified telemetry and interval reps for this run, then provide your coaching analysis. Do NOT guess numbers.")
-            let followUpText = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !followUpText.isEmpty && !Self.isStallResponse(followUpText) {
-                responseText = followUpText
-            }
-        }
-
-        // ABSOLUTE ZERO-HALLUCINATION SAFETY GATE:
-        // If the turn is asking explicitly for workout telemetry and the model STILL never called the tool:
-        // Any numbers in responseText are GUARANTEED to be hallucinated.
-        // Never show hallucinated metrics to the user. Fall back to authentic Swift telemetry!
-        if !sessionHasLoadedWorkoutAnalysis && turnContext.turnDomain == .workoutTelemetryAnalysis && isExplicitWorkoutTelemetryInquiry(userQuestion) && toolsCalledThisTurn == 0 {
-            return generateDataGroundedFallback(for: userQuestion, turnContext: turnContext)
-        }
-
-        // ZERO-HALLUCINATION FUTURE READINESS SAFETY GATE:
-        // If the turn is asking explicitly about tomorrow, next run, or readiness, and the model failed to call fetchReadinessAndPrescription:
-        if (turnContext.turnDomain == .futureSessionPlanning || turnContext.turnDomain == .compositeWorkoutAndPlanning) && isExplicitReadinessOrPrescriptionInquiry(userQuestion) && toolsCalledThisTurn == 0 {
-            response = try await session.respond(to: "Call fetchReadinessAndPrescription now to get the verified readiness verdict and locked prescription for tomorrow. Do NOT invent durations or paces.")
-            let followUpText = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !followUpText.isEmpty && !Self.isStallResponse(followUpText) && toolsCalledThisTurn > 0 {
-                responseText = followUpText
-            } else {
-                return generateDataGroundedFallback(for: userQuestion, turnContext: turnContext)
             }
         }
 
@@ -452,29 +424,6 @@ class AnalystChatEngine: ObservableObject {
         }
 
         return responseText
-    }
-
-    private func isExplicitWorkoutTelemetryInquiry(_ query: String) -> Bool {
-        let lower = query.lowercased()
-        let keywords = [
-            "how was my run", "analyze my run", "analyze this run", "break down",
-            "telemetry", "split", "splits", "pace", "paces", "heart rate", "hr", "cadence",
-            "turnover", "interval", "intervals", "rep", "reps", "bounce", "oscillation",
-            "stride", "cardiac drift", "decoupling", "working stats", "workout stats",
-            "grade", "how did i do", "rate my run", "score", "performance", "effort"
-        ]
-        return keywords.contains(where: { lower.contains($0) })
-    }
-
-    private func isExplicitReadinessOrPrescriptionInquiry(_ query: String) -> Bool {
-        let lower = query.lowercased()
-        let keywords = [
-            "can i run", "should i run", "should i rest", "take a rest",
-            "ready", "readiness", "tomorrow", "next run", "green light",
-            "what's the verdict", "whats the verdict", "verdict", "push hard",
-            "how hard", "how long should i run", "what pace should i run"
-        ]
-        return keywords.contains(where: { lower.contains($0) })
     }
     #endif
 

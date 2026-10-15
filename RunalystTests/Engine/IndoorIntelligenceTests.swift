@@ -1303,6 +1303,26 @@ final class IndoorIntelligenceTests: XCTestCase {
         XCTAssertEqual(ctxSequencing.turnDomain, .futureSessionPlanning)
         XCTAssertTrue(ctxSequencing.turnGuidance.contains("Session & Drill Sequencing"))
         XCTAssertTrue(ctxSequencing.turnGuidance.contains("DO NOT reset the conversation"))
+
+        // 7. Drill inquiry ("And you also recommended cadence pyramid also")
+        let ctxDrill = ConversationMemoryManager.buildTurnContext(
+            userQuestion: "And you also recommended cadence pyramid also",
+            messages: recommendationHistory,
+            recoveryStateDescription: "Acute Fatigue",
+            daysSinceWorkout: 1
+        )
+        XCTAssertEqual(ctxDrill.turnDomain, .elaborationOrFollowUp)
+        XCTAssertTrue(ctxDrill.turnGuidance.contains("Form Drill Execution & Purpose"))
+
+        // 8. Structuring run tomorrow
+        let ctxStructure = ConversationMemoryManager.buildTurnContext(
+            userQuestion: "How to structure my run tomorrow with the recommended drills and zone 1 recovery by",
+            messages: recommendationHistory,
+            recoveryStateDescription: "Acute Fatigue",
+            daysSinceWorkout: 1
+        )
+        XCTAssertEqual(ctxStructure.turnDomain, .futureSessionPlanning)
+        XCTAssertTrue(ctxStructure.turnGuidance.contains("Session & Drill Sequencing & Structuring"))
     }
 
     @MainActor
@@ -1319,6 +1339,17 @@ final class IndoorIntelligenceTests: XCTestCase {
         XCTAssertTrue(response.contains("First (Recovery)"))
         XCTAssertTrue(response.contains("Second (Form Refinement)"))
         XCTAssertFalse(response.contains("During your 9-rep Intervals"))
+
+        let structureResponse = AnalystFallbackResponder.generateResponse(
+            for: "How to structure my run tomorrow with the recommended drills and zone 1 recovery by",
+            turnContext: nil,
+            analysis: analysis,
+            runRecord: runRecord
+        )
+        XCTAssertTrue(structureResponse.contains("Warm-Up"))
+        XCTAssertTrue(structureResponse.contains("Form Drill"))
+        XCTAssertTrue(structureResponse.contains("Recovery Flush"))
+        XCTAssertFalse(structureResponse.contains("SPM SPM"))
     }
 
     // MARK: - 5. RAG Payloads

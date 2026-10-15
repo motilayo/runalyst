@@ -221,11 +221,37 @@ enum AnalystFallbackResponder {
             return "Active arm drive establishes your stride rhythm and balances pelvic rotation. Driving your elbows straight back (at roughly a 90° angle) stabilizes your torso, prevents lateral twisting, and helps maintain cadence turnover as fatigue sets in."
         }
 
-        // 11. Drills & Form Exercises
-        if q.contains("drill") || q.contains("exercise") {
+        // 11. Workout Structuring & Training Programs (e.g. "How to structure my run tomorrow with the recommended drills and zone 1 recovery", "Can you make the program for me")
+        let isStructuringIntent = ((q.contains("structure") || q.contains("combine") || q.contains("routine") || q.contains("how to do both") || q.contains("how do i do both")) &&
+            (q.contains("run") || q.contains("drill") || q.contains("recovery") || q.contains("session"))) ||
+            q.contains("make the program") || q.contains("make a program") || q.contains("create a program") ||
+            q.contains("safe progression") || q.contains("progression plan") ||
+            (q.contains("program") && (q.contains("run") || q.contains("tomorrow") || q.contains("for me") || q.contains("training")))
+        if isStructuringIntent {
+            let drillTitle = runRecord.insight?.drillRecommendations?.first?.drillTitle ?? "Cadence Pyramids"
+            let sessionName = analysis.lockedPrescription.nextSessionName
+            let paceBand = analysis.lockedPrescription.prescribedPaceBand
+            return """
+            Here is the ideal structure for tomorrow's session:
+
+            1. **Warm-Up (5–10 min)**: Start with an easy, very gentle jog and dynamic mobility to loosen up your hips and calves.
+            2. **Form Drill (5 min)**: Perform your **\(drillTitle)** drill early in the session while your nervous system is fresh to wake up quick foot turnover.
+            3. **Recovery Flush (20–25 min)**: Settle into your **\(sessionName)** at an easy, conversational pace (**\(paceBand)**) to flush metabolic fatigue.
+            4. **Cool-Down (3–5 min)**: Finish with a relaxed walking cool-down.
+            """
+        }
+
+        // 11.5. Drills & Form Exercises
+        if q.contains("drill") || q.contains("exercise") || q.contains("pyramid") || q.contains("stride") {
             if let drill = runRecord.insight?.drillRecommendations?.first {
-                let target = drill.targetCadence.map { " Target cadence: **\($0) SPM**." } ?? ""
-                let purpose = drill.drillPurpose.map { " Purpose: \($0)." } ?? ""
+                let target = drill.targetCadence.map {
+                    let clean = $0.replacingOccurrences(of: " SPM", with: "").replacingOccurrences(of: "SPM", with: "").trimmingCharacters(in: .whitespaces)
+                    return " Target cadence: **\(clean) SPM**."
+                } ?? ""
+                let purpose = drill.drillPurpose.map {
+                    let clean = $0.trimmingCharacters(in: CharacterSet(charactersIn: ". "))
+                    return " Purpose: \(clean)."
+                } ?? ""
                 return "The most effective drill for this workout is **\(drill.drillTitle)**.\(purpose)\(target) Incorporate this during your warm-up to reinforce proper motor patterns."
             } else if analysis.workingCadence < analysis.runnerProfile.heightAdjustedCadenceFloor {
                 return "I recommend **Cadence Pyramids** or **Strides** during your warm-up to train your turnover up toward your **\(analysis.runnerProfile.heightAdjustedCadenceFloor) SPM** height floor."

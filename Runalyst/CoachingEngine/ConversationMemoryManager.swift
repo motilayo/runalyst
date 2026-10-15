@@ -220,7 +220,7 @@ enum ConversationMemoryManager {
             )
         }
 
-        // 2.8. Session & Drill Sequencing ("Which order should I do both runs?", "Which one first?")
+        // 2.8. Session & Drill Sequencing, Structuring & Training Programs ("Which order should I do both runs?", "How to structure my run tomorrow...", "Can you make the program for me")
         let isSequencingIntent = lower.contains("which order") ||
             lower.contains("what order") ||
             lower.contains("order should i") ||
@@ -233,15 +233,25 @@ enum ConversationMemoryManager {
             lower.contains("both workouts") ||
             lower.contains("before or after") ||
             lower.contains("same day") ||
+            lower.contains("structure") ||
+            lower.contains("combine") ||
+            lower.contains("program") ||
+            lower.contains("training plan") ||
+            lower.contains("make the program") ||
+            lower.contains("progression plan") ||
+            lower.contains("safe progression") ||
+            (lower.contains("outline") && !lower.contains("split") && !lower.contains("interval")) ||
             (lower.contains("order") && (lower.contains("run") || lower.contains("drill") || lower.contains("session") || lower.contains("both")))
 
         if isSequencingIntent {
             let guidance = """
-            TURN FOCUS: Session & Drill Sequencing.
-            The runner is asking about the order, scheduling, or combination of recommended sessions and form drills.
+            TURN FOCUS: Session & Drill Sequencing & Structuring & Training Programs.
+            The runner is asking about the order, scheduling, practical structure, or progression of recommended sessions and form drills.
+            The word 'program' refers exclusively to a running training schedule—never software or coding.
             1. Recommend completing the recovery session (e.g. Zone 1 Active Recovery Flush) first to allow fatigue to clear.
-            2. Recommend scheduling the form drill (e.g. Cadence Pyramids or Strides) during the warm-up of their next active training session when neuromuscular coordination is fresh.
-            3. DO NOT reset the conversation or recite past workout metrics. Answer their sequencing question directly.
+            2. If structuring the session together: 5–10 min warm-up jog -> form drill (Cadence Pyramids) while fresh -> Zone 1 recovery flush -> cool-down walk.
+            3. If asking for a program or progression: outline clear phases with locked duration and pace bands directly from readiness without repetitive meta-offers.
+            4. DO NOT reset the conversation or recite past workout metrics. Answer their structuring/sequencing/program question directly.
             """
             return ManagedTurnContext(
                 turnDomain: .futureSessionPlanning,
@@ -251,6 +261,28 @@ enum ConversationMemoryManager {
                 turnGuidance: guidance,
                 stripWorkoutPayload: false,
                 prunePhysiologicalVerdicts: true
+            )
+        }
+
+        // 2.9. Drill Discussion & Form Recommendations ("And you also recommended cadence pyramid", "How do I do the drill?")
+        let drillMarkers = ["cadence pyramid", "cadence pyramids", "strides", "tempo surges", "rhythm intervals", "drill", "drills", "form drill"]
+        let isDrillInquiry = drillMarkers.contains(where: { lower.contains($0) })
+        if isDrillInquiry && !lower.contains("split") && !lower.contains("interval rep") {
+            let guidance = """
+            TURN FOCUS: Form Drill Execution & Purpose.
+            The runner is asking about or referencing a recommended form drill (e.g. Cadence Pyramids, Strides).
+            1. Discuss the purpose, target turnover, and execution of the drill.
+            2. Explain how it reinforces quick foot placement under the hips and reduces braking impact.
+            3. DO NOT recite past workout telemetry or re-diagnose past runs unless specifically asked.
+            """
+            return ManagedTurnContext(
+                turnDomain: .elaborationOrFollowUp,
+                turnIndex: userTurnIndex,
+                isSubjectiveDistress: false,
+                cleanConversationDigest: summarizeHistory(messages),
+                turnGuidance: guidance,
+                stripWorkoutPayload: false,
+                prunePhysiologicalVerdicts: false
             )
         }
 

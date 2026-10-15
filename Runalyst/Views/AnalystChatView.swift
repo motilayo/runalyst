@@ -239,6 +239,15 @@ struct AnalystChatView: View {
                     )
                     .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                     .shadow(color: Color.purple.opacity(0.25), radius: 4, x: 0, y: 2)
+                    .textSelection(.enabled)
+                    .contextMenu {
+                        Button {
+                            UIPasteboard.general.string = message.text
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        } label: {
+                            Label("Copy", systemImage: "doc.on.doc")
+                        }
+                    }
             } else {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(TelemetryHighlighter.highlight(message.text))
@@ -246,6 +255,7 @@ struct AnalystChatView: View {
                         .foregroundColor(.primary)
                         .fixedSize(horizontal: false, vertical: true)
                         .lineSpacing(3)
+                        .textSelection(.enabled)
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 14)
@@ -256,6 +266,14 @@ struct AnalystChatView: View {
                         .stroke(Color.white.opacity(0.06), lineWidth: 1)
                 )
                 .shadow(color: Color.black.opacity(0.03), radius: 5, x: 0, y: 1)
+                .contextMenu {
+                    Button {
+                        UIPasteboard.general.string = message.text
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    } label: {
+                        Label("Copy", systemImage: "doc.on.doc")
+                    }
+                }
                 Spacer(minLength: 28)
             }
         }
