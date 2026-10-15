@@ -72,14 +72,27 @@ enum AnalystFallbackResponder {
             return arc.coachingArcSummary
         }
 
-        // 2.5. Workout Comparison (e.g. "compare this run to my September 14 run", "vs last week", "compare to previous intervals")
-        let isComparisonIntent = q.contains("compare") || q.contains("versus") || q.contains(" vs ") || q.contains(" vs. ") || q.contains("difference between") || q.contains("how does this compare")
-        if isComparisonIntent {
+        // 2.5. Historical Workout Inquiry & Comparison (e.g. "compare this run to my September 14 run", "tell me about my last outdoor run", "check recent outdoor activity")
+        let isHistoricalOrComparisonIntent = q.contains("compare") || q.contains("versus") || q.contains(" vs ") || q.contains(" vs. ") ||
+            q.contains("difference between") || q.contains("how does this compare") ||
+            q.contains("outdoor run") || q.contains("outdoor activity") || q.contains("last outdoor") ||
+            q.contains("previous run") || q.contains("prior run") || q.contains("earlier run") ||
+            (q.contains("outdoor") && (q.contains("activity") || q.contains("history") || q.contains("run") || q.contains("workout")))
+        if isHistoricalOrComparisonIntent {
             if let prior = HistoricalRunMatcher.findRun(matching: userQuestion, relativeTo: runRecord, in: runRecord.modelContext) {
                 return HistoricalRunMatcher.compare(current: runRecord, with: prior).coachingComparisonSummary
             } else {
-                return "No historical workout found matching your query in stored records."
+                return "No historical workout matching '\(userQuestion)' was found in stored records."
             }
+        }
+
+        // 2.6. Workout Type & Environmental Mechanics Clarification
+        if q.contains("what type of run") || q.contains("what kind of run") || q.contains("what type of workout") || q.contains("what kind of workout") {
+            let env = analysis.isIndoor ? "indoor treadmill" : "outdoors"
+            return "Your \(analysis.workoutWeekday) run was an **\(analysis.detectedType.lowercased()) session** \(analysis.isIndoor ? "on the " : "")\(env)."
+        }
+        if ((q.contains("belt") || q.contains("belt-driven")) && (q.contains("why") || q.contains("matter"))) || ((q.contains("static air") || q.contains("treadmill air")) && (q.contains("why") || q.contains("matter"))) {
+            return "That distinction matters mechanically and thermodynamically: on a treadmill, the motor-driven belt moves beneath your feet, requiring active turnover under your hips to avoid braking shock. In stagnant indoor air, the lack of convective wind cooling impairs sweat evaporation, causing internal heat accumulation and cardiac drift."
         }
 
         // 2.7. Conversational Follow-Up / Elaboration ("That's all?", "Tell me more", "Why?", "Explain further")

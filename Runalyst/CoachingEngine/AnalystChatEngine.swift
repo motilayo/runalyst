@@ -208,7 +208,7 @@ class AnalystChatEngine: ObservableObject {
         let language = Locale.current.language.languageCode?.identifier ?? "en"
         let runType = runRecord.detectedTypeRaw.isEmpty ? "Run" : runRecord.detectedTypeRaw
         let isIndoor = runRecord.isIndoor ?? false
-        let envNote = isIndoor ? "Indoor Treadmill (belt-driven, static air)" : "Outdoors"
+        let envNote = isIndoor ? "Indoor Treadmill" : "Outdoors"
 
         let cal = Calendar.current
         let daysDiff = cal.dateComponents([.day], from: cal.startOfDay(for: runRecord.date), to: cal.startOfDay(for: Date())).day ?? 0
@@ -240,10 +240,11 @@ class AnalystChatEngine: ObservableObject {
         \(temporalGrounding)
         \(unitSystemInstruction)
 
-        AVAILABLE TOOLS:
-        • `fetchWorkoutAnalysis` (incorporating `fetchIntervalPerformance`, `fetchWorkoutPhysics`, and `interval_scorecard`): Retrieves workout telemetry, interval reps, splits, and biomechanical verdicts.
-        • `fetchReadinessAndPrescription`: Retrieves current recovery status, readiness to train, and prescribed upcoming sessions.
-        • `fetchAthleteProfile`: Retrieves athlete experience level, 30-day training load, and height-calibrated cadence floor.
+        DATA & TOOL API SPECIFICATION:
+        • `fetchWorkoutAnalysis` (incorporating `fetchIntervalPerformance`, `fetchWorkoutPhysics`, and `interval_scorecard`): Retrieves current workout telemetry, interval scorecards, rep-by-rep splits, modeled physics, and causal physiological verdicts.
+        • `fetchHistoricalWorkout`: Queries, filters, and retrieves past workouts from athlete history (filter by target: 'outdoor' for last outdoor run, 'indoor' for treadmill, 'recent' to list workouts, 'previous' for last run, specific date 'September 14', or 'best_and_worst' for 30-day rankings) and calculates exact telemetry deltas, duration/volume comparisons, and environmental contrasts.
+        • `fetchReadinessAndPrescription`: Retrieves recovery timeline, training readiness, and prescribed upcoming sessions. Set `userReportedDistress: true` if runner reports pain, soreness, illness, or fatigue.
+        • `fetchAthleteProfile`: Retrieves athlete baseline, experience level, 30-day cumulative training volume, and height-calibrated cadence floor.
 
         GUIDANCE:
         • Ground numbers strictly in tool data.
@@ -265,6 +266,24 @@ class AnalystChatEngine: ObservableObject {
             self.toolsCalledThisTurn += 1
             self.sessionHasLoadedWorkoutAnalysis = true
             return self.makeAnalysisContext().compactTelemetryAnalysis(focus: query.focus)
+        }
+
+        let historyTool = FetchHistoricalWorkoutTool { [weak self] query in
+            guard let self else { return "" }
+            self.toolsCalledThisTurn += 1
+            let target = query.target ?? ""
+            let lower = target.lowercased()
+            if lower.contains("best") || lower.contains("worst") || lower.contains("arc") || lower.contains("30_day") || lower.contains("rank") {
+                let arc = HistoricalRunMatcher.analyzePerformanceArc(relativeTo: self.runRecord, in: self.runRecord.modelContext)
+                return arc.structuredTelemetryFacts
+            } else if lower.contains("list") || lower.contains("recent") || lower.contains("all") {
+                return HistoricalRunMatcher.listRecentRuns(relativeTo: self.runRecord, in: self.runRecord.modelContext)
+            } else if let prior = HistoricalRunMatcher.findRun(matching: target.isEmpty ? "previous" : target, relativeTo: self.runRecord, in: self.runRecord.modelContext) {
+                let comparison = HistoricalRunMatcher.compare(current: self.runRecord, with: prior)
+                return comparison.structuredTelemetryFacts
+            } else {
+                return "No historical workout matching '\(target)' was found in stored records. Available context: current run is the only matching record."
+            }
         }
 
         let readinessTool = FetchReadinessAndPrescriptionTool { [weak self] query in
@@ -325,8 +344,7 @@ class AnalystChatEngine: ObservableObject {
             """
         }
 
-        // Strictly 3 orthogonal tools passed to LanguageModelSession to eliminate tool collision
-        let tools: [any Tool] = [workoutTool, readinessTool, profileTool]
+        let tools: [any Tool] = [workoutTool, historyTool, readinessTool, profileTool]
         let instructions = buildLeanSystemInstructions()
         let session = LanguageModelSession(
             model: SystemLanguageModel.default,

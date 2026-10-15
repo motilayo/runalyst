@@ -316,7 +316,7 @@ struct AthleteProfileQuery: Sendable {
 @available(iOS 26.0, *)
 @Generable
 struct HistoricalWorkoutQuery: Sendable {
-    @Guide(description: "Search target for comparison or ranking: 'best_and_worst' (or 'arc', '30_days') to rank past 30 days workouts, or specific date (e.g. 'MM/DD'), relative term ('previous', 'last run'), or modality ('last tempo').")
+    @Guide(description: "Search target for comparison or ranking: 'outdoor' (for last outdoor run), 'indoor' (for treadmill), 'best_and_worst' (or 'arc', '30_days') to rank past 30 days workouts, or specific date (e.g. 'September 14' or 'MM/DD'), relative term ('previous', 'last run'), or modality ('tempo', 'intervals').")
     var target: String?
 }
 
@@ -473,7 +473,7 @@ struct FetchHistoricalWorkoutTool: Tool {
     typealias Output = String
 
     let name = "fetchHistoricalWorkout"
-    let description = "Retrieves historical workout telemetry to compare against past runs, rank 30-day performances, or evaluate training progress over time."
+    let description = "Retrieves historical workout telemetry from the athlete's recorded history (such as past outdoor runs, treadmill sessions, specific dates, or 30-day rankings) and calculates exact mathematical comparisons and telemetry deltas against the current run."
 
     let provider: @MainActor @Sendable (HistoricalWorkoutQuery) async -> String
 

@@ -2226,4 +2226,139 @@ final class IndoorIntelligenceTests: XCTestCase {
         XCTAssertTrue(response.contains("163 SPM"), "Must contain authentic 163 SPM from telemetry")
         XCTAssertFalse(response.contains("120 SPM stride"), "Must never output fabricated arithmetic progression")
     }
+
+    // MARK: - Tool API Contract & Cross-Environment History Matching
+
+    @MainActor
+    func testLeanSystemInstructionsApiContractSpecification() {
+        #if canImport(FoundationModels)
+        if #available(iOS 26.0, *) {
+            let runRecord = makeTestRunRecord(isIndoor: true)
+            runRecord.detectedTypeRaw = "Intervals"
+            let chatEngine = AnalystChatEngine(runRecord: runRecord)
+            let prompt = chatEngine.buildLeanSystemInstructions()
+
+            XCTAssertTrue(prompt.contains("DATA & TOOL API SPECIFICATION:"), "Must declare data and tool API contract")
+            XCTAssertTrue(prompt.contains("fetchWorkoutAnalysis"), "Must specify fetchWorkoutAnalysis endpoint")
+            XCTAssertTrue(prompt.contains("• `fetchHistoricalWorkout`:"), "Must specify fetchHistoricalWorkout endpoint")
+            XCTAssertTrue(prompt.contains("• `fetchReadinessAndPrescription`:"), "Must specify fetchReadinessAndPrescription endpoint")
+            XCTAssertTrue(prompt.contains("• `fetchAthleteProfile`:"), "Must specify fetchAthleteProfile endpoint")
+            XCTAssertFalse(prompt.contains("(belt-driven, static air)"), "Prompt header must not parrot awkward belt-driven static air boilerplate")
+            XCTAssertTrue(prompt.contains("target: 'outdoor'"), "Prompt must document outdoor target parameter")
+        }
+        #endif
+    }
+
+    @MainActor
+    func testHistoricalRunMatchingAndComparisonForOutdoorRunQuery() throws {
+        let schema = Schema([RunRecord.self])
+        let config = ModelConfiguration(isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        let context = ModelContext(container)
+
+        let calendar = Calendar.current
+        let today = Date()
+
+        // 1. Prior outdoor road run from 12 days ago
+        let outdoorDate = calendar.date(byAdding: .day, value: -12, to: today) ?? today.addingTimeInterval(-12 * 86400)
+        let outdoorRun = RunRecord(
+            hkWorkoutID: UUID(),
+            date: outdoorDate,
+            totalDistanceMeters: 6000,
+            duration: 2100,
+            rawAvgPace: 350,
+            rawAvgHeartRate: 152,
+            rawAvgCadence: 160,
+            workingAvgPace: 350,
+            workingAvgCadence: 160,
+            workingAvgHeartRate: 152,
+            isIndoor: false,
+            paceCV: 0.04,
+            paceSlope: 0.0,
+            percentZone4: 0.15,
+            detectedTypeRaw: "Steady Effort"
+        )
+        context.insert(outdoorRun)
+
+        // 2. Current indoor treadmill intervals workout
+        let indoorRun = RunRecord(
+            hkWorkoutID: UUID(),
+            date: today,
+            totalDistanceMeters: 6600,
+            duration: 2700,
+            rawAvgPace: 342,
+            rawAvgHeartRate: 154,
+            rawAvgCadence: 163,
+            workingAvgPace: 342,
+            workingAvgCadence: 163,
+            workingAvgHeartRate: 154,
+            isIndoor: true,
+            paceCV: 0.10,
+            paceSlope: 0.0,
+            percentZone4: 0.25,
+            detectedTypeRaw: "Intervals"
+        )
+        context.insert(indoorRun)
+        try context.save()
+
+        // Test 1: Cross-environment query matches prior outdoor run
+        let crossEnvQuery = "Tell me about one of my outdoor runs. Compare my last outdoor run to my last indoor run"
+        let matchedRun1 = try XCTUnwrap(HistoricalRunMatcher.findRun(matching: crossEnvQuery, relativeTo: indoorRun, in: context))
+        XCTAssertEqual(matchedRun1.id, outdoorRun.id, "Cross-environment query must match prior outdoor run")
+
+        // Test 2: Looking beyond 7 days query matches prior outdoor run
+        let beyond7DaysQuery = "Check recent outdoor activity, you'll need to look beyond than 7days"
+        let matchedRun2 = try XCTUnwrap(HistoricalRunMatcher.findRun(matching: beyond7DaysQuery, relativeTo: indoorRun, in: context))
+        XCTAssertEqual(matchedRun2.id, outdoorRun.id, "Beyond 7 days outdoor query must match prior outdoor run")
+
+        // Test 3: Mathematical comparison contains structured telemetry facts
+        let comparison = HistoricalRunMatcher.compare(current: indoorRun, with: outdoorRun)
+        XCTAssertEqual(comparison.paceDeltaSeconds, 8, "350 - 342 = 8s faster in current run")
+        XCTAssertEqual(comparison.cadenceDelta, 3, "163 - 160 = +3 SPM in current run")
+        XCTAssertEqual(comparison.heartRateDelta, 2, "154 - 152 = +2 BPM in current run")
+        XCTAssertTrue(comparison.structuredTelemetryFacts.contains("Outdoor"))
+        XCTAssertTrue(comparison.structuredTelemetryFacts.contains("Indoor Treadmill"))
+        XCTAssertTrue(comparison.structuredTelemetryFacts.contains("8s/km faster"))
+        XCTAssertTrue(comparison.structuredTelemetryFacts.contains("+3 SPM"))
+
+        // Test 4: AnalystFallbackResponder handles cross-environment comparison
+        let chatEngine = AnalystChatEngine(runRecord: indoorRun)
+        let analysis = chatEngine.makeAnalysisContext()
+        let fallbackResponse = AnalystFallbackResponder.generateResponse(
+            for: crossEnvQuery,
+            analysis: analysis,
+            runRecord: indoorRun
+        )
+        XCTAssertTrue(fallbackResponse.contains("Comparing your"), "Must produce comparison summary")
+        XCTAssertTrue(fallbackResponse.contains("8s/km faster"), "Must quote pace delta")
+        XCTAssertTrue(fallbackResponse.contains("+3 SPM"), "Must quote cadence delta")
+        XCTAssertTrue(fallbackResponse.contains("treadmill"), "Must contrast indoor treadmill vs outdoor")
+
+        // Test 5: AnalystFallbackResponder handles beyond 7 days outdoor activity
+        let beyond7DaysResponse = AnalystFallbackResponder.generateResponse(
+            for: beyond7DaysQuery,
+            analysis: analysis,
+            runRecord: indoorRun
+        )
+        XCTAssertTrue(beyond7DaysResponse.contains("Comparing your"), "Must produce comparison summary for outdoor activity request")
+        XCTAssertFalse(beyond7DaysResponse.contains("I don't have data on your outdoor runs"), "Must not claim no data")
+
+        // Test 6: AnalystFallbackResponder handles workout type inquiry
+        let typeResponse = AnalystFallbackResponder.generateResponse(
+            for: "What type of run was it?",
+            analysis: analysis,
+            runRecord: indoorRun
+        )
+        XCTAssertTrue(typeResponse.contains("intervals session"), "Must clarify it was an intervals session")
+        XCTAssertTrue(typeResponse.contains("treadmill"), "Must clarify it was on the indoor treadmill")
+
+        // Test 7: AnalystFallbackResponder handles belt-driven/static air inquiry with biomechanics/thermodynamics
+        let mechanicsResponse = AnalystFallbackResponder.generateResponse(
+            for: "Why does it matter that it's belt-driven or static air?",
+            analysis: analysis,
+            runRecord: indoorRun
+        )
+        XCTAssertTrue(mechanicsResponse.contains("motor-driven belt"), "Must explain belt kinetics")
+        XCTAssertTrue(mechanicsResponse.contains("convective wind cooling") || mechanicsResponse.contains("heat accumulation"), "Must explain static air thermodynamics")
+    }
 }

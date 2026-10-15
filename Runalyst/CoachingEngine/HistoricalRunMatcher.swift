@@ -40,6 +40,36 @@ struct HistoricalRunMatcher {
             let envCurrent = current.isIndoor ? "Indoor Treadmill" : "Outdoor"
             let envPrior = prior.isIndoor ? "Indoor Treadmill" : "Outdoor"
 
+            let cal = Calendar.current
+            let daysDiff = cal.dateComponents([.day], from: cal.startOfDay(for: prior.date), to: cal.startOfDay(for: current.date)).day ?? 0
+            let recencyContrast: String
+            if daysDiff > 0 {
+                recencyContrast = "Current \(current.classification) on \(current.formattedDate) took place \(daysDiff) day\(daysDiff == 1 ? "" : "s") after prior \(prior.classification) on \(prior.formattedDate)."
+            } else if daysDiff < 0 {
+                recencyContrast = "Prior \(prior.classification) on \(prior.formattedDate) took place \(abs(daysDiff)) day\(abs(daysDiff) == 1 ? "" : "s") after current \(current.classification) on \(current.formattedDate)."
+            } else {
+                recencyContrast = "Both workouts took place on the same day (\(current.formattedDate))."
+            }
+
+            let sameClassification = current.classification.caseInsensitiveCompare(prior.classification) == .orderedSame
+            let classificationComparison: String
+            if sameClassification {
+                classificationComparison = "Both workouts were similarly classified as \(current.classification)."
+            } else {
+                classificationComparison = "Different workout modalities: current run is \(current.classification) vs prior run \(prior.classification)."
+            }
+
+            let distDiffKm = (current.distanceMeters - prior.distanceMeters) / 1000.0
+            let durDiffMin = Int((current.durationSeconds - prior.durationSeconds) / 60)
+            let volumeComparison: String
+            if abs(distDiffKm) < 0.2 && abs(durDiffMin) < 3 {
+                volumeComparison = "Matched volume: both runs covered comparable distance (~\(String(format: "%.1f", current.distanceMeters / 1000)) km in ~\(Int(current.durationSeconds / 60)) min)."
+            } else {
+                let distDesc = distDiffKm > 0 ? "+\(String(format: "%.2f", distDiffKm)) km longer" : "\(String(format: "%.2f", abs(distDiffKm))) km shorter"
+                let durDesc = durDiffMin > 0 ? "+\(durDiffMin) min longer" : "\(abs(durDiffMin)) min shorter"
+                volumeComparison = "Volume difference: current run was \(distDesc) and \(durDesc) in duration."
+            }
+
             let paceComparison: String
             if paceDeltaSeconds > 0 {
                 paceComparison = "\(paceDeltaSeconds)s/km faster in current run"
@@ -119,28 +149,40 @@ struct HistoricalRunMatcher {
             - Working Heart Rate: \(prior.heartRateBPM) BPM
             - Environment: \(envPrior)
 
+            Comparative Context:
+            - Recency: \(recencyContrast)
+            - Classification: \(classificationComparison)
+            - Volume: \(volumeComparison)
+            - Structure: \(structureContrast)
+            - Environment: \(envContrast)
+
             Mathematical Telemetry Deltas:
             - Pace: \(paceComparison)
             - Cadence: \(cadComparison)
             - Heart Rate: \(hrComparison)
-            - Physiological Fact: \(physiologicalSignal)
-            - Workout Structure Contrast: \(structureContrast)
-            - Environmental Contrast: \(envContrast)
+            - Physiological Conclusion: \(physiologicalSignal)
             """
         }
 
         /// Natural language synthesized comparison for fallback and offline coaching contexts.
         var coachingComparisonSummary: String {
+            let cal = Calendar.current
+            let daysDiff = cal.dateComponents([.day], from: cal.startOfDay(for: prior.date), to: cal.startOfDay(for: current.date)).day ?? 0
+            let recencyNote = daysDiff > 0
+                ? "Your \(current.classification) on \(current.formattedDate) took place **\(daysDiff) day\(daysDiff == 1 ? "" : "s") after** your \(prior.classification) on \(prior.formattedDate)."
+                : "Workouts on \(current.formattedDate) and \(prior.formattedDate)."
+
             let paceComp = paceDeltaSeconds > 0 ? "\(paceDeltaSeconds)s/km faster" : (paceDeltaSeconds < 0 ? "\(abs(paceDeltaSeconds))s/km slower" : "identical pace")
             let cadComp = cadenceDelta > 0 ? "+\(cadenceDelta) SPM higher turnover" : (cadenceDelta < 0 ? "\(abs(cadenceDelta)) SPM lower turnover" : "matched turnover")
             let hrComp = heartRateDelta > 0 ? "+\(heartRateDelta) BPM higher cardiac cost" : (heartRateDelta < 0 ? "\(abs(heartRateDelta)) BPM lower cardiovascular demand" : "matched heart rate")
 
             var lines = [
-                "Comparing your **\(current.weekday), \(current.formattedDate) \(current.classification)** to your **\(prior.weekday), \(prior.formattedDate) \(prior.classification)**:",
+                "Comparing your **\(current.weekday), \(current.formattedDate) \(current.classification)** to your **\(prior.weekday), \(prior.formattedDate) \(prior.classification)** (\(recencyNote)):",
                 "",
                 "• **Pace**: **\(current.paceFormatted)** vs **\(prior.paceFormatted)** (\(paceComp))",
                 "• **Cadence**: **\(current.cadenceSPM) SPM** vs **\(prior.cadenceSPM) SPM** (\(cadComp))",
                 "• **Heart Rate**: **\(current.heartRateBPM) BPM** vs **\(prior.heartRateBPM) BPM** (\(hrComp))",
+                "• **Volume**: **\(String(format: "%.2f", current.distanceMeters / 1000)) km** (\(Int(current.durationSeconds / 60)) min) vs **\(String(format: "%.2f", prior.distanceMeters / 1000)) km** (\(Int(prior.durationSeconds / 60)) min)",
                 ""
             ]
 
@@ -268,7 +310,30 @@ struct HistoricalRunMatcher {
 
         let calendar = Calendar.current
 
-        // 0. Superlatives: "best", "fastest", "worst", "slowest", "toughest"
+        // 0. Environment matching: "outdoor", "outside", "road", "trail", "indoor", "treadmill"
+        let mentionsOutdoor = lower.contains("outdoor") || lower.contains("outside") || lower.contains("road") || lower.contains("trail")
+        let mentionsIndoor = lower.contains("indoor") || lower.contains("treadmill")
+
+        if mentionsOutdoor && mentionsIndoor {
+            // Runner is asking for cross-environment comparison
+            let wantOutdoor = (currentRun.isIndoor ?? false)
+            let matchingRuns = otherRuns.filter { wantOutdoor ? !($0.isIndoor ?? false) : ($0.isIndoor == true) }
+            if let match = matchingRuns.first {
+                return match
+            }
+        } else if mentionsOutdoor {
+            let outdoorRuns = otherRuns.filter { !($0.isIndoor ?? false) }
+            if let match = outdoorRuns.first {
+                return match
+            }
+        } else if mentionsIndoor {
+            let indoorRuns = otherRuns.filter { $0.isIndoor == true }
+            if let match = indoorRuns.first {
+                return match
+            }
+        }
+
+        // 0.5. Superlatives: "best", "fastest", "worst", "slowest", "toughest"
         func efficiencyScore(for run: RunRecord) -> Double {
             if let ef = run.efficiencyFactor, ef > 0 { return ef }
             let pace = run.workingAvgPace > 0 ? run.workingAvgPace : run.rawAvgPace
@@ -380,6 +445,11 @@ struct HistoricalRunMatcher {
             if let match = priorWithModality.first {
                 return match
             }
+        }
+
+        // 4. Generic history query: "previous run", "past run", "activity history", "tell me about a run"
+        if lower.contains("run") || lower.contains("workout") || lower.contains("activity") || lower.contains("history") {
+            return otherRuns.first
         }
 
         return nil
@@ -526,5 +596,39 @@ struct HistoricalRunMatcher {
             distanceDeltaMeters: distDelta,
             durationDeltaSeconds: durDelta
         )
+    }
+
+    /// Formats a concise catalog of the athlete's recorded workouts for tool listing queries.
+    static func listRecentRuns(
+        relativeTo currentRun: RunRecord,
+        in context: ModelContext?,
+        limit: Int = 10
+    ) -> String {
+        guard let context = context else {
+            return "Only the current run is available in stored records."
+        }
+        let descriptor = FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)])
+        guard let allRuns = try? context.fetch(descriptor), !allRuns.isEmpty else {
+            return "No workouts found in stored records."
+        }
+        let dateFormatter = DateFormatter()
+        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+        dateFormatter.dateFormat = "EEEE, MMMM d"
+
+        var lines = ["ATHLETE WORKOUT DATABASE (\(allRuns.count) total workouts recorded):"]
+        for run in allRuns.prefix(limit) {
+            let isCurrent = run.id == currentRun.id
+            let marker = isCurrent ? " [CURRENT WORKOUT]" : ""
+            let env = (run.isIndoor ?? false) ? "Indoor Treadmill" : "Outdoor"
+            let distKm = String(format: "%.2f km", run.totalDistanceMeters / 1000.0)
+            let durMin = "\(Int(run.duration / 60)) min"
+            let pace = run.workingAvgPace > 0 ? PaceFormatter.formatPace(secondsPerKilometer: run.workingAvgPace) : PaceFormatter.formatPace(secondsPerKilometer: run.rawAvgPace)
+            let cad = Int(run.workingAvgCadence > 0 ? run.workingAvgCadence : run.rawAvgCadence)
+            let hr = Int(run.workingAvgHeartRate > 0 ? run.workingAvgHeartRate : run.rawAvgHeartRate)
+            let type = run.detectedTypeRaw.isEmpty ? run.normalizedClassification : run.detectedTypeRaw
+            let dateStr = dateFormatter.string(from: run.date)
+            lines.append("• \(dateStr) - \(type) (\(env))\(marker): \(distKm) in \(durMin) @ \(pace), \(cad) SPM, \(hr) BPM")
+        }
+        return lines.joined(separator: "\n")
     }
 }
