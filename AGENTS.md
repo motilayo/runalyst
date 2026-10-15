@@ -11,6 +11,7 @@ This `AGENTS.md` file acts as the primary repository of architectural context, t
   - *Translation Mandate*: Convert raw Apple HealthKit telemetry into empathetic, actionable coaching English.
   - *Protection Mandate*: Prioritize human biological safety over rigid data through subjective overrides and deterministically calculated recovery timelines.
   - *Progression Mandate*: Replace algorithmic guesswork with locked, mathematically proven pacing and duration bands.
+  - *Understanding & Refinement Philosophy*: Ultimately, understand the runner: where they are currently, where they want to be based on stated goals and intents expressed in conversations, how they are trying to get there, and how you can help them get there as a runner. It is not about perfection—it is about improvement, understanding, refinement, and excellence.
 - **Thick Client, Thin AI**: The backend is deterministic and local. Swift does the math, the physics engine models mechanical realities, and on-device iOS `FoundationModels` perform semantic translation and conversational synthesis. The LLM never hallucinates numbers.
 - **Sweaty Hands UX (Usable & Pleasurable)**:
   - *One Metric Primary View*: High signal-to-noise ratio. The top area delivers today's single clear directive; deep data progressively discloses.
