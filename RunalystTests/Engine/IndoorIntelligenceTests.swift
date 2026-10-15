@@ -2134,9 +2134,9 @@ final class IndoorIntelligenceTests: XCTestCase {
         XCTAssertTrue(rx.forbiddenTerms.contains("tempo"), "Forbidden terms must include tempo for Zone 2 recovery")
 
         let instructions = chatEngine.buildLeanSystemInstructions()
-        XCTAssertTrue(instructions.contains("POSITIVE CATEGORY DIRECTIVE"), "Instructions must mandate positive category adherence")
+        XCTAssertTrue(instructions.contains("fetchReadinessAndPrescription"), "Instructions must provide readiness tool")
         XCTAssertFalse(instructions.contains("forbidden_terms"), "Prompt must NOT contain forbidden_terms to avoid token attention bleed")
-        XCTAssertTrue(instructions.contains("SCOPE MANDATE"), "Instructions must mandate not reciting past metrics during future planning")
+        XCTAssertTrue(instructions.contains("interpreter"), "Instructions must enshrine interpreter role")
     }
 
     @MainActor
