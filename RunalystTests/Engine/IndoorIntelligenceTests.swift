@@ -209,6 +209,37 @@ final class IndoorIntelligenceTests: XCTestCase {
             lastMessage.contains("physician") || lastMessage.contains("physical therapist") || lastMessage.contains("medical"),
             "Chat should advise consulting a qualified clinician for injury/pain questions"
         )
+        XCTAssertTrue(
+            lastMessage.contains("cadence") || lastMessage.contains("overstrid"),
+            "Chat should ground knee pain in authentic telemetry and overstriding mechanics"
+        )
+        XCTAssertTrue(
+            lastMessage.contains("drill") || lastMessage.contains("pyramid") || lastMessage.contains("stride"),
+            "Chat should recommend an appropriate drill if runner is cleared to run"
+        )
+    }
+
+    @MainActor
+    func testAnalystChatKneeHurtingBiomechanicsAndDrill() async {
+        let runRecord = makeTestRunRecord()
+        runRecord.workingAvgCadence = 152
+        runRecord.workingAvgVerticalOscillation = 10.4
+        let chatEngine = AnalystChatEngine(runRecord: runRecord)
+        await chatEngine.sendMessage("my knee is hurting")
+
+        let lastMessage = chatEngine.messages.last?.text.lowercased() ?? ""
+        XCTAssertTrue(
+            lastMessage.contains("not a doctor") || lastMessage.contains("physical therapist") || lastMessage.contains("medical"),
+            "Should clarify not a doctor and advise seeking medical help"
+        )
+        XCTAssertTrue(
+            lastMessage.contains("cadence") && lastMessage.contains("overstrid"),
+            "Should highlight that cadence/vertical oscillation indicates overstriding"
+        )
+        XCTAssertTrue(
+            lastMessage.contains("cadence pyramids") || lastMessage.contains("strides"),
+            "Should recommend an appropriate drill like Cadence Pyramids or Strides if runner decides to run"
+        )
     }
 
     @MainActor

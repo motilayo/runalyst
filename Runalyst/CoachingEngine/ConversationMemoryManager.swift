@@ -87,6 +87,20 @@ enum ConversationMemoryManager {
             )
         }
 
+        // 1.5. Musculoskeletal Pain, Joint Discomfort or Injury Inquiry
+        let painKeywords = ["pain", "hurt", "hurts", "hurting", "knee", "shin", "achilles", "plantar", "injury", "injured", "soreness", "swollen", "painkiller"]
+        if painKeywords.contains(where: { lower.contains($0) }) {
+            return ManagedTurnContext(
+                turnDomain: .workoutTelemetryAnalysis,
+                turnIndex: userTurnIndex,
+                isSubjectiveDistress: false,
+                cleanConversationDigest: summarizeHistory(messages),
+                turnGuidance: "The runner mentioned pain, soreness, or potential injury (e.g. knee discomfort). Clarify you are an AI telemetry analyst, not a doctor or physical therapist, and advise seeking medical help if pain is acute, sharp, or persistent. Corroborate with their telemetry (cadence vs. floor, pace, and vertical oscillation) to explain potential overstriding or braking forces. If they seek medical care, prioritize recovery. If they choose to run, recommend an appropriate form drill next (e.g. Cadence Pyramids or Strides).",
+                stripWorkoutPayload: false,
+                prunePhysiologicalVerdicts: false
+            )
+        }
+
         // 2. Out-of-Scope Detection (General Trivia, Coding, Non-running inquiries)
         if isOutOfScopeQuery(lower) {
             return ManagedTurnContext(

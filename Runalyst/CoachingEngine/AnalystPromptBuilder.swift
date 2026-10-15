@@ -78,8 +78,11 @@ enum AnalystPromptBuilder {
 
         3. Turn Scope and Memory:
            • Respect the "TURN CONTEXT & DIRECTIVE" instructions.
-           • If the turn is future planning or composite, evaluate future readiness using Current Recovery Status and the Locked Prescription Table—do not let past workout exertion prevent running unless recovery is actively required.
-           • If subjective physical distress (illness/injury) is active, prioritize rest and recovery above all goals.
+           • If subjective physical distress (illness/fever) is active, prioritize rest and recovery above all goals.
+           • If the runner reports joint or knee pain, soreness, or potential injury:
+             - Clarify you are an AI telemetry analyst, not a doctor or physical therapist, and advise seeking medical care or consulting a physical therapist if pain is sharp, acute, or persistent.
+             - Concurrently check their biomechanical telemetry (cadence vs. height floor, pace, and vertical oscillation). Explain if the data indicates overstriding or excessive impact shock (e.g. cadence below floor or high vertical bounce sending braking forces through the knee).
+             - If they choose to seek medical help, that is prioritized. If they are cleared or choose to run, recommend an appropriate form drill next (such as Cadence Pyramids or Strides to build turnover and soften foot landing).
            • If out-of-scope inquiry, answer briefly in 1–2 sentences and pivot back to running.
 
         4. Conversational Voice & Identity Protection:

@@ -114,31 +114,6 @@ class AnalystChatEngine: ObservableObject {
         isResponding = true
         defer { isResponding = false }
 
-        // --- Guardrail 1: Medical Boundary ---
-        let lowercased = trimmed.lowercased()
-        let medicalKeywords = ["pain", "hurt", "injured", "injury", "shin splint", "plantar", "achilles", "knee pain", "diagnosis", "doctor", "strain my"]
-        if medicalKeywords.contains(where: { lowercased.contains($0) }) {
-            let medicalReferral = "I'm an AI running coach, not a doctor or physical therapist. If you're experiencing pain or persistent soreness, please take time to rest and check in with a doctor or physical therapist."
-            messages.append(AnalystChatMessage(sender: .analyst, text: medicalReferral))
-            return
-        }
-
-        // --- Guardrail 2: Hardware Boundary (Indoor GPS inquiry) ---
-        let gpsKeywords = ["gps", "route", "map", "elevation gain", "hills outside"]
-        if (runRecord.isIndoor ?? false) && gpsKeywords.contains(where: { lowercased.contains($0) }) {
-            let hardwareExplanation = "This run was recorded on a treadmill indoors. Apple Watch turns off GPS and elevation tracking indoors because there are no satellites or hills inside. We track your run using your arm swing, cadence, and heart rate instead."
-            messages.append(AnalystChatMessage(sender: .analyst, text: hardwareExplanation))
-            return
-        }
-
-        // --- Guardrail 3: Subjective Gear / Shoe Boundary ---
-        let gearKeywords = ["shoes", "shoe", "vaporfly", "alphafly", "superblast", "hoka", "nike", "saucony", "gear to buy", "what shoes"]
-        if gearKeywords.contains(where: { lowercased.contains($0) }) {
-            let gearResponse = "I focus on your running form, cadence, and effort rather than specific shoe brands. The best shoe is whatever feels comfortable for you, but keeping a quick, light step under your hips does the most to protect your legs."
-            messages.append(AnalystChatMessage(sender: .analyst, text: gearResponse))
-            return
-        }
-
         // Test responder hook (for unit tests / mock free speak)
         let cal = Calendar.current
         let daysDiff = cal.dateComponents([.day], from: cal.startOfDay(for: runRecord.date), to: cal.startOfDay(for: Date())).day ?? 0
@@ -253,7 +228,6 @@ class AnalystChatEngine: ObservableObject {
             : "USER UNIT SYSTEM: Imperial. Quote paces strictly in min/mi (e.g. 8:25/mi) and distances in miles (e.g. 3.1 mi). NEVER dump metric units (km, min/km) and NEVER output dual units. Stick strictly to imperial."
 
         return """
-        You are Runalyst—an intelligent running telemetry interpreter with the sharp mind of an analyst.
         The runner's telemetry numbers never change—they are verified, deterministic facts. Your role is to interpret these numbers in whatever way the runner asks for:
         • If they ask for coaching or next steps, guide them with the voice of an encouraging coach.
         • If they ask why their body reacted or what a metric means, explain the physiology and mechanics like a clear teacher.
@@ -277,7 +251,14 @@ class AnalystChatEngine: ObservableObject {
         • Grounding: Every pace, cadence, heart rate, and split must come from tool data.
         • SCOPE MANDATE: When answering future planning or readiness questions, deliver the prescription directly. Do not recite past workout metrics unless asked to compare.
         • POSITIVE CATEGORY DIRECTIVE: When describing upcoming sessions, follow the prescribed intensity category and coaching directive (e.g. describe Easy Aerobic runs around conversational breathing and relaxed rhythm).
-        • Athlete Safety Override: If the runner reports acute illness, fever, or pain, prioritize rest and recovery above all training goals.
+        • Athlete Safety Override & Pain/Injury Inquiries:
+          - If the runner reports joint or knee pain, soreness, or injury:
+            1. Clarify you are an AI telemetry analyst, not a doctor or physical therapist, and advise consulting a medical doctor or physical therapist if pain is sharp, acute, or persistent.
+            2. Interpret their verified telemetry (cadence vs. height floor, pace, and vertical oscillation). Explain how low cadence or excessive vertical bounce can cause overstriding and impact braking shock through the knee.
+            3. If they decide to seek medical help, that is prioritized. If they want to continue running or address technique, recommend an appropriate drill next (such as Cadence Pyramids or Strides to build turnover and shorten stride).
+          - If the runner reports acute illness, fever, or exhaustion, prioritize rest and recovery above all training goals.
+        • Treadmill & Hardware: When asked about indoor treadmill distance or GPS, explain that GPS is disabled indoors by Apple Watch and tracking relies on arm swing and cadence.
+        • Shoes & Equipment: Keep recommendations centered on biomechanics, cadence turnover, and comfort rather than endorsing shoe brands.
 
         Respond in \(language).
         """

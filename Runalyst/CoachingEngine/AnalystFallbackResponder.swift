@@ -12,9 +12,44 @@ enum AnalystFallbackResponder {
     ) -> String {
         let q = userQuestion.lowercased().replacingOccurrences(of: "’", with: "'")
 
-        // 1. Subjective distress override
-        if turnContext?.isSubjectiveDistress == true || q.contains("fever") || q.contains("feel sick") || q.contains("feeling sick") || q.contains("have a cold") || q.contains("flu") {
+        // 1. Subjective distress override (Illness, Fever)
+        if (turnContext?.isSubjectiveDistress == true && !q.contains("knee") && !q.contains("pain") && !q.contains("hurt")) || q.contains("fever") || q.contains("feel sick") || q.contains("feeling sick") || q.contains("have a cold") || q.contains("flu") {
             return "When you're dealing with illness, fever, or acute physical distress, training takes a back seat. Prioritize sleep, hydration, and full rest until your symptoms fully resolve."
+        }
+
+        // 1.5. Musculoskeletal Pain, Joint Discomfort or Injury Inquiry
+        let painKeywords = ["pain", "hurt", "hurts", "hurting", "knee", "shin", "achilles", "plantar", "injury", "injured", "soreness", "swollen", "painkiller"]
+        if painKeywords.contains(where: { q.contains($0) }) {
+            let floor = analysis.runnerProfile.heightAdjustedCadenceFloor
+            let cad = analysis.workingCadence
+            let pace = analysis.workingPaceFormatted
+            let osc = runRecord.workingAvgVerticalOscillation
+
+            let medicalBoundary = "I'm an AI running analyst, not a doctor or physical therapist. If you're experiencing pain, swelling, or persistent discomfort, please consult a medical doctor or physical therapist for a professional evaluation."
+
+            let telemetryInsight: String
+            let oscText = osc.map { ", with **\(String(format: "%.1f", $0)) cm** of vertical bounce" } ?? ""
+            if cad < floor {
+                telemetryInsight = "Looking at your telemetry from this run: your cadence was **\(cad) SPM** (below your **\(floor) SPM** height floor) at a working pace of **\(pace)**\(oscText). When cadence drops below your floor, it often indicates overstriding—reaching your foot out ahead of your center of mass. This creates braking forces that send impact shock directly into the knee joint rather than allowing your hips and calves to absorb the load."
+            } else {
+                telemetryInsight = "Looking at your telemetry from this run: your cadence was **\(cad) SPM** (above your **\(floor) SPM** floor) at a working pace of **\(pace)**\(oscText). While your turnover was disciplined, subtle overstriding or excessive vertical bounce can still transfer braking shock into the knee joint."
+            }
+
+            let nextSteps = "If you decide to seek medical help, that takes priority—rest and let a clinician evaluate it. If you and your provider determine you are cleared to run, I recommend **Cadence Pyramids** or **Strides** during your warm-up as your next drill to help shorten your stride, increase foot turnover under your hips, and soften landing impact."
+
+            return "\(medicalBoundary)\n\n\(telemetryInsight)\n\n\(nextSteps)"
+        }
+
+        // 1.6. Hardware Boundary (Indoor GPS inquiry)
+        let gpsKeywords = ["gps", "satellite", "route", "map", "inaccurate distance"]
+        if (analysis.isIndoor || runRecord.isIndoor == true) && gpsKeywords.contains(where: { q.contains($0) }) {
+            return "This run was recorded on an indoor treadmill. Apple Watch turns off GPS and satellite tracking indoors because satellite signals cannot penetrate indoor walls and ceilings. Instead, your distance and pace were calculated using wrist accelerometer arm swing and cadence. If the treadmill display differed, you can calibrate distance in the Apple Health or Fitness app."
+        }
+
+        // 1.7. Subjective Gear / Shoe Boundary
+        let gearKeywords = ["shoes", "shoe", "vaporfly", "alphafly", "superblast", "hoka", "nike", "saucony", "gear to buy", "what shoes", "footwear", "carbon shoes"]
+        if gearKeywords.contains(where: { q.contains($0) }) {
+            return "I focus on your running biomechanics, cadence turnover, and aerobic consistency rather than specific shoe brands. The best footwear is whatever feels natural and comfortable for you, but maintaining a quick cadence turnover of **\(analysis.workingCadence) SPM** with your feet landing under your hips does far more to protect your joints and improve your speed than any shoe brand."
         }
 
         // 2. Out-of-scope inquiry
