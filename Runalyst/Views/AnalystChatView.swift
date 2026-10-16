@@ -577,9 +577,37 @@ struct InlineChatDrillCard: View {
         return title.isEmpty ? drillId.title : title
     }
 
+    private var durationDisplay: String {
+        if drillId.isAerobicContinuous {
+            let useMetric = (UserDefaults.standard.object(forKey: "useMetricSystem") as? Bool) ?? true
+            let readiness = ReadinessEvaluator.assess(runRecords: runRecords)
+            let timeline = RecoveryTimeline.build(
+                runs: runRecords.map { ReadinessRunSnapshot(run: $0) },
+                readiness: readiness,
+                now: Date()
+            )
+            let tzInput = TrainingZoneInput(
+                baselinePaceSec: runRecord.workingAvgPace > 0 ? runRecord.workingAvgPace : nil,
+                workoutPaceSec: runRecord.workingAvgPace > 0 ? runRecord.workingAvgPace : nil,
+                activeGoal: UserDefaults.standard.string(forKey: "trainingGoal") ?? "Base Building",
+                experienceLevel: "Intermediate",
+                readyForHard: timeline.readyForHard,
+                daysSinceWorkout: Calendar.current.dateComponents([.day], from: runRecord.date, to: Date()).day ?? 0,
+                heightAdjustedCadenceFloor: 155,
+                useMetricSystem: useMetric,
+                totalHistoricalRunsCount: runRecords.count
+            )
+            let rx = TrainingZoneEngine.computePrescription(tzInput)
+            if !rx.compactDurationBand.isEmpty && rx.compactDurationBand != "Rest Day" {
+                return rx.compactDurationBand
+            }
+        }
+        return drillId.defaultDuration.title
+    }
+
     private var drillCategorySubtitle: String {
         if drillId.isAerobicContinuous {
-            return "\(drillId.defaultDuration.title) • \(drillId.correspondingClassification)"
+            return "\(durationDisplay) • \(drillId.correspondingClassification)"
         } else {
             return "\(drillId.defaultDuration.title) • Form & Biomechanics"
         }

@@ -1676,9 +1676,9 @@ final class IndoorIntelligenceTests: XCTestCase {
 
     @MainActor
     func testMarathonGoalRequestUpdatesGoalWithoutDisplayingDrillCardAndDurationIsRealistic() async throws {
-        // 1. Verify Zone 2 Run has a realistic aerobic duration (30 min, not 5 min)
+        // 1. Verify continuous aerobic sessions have realistic durations (30 min, not 5-10 min)
         XCTAssertEqual(PreRunDrillId.zone2Run.defaultDuration, .thirtyMinutes, "Zone 2 aerobic run must default to 30 minutes, not 5 minutes")
-        XCTAssertEqual(PreRunDrillId.aerobicFlush.defaultDuration, .fifteenMinutes, "Aerobic flush must default to 15 minutes")
+        XCTAssertEqual(PreRunDrillId.aerobicFlush.defaultDuration, .thirtyMinutes, "Aerobic flush must default to 30 minutes")
 
         #if canImport(FoundationModels)
         if #available(iOS 26.0, *) {
@@ -1689,9 +1689,31 @@ final class IndoorIntelligenceTests: XCTestCase {
             let instructions = chatEngine.buildLeanSystemInstructions()
             XCTAssertTrue(instructions.contains("update_goal"), "Prompt must declare update_goal rule")
             XCTAssertTrue(instructions.contains("display_drill"), "Prompt must declare display_drill rule")
+            XCTAssertTrue(instructions.contains("SPM"), "Prompt must require standard SPM unit notation")
             XCTAssertTrue(instructions.count < 1200, "System instructions must stay strictly under 1,200 chars (was \(instructions.count))")
 
-            // 3. Simulate runner asking for a 6-month marathon schedule
+            // 3. Verify readiness tool sanitizes raw snake_case enum to natural English
+            let query = ManageTrainingStateQuery(focus: .readiness)
+            let tool = ManageTrainingStateTool { q in
+                let isDistress = q.userReportedDistress == true
+                let analysis = chatEngine.makeAnalysisContext(isSubjectiveDistress: isDistress)
+                let rx = analysis.lockedPrescription
+                let humanIntensity: String
+                switch rx.intensityCategory {
+                case "RECOVERY_FLUSH_ZONE_1": humanIntensity = "Zone 1 Active Recovery"
+                case "EASY_AEROBIC_ZONE_2": humanIntensity = "Zone 2 Aerobic Base"
+                case "FULL_REST_OVERRIDE": humanIntensity = "Full Rest"
+                case "EASY_AEROBIC_ASSESSMENT": humanIntensity = "Aerobic Assessment"
+                default: humanIntensity = rx.intensityCategory.replacingOccurrences(of: "_", with: " ").capitalized
+                }
+                return "{\"intensity_category\":\"\(humanIntensity)\",\"prescribed_session_name\":\"\(rx.nextSessionName)\"}"
+            }
+            let toolResult = try await tool.call(arguments: query)
+            XCTAssertFalse(toolResult.contains("RECOVERY_FLUSH_ZONE_1"), "Must not leak screaming snake_case enum to LLM")
+            XCTAssertFalse(toolResult.contains("EASY_AEROBIC_ZONE_2"), "Must not leak screaming snake_case enum to LLM")
+            XCTAssertTrue(toolResult.contains("Zone 2 Aerobic Base") || toolResult.contains("Zone 1 Active Recovery"), "Must humanize intensity category")
+
+            // 4. Simulate runner asking for a 6-month marathon schedule
             chatEngine.modelResponder = { (_: String, userQuestion: String) async throws -> String in
                 XCTAssertTrue(userQuestion.contains("marathon"))
                 // Execute the update_goal action with marathon payload

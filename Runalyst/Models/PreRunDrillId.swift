@@ -153,9 +153,9 @@ enum PreRunDrillId: String, CaseIterable, Codable, Sendable {
     /// Default canonical duration for this drill when prescribed or activated
     public var defaultDuration: DrillDuration {
         switch self {
-        case .zone2Run:
+        case .zone2Run, .aerobicFlush, .recoveryJog:
             return .thirtyMinutes
-        case .strides, .recoveryJog, .aerobicFlush:
+        case .strides:
             return .fifteenMinutes
         case .tempoSurges, .cadencePyramids, .rhythmIntervals, .neuromuscularPrimer, .hillBounds, .fartlekPrimer:
             return .tenMinutes

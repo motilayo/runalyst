@@ -179,9 +179,9 @@ class AnalystChatEngine: ObservableObject {
         • `inspectWorkout`: moving vs gross stats, splits, intervals, reps, physics.
         • `manageTrainingState`: 'readiness' (set `userReportedDistress: true` if ill/injured), 'history', or 'athlete_profile'.
         • `executeCoachAction`: 'update_goal' for race goals/plans (outline Base, Build, Peak, Taper; explain Runalyst adapts daily workouts from readiness, not rigid calendars; never show drill cards); 'display_drill' only for immediate runs/drills to do now; 'record_feedback'.
-        • Formatting: Use rich text formatting. Never use Markdown or LaTeX formatting.
-        • Medical Safety: If runner reports pain, injury, or illness, prioritize rest, give an AI disclaimer, urge medical care.
-        • Outside Running: For non-running topics, warmly acknowledge, refocus on training/recovery, and invite back. Never force drills.
+        • Formatting: Rich text. Use standard units (SPM, min/km, min/mi). Never use Markdown or LaTeX.
+        • Medical Safety: If runner reports pain or illness, prioritize rest, give an AI disclaimer, urge medical care.
+        • Outside Running: For off-topic questions, warmly acknowledge, refocus on training, and invite back. Never force drills.
         • Never hallucinate unverified telemetry.
 
         Respond in \(language).
@@ -227,12 +227,26 @@ class AnalystChatEngine: ObservableObject {
                     self.drillRecommendedThisTurn = resolvedSession
                 }
 
+                let humanIntensity: String
+                switch rx.intensityCategory {
+                case "RECOVERY_FLUSH_ZONE_1":
+                    humanIntensity = "Zone 1 Active Recovery"
+                case "EASY_AEROBIC_ZONE_2":
+                    humanIntensity = "Zone 2 Aerobic Base"
+                case "FULL_REST_OVERRIDE":
+                    humanIntensity = "Full Rest"
+                case "EASY_AEROBIC_ASSESSMENT":
+                    humanIntensity = "Aerobic Assessment"
+                default:
+                    humanIntensity = rx.intensityCategory.replacingOccurrences(of: "_", with: " ").capitalized
+                }
+
                 let response = ReadinessToolResponse(
                     schema_name: "READINESS_AND_PRESCRIPTION_RESPONSE",
                     readiness_verdict: verdict,
                     recovery_status: recoveryStatus,
                     prescribed_session_name: rx.nextSessionName,
-                    intensity_category: rx.intensityCategory,
+                    intensity_category: humanIntensity,
                     prescribed_pace_band: rx.prescribedPaceBand,
                     prescribed_duration_band: rx.prescribedDurationBand,
                     prescribed_cadence_band: rx.prescribedCadenceBand,
@@ -245,7 +259,7 @@ class AnalystChatEngine: ObservableObject {
                    let json = String(data: data, encoding: .utf8) {
                     return json
                 }
-                return "{\"intensity_category\":\"\(rx.intensityCategory)\",\"prescribed_pace_band\":\"\(rx.prescribedPaceBand)\",\"prescribed_session_name\":\"\(rx.nextSessionName)\",\"readiness_verdict\":\"\(verdict)\"}"
+                return "{\"intensity_category\":\"\(humanIntensity)\",\"prescribed_pace_band\":\"\(rx.prescribedPaceBand)\",\"prescribed_session_name\":\"\(rx.nextSessionName)\",\"readiness_verdict\":\"\(verdict)\"}"
 
             case .history:
                 let context = self.runRecord.modelContext
