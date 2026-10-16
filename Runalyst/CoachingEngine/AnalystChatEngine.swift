@@ -249,8 +249,8 @@ class AnalystChatEngine: ObservableObject {
         • `manageTrainingState`: 'readiness' (set `userReportedDistress: true` if ill/injured), 'history', or 'athlete_profile'.
         • `executeCoachAction`: 'display_drill', 'update_goal', or 'record_feedback'.
         • Formatting: Use rich text (• bullets, **bold** labels). Never use Markdown tables, pipes (|), LaTeX, or raw formulas.
-        • Medical: If runner reports pain or illness, prioritize rest, give an AI disclaimer, urge clinical care.
-        • Non-running: Sidestep and redirect back to running or recovery.
+        • Medical Safety: If runner reports pain or illness, prioritize rest, give an AI disclaimer, urge clinical care.
+        • Outside Running: Sidestep and redirect back to running or recovery.
         • Never hallucinate unverified telemetry.
 
         Respond in \(language).
