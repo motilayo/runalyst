@@ -181,6 +181,65 @@ struct RunDetailView: View {
         }
     }
 
+    var deterministicRunAnalysisSummary: String? {
+        guard runRecord.workingAvgCadence > 0 || runRecord.workingAvgHeartRate > 0 else { return nil }
+        let isIndoor = runRecord.isIndoor ?? false
+
+        let context = WorkoutAnalysisContext(
+            runRecord: runRecord,
+            runSignature: runRecord.signature,
+            macroProfile: nil,
+            recoveryTimeline: RecoveryTimeline(
+                now: Date(),
+                lastHard: nil,
+                hardSessionsLast72h: 0,
+                requiredHours: 48,
+                state: .productive
+            ),
+            baselineStats: baselineCadence.map { (avgPace: runRecord.workingAvgPace, avgCadence: $0, avgHR: runRecord.workingAvgHeartRate) }
+        )
+        let grade = context.overallGradeReport.grade
+        let floor = context.runnerProfile.heightAdjustedCadenceFloor
+        let cad = context.workingCadence
+
+        var components: [String] = []
+
+        // 1. Cadence & Biomechanics
+        if cad > 0 {
+            if cad >= floor {
+                components.append("Turnover averaged \(cad) SPM, safely above your \(floor) SPM mechanical floor. This cadence helps keep foot strikes underneath your hips and cushions joint impact\(isIndoor ? " on the treadmill belt" : "").")
+            } else {
+                components.append("Turnover averaged \(cad) SPM, dipping below your \(floor) SPM mechanical floor. Increasing step rate will shorten your stride and cushion joint landing\(isIndoor ? " on the moving belt" : "").")
+            }
+        }
+
+        // 2. Cardiovascular Effort & Decoupling
+        if context.workingHR > 0 {
+            if isIndoor {
+                components.append("Running indoors without convective airflow accelerates thermal buildup; your \(context.workingHR) BPM average reflects steady aerobic conditioning under indoor heat accumulation.")
+            } else if context.hasCardiacDrift {
+                components.append("Heart rate climbed +\(context.cardiacDriftMagnitudeBPM) BPM over the duration, reflecting cardiovascular drift and internal fatigue as the session progressed.")
+            } else {
+                components.append("Heart rate averaged \(context.workingHR) BPM with stable cardiovascular coupling, demonstrating controlled aerobic efficiency throughout.")
+            }
+        }
+
+        // 3. Modality Execution & Grade
+        if runRecord.evaluationModality == .intervals && hasIntervalWorkReps {
+            let workSegments = runRecord.signature?.phaseSegments.filter { $0.kind == "work" && $0.avgPace > 0 } ?? []
+            if !workSegments.isEmpty {
+                let meanWorkPace = workSegments.reduce(0.0) { $0 + $1.avgPace } / Double(workSegments.count)
+                let paceStr = PaceFormatter.formatPace(secondsPerKilometer: meanWorkPace)
+                let avgWorkCad = Int(workSegments.reduce(0.0) { $0 + $1.avgCadence } / Double(workSegments.count))
+                components.append("Active work reps hit \(paceStr) at \(avgWorkCad) SPM, earning a Grade \(grade) for pacing control.")
+            }
+        } else if !components.isEmpty {
+            components.append("Overall execution earned a Grade \(grade).")
+        }
+
+        return components.joined(separator: " ")
+    }
+
     @ViewBuilder
     private var aiRunAnalysisCard: some View {
         let hasBiometrics = runRecord.workingAvgCadence > 0 || runRecord.workingAvgHeartRate > 0
@@ -189,7 +248,7 @@ struct RunDetailView: View {
             HStack {
                 Image(systemName: "sparkles")
                     .foregroundColor(hasBiometrics ? .purple : .secondary)
-                Text(hasBiometrics ? "AI Run Analysis" : "Sensor Data Limited")
+                Text(hasBiometrics ? "What the Numbers Mean" : "Sensor Data Limited")
                     .font(.subheadline.bold())
                     .foregroundColor(hasBiometrics ? .purple : .secondary)
             }
@@ -205,31 +264,42 @@ struct RunDetailView: View {
                         .lineSpacing(2)
                 }
                 .padding(.vertical, 2)
-            } else if let insight = runRecord.insight {
-                if !insight.longitudinalObservation.isEmpty {
-                    Text(insight.longitudinalObservation)
-                        .font(.body)
-                        .foregroundColor(.primary)
-                } else if !insight.headline.isEmpty {
-                    Text(insight.headline)
-                        .font(.body)
-                        .foregroundColor(.primary)
-                }
-            } else if isGeneratingInsight {
-                AnimatedLoadingView(
-                    text: "Generating AI insight...",
-                    isHorizontal: true,
-                    imageSize: 14,
-                    textFont: .body,
-                    spacing: 8
-                )
-                .foregroundColor(.secondary)
-                .padding(.vertical, 8)
             } else {
-                Text("AI insight not available for this run.")
-                    .font(.body)
-                    .foregroundColor(.secondary)
-                    .italic()
+                VStack(alignment: .leading, spacing: 8) {
+                    if let insight = runRecord.insight, !insight.longitudinalObservation.isEmpty || !insight.headline.isEmpty {
+                        if !insight.headline.isEmpty {
+                            Text(insight.headline)
+                                .font(.headline)
+                                .foregroundColor(.primary)
+                        }
+                        if !insight.longitudinalObservation.isEmpty {
+                            Text(insight.longitudinalObservation)
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                                .lineSpacing(2)
+                        } else if let groundedSummary = deterministicRunAnalysisSummary {
+                            Text(groundedSummary)
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                                .lineSpacing(2)
+                        }
+                    } else if isGeneratingInsight {
+                        AnimatedLoadingView(
+                            text: "Generating AI insight...",
+                            isHorizontal: true,
+                            imageSize: 14,
+                            textFont: .body,
+                            spacing: 8
+                        )
+                        .foregroundColor(.secondary)
+                        .padding(.vertical, 8)
+                    } else if let groundedSummary = deterministicRunAnalysisSummary {
+                        Text(groundedSummary)
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                            .lineSpacing(2)
+                    }
+                }
             }
 
             if hasBiometrics {
@@ -295,6 +365,18 @@ struct RunDetailView: View {
     }
 
     @ViewBuilder
+    private var workoutRhythmTimeline: some View {
+        if !showRawMetrics, let segments = runRecord.signature?.phaseSegments, !segments.isEmpty {
+            RunVarianceMapView(
+                phaseSegments: segments,
+                cadenceFloor: runRecord.signature?.cadenceFloor ?? 150.0,
+                averageCadence: runRecord.workingAvgCadence,
+                workoutDuration: runRecord.duration
+            )
+        }
+    }
+
+    @ViewBuilder
     private var performanceAndAnalysisSection: some View {
         if let drillId = effectiveScorecardDrillId {
             let scorecard = DrillExecutionScorecard(
@@ -304,31 +386,54 @@ struct RunDetailView: View {
                 baselineOscillation: baselineOscillation,
                 customTitle: "Drill Performance"
             )
-            renderDualCardLayout(primary: scorecard, secondary: aiRunAnalysisCard)
+            if horizontalSizeClass == .regular {
+                HStack(alignment: .top, spacing: 16) {
+                    scorecard
+                    aiRunAnalysisCard
+                }
+                .padding(.horizontal)
+
+                workoutRhythmTimeline
+                    .padding(.horizontal)
+            } else {
+                scorecard
+                    .padding(.horizontal)
+
+                workoutRhythmTimeline
+                    .padding(.horizontal)
+
+                aiRunAnalysisCard
+                    .padding(.horizontal)
+            }
         } else if runRecord.evaluationModality == .intervals && hasIntervalWorkReps {
             let scorecard = IntervalPerformanceCard(
                 runRecord: runRecord,
                 baselineCadence: baselineCadence
             )
-            renderDualCardLayout(primary: scorecard, secondary: aiRunAnalysisCard)
-        } else {
-            aiRunAnalysisCard
+            if horizontalSizeClass == .regular {
+                HStack(alignment: .top, spacing: 16) {
+                    scorecard
+                    aiRunAnalysisCard
+                }
                 .padding(.horizontal)
-        }
-    }
 
-    @ViewBuilder
-    private func renderDualCardLayout<P: View, S: View>(primary: P, secondary: S) -> some View {
-        if horizontalSizeClass == .regular {
-            HStack(alignment: .top, spacing: 16) {
-                primary
-                secondary
+                workoutRhythmTimeline
+                    .padding(.horizontal)
+            } else {
+                scorecard
+                    .padding(.horizontal)
+
+                workoutRhythmTimeline
+                    .padding(.horizontal)
+
+                aiRunAnalysisCard
+                    .padding(.horizontal)
             }
-            .padding(.horizontal)
         } else {
-            primary
+            workoutRhythmTimeline
                 .padding(.horizontal)
-            secondary
+
+            aiRunAnalysisCard
                 .padding(.horizontal)
         }
     }
@@ -358,6 +463,7 @@ struct RunDetailView: View {
                     .foregroundColor(isIndoor ? .purple : .blue)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3)
+                    .frame(minHeight: 44)
                     .background(isIndoor ? Color.purple.opacity(0.12) : Color.blue.opacity(0.12))
                     .clipShape(Capsule())
                     .contentShape(Rectangle())
@@ -548,6 +654,8 @@ struct RunDetailView: View {
                             Image(systemName: "info.circle")
                                 .font(.caption)
                                 .foregroundColor(.secondary.opacity(0.8))
+                                .frame(width: 44, height: 44)
+                                .contentShape(Rectangle())
                         }
                         .contentShape(Rectangle())
                         .onTapGesture {
@@ -598,6 +706,8 @@ struct RunDetailView: View {
                             Image(systemName: "info.circle")
                                 .font(.caption)
                                 .foregroundColor(.secondary.opacity(0.8))
+                                .frame(width: 44, height: 44)
+                                .contentShape(Rectangle())
                         }
                         .contentShape(Rectangle())
                         .onTapGesture {
@@ -758,17 +868,6 @@ struct RunDetailView: View {
                 }
                 .padding(.horizontal)
                 .id("metricsGrid")
-
-                // MARK: Workout Rhythm & Intervals (Working Stats)
-                if !showRawMetrics, let segments = runRecord.signature?.phaseSegments, !segments.isEmpty {
-                    RunVarianceMapView(
-                        phaseSegments: segments,
-                        cadenceFloor: runRecord.signature?.cadenceFloor ?? 150.0,
-                        averageCadence: runRecord.workingAvgCadence,
-                        workoutDuration: runRecord.duration
-                    )
-                    .padding(.horizontal)
-                }
 
                 // MARK: Drills Section
                 let isOlderThan7Days = (Calendar.current.dateComponents([.day], from: runRecord.date, to: Date()).day ?? 0) > 7

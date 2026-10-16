@@ -272,7 +272,7 @@ enum PhysiologicalDiagnosisEngine {
             // Outdoor Proxy (Apple WeatherKit / Weather Metadata): High heat and humidity impair evaporative cooling
             cardiacVerdict = .thermalStrain(HeatIndex: "High")
         } else if input.hasCardiacDrift {
-            let durMin = max(1, Int(input.durationSeconds / 60))
+            let durMin = max(1, Int(input.durationSeconds / 60) / 2)
             let sev: DeviationSeverity = input.cardiacDriftMagnitudeBPM >= 12 ? .critical : (input.cardiacDriftMagnitudeBPM >= 7 ? .moderate : .minor)
             let paceDiff = input.secondHalfPaceSec - input.firstHalfPaceSec // positive = 2nd half slower
             if paceDiff >= 10.0 {

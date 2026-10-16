@@ -8,6 +8,7 @@ struct MetricExplainerSheet: View {
     var modeContext: String?
     var whyItMatters: String?
     var targetRange: String?
+    var userMetricDisplay: String?
     @Environment(\.dismiss) private var dismiss
     @State private var showingBiomechanicsModal = false
 
@@ -16,13 +17,14 @@ struct MetricExplainerSheet: View {
         return lower.contains("osc") || lower.contains("vertical") || lower.contains("stride") || lower.contains("bounce")
     }
 
-    init(title: String, definition: String) {
+    init(title: String, definition: String, userMetricDisplay: String? = nil) {
         self.title = title
         self.mode = nil
         self.overview = definition
         self.modeContext = nil
         self.whyItMatters = nil
         self.targetRange = nil
+        self.userMetricDisplay = userMetricDisplay
     }
 
     init(
@@ -31,7 +33,8 @@ struct MetricExplainerSheet: View {
         overview: String,
         modeContext: String? = nil,
         whyItMatters: String? = nil,
-        targetRange: String? = nil
+        targetRange: String? = nil,
+        userMetricDisplay: String? = nil
     ) {
         self.title = title
         self.mode = mode
@@ -39,6 +42,7 @@ struct MetricExplainerSheet: View {
         self.modeContext = modeContext
         self.whyItMatters = whyItMatters
         self.targetRange = targetRange
+        self.userMetricDisplay = userMetricDisplay
     }
 
     init(info: MetricExplainerInfo) {
@@ -48,15 +52,17 @@ struct MetricExplainerSheet: View {
         self.modeContext = info.modeContext
         self.whyItMatters = info.whyItMatters
         self.targetRange = info.targetRange
+        self.userMetricDisplay = info.userMetricDisplay
     }
 
-    init(explainer: MetricDetailExplainer, mode: String? = nil) {
+    init(explainer: MetricDetailExplainer, mode: String? = nil, userMetricDisplay: String? = nil) {
         self.title = explainer.title
         self.mode = mode
         self.overview = explainer.overview
         self.modeContext = explainer.modeContext
         self.whyItMatters = explainer.whyItMatters
         self.targetRange = explainer.targetRange
+        self.userMetricDisplay = userMetricDisplay
     }
 
     var body: some View {
@@ -68,15 +74,33 @@ struct MetricExplainerSheet: View {
                         Text(title)
                             .font(.title3.bold())
                             .foregroundColor(.primary)
-                        if let mode = mode, !mode.isEmpty {
-                            let isWorkout = mode.localizedCaseInsensitiveContains("workout")
-                            Text(mode)
-                                .font(.caption.bold())
-                                .foregroundColor(isWorkout ? .orange : .teal)
+
+                        HStack(spacing: 8) {
+                            if let mode = mode, !mode.isEmpty {
+                                let isWorkout = mode.localizedCaseInsensitiveContains("workout")
+                                Text(mode)
+                                    .font(.caption.bold())
+                                    .foregroundColor(isWorkout ? .orange : .teal)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 3)
+                                    .background((isWorkout ? Color.orange : Color.teal).opacity(0.12))
+                                    .clipShape(Capsule())
+                            }
+
+                            if let liveMetric = userMetricDisplay, !liveMetric.isEmpty {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "waveform.path.ecg")
+                                        .font(.caption2.bold())
+                                    Text(liveMetric)
+                                        .font(.caption.bold())
+                                        .monospacedDigit()
+                                }
+                                .foregroundColor(.purple)
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 3)
-                                .background((isWorkout ? Color.orange : Color.teal).opacity(0.12))
+                                .background(Color.purple.opacity(0.12))
                                 .clipShape(Capsule())
+                            }
                         }
                     }
                     Spacer()
@@ -172,7 +196,7 @@ struct MetricExplainerSheet: View {
 
                 // Target Range
                 if let target = targetRange, !target.isEmpty {
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: 6) {
                         Text("Target Range")
                             .font(.caption.bold())
                             .foregroundColor(.secondary)
@@ -181,6 +205,18 @@ struct MetricExplainerSheet: View {
                             .font(.subheadline)
                             .foregroundColor(.secondary)
                             .lineSpacing(2)
+
+                        if let liveMetric = userMetricDisplay, !liveMetric.isEmpty {
+                            HStack(spacing: 6) {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.caption2.bold())
+                                    .foregroundColor(.green)
+                                Text("Your current level: \(liveMetric)")
+                                    .font(.caption.bold())
+                                    .foregroundColor(.primary)
+                            }
+                            .padding(.top, 2)
+                        }
                     }
                 }
             }

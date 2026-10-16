@@ -77,6 +77,32 @@ struct DashboardView: View {
         return runs.map { $0.workingAvgPace * $0.duration }.reduce(0, +) / totalDuration
     }
 
+    var canonicalAthleteBaselineCadence: Int? {
+        let calendar = Calendar.current
+        let thirtyDaysAgo = calendar.date(byAdding: .day, value: -30, to: Date()) ?? Date()
+        let recentRuns = runRecords.filter { $0.date >= thirtyDaysAgo && $0.workingAvgCadence > 0 }
+        let candidateRuns = recentRuns.isEmpty ? runRecords.filter { $0.workingAvgCadence > 0 } : recentRuns
+        guard !candidateRuns.isEmpty else { return nil }
+        let totalDuration = candidateRuns.map(\.duration).reduce(0, +)
+        guard totalDuration > 0 else {
+            return Int(candidateRuns.map(\.workingAvgCadence).reduce(0, +)) / candidateRuns.count
+        }
+        return Int(candidateRuns.map { $0.workingAvgCadence * $0.duration }.reduce(0, +) / totalDuration)
+    }
+
+    var canonicalAthleteBaselinePace: Double? {
+        let calendar = Calendar.current
+        let thirtyDaysAgo = calendar.date(byAdding: .day, value: -30, to: Date()) ?? Date()
+        let recentRuns = runRecords.filter { $0.date >= thirtyDaysAgo && $0.workingAvgPace > 0 }
+        let candidateRuns = recentRuns.isEmpty ? runRecords.filter { $0.workingAvgPace > 0 } : recentRuns
+        guard !candidateRuns.isEmpty else { return nil }
+        let totalDuration = candidateRuns.map(\.duration).reduce(0, +)
+        guard totalDuration > 0 else {
+            return candidateRuns.map(\.workingAvgPace).reduce(0, +) / Double(candidateRuns.count)
+        }
+        return candidateRuns.map { $0.workingAvgPace * $0.duration }.reduce(0, +) / totalDuration
+    }
+
     private var previousBaselineCadence: Int? {
         let calendar = Calendar.current
         let now = Date()
@@ -244,75 +270,149 @@ struct DashboardView: View {
         .padding(.vertical, 6)
     }
 
+    private var dashboardRunnerProfile: RunnerProfile {
+        RunnerProfile.compute(from: runRecords, now: Date())
+    }
+
+    private var dashboardRecoveryTimeline: RecoveryTimeline {
+        let cutoff = Date().addingTimeInterval(-7 * 24 * 3600)
+        let recent = runRecords.filter { $0.date >= cutoff }
+        let snapshots = recent.map(ReadinessRunSnapshot.init(run:))
+        let readiness = ReadinessEvaluator.assess(runRecords: runRecords)
+        return RecoveryTimeline.build(runs: snapshots, readiness: readiness, now: Date())
+    }
+
+    private var deterministicPrescription: LockedTrainingPrescription? {
+        guard let latestRun = runRecords.first else { return nil }
+        let profile = dashboardRunnerProfile
+        let tzInput = TrainingZoneInput(
+            baselinePaceSec: canonicalAthleteBaselinePace ?? latestRun.workingAvgPace,
+            workoutPaceSec: latestRun.workingAvgPace,
+            activeGoal: trainingGoal,
+            experienceLevel: profile.experienceLevel,
+            readyForHard: dashboardRecoveryTimeline.readyForHard,
+            daysSinceWorkout: Calendar.current.dateComponents([.day], from: latestRun.date, to: Date()).day ?? 0,
+            heightAdjustedCadenceFloor: profile.heightAdjustedCadenceFloor,
+            useMetricSystem: useMetricSystem,
+            isSubjectiveDistress: false,
+            totalHistoricalRunsCount: runRecords.count
+        )
+        return TrainingZoneEngine.computePrescription(tzInput)
+    }
+
+    private func hrCapText(for rx: LockedTrainingPrescription) -> String {
+        if rx.intensityCategory.contains("RECOVERY") || rx.intensityCategory.contains("ZONE_2") || !dashboardRecoveryTimeline.readyForHard {
+            return "HR: < 145"
+        } else if rx.intensityCategory.contains("THRESHOLD") || rx.intensityCategory.contains("TEMPO") {
+            return "HR: 155–168"
+        } else {
+            return "HR: < 155"
+        }
+    }
+
+    private func targetPill(text: String, color: Color = .purple) -> some View {
+        Text(text)
+            .font(.caption.bold())
+            .monospacedDigit()
+            .lineLimit(1)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(color.opacity(0.12))
+            .foregroundColor(color)
+            .clipShape(Capsule())
+    }
+
     @ViewBuilder
     private var aiInsightCard: some View {
         let is7Day = timeRange == "7 Days"
-        let iconName = is7Day ? "bolt.heart.fill" : "chart.line.uptrend.xyaxis"
-        let iconColor: Color = is7Day ? .red : .orange
-        let cardTitle = is7Day ? "AI Tactical Coach" : "Physiological Trends"
-        let cardSubtitle = is7Day ? "Readiness & Acute Fatigue" : "Aerobic Adaptation & Efficiency"
+        let iconName = is7Day ? "sparkles" : "chart.line.uptrend.xyaxis"
+        let iconColor: Color = is7Day ? .purple : .orange
+        let cardTitle = is7Day ? "AI COACH • TODAY'S DIRECTIVE" : "AI Coach • 30-Day Trends"
+        let cardSubtitle = is7Day ? "Readiness & Target Guidance" : "Aerobic Adaptation & Efficiency"
         let loadingText = is7Day ? "Analyzing readiness & recovery..." : "Analyzing 30-day trends..."
 
-        VStack(alignment: .leading, spacing: 8) {
-            VStack(alignment: .leading, spacing: 8) {
-                let headline = currentHeadline()
-                let bodyText = currentBody()
+        VStack(alignment: .leading, spacing: 10) {
+            let headline = currentHeadline()
+            let bodyText = currentBody()
 
-                if isFetchingInsight && headline.isEmpty {
-                    AnimatedLoadingView(
-                        text: loadingText,
-                        isHorizontal: true,
-                        imageSize: 18,
-                        textFont: .subheadline,
-                        textColor: .secondary,
-                        iconColor: .primary,
-                        spacing: 8
-                    )
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.vertical, 8)
-                } else {
-                    HStack(spacing: 8) {
-                        Image(systemName: iconName)
-                            .foregroundColor(iconColor)
-                            .font(.headline)
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(cardTitle)
-                                .font(.subheadline.bold())
-                                .foregroundColor(.primary)
+            if isFetchingInsight && headline.isEmpty {
+                AnimatedLoadingView(
+                    text: loadingText,
+                    isHorizontal: true,
+                    imageSize: 18,
+                    textFont: .subheadline,
+                    textColor: .secondary,
+                    iconColor: .primary,
+                    spacing: 8
+                )
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 8)
+            } else {
+                HStack(spacing: 8) {
+                    Image(systemName: iconName)
+                        .foregroundColor(iconColor)
+                        .font(is7Day ? .subheadline.bold() : .headline)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(cardTitle)
+                            .font(is7Day ? .caption.bold() : .subheadline.bold())
+                            .foregroundColor(is7Day ? .purple : .primary)
+                        if !is7Day {
                             Text(cardSubtitle)
                                 .font(.caption2)
                                 .foregroundColor(.secondary)
                         }
                     }
-
-                    if !headline.isEmpty {
-                        Text(headline)
-                            .font(.headline)
-                            .foregroundColor(.primary)
-                    }
-
-                    let defaultPlaceholder = is7Day
-                        ? "Complete more runs this week to evaluate acute fatigue and recovery trends."
-                        : "Complete more runs over the next 30 days to measure structural aerobic adaptation."
-
-                    Text(bodyText.isEmpty ? defaultPlaceholder : bodyText)
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                        .lineSpacing(2)
-
-                    AIDisclaimerFooter()
                 }
+
+                if is7Day {
+                    let displayHeadline = headline.isEmpty ? "Easy Recovery Needed" : headline
+                    Text(displayHeadline)
+                        .font(.title3.bold())
+                        .foregroundColor(.primary)
+
+                    if let rx = deterministicPrescription {
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: 8) {
+                                targetPill(text: rx.compactDurationBand, color: .purple)
+                                targetPill(text: "Pace: \(rx.prescribedPaceBand)", color: Color(red: 0.0, green: 0.55, blue: 1.0))
+                                targetPill(text: hrCapText(for: rx), color: Color(red: 1.0, green: 0.22, blue: 0.55))
+                            }
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 6) {
+                                    targetPill(text: rx.compactDurationBand, color: .purple)
+                                    targetPill(text: "Pace: \(rx.prescribedPaceBand)", color: Color(red: 0.0, green: 0.55, blue: 1.0))
+                                    targetPill(text: hrCapText(for: rx), color: Color(red: 1.0, green: 0.22, blue: 0.55))
+                                }
+                            }
+                        }
+                    }
+                } else if !headline.isEmpty {
+                    Text(headline)
+                        .font(.headline)
+                        .foregroundColor(.primary)
+                }
+
+                let defaultPlaceholder = is7Day
+                    ? "Complete more runs this week to evaluate acute fatigue and recovery trends."
+                    : "Complete more runs over the next 30 days to measure structural aerobic adaptation."
+
+                Text(bodyText.isEmpty ? defaultPlaceholder : bodyText)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .lineSpacing(2)
+
+                AIDisclaimerFooter()
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(16)
-            .background(Color(UIColor.secondarySystemGroupedBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(Color(UIColor.separator).opacity(0.2), lineWidth: 0.5)
-            )
-            .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(Color(UIColor.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(Color(UIColor.separator).opacity(0.2), lineWidth: 0.5)
+        )
+        .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
         .onAppear {
             checkAndFetchInsight()
         }
@@ -610,11 +710,11 @@ struct DashboardView: View {
     }
 
     private var activePrimerId: PreRunDrillId {
-        if timeRange == "7 Days" && currentHeadline().localizedCaseInsensitiveContains("fatigue") {
+        if timeRange == "7 Days" && (!dashboardRecoveryTimeline.readyForHard || currentHeadline().localizedCaseInsensitiveContains("fatigue")) {
             return .aerobicFlush
-        } else if let cadence = baselineCadence, cadence < 150 {
+        } else if let cadence = canonicalAthleteBaselineCadence, cadence < 150 {
             return .cadencePyramids
-        } else if let cadence = baselineCadence, cadence < 160 {
+        } else if let cadence = canonicalAthleteBaselineCadence, cadence < 160 {
             return .rhythmIntervals
         } else {
             return .neuromuscularPrimer
@@ -625,7 +725,7 @@ struct DashboardView: View {
     private var proactiveCoachCard: some View {
         ProactiveCoachCard(
             activePrimerId: activePrimerId,
-            baselineCadence: baselineCadence,
+            baselineCadence: canonicalAthleteBaselineCadence,
             timeRange: timeRange,
             runRecords: runRecords,
             isPrimerCompletedToday: isPrimerCompletedToday,
@@ -636,7 +736,7 @@ struct DashboardView: View {
     private func autoSyncStaleWatchDrillIfNeeded() {
         guard !lastExportedDrillId.isEmpty else { return }
         guard #available(iOS 17.0, *) else { return }
-        guard let baseCadence = baselineCadence else { return }
+        guard let baseCadence = canonicalAthleteBaselineCadence else { return }
 
         let preRunId = PreRunDrillId(rawValue: lastExportedDrillId) ?? activePrimerId
         let template = DrillTemplate.template(for: preRunId)
@@ -770,47 +870,57 @@ struct DashboardView: View {
             ScrollViewReader { scrollProxy in
                 ScrollView {
                     LazyVStack(spacing: 20) {
-                        filterControlsSection
-
-                        if timeRange == "All Time" {
-                        LifetimeMilestonesCard(allRuns: runRecords)
-
-                        ProgressionChartView(allRuns: runRecords, defaultHorizon: .allTime)
-                    } else if timeRange == "30 Days" {
-                        fitnessBaselineCard
-
-                        if !timeRangeRuns.isEmpty {
-                            if horizontalSizeClass == .regular {
-                                HStack(alignment: .top, spacing: 16) {
-                                    aiInsightCard
-                                    proactiveCoachCard
-                                }
-                                .padding(.horizontal)
-                            } else {
-                                aiInsightCard
+                        if timeRange == "7 Days" {
+                            if !timeRangeRuns.isEmpty {
+                                if horizontalSizeClass == .regular {
+                                    HStack(alignment: .top, spacing: 16) {
+                                        aiInsightCard
+                                        proactiveCoachCard
+                                    }
                                     .padding(.horizontal)
+                                } else {
+                                    aiInsightCard
+                                        .padding(.horizontal)
+                                }
+                            }
+
+                            filterControlsSection
+
+                            if !timeRangeRuns.isEmpty && horizontalSizeClass != .regular {
                                 proactiveCoachCard
                                     .padding(.horizontal)
                             }
-                        }
-                    } else { // 7 Days
-                        fitnessBaselineCard
 
-                        if !timeRangeRuns.isEmpty {
-                            if horizontalSizeClass == .regular {
-                                HStack(alignment: .top, spacing: 16) {
-                                    aiInsightCard
-                                    proactiveCoachCard
-                                }
-                                .padding(.horizontal)
-                            } else {
-                                aiInsightCard
+                            fitnessBaselineCard
+                        } else if timeRange == "30 Days" {
+                            if !timeRangeRuns.isEmpty {
+                                if horizontalSizeClass == .regular {
+                                    HStack(alignment: .top, spacing: 16) {
+                                        aiInsightCard
+                                        proactiveCoachCard
+                                    }
                                     .padding(.horizontal)
+                                } else {
+                                    aiInsightCard
+                                        .padding(.horizontal)
+                                }
+                            }
+
+                            filterControlsSection
+
+                            fitnessBaselineCard
+
+                            if !timeRangeRuns.isEmpty && horizontalSizeClass != .regular {
                                 proactiveCoachCard
                                     .padding(.horizontal)
                             }
+                        } else { // All Time
+                            filterControlsSection
+
+                            LifetimeMilestonesCard(allRuns: runRecords)
+
+                            ProgressionChartView(allRuns: runRecords, defaultHorizon: .allTime)
                         }
-                    }
 
                     if !availableFilters.isEmpty {
                         filterChips
@@ -947,38 +1057,6 @@ struct DashboardView: View {
                 fetchInsight()
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
             }
-            .safeAreaInset(edge: .bottom, spacing: 80) {
-                if !runRecords.isEmpty {
-                    HStack {
-                        Spacer()
-                        Button {
-                            showingAnalystChat = true
-                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                        } label: {
-                            HStack(spacing: 8) {
-                                Image(systemName: "bubble.left.and.bubble.right.fill")
-                                    .font(.headline)
-                                Text("AI Analyst")
-                                    .font(.subheadline.bold())
-                            }
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 12)
-                            .background(
-                                LinearGradient(
-                                    colors: [Color.purple, Color.indigo],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                            .clipShape(Capsule())
-                            .shadow(color: Color.purple.opacity(0.35), radius: 8, x: 0, y: 4)
-                        }
-                        .padding(.trailing, 20)
-                        .padding(.bottom, 8)
-                    }
-                }
-            }
             .sheet(isPresented: $showingAnalystChat) {
                 if let latestRun = runRecords.first {
                     AnalystChatView(runRecord: latestRun)
@@ -1003,8 +1081,21 @@ struct DashboardView: View {
                     }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    NavigationLink(destination: SettingsView(onForceSync: onSync)) {
-                        Image(systemName: "gearshape")
+                    HStack(spacing: 14) {
+                        if !runRecords.isEmpty {
+                            Button {
+                                showingAnalystChat = true
+                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            } label: {
+                                Image(systemName: "bubble.left.and.bubble.right.fill")
+                                    .foregroundColor(.purple)
+                            }
+                            .accessibilityLabel("AI Coach")
+                        }
+
+                        NavigationLink(destination: SettingsView(onForceSync: onSync)) {
+                            Image(systemName: "gearshape")
+                        }
                     }
                 }
             }

@@ -17,10 +17,10 @@ enum TelemetryHighlighter {
         let cadGreen = Color(red: 0.18, green: 0.82, blue: 0.35)   // Vibrant Green for Cadence
 
         let typedPatterns: [(pattern: String, color: Color)] = [
-            (#"\b\d{2,3}\s?(?:SPM|spm)\b"#, cadGreen),
-            (#"\b\d{2,3}\s?(?:BPM|bpm)\b"#, hrPink),
-            (#"\b\d{1,2}:\d{2}(?:\s?(?:/km|/mi|min/km|min/mi))?\b"#, paceBlue),
-            (#"\b\d{1,2}(?:s|sec)\s*/\s*(?:km|mi)\b"#, paceBlue),
+            (#"\b\d{2,3}(?:\s*[-–—]\s*\d{2,3})?\s?(?:SPM|spm|steps per minute|steps/min)\b"#, cadGreen),
+            (#"(?:[+-]?\b\d{2,3}(?:\s*[-–—]\s*\d{2,3})?\s?(?:BPM|bpm)\b)"#, hrPink),
+            (#"\b\d{1,2}:\d{2}(?:\s*[-–—]\s*\d{1,2}:\d{2})?(?:\s?(?:/km|/mi|min/km|min/mi))?\b"#, paceBlue),
+            (#"[+-]?\b\d{1,2}(?:s|sec)\s*/\s*(?:km|mi)\b"#, paceBlue),
             (#"\b\d+(?:\.\d+)?\s?(?:cm|m|km|mi|ms|%)\b"#, accentColor)
         ]
 
@@ -42,10 +42,16 @@ enum TelemetryHighlighter {
     }
 
     private static func convertMarkdownToRichText(_ text: String) -> String {
-        let lines = text.components(separatedBy: "\n")
+        let sanitized = sanitizeLatex(text)
+        let lines = sanitized.components(separatedBy: "\n")
         var processedLines: [String] = []
 
         for line in lines {
+            // Suppress table divider rows (e.g. |---|---|)
+            if line.contains("-") && line.contains("|") && line.range(of: #"^\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|?$"#, options: .regularExpression) != nil {
+                continue
+            }
+
             // Check for horizontal rules (---, ***, ___)
             if line.range(of: #"^[\-\*_]{3,}\s*$"#, options: .regularExpression) != nil {
                 processedLines.append("")
@@ -83,5 +89,18 @@ enum TelemetryHighlighter {
         }
 
         return processedLines.joined(separator: "\n")
+    }
+
+    private static func sanitizeLatex(_ text: String) -> String {
+        var result = text
+        result = result.replacingOccurrences(
+            of: #"\$?(\\text\{VO\}_2\\text\{\s*max\}|VO_2\\text\{\s*max\}|\\text\{VO2max\}|\\text\{VO2 max\}|VO_2max)\$?"#,
+            with: "VO2 Max",
+            options: .regularExpression
+        )
+        result = result.replacingOccurrences(of: #"\$?\\times\$?"#, with: "×", options: .regularExpression)
+        result = result.replacingOccurrences(of: #"\$?\\approx\$?"#, with: "≈", options: .regularExpression)
+        result = result.replacingOccurrences(of: #"\${1,2}([^$]+)\${1,2}"#, with: "$1", options: .regularExpression)
+        return result
     }
 }

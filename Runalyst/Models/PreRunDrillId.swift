@@ -82,13 +82,57 @@ enum PreRunDrillId: String, CaseIterable, Codable, Sendable {
         case "tempo_surges", "posture_check": self = .tempoSurges
         case "strides": self = .strides
         case "neuromuscular_primer": self = .neuromuscularPrimer
-        case "aerobic_flush": self = .aerobicFlush
+        case "aerobic_flush", "zone_1_recovery_flush", "zone_1_active_recovery_flush", "recovery_flush": self = .aerobicFlush
         case "fartlek_primer": self = .fartlekPrimer
         case "hill_bounds": self = .hillBounds
         case "recovery_jog": self = .recoveryJog
-        case "zone_2_run", "aerobic_base_builder", "dynamic_activation": self = .zone2Run
+        case "zone_2_run", "zone_2_easy_aerobic_base", "zone_2_easy_aerobic_maintenance", "aerobic_base_builder", "dynamic_activation": self = .zone2Run
         default: return nil
         }
+    }
+
+    /// Resolves a drill identifier from natural language or snake_case query string.
+    static func resolve(from string: String) -> PreRunDrillId? {
+        let clean = string.trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .replacingOccurrences(of: " ", with: "_")
+            .replacingOccurrences(of: "-", with: "_")
+        if let direct = PreRunDrillId(rawValue: clean) {
+            return direct
+        }
+        if clean.contains("recovery_flush") || clean.contains("aerobic_flush") {
+            return .aerobicFlush
+        }
+        if clean.contains("zone_2") || clean.contains("zone2") || clean.contains("aerobic_base") {
+            return .zone2Run
+        }
+        if clean.contains("recovery_jog") {
+            return .recoveryJog
+        }
+        if clean.contains("cadence_pyramid") {
+            return .cadencePyramids
+        }
+        if clean.contains("rhythm_interval") {
+            return .rhythmIntervals
+        }
+        if clean.contains("tempo_surge") {
+            return .tempoSurges
+        }
+        if clean.contains("stride") {
+            return .strides
+        }
+        if clean.contains("hill_bound") {
+            return .hillBounds
+        }
+        if clean.contains("neuromuscular") || clean.contains("form_primer") {
+            return .neuromuscularPrimer
+        }
+        for drill in PreRunDrillId.allCases {
+            if drill.rawValue == clean || drill.title.lowercased() == string.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+                return drill
+            }
+        }
+        return nil
     }
 
     var title: String {
@@ -109,11 +153,11 @@ enum PreRunDrillId: String, CaseIterable, Codable, Sendable {
     /// Default canonical duration for this drill when prescribed or activated
     public var defaultDuration: DrillDuration {
         switch self {
-        case .zone2Run:
-            return .fiveMinutes
-        case .strides, .recoveryJog:
+        case .zone2Run, .aerobicFlush, .recoveryJog:
+            return .thirtyMinutes
+        case .strides:
             return .fifteenMinutes
-        case .tempoSurges, .cadencePyramids, .rhythmIntervals, .neuromuscularPrimer, .hillBounds, .aerobicFlush, .fartlekPrimer:
+        case .tempoSurges, .cadencePyramids, .rhythmIntervals, .neuromuscularPrimer, .hillBounds, .fartlekPrimer:
             return .tenMinutes
         }
     }
@@ -241,6 +285,19 @@ enum PreRunDrillId: String, CaseIterable, Codable, Sendable {
         if clean.localizedCaseInsensitiveCompare("dynamic_activation") == .orderedSame ||
            clean.localizedCaseInsensitiveCompare("Dynamic Activation") == .orderedSame {
             return "Dynamic Activation"
+        }
+
+        if clean.localizedCaseInsensitiveCompare("zone_1_active_recovery_flush") == .orderedSame ||
+           clean.localizedCaseInsensitiveCompare("Zone 1 Active Recovery Flush") == .orderedSame ||
+           clean.localizedCaseInsensitiveCompare("zone_1_recovery_flush") == .orderedSame ||
+           clean.localizedCaseInsensitiveCompare("Zone 1 Recovery Flush") == .orderedSame {
+            return "Zone 1 Recovery Flush"
+        }
+        if clean.localizedCaseInsensitiveCompare("zone_2_easy_aerobic_base") == .orderedSame ||
+           clean.localizedCaseInsensitiveCompare("Zone 2 Easy Aerobic Base") == .orderedSame ||
+           clean.localizedCaseInsensitiveCompare("zone_2_easy_aerobic_maintenance") == .orderedSame ||
+           clean.localizedCaseInsensitiveCompare("Zone 2 Easy Aerobic Maintenance") == .orderedSame {
+            return "Zone 2 Run"
         }
 
         for drill in PreRunDrillId.allCases {

@@ -21,12 +21,12 @@ struct RunGradeReport {
     let type: String
 
     var sentence: String {
-        var text = "I'd grade this \(type) a \(grade)."
+        var text = "Overall, this \(type.lowercased()) workout earns a Grade \(grade)."
         if !strengths.isEmpty {
             text += " The highlights: \(strengths.prefix(2).joined(separator: ", and "))."
         }
         if let focus {
-            text += " The one thing to work on: \(focus)."
+            text += " The primary focus area: \(focus)."
         } else {
             text += " There's no obvious weak spot here—keep doing what you're doing."
         }
@@ -64,7 +64,7 @@ enum RunGrade {
                     strengths.append("evenly paced reps from first to last")
                 }
             }
-        } else if input.percentZone4 > 0.25 {
+        } else if input.percentZone4 > 0.25 && ["Easy Run", "Recovery Run", "Recovery Jog"].contains(input.type) {
             score -= 10
             focuses.append("too much of this easy run crept into threshold intensity—slow down to keep easy days truly easy")
         }
@@ -79,9 +79,11 @@ enum RunGrade {
         }
 
         if let paceDelta = input.paceDeltaVsBaseline, let hrDelta = input.hrDeltaVsBaseline {
-            if paceDelta > 5 && hrDelta <= 2 {
+            if paceDelta > 5 && hrDelta <= 2 && !input.cardiacDrift {
                 score += 3
                 strengths.insert("you ran faster than your 30-day average without raising your heart rate", at: 0)
+            } else if paceDelta > 5 && (hrDelta <= 2 || input.cardiacDrift) {
+                strengths.insert("you ran faster than your 30-day average pace", at: 0)
             } else if paceDelta < -5 && hrDelta > 5 {
                 score -= 6
                 focuses.append("you were slower than your 30-day average at a higher heart rate, pointing to accumulated fatigue")

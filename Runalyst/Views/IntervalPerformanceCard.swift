@@ -46,23 +46,9 @@ struct IntervalPerformanceCard: View {
                     .font(.title3)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 6) {
-                        Text("Interval Performance")
-                            .font(.headline.weight(.semibold))
-                            .foregroundColor(.primary)
-
-                        HStack(spacing: 3) {
-                            Image(systemName: isIndoor ? "figure.run.square.stack" : "figure.run")
-                                .font(.system(size: 9, weight: .bold))
-                            Text(isIndoor ? "Indoor" : "Outdoor")
-                                .font(.system(size: 10, weight: .semibold))
-                        }
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .foregroundColor(isIndoor ? .purple : .blue)
-                        .background((isIndoor ? Color.purple : Color.blue).opacity(0.12))
-                        .clipShape(Capsule())
-                    }
+                    Text("Interval Performance")
+                        .font(.headline.weight(.semibold))
+                        .foregroundColor(.primary)
 
                     Text("\(evaluations.count) Work Reps • \(isIndoor ? "Treadmill Pacing" : "Outdoor Pacing")")
                         .font(.caption2)
@@ -89,7 +75,7 @@ struct IntervalPerformanceCard: View {
                 metricTile(
                     label: "WORK PACE",
                     value: PaceFormatter.formatPace(secondsPerKilometer: meanWorkPace),
-                    valueColor: paceSpread <= 15 ? .green : .orange,
+                    valueColor: Color(red: 0.0, green: 0.55, blue: 1.0),
                     subtitle: "±\(Int((Double(paceSpread) / 2.0).rounded()))s spread"
                 )
 
@@ -103,7 +89,7 @@ struct IntervalPerformanceCard: View {
                 metricTile(
                     label: "AVG HR DROP",
                     value: avgHRDrop.map { "-\($0) BPM" } ?? "--",
-                    valueColor: (avgHRDrop ?? 0) >= (isIndoor ? 12 : 15) ? Color(red: 0.0, green: 0.75, blue: 0.65) : .secondary,
+                    valueColor: avgHRDrop != nil ? Color(red: 1.0, green: 0.22, blue: 0.55) : .secondary,
                     subtitle: hrDropSubtitle(avgHRDrop: avgHRDrop, isIndoor: isIndoor)
                 )
             }
@@ -249,32 +235,10 @@ struct IntervalPerformanceCard: View {
                                     .font(.caption2)
                                     .foregroundColor(.secondary)
 
-                                if let drop = rep.recoveryHeartRateDrop, drop > 0 {
-                                    HStack(spacing: 2) {
-                                        Image(systemName: "arrow.down")
-                                            .font(.system(size: 8, weight: .bold))
-                                        Text("\(drop) BPM")
-                                            .font(.system(size: 10, weight: .semibold))
-                                    }
-                                    .foregroundColor(Color(red: 0.0, green: 0.75, blue: 0.65))
-                                    .padding(.horizontal, 5)
-                                    .padding(.vertical, 1.5)
-                                    .background(Color(red: 0.0, green: 0.75, blue: 0.65).opacity(0.12))
-                                    .clipShape(Capsule())
-                                }
+                                recoveryHeartRateBadge(drop: rep.recoveryHeartRateDrop)
                             }
-                        } else if let drop = rep.recoveryHeartRateDrop, drop > 0 {
-                            HStack(spacing: 2) {
-                                Image(systemName: "arrow.down")
-                                    .font(.system(size: 8, weight: .bold))
-                                Text("\(drop) BPM drop")
-                                    .font(.system(size: 10, weight: .semibold))
-                            }
-                            .foregroundColor(Color(red: 0.0, green: 0.75, blue: 0.65))
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 1.5)
-                            .background(Color(red: 0.0, green: 0.75, blue: 0.65).opacity(0.12))
-                            .clipShape(Capsule())
+                        } else if rep.recoveryHeartRateDrop != nil {
+                            recoveryHeartRateBadge(drop: rep.recoveryHeartRateDrop)
                         }
                     }
                 }
@@ -304,10 +268,12 @@ struct IntervalPerformanceCard: View {
                         )
 
                         if let drop = rep.recoveryHeartRateDrop {
+                            let hrValue: String = drop > 0 ? "-\(drop) BPM" : (drop == 0 ? "0 BPM" : "+\(abs(drop)) BPM")
+                            let hrColor: Color = drop >= 10 ? Color(red: 1.0, green: 0.22, blue: 0.55) : (drop < 0 ? .orange : .secondary)
                             telemetryPill(
                                 label: "HR Drop",
-                                value: "-\(drop) BPM",
-                                color: drop >= 10 ? Color(red: 1.0, green: 0.22, blue: 0.55) : .secondary
+                                value: hrValue,
+                                color: hrColor
                             )
                         }
                     }
@@ -365,6 +331,49 @@ struct IntervalPerformanceCard: View {
         .padding(8)
         .background(Color(UIColor.tertiarySystemGroupedBackground))
         .cornerRadius(8)
+    }
+
+    @ViewBuilder
+    private func recoveryHeartRateBadge(drop: Int?) -> some View {
+        if let drop = drop {
+            if drop > 0 {
+                HStack(spacing: 2) {
+                    Image(systemName: "arrow.down")
+                        .font(.system(size: 8, weight: .bold))
+                    Text("\(drop) BPM")
+                        .font(.system(size: 10, weight: .semibold))
+                }
+                .foregroundColor(Color(red: 0.0, green: 0.75, blue: 0.65))
+                .padding(.horizontal, 5)
+                .padding(.vertical, 1.5)
+                .background(Color(red: 0.0, green: 0.75, blue: 0.65).opacity(0.12))
+                .clipShape(Capsule())
+            } else if drop == 0 {
+                HStack(spacing: 2) {
+                    Image(systemName: "minus")
+                        .font(.system(size: 8, weight: .bold))
+                    Text("0 BPM")
+                        .font(.system(size: 10, weight: .semibold))
+                }
+                .foregroundColor(.secondary)
+                .padding(.horizontal, 5)
+                .padding(.vertical, 1.5)
+                .background(Color.secondary.opacity(0.12))
+                .clipShape(Capsule())
+            } else {
+                HStack(spacing: 2) {
+                    Image(systemName: "arrow.up")
+                        .font(.system(size: 8, weight: .bold))
+                    Text("↑ \(abs(drop)) BPM")
+                        .font(.system(size: 10, weight: .semibold))
+                }
+                .foregroundColor(.orange)
+                .padding(.horizontal, 5)
+                .padding(.vertical, 1.5)
+                .background(Color.orange.opacity(0.12))
+                .clipShape(Capsule())
+            }
+        }
     }
 
     private func telemetryPill(label: String, value: String, color: Color) -> some View {

@@ -67,13 +67,15 @@ struct StatBox: View {
             showingInfo = true
         }
         .sheet(isPresented: $showingInfo) {
+            let metricText = "\(title): \(value) \(unit)".trimmingCharacters(in: .whitespaces)
             MetricExplainerSheet(
                 title: explainer.title,
                 mode: isWorkoutStats ? "Workout Stats" : "Working Stats",
                 overview: explainer.overview,
                 modeContext: explainer.modeContext,
                 whyItMatters: explainer.whyItMatters,
-                targetRange: explainer.targetRange
+                targetRange: explainer.targetRange,
+                userMetricDisplay: metricText
             )
         }
     }

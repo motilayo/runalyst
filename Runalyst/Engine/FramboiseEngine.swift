@@ -269,7 +269,6 @@ actor FramboiseEngine {
         // If pace variability across moving buckets is minimal (CV < 0.10 and pace spread < 20s),
         // this is deterministically a uniform/steady run. Do not segment into fake work/recovery bouts.
         let isUniformSteady = paceCV < 0.10 && (medPace - p20) < 20.0
-
         let surgePaceThreshold = hasLargePaceRange ? min(medPace - 30.0, p20 + 20.0) : (medPace - 20.0)
         let surgeCadenceThreshold = hasLargePaceRange ? (medCad + 4.0) : (medCad + 2.0)
 
@@ -831,13 +830,20 @@ actor FramboiseEngine {
             return "Progression Run"
         }
 
+        // CV < 0.10 Gating: Classify strictly as Steady State or Progression.
+        // If CV < 0.10, bypass intermittent and traffic layers to enforce continuous steady classifications.
+        let isUniformSteady = cv < 0.10
+
         // LAYER 2: Structural Gate (Intermittent vs. Continuous)
+        // Interval classification strictly requires calculatePaceCV >= 0.12, workRepCount >= 2 cycles,
+        // and minimum speed contrast delta of workPace <= recoveryPace - 25.0 s/km.
         let cycles = cycles ?? extractOscillationCycles(buckets: buckets)
-        let isIntermittent = cycles.count >= 3
+        let avgCycleContrast = cycles.isEmpty ? 0.0 : (cycles.map { $0.recoveryPace - $0.workPace }.reduce(0, +) / Double(cycles.count))
+        let isIntermittent = !isUniformSteady && cv >= 0.12 && cycles.count >= 2 && avgCycleContrast >= 25.0
         let regularityScore = isIntermittent ? calculateCycleRegularity(cycles: cycles) : 0.0
 
         // If traffic was chaotic and it's not a structured threshold interval workout, classify as Urban Traffic
-        if isChaoticTraffic && (zone4 < 0.35 || regularityScore < 0.65) {
+        if !isUniformSteady && isChaoticTraffic && (zone4 < 0.35 || regularityScore < 0.65) {
             return "Urban Traffic"
         }
 

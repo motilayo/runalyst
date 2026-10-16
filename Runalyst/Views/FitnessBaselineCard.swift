@@ -62,9 +62,21 @@ struct FitnessBaselineCard: View {
         .contentShape(Rectangle())
         .onTapGesture {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            let trendStr: String = {
+                guard let val = globalVO2Max else { return "" }
+                if let base = baselineVO2Max {
+                    let diff = val - base
+                    if abs(diff) > 0.05 {
+                        return String(format: " • %@ +%.1f", diff >= 0 ? "↗" : "↘", diff)
+                    }
+                }
+                return ""
+            }()
+            let displayStr = globalVO2Max.map { String(format: "%.1f", $0) + trendStr }
             activeExplainer = MetricExplainerInfo(
                 explainer: MetricDetailExplainer.explainer(for: "VO2 Max", isWorkoutStats: false),
-                mode: "Working Stats"
+                mode: "Working Stats",
+                userMetricDisplay: displayStr.map { "VO2 Max: \($0)" }
             )
         }
     }
@@ -117,9 +129,19 @@ struct FitnessBaselineCard: View {
         .contentShape(Rectangle())
         .onTapGesture {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            let trendStr: String = {
+                guard let val = baselineCadence, let prev = previousBaselineCadence else { return "" }
+                let diff = val - prev
+                if diff != 0 {
+                    return diff > 0 ? " • ↗ +\(diff) SPM" : " • ↘ \(diff) SPM"
+                }
+                return ""
+            }()
+            let displayStr = baselineCadence.map { "\($0) SPM\(trendStr)" }
             activeExplainer = MetricExplainerInfo(
                 explainer: MetricDetailExplainer.explainer(for: "Average Cadence", isWorkoutStats: false),
-                mode: "Working Stats"
+                mode: "Working Stats",
+                userMetricDisplay: displayStr.map { "Avg Cadence: \($0)" }
             )
         }
     }
@@ -173,9 +195,19 @@ struct FitnessBaselineCard: View {
         .contentShape(Rectangle())
         .onTapGesture {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            let trendStr: String = {
+                guard let val = baselinePace, let prev = previousBaselinePace else { return "" }
+                let diff = Int(round(val - prev))
+                if diff != 0 {
+                    return diff < 0 ? " • ↗ \(diff)s" : " • ↘ +\(diff)s"
+                }
+                return ""
+            }()
+            let displayStr = baselinePace.map { "\(PaceFormatter.formatPace(secondsPerKilometer: $0))\(trendStr)" }
             activeExplainer = MetricExplainerInfo(
                 explainer: MetricDetailExplainer.explainer(for: "Average Pace", isWorkoutStats: false),
-                mode: "Working Stats"
+                mode: "Working Stats",
+                userMetricDisplay: displayStr.map { "Avg Pace: \($0)" }
             )
         }
     }
@@ -210,7 +242,8 @@ struct FitnessBaselineCard: View {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             activeExplainer = MetricExplainerInfo(
                 explainer: MetricDetailExplainer.explainer(for: "Workout Density", isWorkoutStats: false),
-                mode: "Working Stats"
+                mode: "Working Stats",
+                userMetricDisplay: "Workout Density: \(workoutDensityTier) (\(timeRangeRunsCount) runs)"
             )
         }
     }

@@ -99,7 +99,7 @@ struct ReadinessRunSnapshot: Sendable, Equatable {
         self.tags = tags
     }
 
-    private static let heavyTypes: Set<String> = ["Intervals", "Pyramids", "Tempo Run", "Hill Repeats"]
+    private static let heavyTypes: Set<String> = ["Intervals", "Pyramids", "Tempo Run", "Hill Repeats", "Fartlek"]
 
     /// Matches the Dashboard 7-day tactical coach definition of a heavy session.
     var isHardSession: Bool {

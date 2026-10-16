@@ -207,14 +207,16 @@ struct MetricExplainerInfo: Identifiable {
     var modeContext: String?
     var whyItMatters: String?
     var targetRange: String?
+    var userMetricDisplay: String?
 
-    init(title: String, definition: String) {
+    init(title: String, definition: String, userMetricDisplay: String? = nil) {
         self.title = title
         self.mode = nil
         self.overview = definition
         self.modeContext = nil
         self.whyItMatters = nil
         self.targetRange = nil
+        self.userMetricDisplay = userMetricDisplay
     }
 
     init(
@@ -223,7 +225,8 @@ struct MetricExplainerInfo: Identifiable {
         overview: String,
         modeContext: String? = nil,
         whyItMatters: String? = nil,
-        targetRange: String? = nil
+        targetRange: String? = nil,
+        userMetricDisplay: String? = nil
     ) {
         self.title = title
         self.mode = mode
@@ -231,14 +234,16 @@ struct MetricExplainerInfo: Identifiable {
         self.modeContext = modeContext
         self.whyItMatters = whyItMatters
         self.targetRange = targetRange
+        self.userMetricDisplay = userMetricDisplay
     }
 
-    init(explainer: MetricDetailExplainer, mode: String? = nil) {
+    init(explainer: MetricDetailExplainer, mode: String? = nil, userMetricDisplay: String? = nil) {
         self.title = explainer.title
         self.mode = mode
         self.overview = explainer.overview
         self.modeContext = explainer.modeContext
         self.whyItMatters = explainer.whyItMatters
         self.targetRange = explainer.targetRange
+        self.userMetricDisplay = userMetricDisplay
     }
 }

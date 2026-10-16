@@ -640,7 +640,7 @@ struct WorkoutAnalysisContext {
         self.physiologicalVerdicts = PhysiologicalDiagnosisEngine.evaluate(physInput)
 
         // Swift Locked Training Prescription
-        let useMetric = UserDefaults.standard.bool(forKey: "useMetricSystem")
+        let useMetric = UserDefaults.standard.object(forKey: "useMetricSystem") as? Bool ?? (Locale.current.measurementSystem == .metric)
         let tzInput = TrainingZoneInput(
             baselinePaceSec: self.baselineStats?.avgPace,
             workoutPaceSec: self.workingPaceSec,

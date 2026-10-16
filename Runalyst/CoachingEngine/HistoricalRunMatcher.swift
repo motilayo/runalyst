@@ -40,31 +40,64 @@ struct HistoricalRunMatcher {
             let envCurrent = current.isIndoor ? "Indoor Treadmill" : "Outdoor"
             let envPrior = prior.isIndoor ? "Indoor Treadmill" : "Outdoor"
 
+            let cal = Calendar.current
+            let daysDiff = cal.dateComponents([.day], from: cal.startOfDay(for: prior.date), to: cal.startOfDay(for: current.date)).day ?? 0
+            let recencyContrast: String
+            if daysDiff > 0 {
+                recencyContrast = "Current \(current.classification) on \(current.formattedDate) took place \(daysDiff) day\(daysDiff == 1 ? "" : "s") after prior \(prior.classification) on \(prior.formattedDate)."
+            } else if daysDiff < 0 {
+                recencyContrast = "Prior \(prior.classification) on \(prior.formattedDate) took place \(abs(daysDiff)) day\(abs(daysDiff) == 1 ? "" : "s") after current \(current.classification) on \(current.formattedDate)."
+            } else {
+                recencyContrast = "Both workouts took place on the same day (\(current.formattedDate))."
+            }
+
+            let sameClassification = current.classification.caseInsensitiveCompare(prior.classification) == .orderedSame
+            let classificationComparison: String
+            if sameClassification {
+                classificationComparison = "Both workouts were similarly classified as \(current.classification)."
+            } else {
+                classificationComparison = "Different workout modalities: current run is \(current.classification) vs prior run \(prior.classification)."
+            }
+
+            // Unit precision with respect to readability: align displayed precision with delta math
+            let currentDistKm = Double(String(format: "%.2f", current.distanceMeters / 1000.0)) ?? (current.distanceMeters / 1000.0)
+            let priorDistKm = Double(String(format: "%.2f", prior.distanceMeters / 1000.0)) ?? (prior.distanceMeters / 1000.0)
+            let distDiffKm = currentDistKm - priorDistKm
+            let durDiffMin = Int((current.durationSeconds - prior.durationSeconds) / 60)
+            let volumeComparison: String
+            if abs(distDiffKm) < 0.2 && abs(durDiffMin) < 3 {
+                volumeComparison = "Matched volume: both runs covered comparable distance (~\(String(format: "%.2f", currentDistKm)) km in ~\(Int(current.durationSeconds / 60)) min)."
+            } else {
+                let distDesc = distDiffKm > 0 ? "+\(String(format: "%.2f", distDiffKm)) km longer" : "\(String(format: "%.2f", abs(distDiffKm))) km shorter"
+                let durDesc = durDiffMin > 0 ? "+\(durDiffMin) min longer" : "\(abs(durDiffMin)) min shorter"
+                volumeComparison = "Volume difference: current run was \(distDesc) and \(durDesc) in duration."
+            }
+
             let paceComparison: String
             if paceDeltaSeconds > 0 {
-                paceComparison = "\(paceDeltaSeconds)s/km faster in current run"
+                paceComparison = "\(paceDeltaSeconds)s/km faster in current run (\(current.paceFormatted) in \(envCurrent) vs \(prior.paceFormatted) in \(envPrior))"
             } else if paceDeltaSeconds < 0 {
-                paceComparison = "\(abs(paceDeltaSeconds))s/km slower in current run"
+                paceComparison = "\(abs(paceDeltaSeconds))s/km slower in current run (\(current.paceFormatted) in \(envCurrent) vs \(prior.paceFormatted) in \(envPrior))"
             } else {
-                paceComparison = "identical pace"
+                paceComparison = "identical pace (\(current.paceFormatted))"
             }
 
             let cadComparison: String
             if cadenceDelta > 0 {
-                cadComparison = "+\(cadenceDelta) SPM higher turnover in current run"
+                cadComparison = "+\(cadenceDelta) SPM higher turnover in current run (\(current.cadenceSPM) SPM in \(envCurrent) vs \(prior.cadenceSPM) SPM in \(envPrior))"
             } else if cadenceDelta < 0 {
-                cadComparison = "\(abs(cadenceDelta)) SPM lower turnover in current run"
+                cadComparison = "\(abs(cadenceDelta)) SPM lower turnover in current run (\(current.cadenceSPM) SPM in \(envCurrent) vs \(prior.cadenceSPM) SPM in \(envPrior))"
             } else {
-                cadComparison = "matched turnover"
+                cadComparison = "matched turnover (\(current.cadenceSPM) SPM)"
             }
 
             let hrComparison: String
             if heartRateDelta > 0 {
-                hrComparison = "+\(heartRateDelta) BPM higher cardiac cost in current run"
+                hrComparison = "+\(heartRateDelta) BPM higher cardiac cost in current run (\(current.heartRateBPM) BPM in \(envCurrent) vs \(prior.heartRateBPM) BPM in \(envPrior))"
             } else if heartRateDelta < 0 {
-                hrComparison = "\(abs(heartRateDelta)) BPM lower cardiovascular demand in current run"
+                hrComparison = "\(abs(heartRateDelta)) BPM lower cardiovascular demand in current run (\(current.heartRateBPM) BPM in \(envCurrent) vs \(prior.heartRateBPM) BPM in \(envPrior))"
             } else {
-                hrComparison = "identical average heart rate"
+                hrComparison = "identical average heart rate (\(current.heartRateBPM) BPM)"
             }
 
             let physiologicalSignal: String
@@ -104,8 +137,8 @@ struct HistoricalRunMatcher {
             Current Run:
             - Date: \(current.weekday), \(current.formattedDate)
             - Classification: \(current.classification)
-            - Distance: \(String(format: "%.2f", current.distanceMeters / 1000)) km (\(Int(current.durationSeconds / 60)) min)
-            - Working Pace: \(current.paceFormatted) (\(Int(current.paceSecondsPerKm))s/km)
+            - Distance: \(String(format: "%.2f", currentDistKm)) km (\(Int(current.durationSeconds / 60)) min)
+            - Working Pace: \(current.paceFormatted)
             - Working Cadence: \(current.cadenceSPM) SPM
             - Working Heart Rate: \(current.heartRateBPM) BPM
             - Environment: \(envCurrent)
@@ -113,34 +146,54 @@ struct HistoricalRunMatcher {
             Prior Run:
             - Date: \(prior.weekday), \(prior.formattedDate)
             - Classification: \(prior.classification)
-            - Distance: \(String(format: "%.2f", prior.distanceMeters / 1000)) km (\(Int(prior.durationSeconds / 60)) min)
-            - Working Pace: \(prior.paceFormatted) (\(Int(prior.paceSecondsPerKm))s/km)
+            - Distance: \(String(format: "%.2f", priorDistKm)) km (\(Int(prior.durationSeconds / 60)) min)
+            - Working Pace: \(prior.paceFormatted)
             - Working Cadence: \(prior.cadenceSPM) SPM
             - Working Heart Rate: \(prior.heartRateBPM) BPM
             - Environment: \(envPrior)
+
+            Comparative Context:
+            - Recency: \(recencyContrast)
+            - Classification: \(classificationComparison)
+            - Volume: \(volumeComparison)
+            - Structure: \(structureContrast)
+            - Environment: \(envContrast)
 
             Mathematical Telemetry Deltas:
             - Pace: \(paceComparison)
             - Cadence: \(cadComparison)
             - Heart Rate: \(hrComparison)
-            - Physiological Fact: \(physiologicalSignal)
-            - Workout Structure Contrast: \(structureContrast)
-            - Environmental Contrast: \(envContrast)
+            - Physiological Conclusion: \(physiologicalSignal)
             """
         }
 
         /// Natural language synthesized comparison for fallback and offline coaching contexts.
         var coachingComparisonSummary: String {
+            let envCurrent = current.isIndoor ? "Indoor Treadmill" : "Outdoor"
+            let envPrior = prior.isIndoor ? "Indoor Treadmill" : "Outdoor"
+
+            let cal = Calendar.current
+            let daysDiff = cal.dateComponents([.day], from: cal.startOfDay(for: prior.date), to: cal.startOfDay(for: current.date)).day ?? 0
+            let recencyNote = daysDiff > 0
+                ? "Your \(current.classification) on \(current.formattedDate) took place **\(daysDiff) day\(daysDiff == 1 ? "" : "s") after** your \(prior.classification) on \(prior.formattedDate)."
+                : "Workouts on \(current.formattedDate) and \(prior.formattedDate)."
+
+            let currentDistKm = Double(String(format: "%.2f", current.distanceMeters / 1000.0)) ?? (current.distanceMeters / 1000.0)
+            let priorDistKm = Double(String(format: "%.2f", prior.distanceMeters / 1000.0)) ?? (prior.distanceMeters / 1000.0)
+            let distDiffKm = currentDistKm - priorDistKm
+            let distComp = distDiffKm > 0 ? "+\(String(format: "%.2f", distDiffKm)) km longer" : "\(String(format: "%.2f", abs(distDiffKm))) km shorter"
+
             let paceComp = paceDeltaSeconds > 0 ? "\(paceDeltaSeconds)s/km faster" : (paceDeltaSeconds < 0 ? "\(abs(paceDeltaSeconds))s/km slower" : "identical pace")
-            let cadComp = cadenceDelta > 0 ? "+\(cadenceDelta) SPM higher turnover" : (cadenceDelta < 0 ? "\(abs(cadenceDelta)) SPM lower turnover" : "matched turnover")
-            let hrComp = heartRateDelta > 0 ? "+\(heartRateDelta) BPM higher cardiac cost" : (heartRateDelta < 0 ? "\(abs(heartRateDelta)) BPM lower cardiovascular demand" : "matched heart rate")
+            let cadComp = cadenceDelta > 0 ? "+\(cadenceDelta) SPM higher turnover in \(envCurrent)" : (cadenceDelta < 0 ? "\(abs(cadenceDelta)) SPM lower turnover in \(envCurrent)" : "matched turnover")
+            let hrComp = heartRateDelta > 0 ? "+\(heartRateDelta) BPM higher cardiac cost in \(envCurrent)" : (heartRateDelta < 0 ? "\(abs(heartRateDelta)) BPM lower cardiovascular demand in \(envCurrent)" : "matched heart rate")
 
             var lines = [
-                "Comparing your **\(current.weekday), \(current.formattedDate) \(current.classification)** to your **\(prior.weekday), \(prior.formattedDate) \(prior.classification)**:",
+                "Comparing your **\(current.weekday), \(current.formattedDate) \(current.classification)** to your **\(prior.weekday), \(prior.formattedDate) \(prior.classification)** (\(recencyNote)):",
                 "",
                 "• **Pace**: **\(current.paceFormatted)** vs **\(prior.paceFormatted)** (\(paceComp))",
                 "• **Cadence**: **\(current.cadenceSPM) SPM** vs **\(prior.cadenceSPM) SPM** (\(cadComp))",
                 "• **Heart Rate**: **\(current.heartRateBPM) BPM** vs **\(prior.heartRateBPM) BPM** (\(hrComp))",
+                "• **Volume**: **\(String(format: "%.2f", currentDistKm)) km** (\(Int(current.durationSeconds / 60)) min) vs **\(String(format: "%.2f", priorDistKm)) km** (\(Int(prior.durationSeconds / 60)) min) (\(distComp))",
                 ""
             ]
 
@@ -251,6 +304,78 @@ struct HistoricalRunMatcher {
         }
     }
 
+    /// Parses potential two-run comparison targets from a single query string.
+    static func parseComparisonTargets(from query: String) -> (targetA: String, targetB: String)? {
+        let lower = query.lowercased()
+
+        // 1. Environment contrast detection: "indoor" and "outdoor"
+        let mentionsOutdoor = lower.contains("outdoor") || lower.contains("outside") || lower.contains("road")
+        let mentionsIndoor = lower.contains("indoor") || lower.contains("treadmill")
+
+        if mentionsOutdoor && mentionsIndoor {
+            let outRange = lower.range(of: "outdoor") ?? lower.range(of: "outside") ?? lower.range(of: "road")
+            let inRange = lower.range(of: "indoor") ?? lower.range(of: "treadmill")
+            if let oR = outRange, let iR = inRange {
+                if oR.lowerBound < iR.lowerBound {
+                    return (targetA: "outdoor", targetB: "indoor")
+                } else {
+                    return (targetA: "indoor", targetB: "outdoor")
+                }
+            }
+        }
+
+        // 2. Phrasing splitters: " vs ", " vs. ", " versus ", " compared to ", " to "
+        let splitters = [" vs ", " vs. ", " versus ", " compared to ", " to "]
+        for split in splitters {
+            if let range = lower.range(of: split) {
+                var first = String(query[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+                let second = String(query[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+
+                for prefix in ["compare my ", "compare ", "what is the difference between ", "what's the difference between "]
+                    where first.lowercased().hasPrefix(prefix) {
+                    first = String(first.dropFirst(prefix.count))
+                }
+                if !first.isEmpty && !second.isEmpty && second.count >= 3 {
+                    return (targetA: first, targetB: second)
+                }
+            }
+        }
+
+        return nil
+    }
+
+    /// Compares two arbitrary workouts (e.g. last outdoor run vs last indoor run) from the stored database.
+    static func compareRuns(
+        queryA: String,
+        queryB: String,
+        relativeTo currentRun: RunRecord?,
+        in context: ModelContext?
+    ) -> ComparisonTelemetry? {
+        guard let context = context else { return nil }
+        let descriptor = FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)])
+        guard let allRuns = try? context.fetch(descriptor), !allRuns.isEmpty else { return nil }
+
+        // Find runA
+        guard let runA = findRun(matching: queryA, in: allRuns, relativeTo: currentRun) else { return nil }
+
+        // Find runB from the remaining runs
+        let remainingRuns = allRuns.filter { $0.id != runA.id }
+        guard let runB = findRun(matching: queryB, in: remainingRuns, relativeTo: currentRun) else { return nil }
+
+        // Order chronologically so the newer run is evaluated against the older run as baseline
+        let newer: RunRecord
+        let older: RunRecord
+        if runA.date >= runB.date {
+            newer = runA
+            older = runB
+        } else {
+            newer = runB
+            older = runA
+        }
+
+        return compare(current: newer, with: older)
+    }
+
     /// Finds a historical run in the model context matching the user's natural language query.
     static func findRun(
         matching query: String,
@@ -264,11 +389,45 @@ struct HistoricalRunMatcher {
         let otherRuns = allRuns.filter { $0.id != currentRun.id }
         guard !otherRuns.isEmpty else { return nil }
 
-        let lower = query.lowercased()
+        return findRun(matching: query, in: otherRuns, relativeTo: currentRun)
+    }
 
+    /// Finds a matching run within an explicit pool of runs.
+    static func findRun(
+        matching query: String,
+        in pool: [RunRecord],
+        relativeTo currentRun: RunRecord? = nil
+    ) -> RunRecord? {
+        guard !pool.isEmpty else { return nil }
+        let lower = query.lowercased()
         let calendar = Calendar.current
 
-        // 0. Superlatives: "best", "fastest", "worst", "slowest", "toughest"
+        // 0. Environment matching: "outdoor", "outside", "road", "trail", "indoor", "treadmill"
+        let mentionsOutdoor = lower.contains("outdoor") || lower.contains("outside") || lower.contains("road") || lower.contains("trail")
+        let mentionsIndoor = lower.contains("indoor") || lower.contains("treadmill")
+
+        if mentionsOutdoor && !mentionsIndoor {
+            if let match = pool.first(where: { !($0.isIndoor ?? false) }) {
+                return match
+            }
+        } else if mentionsIndoor && !mentionsOutdoor {
+            if let match = pool.first(where: { $0.isIndoor == true }) {
+                return match
+            }
+        } else if mentionsOutdoor && mentionsIndoor {
+            if let current = currentRun {
+                let wantOutdoor = (current.isIndoor ?? false)
+                if let match = pool.first(where: { wantOutdoor ? !($0.isIndoor ?? false) : ($0.isIndoor == true) }) {
+                    return match
+                }
+            } else {
+                if let match = pool.first(where: { !($0.isIndoor ?? false) }) {
+                    return match
+                }
+            }
+        }
+
+        // 0.5. Superlatives: "best", "fastest", "worst", "slowest", "toughest"
         func efficiencyScore(for run: RunRecord) -> Double {
             if let ef = run.efficiencyFactor, ef > 0 { return ef }
             let pace = run.workingAvgPace > 0 ? run.workingAvgPace : run.rawAvgPace
@@ -278,21 +437,21 @@ struct HistoricalRunMatcher {
         }
 
         if lower.contains("best") || lower.contains("fastest") || lower.contains("highest efficiency") {
-            let candidates = otherRuns.filter { $0.totalDistanceMeters >= 500 && $0.duration >= 180 }
-            let pool = candidates.isEmpty ? otherRuns : candidates
-            if let best = pool.max(by: { efficiencyScore(for: $0) < efficiencyScore(for: $1) }) {
+            let candidates = pool.filter { $0.totalDistanceMeters >= 500 && $0.duration >= 180 }
+            let poolToUse = candidates.isEmpty ? pool : candidates
+            if let best = poolToUse.max(by: { efficiencyScore(for: $0) < efficiencyScore(for: $1) }) {
                 return best
             }
         }
         if lower.contains("worst") || lower.contains("slowest") || lower.contains("toughest") || lower.contains("lowest efficiency") {
-            let candidates = otherRuns.filter { $0.totalDistanceMeters >= 500 && $0.duration >= 180 }
-            let pool = candidates.isEmpty ? otherRuns : candidates
-            if let worst = pool.min(by: { efficiencyScore(for: $0) < efficiencyScore(for: $1) }) {
+            let candidates = pool.filter { $0.totalDistanceMeters >= 500 && $0.duration >= 180 }
+            let poolToUse = candidates.isEmpty ? pool : candidates
+            if let worst = poolToUse.min(by: { efficiencyScore(for: $0) < efficiencyScore(for: $1) }) {
                 return worst
             }
         }
 
-        // 1. Month + Day parsing (e.g., "September 14", "Sep 14", "Sept 14", "9/14")
+        // 1. Month + Day parsing (e.g., "September 30", "Sep 30", "9/30")
         let months: [(name: String, number: Int)] = [
             ("january", 1), ("jan", 1),
             ("february", 2), ("feb", 2),
@@ -343,7 +502,7 @@ struct HistoricalRunMatcher {
         }
 
         if let targetMonth = targetMonth, let targetDay = targetDay {
-            let matches = otherRuns.filter { run in
+            let matches = pool.filter { run in
                 let comps = calendar.dateComponents([.month, .day], from: run.date)
                 return comps.month == targetMonth && comps.day == targetDay
             }
@@ -355,7 +514,7 @@ struct HistoricalRunMatcher {
         // 2. Relative references: "yesterday", "last run", "previous run", "prior run"
         if lower.contains("yesterday") {
             let yesterdayComps = calendar.dateComponents([.year, .month, .day], from: Date().addingTimeInterval(-86400))
-            if let match = otherRuns.first(where: {
+            if let match = pool.first(where: {
                 let comps = calendar.dateComponents([.year, .month, .day], from: $0.date)
                 return comps.year == yesterdayComps.year && comps.month == yesterdayComps.month && comps.day == yesterdayComps.day
             }) {
@@ -364,22 +523,29 @@ struct HistoricalRunMatcher {
         }
 
         if lower.contains("last run") || lower.contains("previous run") || lower.contains("prior run") || lower.contains("last workout") {
-            let priorRuns = otherRuns.filter { $0.date < currentRun.date }
-            if let prior = priorRuns.first {
-                return prior
+            if let current = currentRun {
+                let priorRuns = pool.filter { $0.date < current.date }
+                if let prior = priorRuns.first {
+                    return prior
+                }
             }
+            return pool.first
         }
 
         // 3. Modality references: "previous intervals", "last tempo", "last long run"
         let modalities = ["intervals", "tempo", "steady", "progression", "recovery", "long"]
         for mod in modalities where lower.contains(mod) {
-            let priorWithModality = otherRuns.filter {
-                $0.date < currentRun.date &&
-                ($0.detectedTypeRaw.localizedCaseInsensitiveContains(mod) || $0.normalizedClassification.localizedCaseInsensitiveContains(mod))
+            let priorWithModality = pool.filter {
+                $0.detectedTypeRaw.localizedCaseInsensitiveContains(mod) || $0.normalizedClassification.localizedCaseInsensitiveContains(mod)
             }
             if let match = priorWithModality.first {
                 return match
             }
+        }
+
+        // 4. Generic history query
+        if lower.contains("run") || lower.contains("workout") || lower.contains("activity") || lower.contains("history") {
+            return pool.first
         }
 
         return nil
@@ -525,6 +691,406 @@ struct HistoricalRunMatcher {
             heartRateDelta: hrDelta,
             distanceDeltaMeters: distDelta,
             durationDeltaSeconds: durDelta
+        )
+    }
+
+    /// Formats a concise catalog of the athlete's recorded workouts for tool listing queries.
+    static func listRecentRuns(
+        relativeTo currentRun: RunRecord,
+        in context: ModelContext?,
+        limit: Int = 10
+    ) -> String {
+        guard let context = context else {
+            return "Only the current run is available in stored records."
+        }
+        let descriptor = FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)])
+        guard let allRuns = try? context.fetch(descriptor), !allRuns.isEmpty else {
+            return "No workouts found in stored records."
+        }
+        let dateFormatter = DateFormatter()
+        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+        dateFormatter.dateFormat = "EEEE, MMMM d"
+
+        var lines = ["ATHLETE WORKOUT DATABASE (\(allRuns.count) total workouts recorded):"]
+        for run in allRuns.prefix(limit) {
+            let isCurrent = run.id == currentRun.id
+            let marker = isCurrent ? " [CURRENT WORKOUT]" : ""
+            let env = (run.isIndoor ?? false) ? "Indoor Treadmill" : "Outdoor"
+            let distKm = String(format: "%.2f km", run.totalDistanceMeters / 1000.0)
+            let durMin = "\(Int(run.duration / 60)) min"
+            let pace = run.workingAvgPace > 0 ? PaceFormatter.formatPace(secondsPerKilometer: run.workingAvgPace) : PaceFormatter.formatPace(secondsPerKilometer: run.rawAvgPace)
+            let cad = Int(run.workingAvgCadence > 0 ? run.workingAvgCadence : run.rawAvgCadence)
+            let hr = Int(run.workingAvgHeartRate > 0 ? run.workingAvgHeartRate : run.rawAvgHeartRate)
+            let type = run.detectedTypeRaw.isEmpty ? run.normalizedClassification : run.detectedTypeRaw
+            let dateStr = dateFormatter.string(from: run.date)
+            lines.append("• \(dateStr) - \(type) (\(env))\(marker): \(distKm) in \(durMin) @ \(pace), \(cad) SPM, \(hr) BPM")
+        }
+        return lines.joined(separator: "\n")
+    }
+}
+
+// MARK: - Workout Math Calculator
+
+/// Definitive mathematical result returned to the LLM and UI for running metrics math.
+public struct WorkoutMathResult: Codable, Sendable, Equatable {
+    public let operation: String
+    public let valueA: String
+    public let valueB: String
+    public let delta: String
+    public let deltaNumeric: Double?
+    public let percentageChange: String?
+    public let summary: String
+
+    public init(
+        operation: String,
+        valueA: String,
+        valueB: String,
+        delta: String,
+        deltaNumeric: Double? = nil,
+        percentageChange: String? = nil,
+        summary: String
+    ) {
+        self.operation = operation
+        self.valueA = valueA
+        self.valueB = valueB
+        self.delta = delta
+        self.deltaNumeric = deltaNumeric
+        self.percentageChange = percentageChange
+        self.summary = summary
+    }
+
+    /// Structured mathematical facts for FoundationModels tool injection.
+    public var structuredFacts: String {
+        return """
+        WORKOUT MATH CALCULATION:
+        - Operation: \(operation)
+        - Value A: \(valueA)
+        - Value B: \(valueB)
+        - Mathematical Delta: \(delta)
+        - Percentage Change: \(percentageChange ?? "N/A")
+        - Verified Conclusion: \(summary)
+        """
+    }
+}
+
+/// Deterministic calculator for running math.
+/// Executes exact pace subtraction, distance deltas, heart rate and turnover changes, and percentage differences in Swift
+/// so the LLM never performs mental arithmetic or hallucinates numbers.
+public enum WorkoutMathCalculator {
+
+    /// Performs running math based on operation and input strings.
+    public static func calculate(
+        operation: String,
+        valueA: String,
+        valueB: String,
+        metricType: String? = nil
+    ) -> WorkoutMathResult {
+        let opLower = operation.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        let typeLower = (metricType ?? "").lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // 1. Pace operations
+        if opLower.contains("pace") || typeLower.contains("pace") || isPaceString(valueA) || isPaceString(valueB) {
+            return calculatePaceDelta(paceAString: valueA, paceBString: valueB)
+        }
+
+        // 2. Distance operations
+        if opLower.contains("dist") || typeLower.contains("dist") || valueA.lowercased().contains("km") || valueA.lowercased().contains("mi") {
+            return calculateDistanceDelta(distAString: valueA, distBString: valueB)
+        }
+
+        // 3. Heart rate operations
+        if opLower.contains("heart") || opLower.contains("hr") || typeLower.contains("heart") || typeLower.contains("hr") || valueA.lowercased().contains("bpm") {
+            return calculateHeartRateDelta(hrAString: valueA, hrBString: valueB)
+        }
+
+        // 4. Cadence operations
+        if opLower.contains("cadence") || opLower.contains("spm") || opLower.contains("turnover") || typeLower.contains("cadence") || valueA.lowercased().contains("spm") {
+            return calculateCadenceDelta(cadAString: valueA, cadBString: valueB)
+        }
+
+        // 5. Explicit percentage change
+        if opLower.contains("percent") {
+            guard let numA = parseNumericValue(from: valueA),
+                  let numB = parseNumericValue(from: valueB) else {
+                return fallbackErrorResult(operation: operation, valueA: valueA, valueB: valueB)
+            }
+            return calculatePercentageChange(valA: numA, valB: numB, rawA: valueA, rawB: valueB)
+        }
+
+        // 6. Generic difference
+        guard let numA = parseNumericValue(from: valueA),
+              let numB = parseNumericValue(from: valueB) else {
+            return fallbackErrorResult(operation: operation, valueA: valueA, valueB: valueB)
+        }
+
+        let delta = numA - numB
+        let deltaFormatted = delta >= 0 ? "+\(formatDouble(delta))" : "\(formatDouble(delta))"
+        let pct = numB != 0 ? ((numA - numB) / abs(numB)) * 100.0 : 0.0
+        let pctStr = pct >= 0 ? "+\(String(format: "%.1f", pct))%" : "\(String(format: "%.1f", pct))%"
+
+        return WorkoutMathResult(
+            operation: "difference",
+            valueA: valueA,
+            valueB: valueB,
+            delta: deltaFormatted,
+            deltaNumeric: delta,
+            percentageChange: pctStr,
+            summary: "Value A (\(valueA)) is \(deltaFormatted) compared to Value B (\(valueB)) (\(pctStr))."
+        )
+    }
+
+    // MARK: - Specialized Metric Calculators
+
+    public static func calculatePaceDelta(paceAString: String, paceBString: String) -> WorkoutMathResult {
+        guard let secA = parsePaceSeconds(from: paceAString),
+              let secB = parsePaceSeconds(from: paceBString) else {
+            return fallbackErrorResult(operation: "pace_delta", valueA: paceAString, valueB: paceBString)
+        }
+
+        let paceFormattedA = formatPace(seconds: secA)
+        let paceFormattedB = formatPace(seconds: secB)
+
+        // Delta in seconds: secA - secB. Negative means paceA took fewer seconds (faster).
+        let paceDiffSec = Int(secA.rounded() - secB.rounded())
+        let absDiff = abs(paceDiffSec)
+
+        let verdict: String
+        let deltaStr: String
+        if paceDiffSec < 0 {
+            deltaStr = "-\(absDiff) s/km"
+            verdict = "\(absDiff) seconds/km faster (Value A is faster than Value B)"
+        } else if paceDiffSec > 0 {
+            deltaStr = "+\(absDiff) s/km"
+            verdict = "\(absDiff) seconds/km slower (Value A is slower than Value B)"
+        } else {
+            deltaStr = "0 s/km"
+            verdict = "Identical pace across both values"
+        }
+
+        // Speed percentage difference: velocity is proportional to 1 / pace.
+        let speedPct: String?
+        if secA > 0 && secB > 0 {
+            let speedA = 1000.0 / secA
+            let speedB = 1000.0 / secB
+            let change = ((speedA - speedB) / speedB) * 100.0
+            speedPct = change >= 0 ? "+\(String(format: "%.1f", change))% faster speed" : "\(String(format: "%.1f", change))% slower speed"
+        } else {
+            speedPct = nil
+        }
+
+        let speedNote = speedPct.map { " [\($0)]" } ?? ""
+        return WorkoutMathResult(
+            operation: "pace_delta",
+            valueA: paceFormattedA,
+            valueB: paceFormattedB,
+            delta: deltaStr,
+            deltaNumeric: Double(paceDiffSec),
+            percentageChange: speedPct,
+            summary: "\(verdict)\(speedNote)."
+        )
+    }
+
+    public static func calculateDistanceDelta(distAString: String, distBString: String) -> WorkoutMathResult {
+        guard let distA = parseNumericValue(from: distAString),
+              let distB = parseNumericValue(from: distBString) else {
+            return fallbackErrorResult(operation: "distance_delta", valueA: distAString, valueB: distBString)
+        }
+
+        let diff = distA - distB
+        let absDiff = abs(diff)
+        let diffFormatted = diff >= 0 ? "+\(String(format: "%.2f", diff)) km" : "-\(String(format: "%.2f", absDiff)) km"
+
+        let pct = distB > 0 ? ((distA - distB) / distB) * 100.0 : 0.0
+        let pctStr = pct >= 0 ? "+\(String(format: "%.1f", pct))%" : "\(String(format: "%.1f", pct))%"
+
+        let summary = diff >= 0
+            ? "Value A (\(String(format: "%.2f", distA)) km) is \(diffFormatted) longer than Value B (\(String(format: "%.2f", distB)) km) (\(pctStr))."
+            : "Value A (\(String(format: "%.2f", distA)) km) is \(String(format: "%.2f", absDiff)) km shorter than Value B (\(String(format: "%.2f", distB)) km) (\(pctStr))."
+
+        return WorkoutMathResult(
+            operation: "distance_delta",
+            valueA: "\(String(format: "%.2f", distA)) km",
+            valueB: "\(String(format: "%.2f", distB)) km",
+            delta: diffFormatted,
+            deltaNumeric: diff,
+            percentageChange: pctStr,
+            summary: summary
+        )
+    }
+
+    public static func calculateHeartRateDelta(hrAString: String, hrBString: String) -> WorkoutMathResult {
+        guard let hrA = parseNumericValue(from: hrAString),
+              let hrB = parseNumericValue(from: hrBString) else {
+            return fallbackErrorResult(operation: "heart_rate_delta", valueA: hrAString, valueB: hrBString)
+        }
+
+        let intA = Int(hrA.rounded())
+        let intB = Int(hrB.rounded())
+        let diff = intA - intB
+        let absDiff = abs(diff)
+        let diffFormatted = diff >= 0 ? "+\(diff) BPM" : "-\(absDiff) BPM"
+
+        let pct = hrB > 0 ? ((hrA - hrB) / hrB) * 100.0 : 0.0
+        let pctStr = pct >= 0 ? "+\(String(format: "%.1f", pct))%" : "\(String(format: "%.1f", pct))%"
+
+        let summary: String
+        if diff > 0 {
+            summary = "Value A (\(intA) BPM) is +\(diff) BPM higher cardiac cost than Value B (\(intB) BPM) (\(pctStr))."
+        } else if diff < 0 {
+            summary = "Value A (\(intA) BPM) is \(absDiff) BPM lower cardiovascular demand than Value B (\(intB) BPM) (\(pctStr))."
+        } else {
+            summary = "Identical heart rate across both values (\(intA) BPM)."
+        }
+
+        return WorkoutMathResult(
+            operation: "heart_rate_delta",
+            valueA: "\(intA) BPM",
+            valueB: "\(intB) BPM",
+            delta: diffFormatted,
+            deltaNumeric: Double(diff),
+            percentageChange: pctStr,
+            summary: summary
+        )
+    }
+
+    public static func calculateCadenceDelta(cadAString: String, cadBString: String) -> WorkoutMathResult {
+        guard let cadA = parseNumericValue(from: cadAString),
+              let cadB = parseNumericValue(from: cadBString) else {
+            return fallbackErrorResult(operation: "cadence_delta", valueA: cadAString, valueB: cadBString)
+        }
+
+        let intA = Int(cadA.rounded())
+        let intB = Int(cadB.rounded())
+        let diff = intA - intB
+        let absDiff = abs(diff)
+        let diffFormatted = diff >= 0 ? "+\(diff) SPM" : "-\(absDiff) SPM"
+
+        let pct = cadB > 0 ? ((cadA - cadB) / cadB) * 100.0 : 0.0
+        let pctStr = pct >= 0 ? "+\(String(format: "%.1f", pct))%" : "\(String(format: "%.1f", pct))%"
+
+        let summary: String
+        if diff > 0 {
+            summary = "Value A (\(intA) SPM) has +\(diff) SPM higher turnover than Value B (\(intB) SPM) (\(pctStr))."
+        } else if diff < 0 {
+            summary = "Value A (\(intA) SPM) has \(absDiff) SPM lower turnover than Value B (\(intB) SPM) (\(pctStr))."
+        } else {
+            summary = "Matched cadence turnover across both values (\(intA) SPM)."
+        }
+
+        return WorkoutMathResult(
+            operation: "cadence_delta",
+            valueA: "\(intA) SPM",
+            valueB: "\(intB) SPM",
+            delta: diffFormatted,
+            deltaNumeric: Double(diff),
+            percentageChange: pctStr,
+            summary: summary
+        )
+    }
+
+    public static func calculatePercentageChange(valA: Double, valB: Double, rawA: String, rawB: String) -> WorkoutMathResult {
+        guard valB != 0 else {
+            return WorkoutMathResult(
+                operation: "percentage_change",
+                valueA: rawA,
+                valueB: rawB,
+                delta: "Undefined (division by zero)",
+                deltaNumeric: nil,
+                percentageChange: nil,
+                summary: "Cannot compute percentage change when baseline (Value B) is zero."
+            )
+        }
+
+        let diff = valA - valB
+        let pct = (diff / abs(valB)) * 100.0
+        let pctStr = pct >= 0 ? "+\(String(format: "%.1f", pct))%" : "\(String(format: "%.1f", pct))%"
+        let diffStr = diff >= 0 ? "+\(formatDouble(diff))" : "\(formatDouble(diff))"
+
+        return WorkoutMathResult(
+            operation: "percentage_change",
+            valueA: rawA,
+            valueB: rawB,
+            delta: diffStr,
+            deltaNumeric: diff,
+            percentageChange: pctStr,
+            summary: "Value A is \(pctStr) relative to baseline Value B (delta of \(diffStr))."
+        )
+    }
+
+    // MARK: - Parsing Helpers
+
+    public static func parsePaceSeconds(from string: String) -> Double? {
+        let clean = string.lowercased()
+            .replacingOccurrences(of: "/km", with: "")
+            .replacingOccurrences(of: "/mi", with: "")
+            .replacingOccurrences(of: "min/km", with: "")
+            .replacingOccurrences(of: "min/mi", with: "")
+            .replacingOccurrences(of: "s/km", with: "")
+            .replacingOccurrences(of: "sec", with: "")
+            .replacingOccurrences(of: "s", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Check if formatted as "M:SS" or "MM:SS"
+        if clean.contains(":") {
+            let parts = clean.split(separator: ":")
+            if parts.count == 2,
+               let mins = Double(parts[0].trimmingCharacters(in: .whitespaces)),
+               let secs = Double(parts[1].trimmingCharacters(in: .whitespaces)) {
+                return mins * 60.0 + secs
+            }
+        }
+
+        // Check if raw seconds (e.g. "362" or "374")
+        if let totalSec = Double(clean), totalSec >= 120 && totalSec <= 1200 {
+            return totalSec
+        }
+
+        return nil
+    }
+
+    public static func parseNumericValue(from string: String) -> Double? {
+        let clean = string.lowercased()
+            .replacingOccurrences(of: "km", with: "")
+            .replacingOccurrences(of: "mi", with: "")
+            .replacingOccurrences(of: "bpm", with: "")
+            .replacingOccurrences(of: "spm", with: "")
+            .replacingOccurrences(of: "min", with: "")
+            .replacingOccurrences(of: "sec", with: "")
+            .replacingOccurrences(of: "m", with: "")
+            .replacingOccurrences(of: ",", with: ".")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return Double(clean)
+    }
+
+    public static func formatPace(seconds: Double) -> String {
+        let total = Int(seconds.rounded())
+        let mins = total / 60
+        let secs = total % 60
+        return String(format: "%d:%02d/km", mins, secs)
+    }
+
+    private static func isPaceString(_ string: String) -> Bool {
+        let lower = string.lowercased()
+        return lower.contains(":") || lower.contains("/km") || lower.contains("/mi")
+    }
+
+    private static func formatDouble(_ val: Double) -> String {
+        if val.truncatingRemainder(dividingBy: 1) == 0 {
+            return "\(Int(val))"
+        }
+        return String(format: "%.2f", val)
+    }
+
+    private static func fallbackErrorResult(operation: String, valueA: String, valueB: String) -> WorkoutMathResult {
+        return WorkoutMathResult(
+            operation: operation,
+            valueA: valueA,
+            valueB: valueB,
+            delta: "Invalid input",
+            deltaNumeric: nil,
+            percentageChange: nil,
+            summary: "Could not parse values '\(valueA)' and '\(valueB)' into valid numeric telemetry for operation '\(operation)'."
         )
     }
 }

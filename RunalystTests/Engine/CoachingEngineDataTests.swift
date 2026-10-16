@@ -7,6 +7,11 @@ import FoundationModels
 
 @MainActor
 final class CoachingEngineDataTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        UserDefaults.standard.set(true, forKey: "useMetricSystem")
+    }
+
     func testRunDataForAIInitialization() {
         let runData = RunDataForAI(
             workoutType: "Tempo Run",
@@ -269,11 +274,11 @@ final class CoachingEngineDataTests: XCTestCase {
         XCTAssertEqual(rep2.repIndex, 2)
         XCTAssertEqual(rep2.recoveryHeartRateDrop, 28) // 176 - 148 = 28 BPM drop
 
-        let report = ctx.formatPerformanceReport()
-        XCTAssertTrue(report.contains("Here is the breakdown of your intervals:"))
-        XCTAssertTrue(report.contains("Rep 1"))
-        XCTAssertTrue(report.contains("Recovery 1"))
-        XCTAssertTrue(report.contains("HR dropped -27 BPM"))
+        let toolResponse = ctx.buildUnifiedWorkoutToolResponse()
+        XCTAssertEqual(toolResponse.workout_type, "Intervals")
+        XCTAssertEqual(toolResponse.reps?.count, 2)
+        XCTAssertEqual(toolResponse.reps?[0].rep_number, 1)
+        XCTAssertEqual(toolResponse.reps?[0].recovery_hr_drop_bpm, -27)
     }
 
     func testAerobicBaseSplitEvaluationRubric() {
@@ -335,9 +340,9 @@ final class CoachingEngineDataTests: XCTestCase {
         XCTAssertEqual(ctx.evaluationModality, WorkoutEvaluationModality.aerobicBase)
         XCTAssertEqual(ctx.splitEvaluations.count, 3)
 
-        let report = ctx.formatPerformanceReport()
-        XCTAssertTrue(report.contains("Here is the breakdown of your Zone 2 aerobic splits:"))
-        XCTAssertTrue(report.contains("disciplined aerobic rhythm"))
+        let toolResponse = ctx.buildUnifiedWorkoutToolResponse()
+        XCTAssertEqual(toolResponse.steady_state_scorecard?.session_grade, ctx.overallGradeReport.grade)
+        XCTAssertEqual(toolResponse.splits?.count, 3)
     }
 
     func testUnprescribedTenIntervalSetsGradingAndNoTruncation() {
@@ -413,17 +418,12 @@ final class CoachingEngineDataTests: XCTestCase {
             XCTAssertFalse(rep.observation.isEmpty)
         }
 
-        // Verify formatting includes all 10 reps (no cutoff at 8)
-        let report = ctx.formatPerformanceReport()
-        XCTAssertTrue(report.contains("Rep 1 "))
-        XCTAssertTrue(report.contains("Rep 9 "))
-        XCTAssertTrue(report.contains("Rep 10 "))
-        XCTAssertTrue(report.contains("Recovery 10"))
-
-        let promptSummary = ctx.groundedPromptSummary(turnContext: nil)
-        XCTAssertTrue(promptSummary.contains("Rep 1 "))
-        XCTAssertTrue(promptSummary.contains("Rep 9 "))
-        XCTAssertTrue(promptSummary.contains("Rep 10 "))
+        // Verify unified tool response includes all 10 reps (no cutoff)
+        let toolResponse = ctx.buildUnifiedWorkoutToolResponse()
+        XCTAssertEqual(toolResponse.reps?.count, 10)
+        XCTAssertEqual(toolResponse.reps?[0].rep_number, 1)
+        XCTAssertEqual(toolResponse.reps?[8].rep_number, 9)
+        XCTAssertEqual(toolResponse.reps?[9].rep_number, 10)
     }
 
     func testHistoricalRunMatcherAndComparison() throws {
@@ -549,19 +549,5 @@ final class CoachingEngineDataTests: XCTestCase {
 
         let worstMatch = try XCTUnwrap(HistoricalRunMatcher.findRun(matching: "compare to my worst performance", relativeTo: currentRun, in: context))
         XCTAssertEqual(worstMatch.id, sep14Run.id)
-
-        // 7. Test AnalystFallbackResponder 30-day best/worst performance intent
-        let chatEngine = AnalystChatEngine(runRecord: currentRun)
-        let analysis = chatEngine.makeAnalysisContext()
-
-        let fallbackArcResponse = AnalystFallbackResponder.generateResponse(
-            for: "In the past 30 days, which run was my best performance? Which was my worst performance?",
-            analysis: analysis,
-            runRecord: currentRun
-        )
-        XCTAssertTrue(fallbackArcResponse.contains("best performance"))
-        XCTAssertTrue(fallbackArcResponse.contains("toughest session"))
-        XCTAssertTrue(fallbackArcResponse.contains("156 SPM"))
-        XCTAssertFalse(fallbackArcResponse.contains("/km cadence"), "Fallback must never write /km cadence")
     }
 }
