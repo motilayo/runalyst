@@ -459,7 +459,7 @@ public struct ExecuteCoachActionTool: Tool {
     public typealias Output = String
 
     public let name = "executeCoachAction"
-    public let description = "Executes coaching actions: 'display_drill' to render an interactive workout or drill card in chat; 'update_goal' to update the runner's goal; 'record_feedback' to save subjective runner feedback."
+    public let description = "Executes coaching actions: 'display_drill' to render an interactive workout or drill card in chat (call only when the runner asks for a workout or drill recommendation); 'update_goal' to update the runner's goal; 'record_feedback' to save subjective runner feedback."
 
     let provider: @MainActor @Sendable (ExecuteCoachActionQuery) async -> String
 
