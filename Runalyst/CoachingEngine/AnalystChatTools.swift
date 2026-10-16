@@ -394,10 +394,10 @@ public struct ManageTrainingStateQuery: Sendable {
 @available(iOS 26.0, *)
 @Generable
 public struct ExecuteCoachActionQuery: Sendable {
-    @Guide(description: "Action: 'display_drill' to present an interactive workout or drill card in chat; 'update_goal' to adjust training goal; 'record_feedback' to save runner's subjective feedback or exertion.")
+    @Guide(description: "Action: 'update_goal' to adjust training goal or when runner asks for race training plans/schedules (e.g. Marathon, Half Marathon, 10K, 5K); 'display_drill' to present an interactive workout card ONLY for immediate runs/drills to perform now (never for race schedules); 'record_feedback' to save subjective feedback.")
     public var action: CoachActionType
 
-    @Guide(description: "Payload: workout or drill name (e.g. 'zone_1_recovery_flush', 'cadence_pyramids', 'zone_2_run', 'strides') for 'display_drill'; goal title for 'update_goal'; subjective notes or exertion for 'record_feedback'.")
+    @Guide(description: "Payload: race goal (e.g. 'Marathon', 'Half Marathon', '10K', '5K', 'Base Building') for 'update_goal'; workout or drill name (e.g. 'zone_1_recovery_flush', 'cadence_pyramids', 'zone_2_run', 'strides') for 'display_drill'; subjective notes for 'record_feedback'.")
     public var payload: String?
 
     public init(action: CoachActionType, payload: String? = nil) {
@@ -459,7 +459,7 @@ public struct ExecuteCoachActionTool: Tool {
     public typealias Output = String
 
     public let name = "executeCoachAction"
-    public let description = "Executes coaching actions: 'display_drill' to render an interactive workout or drill card in chat (call only when the runner asks for a workout or drill recommendation); 'update_goal' to update the runner's goal; 'record_feedback' to save subjective runner feedback."
+    public let description = "Executes coaching actions: 'update_goal' to update runner's goal or when asked for race training plans/schedules (e.g. Marathon, Half Marathon); 'display_drill' to show an interactive workout card ONLY when runner asks for an immediate workout or drill to run now (never for multi-month race plans); 'record_feedback' to save subjective notes."
 
     let provider: @MainActor @Sendable (ExecuteCoachActionQuery) async -> String
 

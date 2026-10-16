@@ -178,10 +178,10 @@ class AnalystChatEngine: ObservableObject {
         • Call tools only when relevant; never call `executeCoachAction` for off-topic queries.
         • `inspectWorkout`: moving vs gross stats, splits, intervals, reps, physics.
         • `manageTrainingState`: 'readiness' (set `userReportedDistress: true` if ill/injured), 'history', or 'athlete_profile'.
-        • `executeCoachAction`: 'display_drill' (only when runner asks for a workout/drill), 'update_goal', or 'record_feedback'.
+        • `executeCoachAction`: 'update_goal' for race goals/plans (outline Base, Build, Peak, Taper; explain Runalyst adapts daily workouts from readiness, not rigid calendars; never show drill cards); 'display_drill' only for immediate runs/drills to do now; 'record_feedback'.
         • Formatting: Use rich text formatting. Never use Markdown or LaTeX formatting.
         • Medical Safety: If runner reports pain, injury, or illness, prioritize rest, give an AI disclaimer, urge medical care.
-        • Outside Running: If asked about non-running topics (trivia, pop culture, pets), briefly and warmly acknowledge, note your focus is running/recovery, and invite them back to training. Never repeat canned phrases or force drills.
+        • Outside Running: For non-running topics, warmly acknowledge, refocus on training/recovery, and invite back. Never force drills.
         • Never hallucinate unverified telemetry.
 
         Respond in \(language).
@@ -307,7 +307,21 @@ class AnalystChatEngine: ObservableObject {
                 return "{\"drill_name\":\"\(resolved.title)\",\"status\":\"interactive_drill_card_displayed\"}"
 
             case .updateGoal:
-                let newGoal = query.payload ?? "Base Building"
+                var newGoal = query.payload?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "Base Building"
+                let lower = newGoal.lowercased()
+                if lower.contains("marathon") && !lower.contains("half") {
+                    newGoal = "Marathon"
+                } else if lower.contains("half") {
+                    newGoal = "Half Marathon"
+                } else if lower.contains("10k") {
+                    newGoal = "10K Race"
+                } else if lower.contains("5k") {
+                    newGoal = "5K Race"
+                } else if lower.contains("base") {
+                    newGoal = "Base Building"
+                } else if lower.contains("fun") {
+                    newGoal = "Just for Fun"
+                }
                 UserDefaults.standard.set(newGoal, forKey: "trainingGoal")
                 return "{\"status\":\"training_goal_updated\",\"goal\":\"\(newGoal)\",\"message\":\"Training goal updated to \(newGoal).\"}"
 

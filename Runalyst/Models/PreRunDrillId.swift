@@ -154,10 +154,10 @@ enum PreRunDrillId: String, CaseIterable, Codable, Sendable {
     public var defaultDuration: DrillDuration {
         switch self {
         case .zone2Run:
-            return .fiveMinutes
-        case .strides, .recoveryJog:
+            return .thirtyMinutes
+        case .strides, .recoveryJog, .aerobicFlush:
             return .fifteenMinutes
-        case .tempoSurges, .cadencePyramids, .rhythmIntervals, .neuromuscularPrimer, .hillBounds, .aerobicFlush, .fartlekPrimer:
+        case .tempoSurges, .cadencePyramids, .rhythmIntervals, .neuromuscularPrimer, .hillBounds, .fartlekPrimer:
             return .tenMinutes
         }
     }

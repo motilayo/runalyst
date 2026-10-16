@@ -1673,4 +1673,53 @@ final class IndoorIntelligenceTests: XCTestCase {
         }
         #endif
     }
+
+    @MainActor
+    func testMarathonGoalRequestUpdatesGoalWithoutDisplayingDrillCardAndDurationIsRealistic() async throws {
+        // 1. Verify Zone 2 Run has a realistic aerobic duration (30 min, not 5 min)
+        XCTAssertEqual(PreRunDrillId.zone2Run.defaultDuration, .thirtyMinutes, "Zone 2 aerobic run must default to 30 minutes, not 5 minutes")
+        XCTAssertEqual(PreRunDrillId.aerobicFlush.defaultDuration, .fifteenMinutes, "Aerobic flush must default to 15 minutes")
+
+        #if canImport(FoundationModels)
+        if #available(iOS 26.0, *) {
+            let run = makeTestRunRecord(isIndoor: false)
+            let chatEngine = AnalystChatEngine(runRecord: run)
+
+            // 2. Verify lean prompt rules and character limit
+            let instructions = chatEngine.buildLeanSystemInstructions()
+            XCTAssertTrue(instructions.contains("update_goal"), "Prompt must declare update_goal rule")
+            XCTAssertTrue(instructions.contains("display_drill"), "Prompt must declare display_drill rule")
+            XCTAssertTrue(instructions.count < 1200, "System instructions must stay strictly under 1,200 chars (was \(instructions.count))")
+
+            // 3. Simulate runner asking for a 6-month marathon schedule
+            chatEngine.modelResponder = { (_: String, userQuestion: String) async throws -> String in
+                XCTAssertTrue(userQuestion.contains("marathon"))
+                // Execute the update_goal action with marathon payload
+                let query = ExecuteCoachActionQuery(action: .updateGoal, payload: "prepare me for a marathon in 6 months")
+                let tool = ExecuteCoachActionTool { q in
+                    var newGoal = q.payload?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "Base Building"
+                    let lower = newGoal.lowercased()
+                    if lower.contains("marathon") && !lower.contains("half") {
+                        newGoal = "Marathon"
+                    }
+                    UserDefaults.standard.set(newGoal, forKey: "trainingGoal")
+                    return "{\"status\":\"training_goal_updated\",\"goal\":\"\(newGoal)\"}"
+                }
+                _ = try await tool.call(arguments: query)
+                return "I've locked your goal to **Marathon**! A 6-month marathon preparation is structured across four key periodization phases: Base Building, Aerobic Threshold, Peak Volume, and Taper."
+            }
+
+            await chatEngine.sendMessage("I want a tailored training schedule to prepare me for a marathon in 6 months")
+
+            // Goal must be updated to Marathon
+            XCTAssertEqual(UserDefaults.standard.string(forKey: "trainingGoal"), "Marathon")
+
+            // Must NOT have attached a drill card
+            let lastMessage = chatEngine.messages.last
+            XCTAssertNotNil(lastMessage)
+            XCTAssertNil(lastMessage?.attachedDrillId, "Race schedule query must not attach an immediate micro drill card")
+            XCTAssertTrue(lastMessage?.text.contains("Marathon") == true)
+        }
+        #endif
+    }
 }
