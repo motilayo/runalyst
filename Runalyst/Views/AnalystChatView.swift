@@ -108,7 +108,7 @@ struct AnalystChatView: View {
 
                 // Bottom Thumb-Zone: Quick Chips + Text Input Bar
                 VStack(spacing: 8) {
-                    if !engine.isResponding {
+                    if !engine.isResponding && !isInputFocused && inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         if engine.messages.count <= 1 {
                             quickPromptChips
                                 .transition(.opacity.combined(with: .move(edge: .bottom)))
@@ -366,7 +366,8 @@ struct AnalystChatView: View {
                     submitQuestion()
                 }
                 if runRecord.evaluationModality == .intervals {
-                    chipButton("Break Down Intervals", icon: "repeat", iconColor: Color(red: 0.0, green: 0.55, blue: 1.0)) {
+                    let intervalTitle = runRecord.detectedTypeRaw == "Fartlek" ? "Break Down Fartlek" : "Break Down Intervals"
+                    chipButton(intervalTitle, icon: "repeat", iconColor: Color(red: 0.0, green: 0.55, blue: 1.0)) {
                         inputText = "Grade my performance in each interval of this run"
                         submitQuestion()
                     }
@@ -389,7 +390,7 @@ struct AnalystChatView: View {
             .joined(separator: " ")
 
         let isInterval = runRecord.evaluationModality == .intervals
-        let splitChipTitle = isInterval ? "Break Down Intervals" : "Break Down Splits"
+        let splitChipTitle = isInterval ? (runRecord.detectedTypeRaw == "Fartlek" ? "Break Down Fartlek" : "Break Down Intervals") : "Break Down Splits"
         let splitChipPrompt = isInterval ? "Grade my performance in each interval of this run" : "Grade my performance in each split of this run"
         let splitChipIcon = isInterval ? "waveform.path.ecg" : "chart.bar.xaxis"
 

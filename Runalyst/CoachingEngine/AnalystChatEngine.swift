@@ -82,22 +82,22 @@ class AnalystChatEngine: ObservableObject {
     private func setupInitialGreeting() {
         let isIndoor = runRecord.isIndoor ?? false
         let envNote = isIndoor ? "treadmill" : "outdoor"
-        let isIntervals = runRecord.evaluationModality == .intervals && runRecord.detectedTypeRaw == "Intervals"
         let context = makeAnalysisContext()
         let grade = context.overallGradeReport.grade
+        let isIntervalModality = (runRecord.evaluationModality == .intervals || !context.workSegments.isEmpty) && !context.workSegments.isEmpty
+        let runType = runRecord.detectedTypeRaw.isEmpty ? "run" : runRecord.detectedTypeRaw.lowercased()
 
         let initialGreeting: String
-        if isIntervals && !context.workSegments.isEmpty {
+        if isIntervalModality {
             let workSegments = context.workSegments
             let meanWorkPace = workSegments.reduce(0.0) { $0 + $1.avgPace } / Double(workSegments.count)
             let workPace = PaceFormatter.formatPace(secondsPerKilometer: meanWorkPace)
             let repCount = workSegments.count
             let cad = Int((workSegments.reduce(0.0) { $0 + $1.avgCadence } / Double(workSegments.count)).rounded())
-            initialGreeting = "I took a look at your Grade \(grade) \(envNote) intervals (\(repCount) reps @ \(workPace)). Want to dig into your \(cad) SPM turnover, pacing spread, or recovery?"
+            initialGreeting = "I took a look at your Grade \(grade) \(envNote) \(runType) (\(repCount) reps @ \(workPace)). Want to dig into your \(cad) SPM turnover, pacing spread, or recovery?"
         } else {
             let pace = PaceFormatter.formatPace(secondsPerKilometer: runRecord.workingAvgPace)
             let cad = Int(runRecord.workingAvgCadence.rounded())
-            let runType = runRecord.detectedTypeRaw.isEmpty ? "run" : runRecord.detectedTypeRaw.lowercased()
             initialGreeting = "I took a look at your Grade \(grade) \(envNote) \(runType) (@ \(pace)). Want to dig into your \(cad) SPM turnover, pacing trend, or recovery?"
         }
         messages.append(AnalystChatMessage(sender: .analyst, text: initialGreeting))
@@ -256,6 +256,10 @@ class AnalystChatEngine: ObservableObject {
         • Proactive Workout Prescriptions: When the runner asks to adjust, modify, or 'dial up' a session, immediately provide the calibrated prescription in one turn via `fetchReadinessAndPrescription`. Weave safety or pain checks as conditional caveats rather than asking multiple rounds of blocking questions.
         • Progression Delivery without Stalling: Do not end responses with redundant meta-offers (e.g., 'Would you like me to outline a sample progression plan?') when you have already provided or outlined the progression. Deliver the actionable details directly.
         • Explaining Interval Grading: When asked to explain interval grading or evaluation, explain the core criteria: Pace Repeatability (spread ≤ 8 s/km between work reps), Cadence Stability (holding turnover above height floor without late drop-offs), Cardiac Drift (< 8 BPM across reps), and recovery HR drop between intervals.
+        • Recovery & Tomorrow's Prescription: When prescribing an active recovery flush (Zone 1), NEVER tell the runner 'You should not run tomorrow' or 'Do not run tomorrow'. Instead state: 'You are cleared for light active recovery movement tomorrow, but keep it strictly low-intensity' and cite the prescribed duration, pace, and cadence. Never contradict yourself by prohibiting running while prescribing a recovery session.
+        • Modality Accuracy & Memory: If reviewing a Fartlek, Intervals, Pyramids, or Hill Repeats session, NEVER describe it as an 'easy run' or claim it 'crept into threshold intensity'. If the runner asks why 'easy run' was mentioned, clarify that this was a high-intensity session with active work reps, and that easy running applies only to upcoming recovery flushes.
+        • Cadence Precision: When discussing interval or fartlek workouts, explicitly distinguish active work turnover (during fast reps) from whole-session average cadence.
+        • Cardiac Drift Phrasing: Cardiac drift represents upward heart rate rise across the second half of the workout, not the total workout duration.
         • Health, Wellbeing & Safety (Athlete Safety Override): If the runner reports joint or knee pain, soreness, or injury, clarify you are an AI interpreter and not a doctor or physical therapist, advise medical care, and analyze their telemetry (cadence, pace, vertical oscillation) to see if overstriding or braking impact is a factor. If they want to run, recommend an appropriate form drill next (e.g. Cadence Pyramids or Strides).
         • All other inquiries not related to running or health and wellbeing should be handled with care and caution.
 
@@ -346,7 +350,7 @@ class AnalystChatEngine: ObservableObject {
                 : (isDistress ? "Subjective fatigue/distress reported. Mandatory recovery prescribed." : "In active recovery until \(analysis.recoveryTimeline.earliestHardPhrase).")
             let directive = isReady
                 ? "Runner is cleared for training. Prescribe \(rx.nextSessionName) directly (\(rx.prescribedDurationBand) at \(rx.prescribedPaceBand)). Focus strictly on upcoming training. Do NOT quote past workout heart rates, paces, or interval drops."
-                : "Runner is in an active recovery window. Advise avoiding hard, high-intensity workouts. Prescribe \(rx.nextSessionName) (\(rx.prescribedDurationBand) at \(rx.prescribedPaceBand)) as gentle, conversational recovery movement (light jog or walk). Do NOT say 'avoid running' while prescribing a running session."
+                : "Runner is cleared for light active recovery movement tomorrow. Advise avoiding hard, high-intensity workouts. Prescribe \(rx.nextSessionName) (\(rx.prescribedDurationBand) at \(rx.prescribedPaceBand)) as gentle, conversational recovery movement (light jog or walk). Do NOT say 'do not run' or 'avoid running' while prescribing this recovery session."
 
             let response = ReadinessToolResponse(
                 schema_name: "READINESS_AND_PRESCRIPTION_RESPONSE",

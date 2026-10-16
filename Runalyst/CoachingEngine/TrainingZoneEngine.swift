@@ -343,7 +343,7 @@ enum TrainingZoneEngine {
             let mi1S = lowMi % 60
             let mi2M = highMi / 60
             let mi2S = highMi % 60
-            return String(format: "%d:%02d–%d:%02d/km (%d:%02d–%d:%02d/mi)", p1M, p1S, p2M, p2S, mi1M, mi1S, mi2M, mi2S)
+            return String(format: "%d:%02d–%d:%02d/mi", mi1M, mi1S, mi2M, mi2S)
         }
     }
 }

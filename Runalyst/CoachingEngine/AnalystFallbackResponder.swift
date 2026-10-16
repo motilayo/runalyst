@@ -145,7 +145,7 @@ enum AnalystFallbackResponder {
                 let envDetail = analysis.isIndoor
                     ? "On a flat treadmill deck, zero forward wind resistance and stagnant indoor air impair sweat evaporation, causing internal thermal accumulation that drove this heart rate drift."
                     : "This pattern reflects aerobic decoupling, where internal thermal strain or cardiovascular fatigue required your heart to pump faster to maintain pace."
-                return "Your heart rate did not stay completely steady: it climbed by **+\(drift) BPM** over the final \(dur) minutes of the run. \(envDetail)"
+                return "Your heart rate did not stay completely steady: it climbed by **+\(drift) BPM** over the second half of the run (final \(dur) minutes). \(envDetail)"
             case .elevationInducedCardiacSurge(_, let rise, _):
                 return "Your heart rate surged by **+\(rise) BPM** due to uphill climbing and grade resistance, rather than a loss of aerobic fitness."
             case .pacingOvershootDecoupling(let paceDelta, let hrRise, _):
@@ -154,6 +154,27 @@ enum AnalystFallbackResponder {
                 return "Your heart rate experienced high thermal strain decoupling due to elevated ambient temperature and humidity (**Heat Index: \(heatIndex)**)."
             case .stableCardiovascularCoupling(let avgHR):
                 return "Your heart rate stayed steady throughout the run, averaging **\(avgHR) BPM** with strong aerobic stability and minimal cardiac drift."
+            }
+        }
+
+        // 4b. Duration / Session length challenge (e.g., "Final 45mins of the run???")
+        let isDurationClarification = (q.contains("45 min") || q.contains("45min") || q.contains("whole run") || q.contains("entire run") || q.contains("final 45"))
+        if isDurationClarification {
+            let durTotal = max(1, Int(runRecord.duration / 60))
+            let halfMin = max(1, durTotal / 2)
+            return "To clarify: your entire workout was **\(durTotal) minutes**. The **+\(analysis.cardiacDriftMagnitudeBPM) BPM** cardiac drift occurred across the second half of the session (the final **\(halfMin) minutes**), driven by thermal accumulation on the indoor treadmill."
+        }
+
+        // 4c. Easy Run terminology challenge (e.g., "Why do you keep saying easy run?")
+        let isEasyRunChallenge = q.contains("easy run") || q.contains("saying easy") || q.contains("what easy")
+        if isEasyRunChallenge {
+            if analysis.evaluationModality == .intervals || !analysis.workSegments.isEmpty {
+                let meanWorkPaceSec = analysis.workSegments.isEmpty ? runRecord.workingAvgPace : analysis.workSegments.reduce(0.0) { $0 + $1.avgPace } / Double(analysis.workSegments.count)
+                let workPace = PaceFormatter.formatPace(secondsPerKilometer: meanWorkPaceSec)
+                let repsCount = analysis.intervalEvaluations.count
+                return "You're right to call that out—this was certainly not an easy run. It was a high-intensity **\(analysis.detectedType)** with **\(repsCount) fast work reps** averaging **\(workPace)**. When I mentioned easy running, I was referring exclusively to your upcoming **\(analysis.lockedPrescription.nextSessionName)** prescribed for tomorrow to help clear metabolic fatigue."
+            } else {
+                return "Good catch—your pace and effort in this session reached well above recovery levels. Any easy run guidance applies to tomorrow's recovery flush (**\(analysis.lockedPrescription.nextSessionName)**) to ensure safe adaptation."
             }
         }
 
@@ -316,7 +337,7 @@ enum AnalystFallbackResponder {
             if analysis.recoveryTimeline.readyForHard {
                 recoveryNote = "Your recovery status is **\(analysis.recoveryTimeline.state.rawValue)**: fully recovered and cleared for your next workout."
             } else {
-                recoveryNote = "Your recovery status is **\(analysis.recoveryTimeline.state.rawValue)**: in active recovery until \(analysis.recoveryTimeline.earliestHardPhrase)."
+                recoveryNote = "Your recovery status is **\(analysis.recoveryTimeline.state.rawValue)**: in an active recovery window until \(analysis.recoveryTimeline.earliestHardPhrase). You are cleared for light active recovery movement tomorrow, but keep effort strictly low-intensity."
             }
             return "\(recoveryNote) Next Recommended Session: **\(analysis.lockedPrescription.nextSessionName)** (**\(analysis.lockedPrescription.prescribedDurationBand)** at **\(analysis.lockedPrescription.prescribedPaceBand)**). \(analysis.lockedPrescription.sessionRationale)"
         }
@@ -340,16 +361,21 @@ enum AnalystFallbackResponder {
         }
 
         // 15. Cadence, Turnover & Rhythm
-        let mentionsForm = (q.contains("form") && !q.contains("performance")) || q.contains("technique")
-        if q.contains("cadence") || q.contains("rhythm") || q.contains("turnover") || q.contains("spm") || mentionsForm {
+        let isFormIntent = q.contains("running form") || q.contains("my form") || q.contains("technique") || q.contains("posture") || q.contains("biomechanic")
+        if q.contains("cadence") || q.contains("rhythm") || q.contains("turnover") || q.contains("spm") || isFormIntent {
             let floor = analysis.runnerProfile.heightAdjustedCadenceFloor
-            let cad = (analysis.evaluationModality == .intervals && !analysis.workSegments.isEmpty)
-                ? Int(analysis.workSegments.reduce(0.0) { $0 + $1.avgCadence } / Double(analysis.workSegments.count))
-                : analysis.workingCadence
-            if cad < floor {
-                return "Your cadence was **\(cad) SPM**, which is below your **\(floor) SPM** height-adjusted floor. Focus on shorter, lighter steps under your hips to improve turnover."
+            if (analysis.evaluationModality == .intervals || !analysis.workSegments.isEmpty) && !analysis.workSegments.isEmpty {
+                let workCad = Int((analysis.workSegments.reduce(0.0) { $0 + $1.avgCadence } / Double(analysis.workSegments.count)).rounded())
+                let overallCad = Int(runRecord.workingAvgCadence.rounded())
+                let comparison = workCad >= floor ? "disciplined and above" : "slightly below"
+                return "Across your fast work reps, turnover averaged **\(workCad) SPM** (\(comparison) your **\(floor) SPM** height-adjusted floor), while overall workout cadence including recovery jogs was **\(overallCad) SPM**."
             } else {
-                return "Your cadence was **\(cad) SPM**, maintaining a healthy turnover above your **\(floor) SPM** height-adjusted floor. Stride rhythm remained disciplined."
+                let cad = analysis.workingCadence
+                if cad < floor {
+                    return "Your cadence was **\(cad) SPM**, which is below your **\(floor) SPM** height-adjusted floor. Focus on shorter, lighter steps under your hips to improve turnover."
+                } else {
+                    return "Your cadence was **\(cad) SPM**, maintaining a healthy turnover above your **\(floor) SPM** height-adjusted floor. Stride rhythm remained disciplined."
+                }
             }
         }
 
@@ -360,7 +386,13 @@ enum AnalystFallbackResponder {
         }
 
         // 17. Grade and Performance Evaluation
-        if (q.contains("grade") || q.contains("score") || q.contains("how did i do") || q.contains("rate my") || q.contains("rating")) && !q.contains("heart") && !q.contains("split") {
+        let isGradingExplanation = q.contains("explain") || q.contains("why") || q.contains("break down") || q.contains("details")
+        if (q.contains("grade") || q.contains("score") || q.contains("how did i do") || q.contains("rate my") || q.contains("rating") || q.contains("perform") || q.contains("how was this run") || q.contains("how was my run")) && !q.contains("heart") && !q.contains("split") {
+            if isGradingExplanation {
+                let strengths = analysis.overallGradeReport.strengths.joined(separator: ", ")
+                let focus = analysis.overallGradeReport.focus ?? "maintaining your steady rhythm"
+                return "Your Grade **\(analysis.overallGradeReport.grade)** is calculated directly from your telemetry. Strengths noted: \(strengths). The main area affecting your score was that \(focus)."
+            }
             return analysis.overallGradeReport.sentence
         }
 

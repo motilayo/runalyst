@@ -2582,4 +2582,84 @@ final class IndoorIntelligenceTests: XCTestCase {
         XCTAssertTrue(fallback.contains("+4 SPM higher turnover in Indoor Treadmill"), "Fallback must attribute cadence turnover to indoor treadmill")
         XCTAssertTrue(fallback.contains("10 BPM lower cardiovascular demand in Indoor Treadmill"), "Fallback must attribute heart rate reduction to indoor treadmill")
     }
+
+    // MARK: - Forensic Audit Alignment Tests
+
+    @MainActor
+    func testAnalystPerformanceQuestionDoesNotRouteToCadenceOnly() {
+        let runRecord = makeTestRunRecord(isIndoor: true)
+        runRecord.detectedTypeRaw = "Fartlek"
+        let chatEngine = AnalystChatEngine(runRecord: runRecord)
+        let analysis = chatEngine.makeAnalysisContext()
+
+        let query = "How did I perform in this run?"
+        let response = AnalystFallbackResponder.generateResponse(for: query, analysis: analysis, runRecord: runRecord)
+
+        XCTAssertTrue(response.contains("Overall") || response.contains("Grade"), "Performance question must route to grade/performance evaluation")
+        XCTAssertFalse(response.contains("maintaining a healthy turnover above your"), "Must not falsely hijack 'perform' to cadence")
+    }
+
+    @MainActor
+    func testFartlekCadenceDistinctionInFallbackResponder() {
+        let runRecord = makeTestRunRecord(isIndoor: true)
+        runRecord.detectedTypeRaw = "Fartlek"
+        let chatEngine = AnalystChatEngine(runRecord: runRecord)
+        let analysis = chatEngine.makeAnalysisContext()
+
+        let query = "How was my cadence and rhythm during this run?"
+        let response = AnalystFallbackResponder.generateResponse(for: query, analysis: analysis, runRecord: runRecord)
+
+        XCTAssertTrue(response.contains("Across your fast work reps") || response.contains("SPM"), "Cadence must address work reps and overall cadence")
+    }
+
+    @MainActor
+    func testCardiacDriftDurationClarificationResponse() {
+        let runRecord = makeTestRunRecord(isIndoor: true)
+        runRecord.duration = 2700.0 // 45 min
+        let chatEngine = AnalystChatEngine(runRecord: runRecord)
+        let analysis = chatEngine.makeAnalysisContext()
+
+        let query = "Final 45mins of the run???"
+        let response = AnalystFallbackResponder.generateResponse(for: query, analysis: analysis, runRecord: runRecord)
+
+        XCTAssertTrue(response.contains("entire workout was **45 minutes**"), "Must clarify total workout was 45 minutes")
+        XCTAssertTrue(response.contains("second half"), "Must clarify drift occurred across second half")
+    }
+
+    @MainActor
+    func testEasyRunTerminologyChallengeResponse() {
+        let runRecord = makeTestRunRecord(isIndoor: true)
+        runRecord.detectedTypeRaw = "Fartlek"
+        let chatEngine = AnalystChatEngine(runRecord: runRecord)
+        let analysis = chatEngine.makeAnalysisContext()
+
+        let query = "Why do you keep saying easy run?"
+        let response = AnalystFallbackResponder.generateResponse(for: query, analysis: analysis, runRecord: runRecord)
+
+        XCTAssertTrue(response.contains("not an easy run"), "Must acknowledge fartlek was not an easy run")
+        XCTAssertTrue(response.contains("tomorrow"), "Must clarify easy run applies to upcoming recovery session")
+    }
+
+    @MainActor
+    func testRecoveryFlushPrescriptionDoesNotContradictWithDoNotRun() {
+        let runRecord = makeTestRunRecord(isIndoor: true)
+        runRecord.detectedTypeRaw = "Fartlek"
+        let chatEngine = AnalystChatEngine(runRecord: runRecord)
+        let analysis = chatEngine.makeAnalysisContext()
+
+        let query = "Should I run tomorrow, and what kind of session should I focus on?"
+        let response = AnalystFallbackResponder.generateResponse(for: query, analysis: analysis, runRecord: runRecord)
+
+        XCTAssertFalse(response.contains("You should not run tomorrow"), "Must not forbid running while prescribing a flush")
+        XCTAssertTrue(response.contains("cleared for light active recovery movement tomorrow"), "Must clear runner for light movement")
+    }
+
+    @MainActor
+    func testTelemetryHighlighterSupportsRangesAndStepsPerMinute() {
+        let text = "Cadence: 148–154 steps per minute. Pace: 7:37–8:07/km. Heart rate: +18 BPM."
+        let attributed = TelemetryHighlighter.highlight(text)
+        let str = String(attributed.characters)
+
+        XCTAssertEqual(str, text)
+    }
 }

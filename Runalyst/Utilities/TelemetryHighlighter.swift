@@ -17,10 +17,10 @@ enum TelemetryHighlighter {
         let cadGreen = Color(red: 0.18, green: 0.82, blue: 0.35)   // Vibrant Green for Cadence
 
         let typedPatterns: [(pattern: String, color: Color)] = [
-            (#"\b\d{2,3}\s?(?:SPM|spm)\b"#, cadGreen),
-            (#"\b\d{2,3}\s?(?:BPM|bpm)\b"#, hrPink),
-            (#"\b\d{1,2}:\d{2}(?:\s?(?:/km|/mi|min/km|min/mi))?\b"#, paceBlue),
-            (#"\b\d{1,2}(?:s|sec)\s*/\s*(?:km|mi)\b"#, paceBlue),
+            (#"\b\d{2,3}(?:\s*[-–—]\s*\d{2,3})?\s?(?:SPM|spm|steps per minute|steps/min)\b"#, cadGreen),
+            (#"(?:[+-]?\b\d{2,3}(?:\s*[-–—]\s*\d{2,3})?\s?(?:BPM|bpm)\b)"#, hrPink),
+            (#"\b\d{1,2}:\d{2}(?:\s*[-–—]\s*\d{1,2}:\d{2})?(?:\s?(?:/km|/mi|min/km|min/mi))?\b"#, paceBlue),
+            (#"[+-]?\b\d{1,2}(?:s|sec)\s*/\s*(?:km|mi)\b"#, paceBlue),
             (#"\b\d+(?:\.\d+)?\s?(?:cm|m|km|mi|ms|%)\b"#, accentColor)
         ]
 
