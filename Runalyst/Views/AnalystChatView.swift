@@ -197,7 +197,7 @@ struct AnalystChatView: View {
                         HStack(spacing: 4) {
                             Image(systemName: "figure.run.circle")
                                 .font(.system(size: 16, weight: .semibold))
-                            Text("Drills")
+                            Text("Runs & Drills")
                                 .font(.subheadline.weight(.semibold))
                         }
                         .foregroundColor(.primary)
@@ -505,8 +505,10 @@ struct AnalystChatView: View {
         let target = matchingRec?.targetCadence?.replacingOccurrences(of: " SPM", with: "") ?? template.calculateTargetCadence(baseline)
         let cue = matchingRec?.drillCues ?? template.generateInstructionalCue(target)
 
+        let resolvedTitle = drillId == .aerobicFlush ? "Zone 1 Recovery Flush" : (matchingRec?.formattedTitle ?? drillId.title)
+
         let dto = DrillPrescriptionDTO(
-            title: drillId.title,
+            title: resolvedTitle,
             preRunDrillId: drillId.rawValue,
             purpose: matchingRec?.drillPurpose ?? template.defaultPurpose,
             targetCadence: target,
@@ -568,8 +570,35 @@ struct InlineChatDrillCard: View {
     }
 
     private var displayTitle: String {
+        if drillId == .aerobicFlush {
+            return "Zone 1 Recovery Flush"
+        }
         let title = matchingDrillRec?.formattedTitle ?? ""
         return title.isEmpty ? drillId.title : title
+    }
+
+    private var drillCategorySubtitle: String {
+        if drillId.isAerobicContinuous {
+            return "\(drillId.defaultDuration.title) • \(drillId.correspondingClassification)"
+        } else {
+            return "\(drillId.defaultDuration.title) • Form & Biomechanics"
+        }
+    }
+
+    private var targetBadgeIcon: String {
+        drillId.isHeartRateTargeted ? "heart.fill" : "target"
+    }
+
+    private var targetBadgeText: String {
+        if drillId.isHeartRateTargeted {
+            return drillId.targetHeartRateZoneName ?? "Zone 1 HR"
+        } else {
+            return targetCadenceDisplay.contains("SPM") ? targetCadenceDisplay : "\(targetCadenceDisplay) SPM"
+        }
+    }
+
+    private var targetBadgeColor: Color {
+        drillId.isHeartRateTargeted ? Color(red: 1.0, green: 0.18, blue: 0.55) : Color(red: 0.18, green: 0.82, blue: 0.35)
     }
 
     private var displayCue: String? {
@@ -598,7 +627,7 @@ struct InlineChatDrillCard: View {
                     Text(displayTitle)
                         .font(.headline)
                         .foregroundColor(.primary)
-                    Text("\(drillId.defaultDuration.title) • Form & Biomechanics")
+                    Text(drillCategorySubtitle)
                         .font(.caption2.weight(.medium))
                         .foregroundColor(.secondary)
                 }
@@ -606,15 +635,15 @@ struct InlineChatDrillCard: View {
                 Spacer()
 
                 HStack(spacing: 4) {
-                    Image(systemName: "target")
+                    Image(systemName: targetBadgeIcon)
                         .font(.caption2.bold())
-                    Text(targetCadenceDisplay.contains("SPM") ? targetCadenceDisplay : "\(targetCadenceDisplay) SPM")
+                    Text(targetBadgeText)
                         .font(.caption2.bold().monospacedDigit())
                 }
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
-                .background(Color(red: 0.18, green: 0.82, blue: 0.35).opacity(0.15))
-                .foregroundColor(Color(red: 0.18, green: 0.82, blue: 0.35))
+                .background(targetBadgeColor.opacity(0.15))
+                .foregroundColor(targetBadgeColor)
                 .clipShape(Capsule())
             }
 

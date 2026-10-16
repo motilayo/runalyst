@@ -312,7 +312,7 @@ struct DrillsLibraryView: View {
             }
         }
         .background(Color(UIColor.systemGroupedBackground).ignoresSafeArea())
-        .navigationTitle("🏃 Pre-Run Library")
+        .navigationTitle("🏃 Runs & Drills")
         .navigationBarTitleDisplayMode(.inline)
         .task {
             if isExportStale {

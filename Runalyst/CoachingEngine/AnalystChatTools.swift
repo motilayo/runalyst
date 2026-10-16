@@ -394,10 +394,10 @@ public struct ManageTrainingStateQuery: Sendable {
 @available(iOS 26.0, *)
 @Generable
 public struct ExecuteCoachActionQuery: Sendable {
-    @Guide(description: "Action: 'display_drill' to present an interactive drill card in chat; 'update_goal' to adjust training goal; 'record_feedback' to save runner's subjective feedback or exertion.")
+    @Guide(description: "Action: 'display_drill' to present an interactive workout or drill card in chat; 'update_goal' to adjust training goal; 'record_feedback' to save runner's subjective feedback or exertion.")
     public var action: CoachActionType
 
-    @Guide(description: "Payload: drill name (e.g. 'cadence_pyramids', 'strides', 'rhythm_intervals') for 'display_drill'; goal title for 'update_goal'; subjective notes or exertion for 'record_feedback'.")
+    @Guide(description: "Payload: workout or drill name (e.g. 'zone_1_recovery_flush', 'cadence_pyramids', 'zone_2_run', 'strides') for 'display_drill'; goal title for 'update_goal'; subjective notes or exertion for 'record_feedback'.")
     public var payload: String?
 
     public init(action: CoachActionType, payload: String? = nil) {
@@ -459,7 +459,7 @@ public struct ExecuteCoachActionTool: Tool {
     public typealias Output = String
 
     public let name = "executeCoachAction"
-    public let description = "Executes coaching actions: 'display_drill' to render an interactive drill card; 'update_goal' to update the runner's goal; 'record_feedback' to save subjective runner feedback."
+    public let description = "Executes coaching actions: 'display_drill' to render an interactive workout or drill card in chat; 'update_goal' to update the runner's goal; 'record_feedback' to save subjective runner feedback."
 
     let provider: @MainActor @Sendable (ExecuteCoachActionQuery) async -> String
 

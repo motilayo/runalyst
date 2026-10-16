@@ -1591,22 +1591,27 @@ final class IndoorIntelligenceTests: XCTestCase {
             XCTAssertTrue(instructions.contains("executeCoachAction"))
             XCTAssertTrue(instructions.contains("record_feedback"))
 
-            // Verify PreRunDrillId resolution from diverse query formats
+            // Verify PreRunDrillId resolution from diverse query formats (both form drills and full sessions)
             XCTAssertEqual(PreRunDrillId.resolve(from: "cadence_pyramids"), .cadencePyramids)
             XCTAssertEqual(PreRunDrillId.resolve(from: "Cadence Pyramids"), .cadencePyramids)
             XCTAssertEqual(PreRunDrillId.resolve(from: "strides"), .strides)
             XCTAssertEqual(PreRunDrillId.resolve(from: "rhythm_intervals"), .rhythmIntervals)
             XCTAssertEqual(PreRunDrillId.resolve(from: "hill_bounds"), .hillBounds)
+            XCTAssertEqual(PreRunDrillId.resolve(from: "Zone 1 Active Recovery Flush"), .aerobicFlush)
+            XCTAssertEqual(PreRunDrillId.resolve(from: "zone_1_recovery_flush"), .aerobicFlush)
+            XCTAssertEqual(PreRunDrillId.resolve(from: "Zone 2 Easy Aerobic Base"), .zone2Run)
+            XCTAssertEqual(PreRunDrillId.resolve(from: "Recovery Jog"), .recoveryJog)
 
             // Test session tools contain ExecuteCoachActionTool
             let session = chatEngine.getOrCreateSession()
             XCTAssertNotNil(session)
 
-            // Test ExecuteCoachActionTool with display_drill
+            // Test ExecuteCoachActionTool with display_drill for both drills and full recovery sessions
             let coachActionTool = ExecuteCoachActionTool { query in
                 switch query.action {
                 case .displayDrill:
-                    return "{\"status\":\"interactive_drill_card_displayed\",\"drill_name\":\"Cadence Pyramids\"}"
+                    let resolved = PreRunDrillId.resolve(from: query.payload ?? "") ?? .cadencePyramids
+                    return "{\"status\":\"interactive_drill_card_displayed\",\"drill_name\":\"\(resolved.title)\"}"
                 case .recordFeedback:
                     return "{\"status\":\"feedback_recorded\",\"message\":\"Subjective feedback recorded successfully.\"}"
                 case .updateGoal:
@@ -1617,8 +1622,54 @@ final class IndoorIntelligenceTests: XCTestCase {
             let drillResult = try await coachActionTool.call(arguments: ExecuteCoachActionQuery(action: .displayDrill, payload: "cadence_pyramids"))
             XCTAssertTrue(drillResult.contains("interactive_drill_card_displayed"))
 
+            let sessionResult = try await coachActionTool.call(arguments: ExecuteCoachActionQuery(action: .displayDrill, payload: "Zone 1 Active Recovery Flush"))
+            XCTAssertTrue(sessionResult.contains("interactive_drill_card_displayed"))
+            XCTAssertTrue(sessionResult.contains("Aerobic Flush"))
+
             let feedbackResult = try await coachActionTool.call(arguments: ExecuteCoachActionQuery(action: .recordFeedback, payload: "RPE 8"))
             XCTAssertTrue(feedbackResult.contains("feedback_recorded"))
+        }
+        #endif
+    }
+
+    @MainActor
+    func testReadinessPrescriptionAutoBindsSessionCard() async throws {
+        #if canImport(FoundationModels)
+        if #available(iOS 26.0, *) {
+            let config = ModelConfiguration(isStoredInMemoryOnly: true)
+            let container = try ModelContainer(for: RunRecord.self, configurations: config)
+            let context = container.mainContext
+
+            let run = makeTestRunRecord(isIndoor: false)
+            context.insert(run)
+            try context.save()
+
+            let chatEngine = AnalystChatEngine(runRecord: run)
+
+            // When readiness is checked for a fresh workout under recovery window,
+            // prescription is "Zone 1 Active Recovery Flush"
+            chatEngine.modelResponder = { (_: String, _: String) async throws -> String in
+                // Simulate model responding after calling manageTrainingState(.readiness)
+                // Let's directly invoke the readiness tool provider to mirror the session execution
+                let query = ManageTrainingStateQuery(focus: .readiness)
+                let tool = ManageTrainingStateTool { q in
+                    let isDistress = q.userReportedDistress == true
+                    let analysis = chatEngine.makeAnalysisContext(isSubjectiveDistress: isDistress)
+                    let rx = analysis.lockedPrescription
+                    if let resolved = PreRunDrillId.resolve(from: rx.nextSessionName) {
+                        chatEngine.drillRecommendedThisTurn = resolved
+                    }
+                    return "{\"prescribed_session_name\":\"\(rx.nextSessionName)\"}"
+                }
+                _ = try await tool.call(arguments: query)
+                return "You're cleared for training. Tomorrow's prescription is **Zone 2 Easy Aerobic Maintenance**."
+            }
+
+            await chatEngine.sendMessage("Should I run tomorrow, and what kind of session should I focus on?")
+            let lastMessage = chatEngine.messages.last
+            XCTAssertNotNil(lastMessage)
+            let attached = lastMessage?.attachedDrillId
+            XCTAssertEqual(attached, PreRunDrillId.zone2Run, "Readiness prescription must auto-bind the workout card to chat")
         }
         #endif
     }
