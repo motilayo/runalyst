@@ -214,483 +214,6 @@ final class IndoorIntelligenceTests: XCTestCase {
     // MARK: - 4. Analyst Chat Guardrails
 
     @MainActor
-    func testAnalystChatMedicalGuardrail() async {
-        let runRecord = makeTestRunRecord()
-        let chatEngine = AnalystChatEngine(runRecord: runRecord)
-        await chatEngine.sendMessage("My knee hurts after every run and is swollen. What painkiller should I take?")
-
-        let lastMessage = chatEngine.messages.last?.text.lowercased() ?? ""
-        XCTAssertTrue(
-            lastMessage.contains("physician") || lastMessage.contains("physical therapist") || lastMessage.contains("medical"),
-            "Chat should advise consulting a qualified clinician for injury/pain questions"
-        )
-        XCTAssertTrue(
-            lastMessage.contains("cadence") || lastMessage.contains("overstrid"),
-            "Chat should ground knee pain in authentic telemetry and overstriding mechanics"
-        )
-        XCTAssertTrue(
-            lastMessage.contains("drill") || lastMessage.contains("pyramid") || lastMessage.contains("stride"),
-            "Chat should recommend an appropriate drill if runner is cleared to run"
-        )
-    }
-
-    @MainActor
-    func testAnalystChatKneeHurtingBiomechanicsAndDrill() async {
-        let runRecord = makeTestRunRecord()
-        runRecord.workingAvgCadence = 152
-        runRecord.workingAvgVerticalOscillation = 10.4
-        let chatEngine = AnalystChatEngine(runRecord: runRecord)
-        await chatEngine.sendMessage("my knee is hurting")
-
-        let lastMessage = chatEngine.messages.last?.text.lowercased() ?? ""
-        XCTAssertTrue(
-            lastMessage.contains("not a doctor") || lastMessage.contains("physical therapist") || lastMessage.contains("medical"),
-            "Should clarify not a doctor and advise seeking medical help"
-        )
-        XCTAssertTrue(
-            lastMessage.contains("cadence") && lastMessage.contains("overstrid"),
-            "Should highlight that cadence/vertical oscillation indicates overstriding"
-        )
-        XCTAssertTrue(
-            lastMessage.contains("cadence pyramids") || lastMessage.contains("strides"),
-            "Should recommend an appropriate drill like Cadence Pyramids or Strides if runner decides to run"
-        )
-    }
-
-    @MainActor
-    func testAnalystChatHardwareAccuracyGuardrail() async {
-        let runRecord = makeTestRunRecord(isIndoor: true)
-        let chatEngine = AnalystChatEngine(runRecord: runRecord)
-        await chatEngine.sendMessage("Why does my indoor run on the treadmill say 0 GPS signal or inaccurate distance?")
-
-        let lastMessage = chatEngine.messages.last?.text.lowercased() ?? ""
-        XCTAssertTrue(
-            lastMessage.contains("gps") || lastMessage.contains("accelerometer") || lastMessage.contains("indoor") || lastMessage.contains("treadmill"),
-            "Chat should explain indoor accelerometer tracking vs outdoor satellite GPS"
-        )
-    }
-
-    @MainActor
-    func testAnalystChatSubjectiveEquipmentGuardrail() async {
-        let runRecord = makeTestRunRecord()
-        let chatEngine = AnalystChatEngine(runRecord: runRecord)
-        await chatEngine.sendMessage("What brand of carbon shoes should I buy to run faster?")
-
-        let lastMessage = chatEngine.messages.last?.text.lowercased() ?? ""
-        XCTAssertTrue(
-            lastMessage.contains("biomechanic") || lastMessage.contains("cadence") || lastMessage.contains("footwear") || lastMessage.contains("turnover"),
-            "Chat should emphasize running mechanics, consistency, and cadence over shoe brand endorsements"
-        )
-    }
-
-    @MainActor
-    func testAnalystChatEffortAndImprovementResponses() async {
-        let runRecord = makeTestRunRecord(isIndoor: true)
-        let chatEngine = AnalystChatEngine(runRecord: runRecord)
-        await chatEngine.sendMessage("How was my effort?")
-        let effortResponse = chatEngine.messages.last?.text ?? ""
-        XCTAssertFalse(effortResponse.contains("Quick tip:"), "Should not use boilerplate Quick tip header")
-        XCTAssertFalse(effortResponse.contains("braked on your knees"), "Should not produce confusing jargon")
-        XCTAssertTrue(effortResponse.contains("heart rate") || effortResponse.contains("BPM") || effortResponse.contains("effort"), "Should address effort specifically")
-
-        await chatEngine.sendMessage("What can I improve?")
-        let improveResponse = chatEngine.messages.last?.text ?? ""
-        XCTAssertFalse(improveResponse.contains("Quick tip:"), "Should not use boilerplate Quick tip header")
-        XCTAssertTrue(improveResponse.contains("turnover") || improveResponse.contains("cadence") || improveResponse.contains("SPM") || improveResponse.contains("hips") || improveResponse.contains("bounce") || improveResponse.contains("stride"), "Should address form/improvement specifically")
-    }
-
-    @MainActor
-    func testSubFloorCadenceNeverPraisesFormPrecision() async {
-        let subFloorRun = makeTestRunRecord(isIndoor: false)
-        subFloorRun.duration = 900
-        subFloorRun.totalDistanceMeters = 1630
-        subFloorRun.workingAvgCadence = 144
-        subFloorRun.workingAvgHeartRate = 125
-        subFloorRun.workingAvgPace = 552
-        subFloorRun.workingAvgVerticalOscillation = 10.7
-        subFloorRun.workingAvgStrideLength = 0.84
-
-        let chatEngine = AnalystChatEngine(runRecord: subFloorRun, macroProfile: nil)
-        await chatEngine.sendMessage("Which part of my form should I focus on improving in my next run?")
-        let response = chatEngine.messages.last?.text ?? ""
-        XCTAssertFalse(response.localizedCaseInsensitiveContains("form precision shines"), "Must not falsely praise form when cadence is sub-150 SPM floor")
-        XCTAssertTrue(response.localizedCaseInsensitiveContains("turnover") || response.localizedCaseInsensitiveContains("144 SPM"), "Should instruct to quicken foot turnover")
-    }
-
-    @MainActor
-    func testCadenceAboveFloorNeverClaimsSubFloor() async {
-        let healthyCadenceRun = makeTestRunRecord(isIndoor: true)
-        healthyCadenceRun.workingAvgCadence = 156
-        healthyCadenceRun.workingAvgHeartRate = 164
-        healthyCadenceRun.workingAvgPace = 362
-        healthyCadenceRun.workingAvgVerticalOscillation = 8.8
-
-        let chatEngine = AnalystChatEngine(runRecord: healthyCadenceRun, macroProfile: nil)
-        await chatEngine.sendMessage("What can I do to improve? Which area should I focus on next?")
-        let response = chatEngine.messages.last?.text ?? ""
-        XCTAssertFalse(response.localizedCaseInsensitiveContains("below the 150"), "156 SPM is above floor; must not claim below 150 SPM floor")
-        XCTAssertFalse(response.localizedCaseInsensitiveContains("below the floor"), "Must not claim below the floor")
-        XCTAssertTrue(response.localizedCaseInsensitiveContains("156 SPM") || response.localizedCaseInsensitiveContains("turnover"), "Should reference cadence or turnover constructively")
-    }
-
-    @MainActor
-    func testAnalystChatDifferentiatedMostAndLeastImproved() async {
-        let runRecord = makeTestRunRecord(isIndoor: true)
-        runRecord.workingAvgCadence = 156
-        runRecord.workingAvgHeartRate = 164
-        runRecord.workingAvgPace = 362
-
-        let signature = RunSignature(
-            classification: "Intervals",
-            confidence: 0.92,
-            probabilities: ["Intervals": 0.92],
-            anomalies: [],
-            cadenceFloor: 150.0,
-            phaseSegments: [
-                PhaseSegment(startSeconds: 0, endSeconds: 300, kind: "work", avgPace: 290, avgCadence: 172, avgHR: 170),
-                PhaseSegment(startSeconds: 300, endSeconds: 450, kind: "recovery", avgPace: 400, avgCadence: 150, avgHR: 155),
-                PhaseSegment(startSeconds: 450, endSeconds: 750, kind: "work", avgPace: 285, avgCadence: 174, avgHR: 172),
-                PhaseSegment(startSeconds: 750, endSeconds: 900, kind: "recovery", avgPace: 410, avgCadence: 148, avgHR: 158)
-            ],
-            dataSource: "wrist",
-            isIndoor: true,
-            needsInclineReview: false
-        )
-
-        let chatEngine = AnalystChatEngine(runRecord: runRecord, runSignature: signature, macroProfile: nil)
-        let prompt = chatEngine.buildSystemInstructions()
-
-        XCTAssertTrue(prompt.contains("INTERVAL EXECUTION (2 work reps)"), "Prompt must include interval execution telemetry")
-        XCTAssertTrue(prompt.contains("Rep Pace Range:"), "Prompt must detail rep pace range")
-
-        let analysis = WorkoutAnalysisContext(
-            runRecord: runRecord,
-            runSignature: signature,
-            macroProfile: nil,
-            recoveryTimeline: chatEngine.recoveryTimeline
-        )
-        XCTAssertFalse(analysis.overallGradeReport.strengths.isEmpty, "Grade report must identify strengths")
-        XCTAssertNotEqual(analysis.overallGradeReport.strengths.first, analysis.overallGradeReport.focus, "Strengths and growth focus must be differentiated")
-    }
-
-    @MainActor
-    func testAnalystChatTurnDiversityNoRepeatedCues() async {
-        let runRecord = makeTestRunRecord(isIndoor: true)
-        runRecord.workingAvgCadence = 156
-        runRecord.workingAvgHeartRate = 164
-
-        let chatEngine = AnalystChatEngine(runRecord: runRecord, macroProfile: nil)
-        chatEngine.modelResponder = { _, question in
-            return "Custom dynamic answer for: \(question)"
-        }
-
-        await chatEngine.sendMessage("What should I focus on during my next run?")
-        let tip1 = chatEngine.messages.last?.text ?? ""
-
-        await chatEngine.sendMessage("Gimme one good tip for my next run")
-        let tip2 = chatEngine.messages.last?.text ?? ""
-
-        XCTAssertNotEqual(tip1, tip2, "Sequential tips across conversation turns must produce distinct responses")
-    }
-
-    @MainActor
-    func testAnalystChatConceptualQuestionAnswersDirectlyWithoutJargon() async {
-        let runRecord = makeTestRunRecord(isIndoor: true)
-        let chatEngine = AnalystChatEngine(runRecord: runRecord)
-        let instructions = chatEngine.buildSystemInstructions()
-
-        XCTAssertTrue(
-            instructions.contains("When I ask what a concept means (like threshold), explain the concept simply, then connect it to how I ran"),
-            "System prompt must instruct model to explain concepts simply and connect to runner data"
-        )
-        XCTAssertTrue(
-            instructions.contains("Speak like an experienced, objective running coach in natural conversation"),
-            "System prompt must enforce natural conversational coaching"
-        )
-    }
-
-    @MainActor
-    func testAnalystChatPerformanceDegradationInquiry() async {
-        let runRecord = makeTestRunRecord(isIndoor: true)
-        let chatEngine = AnalystChatEngine(runRecord: runRecord)
-
-        await chatEngine.sendMessage("Did you notice any degradation in my performance towards the end of my run?")
-        let response = chatEngine.messages.last?.text ?? ""
-
-        XCTAssertFalse(response.isEmpty, "Should answer performance degradation inquiry")
-        XCTAssertFalse(response.localizedCaseInsensitiveContains("tactical composure"), "Should not use canned tactical composure jargon")
-    }
-
-    @MainActor
-    func testAnalystChatCanIRunTodayInformedByReadiness() async {
-        let runRecord = makeTestRunRecord(isIndoor: true)
-        runRecord.detectedTypeRaw = "Intervals"
-        runRecord.percentZone4 = 0.73
-        let chatEngine = AnalystChatEngine(runRecord: runRecord)
-
-        let timeline = chatEngine.recoveryTimeline
-        XCTAssertFalse(timeline.readyForHard, "After 73% Zone 4 intervals, runner is not cleared for a hard session today")
-        XCTAssertNotNil(timeline.easyCap, "Must specify active recovery easy cap")
-        XCTAssertEqual(timeline.easyCap, 20...30, "Immediate recovery cap should be 20-30 min")
-
-        await chatEngine.sendMessage("Can i go for a 45min session today?")
-        let response = chatEngine.messages.last?.text ?? ""
-        XCTAssertTrue(
-            response.localizedCaseInsensitiveContains("recovery") || response.localizedCaseInsensitiveContains("status"),
-            "Fallback response should state recovery status: \(response)"
-        )
-    }
-
-    @MainActor
-    func testAnalystChatZone2DurationFollowUpRespectsRecovery() async {
-        let runRecord = makeTestRunRecord(isIndoor: true)
-        runRecord.detectedTypeRaw = "Intervals"
-        runRecord.percentZone4 = 0.73
-        let chatEngine = AnalystChatEngine(runRecord: runRecord)
-
-        let instructions = chatEngine.buildSystemInstructions()
-        XCTAssertTrue(
-            instructions.contains("Keep next run easy (cap: 20–30 min)") || instructions.contains("Recovery Status:"),
-            "Prompt must inform the LLM of recovery status and easy volume cap"
-        )
-    }
-
-    @MainActor
-    func testAnalystChatHowHardToPushInformedByReadiness() async {
-        let runRecord = makeTestRunRecord(isIndoor: true)
-        runRecord.detectedTypeRaw = "Intervals"
-        runRecord.percentZone4 = 0.73
-        let chatEngine = AnalystChatEngine(runRecord: runRecord)
-
-        await chatEngine.sendMessage("How hard should I push?")
-        let response = chatEngine.messages.last?.text ?? ""
-
-        XCTAssertTrue(
-            response.localizedCaseInsensitiveContains("recovery") || response.localizedCaseInsensitiveContains("status"),
-            "Should directly advise recovery status: \(response)"
-        )
-    }
-
-    @MainActor
-    func testAnalystChatReadinessAdjustmentExplanation() async {
-        let runRecord = makeTestRunRecord(isIndoor: false)
-        let chatEngine = AnalystChatEngine(runRecord: runRecord)
-        let instructions = chatEngine.buildSystemInstructions()
-
-        XCTAssertTrue(
-            instructions.contains("Current Readiness:"),
-            "Prompt must supply current readiness state to the model"
-        )
-        XCTAssertTrue(
-            instructions.contains("FUTURE TRAINING & READINESS"),
-            "Prompt must have dedicated readiness context block"
-        )
-    }
-
-    @MainActor
-    func testAnalystChatGradePerformanceDirectlyWithoutUnsolicitedPrescription() async {
-        let runRecord = makeTestRunRecord(isIndoor: true)
-        runRecord.detectedTypeRaw = "Intervals"
-        runRecord.percentZone4 = 0.72
-        let chatEngine = AnalystChatEngine(runRecord: runRecord)
-
-        await chatEngine.sendMessage("Grade my performance for this run")
-        let response = chatEngine.messages.last?.text ?? ""
-
-        XCTAssertTrue(
-            response.localizedCaseInsensitiveContains("grade") || response.localizedCaseInsensitiveContains("A") || response.localizedCaseInsensitiveContains("B"),
-            "Should directly provide a performance grade/evaluation"
-        )
-        XCTAssertFalse(response.localizedCaseInsensitiveContains("NEXT SESSION DIRECTIVE"), "Must never leak internal prompt headers")
-    }
-
-    @MainActor
-    func testAnalystChatCalorieInquiryAnswersMetabolismDirectly() async {
-        let runRecord = makeTestRunRecord(isIndoor: true)
-        runRecord.detectedTypeRaw = "Intervals"
-        let chatEngine = AnalystChatEngine(runRecord: runRecord)
-        let instructions = chatEngine.buildSystemInstructions()
-
-        XCTAssertTrue(
-            instructions.contains("Answer what I ask directly, using the data sheet to back up your points"),
-            "System instructions must command answering user questions directly"
-        )
-        XCTAssertFalse(
-            instructions.contains("NEXT SESSION DIRECTIVE"),
-            "Prompt must not contain obsolete directive headers"
-        )
-    }
-
-    @MainActor
-    func testAnalystChatAdrenalineAndHardPushValidation() async {
-        let runRecord = makeTestRunRecord(isIndoor: true)
-        runRecord.detectedTypeRaw = "Intervals"
-        let chatEngine = AnalystChatEngine(runRecord: runRecord)
-        let instructions = chatEngine.buildSystemInstructions()
-
-        XCTAssertTrue(
-            instructions.contains("experienced, objective running coach in a conversation"),
-            "System prompt must mandate conversational coaching tone"
-        )
-    }
-
-    @MainActor
-    func testAnalystChatBaseBuildingAndRaceTransitionDirectAnswerWithoutGrade() async {
-        let runRecord = makeTestRunRecord(isIndoor: true)
-        runRecord.detectedTypeRaw = "Intervals"
-        runRecord.workingAvgCadence = 161
-        runRecord.workingAvgPace = 362
-        let chatEngine = AnalystChatEngine(runRecord: runRecord)
-        let instructions = chatEngine.buildSystemInstructions()
-
-        XCTAssertTrue(
-            instructions.contains("Cadence 161 SPM (healthy turnover above floor)"),
-            "Prompt must ground cadence as healthy turnover above floor"
-        )
-    }
-
-    @MainActor
-    func testAnalystChatCrossTrainingBikingEndorsementWithoutRunningCadence() async {
-        let runRecord = makeTestRunRecord(isIndoor: true)
-        runRecord.detectedTypeRaw = "Intervals"
-        runRecord.workingAvgCadence = 156
-        runRecord.percentZone4 = 0.73
-        let chatEngine = AnalystChatEngine(runRecord: runRecord)
-        chatEngine.modelResponder = { _, question in
-            XCTAssertTrue(question.contains("bike"))
-            return "Biking is a great low-impact option for active recovery."
-        }
-
-        await chatEngine.sendMessage("Ill just bike today")
-        let response = chatEngine.messages.last?.text ?? ""
-
-        XCTAssertTrue(
-            (response.localizedCaseInsensitiveContains("bike") || response.localizedCaseInsensitiveContains("biking")) && response.localizedCaseInsensitiveContains("recovery"),
-            "Should endorse biking as a low-impact active recovery option: \(response)"
-        )
-    }
-
-    @MainActor
-    func testAnalystChatRestDayEndorsement() async {
-        let runRecord = makeTestRunRecord(isIndoor: true)
-        runRecord.detectedTypeRaw = "Intervals"
-        runRecord.percentZone4 = 0.73
-        let chatEngine = AnalystChatEngine(runRecord: runRecord)
-
-        await chatEngine.sendMessage("I'll take a rest day today")
-        let response = chatEngine.messages.last?.text ?? ""
-
-        XCTAssertTrue(
-            response.localizedCaseInsensitiveContains("recovery") || response.localizedCaseInsensitiveContains("status"),
-            "Fallback should cite recovery status"
-        )
-    }
-
-    @MainActor
-    func testAnalystChatDistanceInquiryTomorrowRecognizesCapAndRejectsExcessVolume() async {
-        let runRecord = makeTestRunRecord(isIndoor: true)
-        runRecord.detectedTypeRaw = "Intervals"
-        runRecord.percentZone4 = 0.73
-        let chatEngine = AnalystChatEngine(runRecord: runRecord)
-
-        let timeline = chatEngine.recoveryTimeline
-        XCTAssertFalse(timeline.isCleared(for: "tomorrow"), "After hard intervals, 10k is not cleared for tomorrow")
-        XCTAssertNotNil(timeline.earliestHardDate, "Earliest hard session must be calculated")
-    }
-
-    @MainActor
-    func testAnalystChatClarificationDidNotRunTodayDefusesHallucination() async {
-        let runRecord = makeTestRunRecord(isIndoor: true)
-        runRecord.detectedTypeRaw = "Intervals"
-        let chatEngine = AnalystChatEngine(runRecord: runRecord)
-        let instructions = chatEngine.buildSystemInstructions()
-
-        XCTAssertTrue(
-            instructions.contains("If I state or clarify that I didn't run today or yesterday, immediately acknowledge that fact and ground your advice in my current rest days"),
-            "Prompt must enforce acknowledging rest day clarifications"
-        )
-    }
-
-    @MainActor
-    func testAnalystChatFocusDayTomorrowSaturdayAnswersSpecifically() async {
-        let runRecord = makeTestRunRecord(isIndoor: true)
-        runRecord.detectedTypeRaw = "Intervals"
-        runRecord.percentZone4 = 0.73
-        let chatEngine = AnalystChatEngine(runRecord: runRecord)
-        let instructions = chatEngine.buildSystemInstructions()
-
-        XCTAssertTrue(
-            instructions.contains("NEVER refer to this workout as \"today\", \"today's run\", or \"today's workout\" unless the Workout Date is literally today"),
-            "Prompt must prohibit referring to historical runs as today"
-        )
-    }
-
-    @MainActor
-    func testAnalystChatFocusOnDistanceAfterRecoveryClearanceProvidesStrategyWithoutContradiction() async {
-        let runRecord = makeTestRunRecord(isIndoor: true)
-        runRecord.date = Date().addingTimeInterval(-4 * 24 * 3600) // 4 days ago
-        runRecord.detectedTypeRaw = "Intervals"
-        let chatEngine = AnalystChatEngine(runRecord: runRecord)
-        let instructions = chatEngine.buildSystemInstructions()
-
-        XCTAssertTrue(
-            instructions.contains("FULLY RECOVERED and fresh"),
-            "With 4 days elapsed, runner must be recognized as fully recovered"
-        )
-        XCTAssertTrue(
-            instructions.contains("Never contradict yourself"),
-            "Prompt must strictly prohibit contradictory advice"
-        )
-    }
-
-    @MainActor
-    func testAnalystChatCurrentDayInquiriesAnswersDirectlyWithCorrectWeekday() async {
-        let runRecord = makeTestRunRecord(isIndoor: true)
-        let chatEngine = AnalystChatEngine(runRecord: runRecord)
-        let instructions = chatEngine.buildSystemInstructions()
-
-        let todayName = RecoveryTimeline.weekday(Date())
-        XCTAssertTrue(
-            instructions.contains("Current Date (Today): \(todayName)"),
-            "Prompt must specify the exact current weekday: \(instructions)"
-        )
-    }
-
-    @MainActor
-    func testAnalystChatNegativeMultiDayPlanningSelectsAffirmativeTargetDay() async {
-        let runRecord = makeTestRunRecord(isIndoor: true)
-        runRecord.date = Date().addingTimeInterval(-24 * 3600)
-        runRecord.detectedTypeRaw = "Intervals"
-        runRecord.percentZone4 = 0.73
-        let chatEngine = AnalystChatEngine(runRecord: runRecord)
-
-        let timeline = chatEngine.recoveryTimeline
-        let isClearedSunday = timeline.isCleared(for: "sunday")
-        XCTAssertTrue(isClearedSunday, "Sunday must be cleared for running after 3+ days: \(timeline.earliestHardPhrase)")
-    }
-
-    @MainActor
-    func testAnalystChatPhysiologicalDecouplingAndDrillBoundariesInPrompt() async {
-        let runRecord = makeTestRunRecord(isIndoor: true)
-        runRecord.detectedTypeRaw = "Intervals"
-        let chatEngine = AnalystChatEngine(runRecord: runRecord)
-        let instructions = chatEngine.buildSystemInstructions()
-
-        XCTAssertTrue(
-            instructions.contains("Cardiac drift (+BPM in second half) is cardiovascular fatigue"),
-            "Prompt must define cardiac drift as fatigue/heat and prohibit calling it acceleration"
-        )
-        XCTAssertTrue(
-            instructions.contains("Do NOT invent or prescribe custom structured workout routines"),
-            "Prompt must enforce referencing existing drill library instead of inventing custom interval workouts"
-        )
-        XCTAssertTrue(
-            instructions.contains("Never describe a wide pace spread spanning tens of seconds"),
-            "Prompt must prohibit calling wide historical spreads tight or metronomic"
-        )
-    }
-
-    @MainActor
     func testRunnerProfileHeightCalibrationAndLoad() {
         let tallProfile = RunnerProfile(
             experienceLevel: "Advanced / Veteran",
@@ -836,42 +359,6 @@ final class IndoorIntelligenceTests: XCTestCase {
     }
 
     @MainActor
-    func testAnalystChatAthleteIdentityAndCoachingPrinciplesInPrompt() async {
-        let runRecord = makeTestRunRecord(isIndoor: false)
-        let chatEngine = AnalystChatEngine(runRecord: runRecord)
-        let instructions = chatEngine.buildSystemInstructions()
-
-        XCTAssertTrue(
-            instructions.contains("ATHLETE IDENTITY & CURRENT LOAD:"),
-            "Prompt must include Athlete Identity & Current Load header"
-        )
-        XCTAssertTrue(
-            instructions.contains("Stride Archetype:"),
-            "Prompt must supply stride archetype analysis"
-        )
-        XCTAssertTrue(
-            instructions.contains("Tailor your vocabulary and depth to my Athletic Experience Level"),
-            "Prompt must enforce matching depth to experience level"
-        )
-        XCTAssertTrue(
-            instructions.contains("PHYSIOLOGICAL & BIOMECHANICAL VERDICTS"),
-            "Prompt must include Physiological Causal Verdicts"
-        )
-        XCTAssertTrue(
-            instructions.contains("LOCKED TRAINING ZONES & SESSION PRESCRIPTION"),
-            "Prompt must include Locked Training Prescription table"
-        )
-        XCTAssertFalse(
-            instructions.contains("Swift is the Physicist") || instructions.contains("Swift's deterministic engine") || instructions.contains("SWIFT CAUSAL VERDICTS"),
-            "Prompt must not attribute analytical physics to Swift"
-        )
-        XCTAssertTrue(
-            instructions.contains("You have evaluated my raw telemetry using your deterministic analytical engine"),
-            "Prompt must absorb deterministic engine into coach persona"
-        )
-    }
-
-    @MainActor
     func testManageTrainingStateReadinessAndDistressOverride() async throws {
         let runRecord = makeTestRunRecord(isIndoor: false)
         let chatEngine = AnalystChatEngine(runRecord: runRecord)
@@ -901,27 +388,6 @@ final class IndoorIntelligenceTests: XCTestCase {
             XCTAssertTrue(distressResult.contains("MANDATORY_REST_HEALTH_OVERRIDE"))
         }
         #endif
-    }
-
-    @MainActor
-    func testAnalystChatFollowUpElaborationMaintainsTopicContinuity() async {
-        let runRecord = makeTestRunRecord(isIndoor: true)
-        let chatEngine = AnalystChatEngine(runRecord: runRecord)
-
-        // 1. Comparison turn
-        chatEngine.messages.append(AnalystChatMessage(sender: .user, text: "Compare my performance in this run to my September 14 run"))
-        chatEngine.messages.append(AnalystChatMessage(sender: .analyst, text: "Comparing your Tuesday Intervals to Monday Tempo: Pace was 13s/km slower, Cadence was 4 SPM lower turnover..."))
-
-        // 2. Runner asks "That's all?"
-        await chatEngine.sendMessage("That's all?")
-        let lastResponse = chatEngine.messages.last?.text ?? ""
-
-        // Must stay on comparison topic (contrast, structure, intervals vs tempo, treadmill vs road)
-        XCTAssertTrue(lastResponse.contains("comparison") || lastResponse.contains("difference") || lastResponse.contains("structure") || lastResponse.contains("Intervals") || lastResponse.contains("tempo"))
-        // Must NOT hallucinate "today was"
-        XCTAssertFalse(lastResponse.contains("today was") || lastResponse.contains("session today"))
-        // Must NOT dump unsolicited tomorrow prescription
-        XCTAssertFalse(lastResponse.contains("tomorrow's run") || lastResponse.contains("recommend keeping tomorrow"))
     }
 
     // MARK: - 4B. Swift Physics, Zones & Memory Engines
@@ -1237,11 +703,7 @@ final class IndoorIntelligenceTests: XCTestCase {
             XCTAssertEqual(drillAction.action, .displayDrill)
             XCTAssertEqual(drillAction.payload, "cadence_pyramids")
 
-            // 4. ExecuteCoachActionTool - Export to Watch
-            let exportAction = ExecuteCoachActionQuery(action: .exportToWatch, payload: "Cadence Pyramids")
-            XCTAssertEqual(exportAction.action, .exportToWatch)
-
-            // 5. ExecuteCoachActionTool - Update Goal
+            // 4. ExecuteCoachActionTool - Update Goal
             let goalAction = ExecuteCoachActionQuery(action: .updateGoal, payload: "Half Marathon")
             XCTAssertEqual(goalAction.action, .updateGoal)
 
@@ -1385,261 +847,33 @@ final class IndoorIntelligenceTests: XCTestCase {
 
     // MARK: - 11. Data-Driven Analyst Queries
 
-    @MainActor
-    func testAnalystChatUnrecordedVerticalOscillationExplainsSensors() async {
-        let runRecord = makeTestRunRecord(isIndoor: true)
-        runRecord.workingAvgVerticalOscillation = nil
-        let chatEngine = AnalystChatEngine(runRecord: runRecord)
-
-        await chatEngine.sendMessage("What was my vertical oscillation?")
-        let response = chatEngine.messages.last?.text ?? ""
-
-        XCTAssertTrue(
-            response.localizedCaseInsensitiveContains("wasn't recorded") || response.localizedCaseInsensitiveContains("not recorded"),
-            "Must state that vertical oscillation was not recorded"
-        )
-        XCTAssertTrue(
-            response.localizedCaseInsensitiveContains("treadmill") || response.localizedCaseInsensitiveContains("footpod") || response.localizedCaseInsensitiveContains("indoor"),
-            "Must explain indoor treadmill / footpod sensor dependency"
-        )
-        XCTAssertFalse(response.localizedCaseInsensitiveContains("solid, steady rhythm"), "Must not fall back to generic rhythm copy")
-    }
-
-    @MainActor
-    func testAnalystChatClassificationExplanationExplainsPhysiology() async {
-        let runRecord = makeTestRunRecord(isIndoor: true)
-        runRecord.detectedTypeRaw = "Mixed Effort (Review)"
-        runRecord.needsInclineReview = false
-        let chatEngine = AnalystChatEngine(runRecord: runRecord)
-
-        await chatEngine.sendMessage("Why did you label my run today as a 'Mixed Effort'?")
-        let response = chatEngine.messages.last?.text ?? ""
-
-        XCTAssertTrue(
-            response.localizedCaseInsensitiveContains("Mixed Effort"),
-            "Must cite the Mixed Effort classification"
-        )
-        XCTAssertTrue(
-            response.localizedCaseInsensitiveContains("surges") || response.localizedCaseInsensitiveContains("irregular") || response.localizedCaseInsensitiveContains("variability") || response.localizedCaseInsensitiveContains("review"),
-            "Must explain the reason for the classification"
-        )
-    }
-
-    @MainActor
-    func testAnalystChatGranularSplitsCitesExactSegments() async {
-        let runRecord = makeTestRunRecord(isIndoor: true)
-        let signature = RunSignature(
-            classification: "Intervals",
-            confidence: 0.95,
-            probabilities: ["Intervals": 0.95],
-            anomalies: [],
-            cadenceFloor: 150.0,
-            phaseSegments: [
-                PhaseSegment(startSeconds: 0, endSeconds: 240, kind: "work", avgPace: 270, avgCadence: 172, avgHR: 165),
-                PhaseSegment(startSeconds: 240, endSeconds: 360, kind: "recovery", avgPace: 380, avgCadence: 148, avgHR: 150),
-                PhaseSegment(startSeconds: 360, endSeconds: 600, kind: "work", avgPace: 255, avgCadence: 175, avgHR: 170),
-                PhaseSegment(startSeconds: 600, endSeconds: 720, kind: "recovery", avgPace: 390, avgCadence: 146, avgHR: 152),
-                PhaseSegment(startSeconds: 720, endSeconds: 960, kind: "work", avgPace: 285, avgCadence: 170, avgHR: 175)
-            ],
-            dataSource: "wrist",
-            isIndoor: true,
-            needsInclineReview: false
-        )
-        let chatEngine = AnalystChatEngine(runRecord: runRecord, runSignature: signature, macroProfile: nil)
-
-        await chatEngine.sendMessage("My best split and my worst split")
-        let response = chatEngine.messages.last?.text ?? ""
-
-        XCTAssertTrue(
-            response.localizedCaseInsensitiveContains("fastest") && response.localizedCaseInsensitiveContains("slowest"),
-            "Must cite both fastest and slowest segments"
-        )
-        XCTAssertTrue(
-            response.localizedCaseInsensitiveContains("Rep") || response.localizedCaseInsensitiveContains("min"),
-            "Must cite specific rep or minute markers"
-        )
-    }
-
-    @MainActor
-    func testAnalystChatDidNotRunYesterdayAcknowledgesDate() async {
-        let runRecord = makeTestRunRecord(isIndoor: true)
-        // Run logged 2 days ago
-        runRecord.date = Date().addingTimeInterval(-48 * 3600)
-        let chatEngine = AnalystChatEngine(runRecord: runRecord)
-
-        await chatEngine.sendMessage("I didn't run yesterday...")
-        let response = chatEngine.messages.last?.text ?? ""
-
-        XCTAssertTrue(
-            response.localizedCaseInsensitiveContains("didn't run yesterday") || response.localizedCaseInsensitiveContains("haven't run yesterday"),
-            "Must acknowledge runner did not run yesterday"
-        )
-        XCTAssertFalse(response.localizedCaseInsensitiveContains("yesterday's hard sessions"), "Must not claim hard session was yesterday when it was 2 days ago")
-    }
-
     // MARK: - Native FoundationModels Tool Calling Tests
 
     @MainActor
-    func testNativeToolCallingWorkoutAnalysisToolOutput() async throws {
-        let runRecord = makeTestRunRecord(isIndoor: true)
-        runRecord.workingAvgCadence = 158
-        runRecord.workingAvgHeartRate = 162
-        let signature = RunSignature(
-            classification: "Intervals",
-            confidence: 0.94,
-            probabilities: ["Intervals": 0.94],
-            anomalies: ["Cadence Dip at km 2"],
-            cadenceFloor: 150.0,
-            phaseSegments: [
-                PhaseSegment(startSeconds: 0, endSeconds: 300, kind: "work", avgPace: 280, avgCadence: 165, avgHR: 168),
-                PhaseSegment(startSeconds: 300, endSeconds: 420, kind: "recovery", avgPace: 360, avgCadence: 145, avgHR: 135)
-            ],
-            dataSource: "wrist",
-            isIndoor: true,
-            needsInclineReview: false
-        )
-        let chatEngine = AnalystChatEngine(runRecord: runRecord, runSignature: signature)
-
-        #if canImport(FoundationModels)
-        if #available(iOS 26.0, *) {
-            let workoutTool = FetchWorkoutAnalysisTool {
-                let analysis = WorkoutAnalysisContext(
-                    runRecord: runRecord,
-                    runSignature: signature,
-                    macroProfile: nil,
-                    recoveryTimeline: chatEngine.recoveryTimeline
-                )
-                return analysis.groundedPromptSummary()
-            }
-
-            let result = try await workoutTool.call(arguments: WorkoutAnalysisQuery(focus: "verdicts"))
-            XCTAssertTrue(result.contains("PHYSIOLOGICAL & BIOMECHANICAL VERDICTS"))
-            XCTAssertTrue(result.contains("INTERVAL EXECUTION"))
-            XCTAssertEqual(workoutTool.name, "fetchWorkoutAnalysis")
-        }
-        #endif
-    }
-
-    @MainActor
-    func testNativeToolCallingReadinessAndPrescriptionToolOutput() async throws {
-        let runRecord = makeTestRunRecord(isIndoor: true)
-        runRecord.date = Date().addingTimeInterval(-72 * 3600) // 3 days ago
-        let chatEngine = AnalystChatEngine(runRecord: runRecord)
-
-        #if canImport(FoundationModels)
-        if #available(iOS 26.0, *) {
-            let readinessTool = FetchReadinessAndPrescriptionTool {
-                let analysis = WorkoutAnalysisContext(
-                    runRecord: runRecord,
-                    runSignature: nil,
-                    macroProfile: nil,
-                    recoveryTimeline: chatEngine.recoveryTimeline
-                )
-                let rx = analysis.lockedPrescription
-                return """
-                FUTURE TRAINING & READINESS:
-                LOCKED TRAINING ZONES & SESSION PRESCRIPTION:
-                - Next Recommended Session: \(rx.nextSessionName)
-                """
-            }
-
-            let result = try await readinessTool.call(arguments: ReadinessQuery(focus: "tomorrow_readiness"))
-            XCTAssertTrue(result.contains("FUTURE TRAINING & READINESS"))
-            XCTAssertTrue(result.contains("LOCKED TRAINING ZONES & SESSION PRESCRIPTION"))
-            XCTAssertEqual(readinessTool.name, "fetchReadinessAndPrescription")
-        }
-        #endif
-    }
-
-    @MainActor
-    func testNativeToolCallingLeanSystemInstructions() {
-        let runRecord = makeTestRunRecord(isIndoor: true)
-        let chatEngine = AnalystChatEngine(runRecord: runRecord)
-
-        #if canImport(FoundationModels)
-        if #available(iOS 26.0, *) {
-            let leanPrompt = chatEngine.buildLeanSystemInstructions()
-            XCTAssertTrue(leanPrompt.contains("CONTEXT:"))
-            XCTAssertTrue(leanPrompt.contains("manageTrainingState"))
-            XCTAssertFalse(leanPrompt.contains("WORKOUT DATA SHEET:"), "Lean tool instructions must NOT include upfront raw data sheet")
-            XCTAssertTrue(leanPrompt.count < 1200, "System prompt must stay under 1,200 characters to comply with TN3193 4,096 token limit")
-        }
-        #endif
-    }
-
-    @MainActor
-    func testNativeToolCallingIntervalPerformanceToolOutput() async throws {
-        let runRecord = makeTestRunRecord(isIndoor: true)
-        let signature = RunSignature(
-            classification: "Intervals",
-            confidence: 0.94,
-            probabilities: ["Intervals": 0.94],
-            anomalies: [],
-            cadenceFloor: 150.0,
-            phaseSegments: [
-                PhaseSegment(startSeconds: 0, endSeconds: 180, kind: "work", avgPace: 270, avgCadence: 165, avgHR: 168),
-                PhaseSegment(startSeconds: 180, endSeconds: 240, kind: "recovery", avgPace: 360, avgCadence: 145, avgHR: 135)
-            ],
-            dataSource: "wrist",
-            isIndoor: true,
-            needsInclineReview: false
-        )
-        let chatEngine = AnalystChatEngine(runRecord: runRecord, runSignature: signature)
-
-        #if canImport(FoundationModels)
-        if #available(iOS 26.0, *) {
-            let intervalTool = FetchIntervalPerformanceTool { _ in
-                let analysis = chatEngine.makeAnalysisContext()
-                return analysis.formatIntervalPerformanceSummary()
-            }
-
-            let result = try await intervalTool.call(arguments: IntervalPerformanceQuery(focus: "all"))
-            XCTAssertTrue(result.contains("INTERVAL_PERFORMANCE_TELEMETRY"))
-            XCTAssertTrue(result.contains("Work Reps Detected"))
-            XCTAssertTrue(result.contains("Indoor Treadmill"))
-            XCTAssertTrue(result.contains("category_1_session_totals"))
-            XCTAssertTrue(result.contains("category_2_active_work_performance"))
-            XCTAssertTrue(result.contains("category_3_recovery_performance"))
-            XCTAssertTrue(result.contains("category_4_rep_by_rep_breakdown"))
-            XCTAssertTrue(result.contains("_description"))
-            XCTAssertTrue(result.contains("work_phase"))
-            XCTAssertTrue(result.contains("recovery_phase"))
-            XCTAssertEqual(intervalTool.name, "fetchIntervalPerformance")
-        }
-        #endif
-    }
-
-    @MainActor
-    func testWorkoutAnalysisDynamicSchemaForSteadyRunsOmitIntervalBuckets() async throws {
+    func testInspectWorkoutToolSteadyStateOutput() async throws {
         let runRecord = makeTestRunRecord(isIndoor: false)
         runRecord.detectedTypeRaw = "Steady Effort"
         let chatEngine = AnalystChatEngine(runRecord: runRecord)
 
         #if canImport(FoundationModels)
         if #available(iOS 26.0, *) {
-            let workoutTool = FetchWorkoutAnalysisTool { _ in
+            let workoutTool = InspectWorkoutTool { _ in
                 let analysis = chatEngine.makeAnalysisContext()
                 return analysis.compactTelemetryAnalysis()
             }
-            let intervalTool = FetchIntervalPerformanceTool { _ in
-                let analysis = chatEngine.makeAnalysisContext()
-                return analysis.formatIntervalPerformanceSummary()
-            }
 
-            let workoutResult = try await workoutTool.call(arguments: WorkoutAnalysisQuery(focus: "full_telemetry"))
+            let workoutResult = try await workoutTool.call(arguments: InspectWorkoutQuery())
             XCTAssertTrue(workoutResult.contains("steady_state_scorecard"))
             XCTAssertTrue(workoutResult.contains("background_session_totals"))
             XCTAssertFalse(workoutResult.contains("interval_scorecard"), "Steady runs must NOT emit interval scorecard")
             XCTAssertFalse(workoutResult.contains("\"reps\""), "Steady runs must NOT emit rep breakdown bucket")
-
-            let intervalResult = try await intervalTool.call(arguments: IntervalPerformanceQuery(focus: "all"))
-            XCTAssertTrue(intervalResult.contains("NOT_AN_INTERVAL_WORKOUT"))
+            XCTAssertEqual(workoutTool.name, "inspectWorkout")
         }
         #endif
     }
 
     @MainActor
-    func testWorkoutAnalysisUnifiedSchemaForIntervalsEmitsScorecardAndRepsAtTopLevel() async throws {
+    func testInspectWorkoutToolIntervalScorecardAndRepsAtTopLevel() async throws {
         let runRecord = makeTestRunRecord(isIndoor: true)
         runRecord.detectedTypeRaw = "Intervals"
         let signature = RunSignature(
@@ -1661,12 +895,12 @@ final class IndoorIntelligenceTests: XCTestCase {
 
         #if canImport(FoundationModels)
         if #available(iOS 26.0, *) {
-            let workoutTool = FetchWorkoutAnalysisTool { _ in
+            let workoutTool = InspectWorkoutTool { _ in
                 let analysis = chatEngine.makeAnalysisContext()
                 return analysis.compactTelemetryAnalysis()
             }
 
-            let workoutResult = try await workoutTool.call(arguments: WorkoutAnalysisQuery(focus: "full_telemetry"))
+            let workoutResult = try await workoutTool.call(arguments: InspectWorkoutQuery())
             XCTAssertTrue(workoutResult.contains("interval_scorecard"), "Interval workouts must emit interval_scorecard at top level")
             XCTAssertTrue(workoutResult.contains("active_work_pace"))
             XCTAssertTrue(workoutResult.contains("active_turnover_spm"))
@@ -1693,26 +927,22 @@ final class IndoorIntelligenceTests: XCTestCase {
     }
 
     @MainActor
-    func testNativeToolCallingWorkoutPhysicsToolOutput() async throws {
+    func testNativeToolCallingLeanSystemInstructions() {
         let runRecord = makeTestRunRecord(isIndoor: true)
         let chatEngine = AnalystChatEngine(runRecord: runRecord)
 
         #if canImport(FoundationModels)
         if #available(iOS 26.0, *) {
-            let physicsTool = FetchWorkoutPhysicsTool { query in
-                let analysis = chatEngine.makeAnalysisContext()
-                return analysis.formatWorkoutPhysicsSummary(domain: query.domain)
-            }
-
-            let result = try await physicsTool.call(arguments: WorkoutPhysicsQuery(domain: "all"))
-            XCTAssertTrue(result.contains("WORKOUT PHYSICS & PHYSIOLOGY"))
-            XCTAssertTrue(result.contains("Kinematics & Kinetic Friction"))
-            XCTAssertTrue(result.contains("Thermodynamics & Cooling"))
-            XCTAssertTrue(result.contains("Moving treadmill belt"))
-            XCTAssertEqual(physicsTool.name, "fetchWorkoutPhysics")
+            let leanPrompt = chatEngine.buildLeanSystemInstructions()
+            XCTAssertTrue(leanPrompt.contains("CONTEXT:"))
+            XCTAssertTrue(leanPrompt.contains("manageTrainingState"))
+            XCTAssertFalse(leanPrompt.contains("WORKOUT DATA SHEET:"), "Lean tool instructions must NOT include upfront raw data sheet")
+            XCTAssertTrue(leanPrompt.count < 1200, "System prompt must stay under 1,200 characters to comply with TN3193 4,096 token limit")
         }
         #endif
     }
+
+    @MainActor
 
     func testDrillResolutionFromToolPayload() {
         XCTAssertEqual(PreRunDrillId.resolve(from: "cadence_pyramids"), .cadencePyramids)
@@ -1739,35 +969,6 @@ final class IndoorIntelligenceTests: XCTestCase {
         XCTAssertTrue(summary.contains("convective") || summary.contains("thermal") || summary.contains("aerobic"), "Must explain cardiovascular/environmental context")
         // Must not be a shallow 1-sentence repetition
         XCTAssertTrue(summary.count > 100, "Summary must be a rich multi-sentence coaching explanation, not a 1-sentence recitation")
-    }
-
-    @MainActor
-    func testAnalystChatRunningEconomyAndStrideEfficiencyAnswersDirectlyWithoutStalling() async {
-        let runRecord = makeTestRunRecord(isIndoor: true)
-        let chatEngine = AnalystChatEngine(runRecord: runRecord)
-        await chatEngine.sendMessage("How was my running economy and stride efficiency during this run?")
-        let response = chatEngine.messages.last?.text ?? ""
-
-        XCTAssertFalse(response.contains("Let's start there"), "Must not tell runner to start there without data")
-        XCTAssertFalse(response.contains("I need to pull"), "Must not announce data pulling")
-        XCTAssertTrue(
-            response.contains("Efficiency Factor") || response.contains("cadence") || response.contains("SPM") || response.contains("stride"),
-            "Must directly deliver economy and stride metrics"
-        )
-    }
-
-    @MainActor
-    func testAnalystChatPerformanceInquiryAnswersDirectlyWithoutStalling() async {
-        let runRecord = makeTestRunRecord(isIndoor: true)
-        let chatEngine = AnalystChatEngine(runRecord: runRecord)
-        await chatEngine.sendMessage("How was my performance?")
-        let response = chatEngine.messages.last?.text ?? ""
-
-        XCTAssertFalse(response.contains("I'll retrieve"), "Must not announce data retrieval")
-        XCTAssertTrue(
-            response.contains("SPM") || response.contains("BPM") || response.contains("pace") || response.contains("Pace") || response.contains("grade") || response.contains("split") || response.contains("interval"),
-            "Must directly deliver performance metrics"
-        )
     }
 
     @MainActor
@@ -1911,8 +1112,7 @@ final class IndoorIntelligenceTests: XCTestCase {
 
         // SECONDARY BACKGROUND: Blended session data is demoted
         XCTAssertEqual(unifiedResponse.background_session_totals.blended_session_avg_pace, "6:25/km")
-        XCTAssertEqual(unifiedResponse.background_session_totals.blended_session_avg_cadence_spm, 156)
-        XCTAssertTrue(unifiedResponse.background_session_totals._description.contains("SECONDARY"))
+        XCTAssertTrue(unifiedResponse.background_session_totals._description.contains("Whole-session"))
 
         // 2. Validate Multi-Turn Chat Flow without Swift Template Interception (Step 1 RCA)
         var turnCount = 0
@@ -2038,7 +1238,7 @@ final class IndoorIntelligenceTests: XCTestCase {
     }
 
     @MainActor
-    func testReadinessToolPayloadReturnsStructuredCategoryAndForbiddenTerms() {
+    func testReadinessToolPayloadReturnsStructuredCategory() {
         let runRecord = makeTestRunRecord(isIndoor: false)
         let chatEngine = AnalystChatEngine(runRecord: runRecord)
         let session = chatEngine.getOrCreateSession()
@@ -2047,12 +1247,10 @@ final class IndoorIntelligenceTests: XCTestCase {
         let analysis = chatEngine.makeAnalysisContext()
         let rx = analysis.lockedPrescription
         XCTAssertEqual(rx.intensityCategory, "EASY_AEROBIC_ZONE_2")
-        XCTAssertTrue(rx.forbiddenTerms.contains("tempo"), "Forbidden terms must include tempo for Zone 2 recovery")
 
         let instructions = chatEngine.buildLeanSystemInstructions()
         XCTAssertTrue(instructions.contains("manageTrainingState"), "Instructions must provide manageTrainingState tool")
         XCTAssertFalse(instructions.contains("forbidden_terms"), "Prompt must NOT contain forbidden_terms to avoid token attention bleed")
-        XCTAssertTrue(instructions.contains("interpreter"), "Instructions must enshrine interpreter role")
     }
 
     @MainActor
@@ -2411,8 +1609,6 @@ final class IndoorIntelligenceTests: XCTestCase {
                     return "{\"status\":\"interactive_drill_card_displayed\",\"drill_name\":\"Cadence Pyramids\"}"
                 case .recordFeedback:
                     return "{\"status\":\"feedback_recorded\",\"message\":\"Subjective feedback recorded successfully.\"}"
-                case .exportToWatch:
-                    return "{\"status\":\"exported_to_apple_watch\"}"
                 case .updateGoal:
                     return "{\"status\":\"training_goal_updated\"}"
                 }

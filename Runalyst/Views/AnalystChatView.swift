@@ -36,6 +36,24 @@ struct AnalystChatView: View {
         return "🔒 On-Device • \(dateStr) \(envStr) \(typeStr)"
     }
 
+    private var emptyState: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "bubble.left.and.text.bubble.right.fill")
+                .font(.system(size: 34))
+                .foregroundStyle(.purple.gradient)
+            Text("Ask about this run")
+                .font(.system(.headline, design: .rounded))
+            Text("Pace, heart rate, cadence, recovery. Answered on-device from your Health data.")
+                .font(.footnote)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .padding(.horizontal, 32)
+        .padding(.top, 48)
+        .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .combine)
+    }
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
@@ -53,6 +71,10 @@ struct AnalystChatView: View {
                 ScrollViewReader { proxy in
                     ScrollView {
                         LazyVStack(spacing: 16) {
+                            if engine.messages.isEmpty && !engine.isResponding {
+                                emptyState
+                            }
+
                             ForEach(engine.messages) { message in
                                 messageBubble(message)
                                     .id(message.id)
@@ -109,7 +131,7 @@ struct AnalystChatView: View {
                 // Bottom Thumb-Zone: Quick Chips + Text Input Bar
                 VStack(spacing: 8) {
                     if !engine.isResponding && !isInputFocused && inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        if engine.messages.count <= 1 {
+                        if engine.messages.isEmpty {
                             quickPromptChips
                                 .transition(.opacity.combined(with: .move(edge: .bottom)))
                         } else if engine.messages.last?.sender == .analyst {

@@ -47,10 +47,6 @@ class AnalystChatEngine: ObservableObject {
 
     #if canImport(FoundationModels)
     private var modelSession: Any? // LanguageModelSession on iOS 26+
-    /// Number of tools executed during the active conversation turn.
-    private(set) var toolsCalledThisTurn: Int = 0
-    /// Tracks whether workout telemetry analysis has been executed and persisted to the session transcript.
-    private(set) var sessionHasLoadedWorkoutAnalysis: Bool = false
     /// Tracks a drill recommended via the `displayDrill` tool during the active conversation turn.
     private(set) var drillRecommendedThisTurn: PreRunDrillId?
     #endif
@@ -85,36 +81,6 @@ class AnalystChatEngine: ObservableObject {
         self.runRecord = runRecord
         self.runSignature = runSignature ?? runRecord.signature
         self.macroProfile = macroProfile ?? MacroProfile.load()
-
-        setupInitialGreeting()
-    }
-
-    private func setupInitialGreeting() {
-        let isIndoor = runRecord.isIndoor ?? false
-        let envNote = isIndoor ? "treadmill" : "outdoor"
-        let context = makeAnalysisContext()
-        let grade = context.overallGradeReport.grade
-        let isIntervalModality = (runRecord.evaluationModality == .intervals || !context.workSegments.isEmpty) && !context.workSegments.isEmpty
-        let runType = runRecord.detectedTypeRaw.isEmpty ? "run" : runRecord.detectedTypeRaw.lowercased()
-
-        let initialGreeting: String
-        if isIntervalModality {
-            let workSegments = context.workSegments
-            let meanWorkPace = workSegments.reduce(0.0) { $0 + $1.avgPace } / Double(workSegments.count)
-            let workPace = PaceFormatter.formatPace(secondsPerKilometer: meanWorkPace)
-            let repCount = workSegments.count
-            let cad = Int((workSegments.reduce(0.0) { $0 + $1.avgCadence } / Double(workSegments.count)).rounded())
-            initialGreeting = "I took a look at your Grade \(grade) \(envNote) \(runType) (\(repCount) reps @ \(workPace)). Want to dig into your \(cad) SPM turnover, pacing spread, or recovery?"
-        } else {
-            let pace = PaceFormatter.formatPace(secondsPerKilometer: runRecord.workingAvgPace)
-            let cad = Int(runRecord.workingAvgCadence.rounded())
-            initialGreeting = "I took a look at your Grade \(grade) \(envNote) \(runType) (@ \(pace)). Want to dig into your \(cad) SPM turnover, pacing trend, or recovery?"
-        }
-        messages.append(AnalystChatMessage(sender: .analyst, text: initialGreeting))
-    }
-
-    private var isRunningTests: Bool {
-        NSClassFromString("XCTestCase") != nil || ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
     }
 
     /// Sends a runner question and generates an analyst response with RAG telemetry context and guardrails.
@@ -148,36 +114,21 @@ class AnalystChatEngine: ObservableObject {
                 }
             }
             #endif
-            if !isRunningTests && SystemLanguageModel.default.isAvailable {
+            if SystemLanguageModel.default.isAvailable {
                 do {
                     let responseText = try await generateFoundationModelResponse(for: trimmed)
                     messages.append(AnalystChatMessage(sender: .analyst, text: responseText, attachedDrillId: drillRecommendedThisTurn))
                     return
                 } catch {
                     print("FoundationModels chat error: \(error)")
-                    // Reset session so subsequent turns start with a clean context
                     self.modelSession = nil
-                    self.sessionHasLoadedWorkoutAnalysis = false
                 }
             }
         }
         #endif
 
-        // Graceful deterministic data-grounded fallback (offline, simulator/test runner, or unsupported hardware)
-        let fallbackResponse = generateDataGroundedFallback(for: trimmed)
-        messages.append(AnalystChatMessage(sender: .analyst, text: fallbackResponse))
-    }
-
-    // MARK: - Test Runner & Offline Telemetry Fallback
-
-    private func generateDataGroundedFallback(for userQuestion: String) -> String {
-        let analysis = makeAnalysisContext()
-        return AnalystFallbackResponder.generateResponse(
-            for: userQuestion,
-            conversationHistory: messages,
-            analysis: analysis,
-            runRecord: runRecord
-        )
+        // No simulated coach: if the on-device model can't answer, say so honestly.
+        messages.append(AnalystChatMessage(sender: .analyst, text: systemUnavailableMessage()))
     }
 
     // MARK: - Analysis Context Factory
@@ -196,36 +147,16 @@ class AnalystChatEngine: ObservableObject {
         )
     }
 
-    // MARK: - System Instructions Assembly
-
-    func buildSystemInstructions() -> String {
-        let analysis = makeAnalysisContext()
-        return """
-        You are Runalyst—an intelligent running coach and telemetry interpreter.
-        Tailor your vocabulary and depth to my Athletic Experience Level.
-        Speak like an experienced, objective running coach in natural conversation; experienced, objective running coach in a conversation.
-        You have evaluated my raw telemetry using your deterministic analytical engine.
-        When I ask what a concept means (like threshold), explain the concept simply, then connect it to how I ran.
-        Answer what I ask directly, using the data sheet to back up your points.
-        If I state or clarify that I didn't run today or yesterday, immediately acknowledge that fact and ground your advice in my current rest days.
-        Never contradict yourself.
-        NEVER refer to this workout as "today", "today's run", or "today's workout" unless the Workout Date is literally today.
-        Cardiac drift (+BPM in second half) is cardiovascular fatigue or thermal accumulation, never acceleration.
-        Do NOT invent or prescribe custom structured workout routines.
-        Never describe a wide pace spread spanning tens of seconds as tight or metronomic.
-        Formatting: Use clean rich text formatting with bold labels and bullet points. Never use Markdown tables, pipe characters (|), LaTeX, or raw math equations.
-
-        \(analysis.groundedPromptSummary())
-        """
-    }
+    // MARK: - System Instructions
 
     #if canImport(FoundationModels)
+    /// Context only: which run, which units, which language, and the medical boundary.
+    /// Tool semantics live in each `Tool.description` / `@Guide`; facts live in tool payloads.
     @available(iOS 26.0, *)
     func buildLeanSystemInstructions() -> String {
         let language = Locale.current.language.languageCode?.identifier ?? "en"
         let runType = runRecord.detectedTypeRaw.isEmpty ? "Run" : runRecord.detectedTypeRaw
-        let isIndoor = runRecord.isIndoor ?? false
-        let envNote = isIndoor ? "Indoor Treadmill" : "Outdoors"
+        let envNote = (runRecord.isIndoor ?? false) ? "Indoor Treadmill" : "Outdoors"
 
         let cal = Calendar.current
         let daysDiff = cal.dateComponents([.day], from: cal.startOfDay(for: runRecord.date), to: cal.startOfDay(for: Date())).day ?? 0
@@ -266,14 +197,11 @@ class AnalystChatEngine: ObservableObject {
 
         let inspectWorkoutTool = InspectWorkoutTool { [weak self] _ in
             guard let self else { return "" }
-            self.toolsCalledThisTurn += 1
-            self.sessionHasLoadedWorkoutAnalysis = true
             return self.makeAnalysisContext().compactTelemetryAnalysis()
         }
 
         let manageTrainingTool = ManageTrainingStateTool { [weak self] query in
             guard let self else { return "" }
-            self.toolsCalledThisTurn += 1
             switch query.focus {
             case .readiness:
                 let isDistress = query.userReportedDistress == true
@@ -283,20 +211,16 @@ class AnalystChatEngine: ObservableObject {
 
                 let verdict: String
                 let recoveryStatus: String
-                let directive: String
 
                 if isDistress || rx.isSubjectiveOverride {
                     verdict = "MANDATORY_REST_HEALTH_OVERRIDE"
-                    recoveryStatus = "Subjective illness, pain, or physical distress reported. All training suspended for recovery."
-                    directive = "Runner reported illness, pain, or distress. Biological safety overrides all training. Mandate full rest and recovery. Do NOT state the runner is cleared for running or light recovery. Prescribe full rest. Advise consulting a physician or physical therapist if symptoms persist."
+                    recoveryStatus = "Runner reported illness, pain, or distress. Training suspended until symptoms resolve."
                 } else if isReady {
                     verdict = "CLEARED_FOR_TRAINING"
-                    recoveryStatus = "Fully recovered and cleared for training."
-                    directive = "Runner is cleared for training. Prescribe \(rx.nextSessionName) directly (\(rx.prescribedDurationBand) at \(rx.prescribedPaceBand)). Focus strictly on upcoming training. Do NOT quote past workout heart rates, paces, or interval drops."
+                    recoveryStatus = "Fully recovered."
                 } else {
                     verdict = "CLEARED_FOR_LIGHT_RECOVERY_ONLY"
-                    recoveryStatus = "In active recovery until \(analysis.recoveryTimeline.earliestHardPhrase)."
-                    directive = "Runner may do light recovery movement only; no hard efforts until \(analysis.recoveryTimeline.earliestHardPhrase). Prescribed: \(rx.nextSessionName) (\(rx.prescribedDurationBand) at \(rx.prescribedPaceBand))."
+                    recoveryStatus = "Light movement only until \(analysis.recoveryTimeline.earliestHardPhrase)."
                 }
 
                 let response = ReadinessToolResponse(
@@ -308,8 +232,7 @@ class AnalystChatEngine: ObservableObject {
                     prescribed_pace_band: rx.prescribedPaceBand,
                     prescribed_duration_band: rx.prescribedDurationBand,
                     prescribed_cadence_band: rx.prescribedCadenceBand,
-                    session_rationale: rx.sessionRationale,
-                    coaching_directive: directive
+                    session_rationale: rx.sessionRationale
                 )
 
                 let encoder = JSONEncoder()
@@ -321,42 +244,22 @@ class AnalystChatEngine: ObservableObject {
                 return "{\"intensity_category\":\"\(rx.intensityCategory)\",\"prescribed_pace_band\":\"\(rx.prescribedPaceBand)\",\"prescribed_session_name\":\"\(rx.nextSessionName)\",\"readiness_verdict\":\"\(verdict)\"}"
 
             case .history:
-                let target = query.historyTarget ?? ""
-                let compareWith = query.historyCompareWith ?? ""
-
-                if !compareWith.isEmpty {
-                    if let comparison = HistoricalRunMatcher.compareRuns(
-                        queryA: target,
-                        queryB: compareWith,
-                        relativeTo: self.runRecord,
-                        in: self.runRecord.modelContext
-                    ) {
+                let context = self.runRecord.modelContext
+                switch query.historyScope ?? .compare {
+                case .performanceArc:
+                    return HistoricalRunMatcher.analyzePerformanceArc(relativeTo: self.runRecord, in: context).structuredTelemetryFacts
+                case .recentRuns:
+                    return HistoricalRunMatcher.listRecentRuns(relativeTo: self.runRecord, in: context)
+                case .compare:
+                    let target = query.historyTarget.flatMap { $0.isEmpty ? nil : $0 } ?? "previous"
+                    if let other = query.historyCompareWith, !other.isEmpty,
+                       let comparison = HistoricalRunMatcher.compareRuns(queryA: target, queryB: other, relativeTo: self.runRecord, in: context) {
                         return comparison.structuredTelemetryFacts
                     }
-                }
-
-                if let compound = HistoricalRunMatcher.parseComparisonTargets(from: target) {
-                    if let comparison = HistoricalRunMatcher.compareRuns(
-                        queryA: compound.targetA,
-                        queryB: compound.targetB,
-                        relativeTo: self.runRecord,
-                        in: self.runRecord.modelContext
-                    ) {
-                        return comparison.structuredTelemetryFacts
+                    guard let prior = HistoricalRunMatcher.findRun(matching: target, relativeTo: self.runRecord, in: context) else {
+                        return "{\"status\":\"no_matching_run\",\"target\":\"\(target)\"}"
                     }
-                }
-
-                let lower = target.lowercased()
-                if lower.contains("best") || lower.contains("worst") || lower.contains("arc") || lower.contains("30_day") || lower.contains("rank") {
-                    let arc = HistoricalRunMatcher.analyzePerformanceArc(relativeTo: self.runRecord, in: self.runRecord.modelContext)
-                    return arc.structuredTelemetryFacts
-                } else if lower.contains("list") || lower.contains("recent") || lower.contains("all") {
-                    return HistoricalRunMatcher.listRecentRuns(relativeTo: self.runRecord, in: self.runRecord.modelContext)
-                } else if let prior = HistoricalRunMatcher.findRun(matching: target.isEmpty ? "previous" : target, relativeTo: self.runRecord, in: self.runRecord.modelContext) {
-                    let comparison = HistoricalRunMatcher.compare(current: self.runRecord, with: prior)
-                    return comparison.structuredTelemetryFacts
-                } else {
-                    return "No historical workout matching '\(target)' was found in stored records. Available context: current run is the only matching record."
+                    return HistoricalRunMatcher.compare(current: self.runRecord, with: prior).structuredTelemetryFacts
                 }
 
             case .athleteProfile:
@@ -373,7 +276,6 @@ class AnalystChatEngine: ObservableObject {
 
         let coachActionTool = ExecuteCoachActionTool { [weak self] query in
             guard let self else { return "" }
-            self.toolsCalledThisTurn += 1
             switch query.action {
             case .displayDrill:
                 let resolved = PreRunDrillId.resolve(from: query.payload ?? "") ?? .cadencePyramids
@@ -399,10 +301,6 @@ class AnalystChatEngine: ObservableObject {
                     return str
                 }
                 return "{\"drill_name\":\"\(resolved.title)\",\"status\":\"interactive_drill_card_displayed\"}"
-
-            case .exportToWatch:
-                let item = query.payload ?? "Prescribed Workout"
-                return "{\"status\":\"exported_to_apple_watch\",\"item\":\"\(item)\",\"message\":\"Workout successfully queued for Apple Watch Workout app sync.\"}"
 
             case .updateGoal:
                 let newGoal = query.payload ?? "Base Building"
@@ -432,26 +330,15 @@ class AnalystChatEngine: ObservableObject {
 
     @available(iOS 26.0, *)
     private func generateFoundationModelResponse(for userQuestion: String) async throws -> String {
-        // Discard accumulated multi-turn conversation history when reaching 4 turns to avoid TN3193 4,096 token limit
-        if messages.count > 4 {
-            self.modelSession = nil
-        }
-
-        var session = getOrCreateSession()
-        toolsCalledThisTurn = 0
+        // One session per chat so the model remembers what it already said.
+        // Only start fresh when the transcript genuinely overflows the context window.
         do {
-            let response = try await session.respond(to: userQuestion)
+            let response = try await getOrCreateSession().respond(to: userQuestion)
             return response.content.trimmingCharacters(in: .whitespacesAndNewlines)
-        } catch {
-            let errStr = error.localizedDescription
-            if errStr.contains("tokens") || errStr.contains("4,096") || errStr.contains("DecoderModelError") {
-                // Reset session and retry cleanly with fresh single-turn prompt context
-                self.modelSession = nil
-                session = getOrCreateSession()
-                let retryResponse = try await session.respond(to: userQuestion)
-                return retryResponse.content.trimmingCharacters(in: .whitespacesAndNewlines)
-            }
-            throw error
+        } catch LanguageModelSession.GenerationError.exceededContextWindowSize {
+            self.modelSession = nil
+            let retry = try await getOrCreateSession().respond(to: userQuestion)
+            return retry.content.trimmingCharacters(in: .whitespacesAndNewlines)
         }
     }
     #endif

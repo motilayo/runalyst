@@ -261,7 +261,7 @@ public struct BlendedTotals: Codable, Sendable {
     public let stride_archetype: String?
 
     public init(
-        _description: String = "Contains blended averages for the entire session (warm-up, work bouts, recovery jogs, and cooldown combined). SECONDARY: Do NOT cite these as the interval workload or active pace.",
+        _description: String = "Whole-session averages including warm-up, recoveries, and cooldown.",
         total_distance: String,
         total_duration: String,
         blended_session_avg_pace: String,
@@ -298,7 +298,6 @@ public struct ReadinessToolResponse: Codable, Sendable {
     public let prescribed_duration_band: String
     public let prescribed_cadence_band: String
     public let session_rationale: String
-    public let coaching_directive: String
 
     public init(
         schema_name: String = "READINESS_AND_PRESCRIPTION_RESPONSE",
@@ -309,8 +308,7 @@ public struct ReadinessToolResponse: Codable, Sendable {
         prescribed_pace_band: String,
         prescribed_duration_band: String,
         prescribed_cadence_band: String,
-        session_rationale: String,
-        coaching_directive: String
+        session_rationale: String
     ) {
         self.schema_name = schema_name
         self.readiness_verdict = readiness_verdict
@@ -321,7 +319,6 @@ public struct ReadinessToolResponse: Codable, Sendable {
         self.prescribed_duration_band = prescribed_duration_band
         self.prescribed_cadence_band = prescribed_cadence_band
         self.session_rationale = session_rationale
-        self.coaching_directive = coaching_directive
     }
 }
 // swiftlint:enable identifier_name
@@ -341,9 +338,16 @@ public enum TrainingFocus: String, Sendable {
 
 @available(iOS 26.0, *)
 @Generable
+public enum HistoryScope: String, Sendable {
+    case compare = "compare"
+    case performanceArc = "performance_arc"
+    case recentRuns = "recent_runs"
+}
+
+@available(iOS 26.0, *)
+@Generable
 public enum CoachActionType: String, Sendable {
     case displayDrill = "display_drill"
-    case exportToWatch = "export_to_watch"
     case updateGoal = "update_goal"
     case recordFeedback = "record_feedback"
 }
@@ -363,20 +367,25 @@ public struct ManageTrainingStateQuery: Sendable {
     @Guide(description: "Set to true if the runner mentions illness, pain, exhaustion, injury, or severe distress.")
     public var userReportedDistress: Bool?
 
-    @Guide(description: "Target past run for comparison (e.g. 'previous', 'last outdoor', 'last indoor', 'best', 'worst', 'arc', or specific date like 'September 30'). Used when focus is 'history'.")
+    @Guide(description: "History scope: 'compare' diffs the current run against historyTarget; 'performance_arc' ranks the past 30 days best to worst; 'recent_runs' lists recent workouts.")
+    public var historyScope: HistoryScope?
+
+    @Guide(description: "Past run to compare when historyScope is 'compare': 'previous', 'last outdoor', 'last indoor', a modality like 'tempo', or a date like 'September 30'.")
     public var historyTarget: String?
 
-    @Guide(description: "Optional second workout target when focus is 'history' to compare directly against historyTarget.")
+    @Guide(description: "Optional second past run; when set, historyTarget is compared against this run instead of the current one.")
     public var historyCompareWith: String?
 
     public init(
         focus: TrainingFocus,
         userReportedDistress: Bool? = nil,
+        historyScope: HistoryScope? = nil,
         historyTarget: String? = nil,
         historyCompareWith: String? = nil
     ) {
         self.focus = focus
         self.userReportedDistress = userReportedDistress
+        self.historyScope = historyScope
         self.historyTarget = historyTarget
         self.historyCompareWith = historyCompareWith
     }
@@ -385,7 +394,7 @@ public struct ManageTrainingStateQuery: Sendable {
 @available(iOS 26.0, *)
 @Generable
 public struct ExecuteCoachActionQuery: Sendable {
-    @Guide(description: "Action: 'display_drill' to present an interactive drill card in chat; 'export_to_watch' to queue drill to Apple Watch; 'update_goal' to adjust training goal; 'record_feedback' to save runner's subjective feedback or exertion.")
+    @Guide(description: "Action: 'display_drill' to present an interactive drill card in chat; 'update_goal' to adjust training goal; 'record_feedback' to save runner's subjective feedback or exertion.")
     public var action: CoachActionType
 
     @Guide(description: "Payload: drill name (e.g. 'cadence_pyramids', 'strides', 'rhythm_intervals') for 'display_drill'; goal title for 'update_goal'; subjective notes or exertion for 'record_feedback'.")
@@ -395,79 +404,6 @@ public struct ExecuteCoachActionQuery: Sendable {
         self.action = action
         self.payload = payload
     }
-}
-
-// MARK: - Query Parameter Schemas
-
-@available(iOS 26.0, *)
-@Generable
-struct WorkoutAnalysisQuery: Sendable {
-    @Guide(description: "Specific query focus: 'intervals', 'reps', 'performance', 'verdicts', 'economy_and_efficiency', 'cadence_mechanics', 'cardiac_drift', 'splits', or 'full_telemetry'")
-    var focus: String?
-}
-
-@available(iOS 26.0, *)
-@Generable
-struct IntervalPerformanceQuery: Sendable {
-    @Guide(description: "Interval focus: 'reps' for rep-by-rep execution, 'repeatability' for pace spread consistency, 'recovery' for HR drops, or 'all'")
-    var focus: String?
-}
-
-@available(iOS 26.0, *)
-@Generable
-struct WorkoutPhysicsQuery: Sendable {
-    @Guide(description: "Physics domain: 'treadmill_belt_and_thermal', 'gravitational_slope', 'cardiac_lag', 'biomechanical_forces', or 'all'")
-    var domain: String?
-}
-
-@available(iOS 26.0, *)
-@Generable
-struct ReadinessQuery: Sendable {
-    @Guide(description: "Planning query focus: 'tomorrow_readiness', 'locked_prescription', or 'recovery_status'")
-    var focus: String?
-
-    @Guide(description: "Pass true if the runner mentions illness, pain, exhaustion, injury, or poor sleep in their prompt.")
-    var userReportedDistress: Bool?
-}
-
-@available(iOS 26.0, *)
-@Generable
-struct AthleteProfileQuery: Sendable {
-    @Guide(description: "Profile aspect: 'experience_level', 'training_load', or 'cadence_floor'")
-    var aspect: String?
-}
-
-@available(iOS 26.0, *)
-@Generable
-struct HistoricalWorkoutQuery: Sendable {
-    @Guide(description: "Search target for comparison or ranking: 'outdoor' (for last outdoor run), 'indoor' (for treadmill), 'best_and_worst' (or 'arc', '30_days') to rank past 30 days workouts, or specific date (e.g. 'September 30' or 'MM/DD'), relative term ('previous', 'last run'), or modality ('tempo', 'intervals').")
-    var target: String?
-
-    @Guide(description: "Optional second workout target to compare against target. For example, if target is 'last indoor run', set compareWith to 'last outdoor run' or 'September 30' to get exact Swift mathematical comparison deltas between the two.")
-    var compareWith: String?
-}
-
-@available(iOS 26.0, *)
-@Generable
-struct WorkoutMathQuery: Sendable {
-    @Guide(description: "Mathematical operation to perform: 'pace_delta' (e.g. between '6:25' and '6:14'), 'distance_delta' (e.g. between '6.64' and '5.09'), 'heart_rate_delta' (e.g. between '147' and '157'), 'cadence_delta' (e.g. between '156' and '152'), 'difference' (valueA - valueB), or 'percentage_change'.")
-    var operation: String
-
-    @Guide(description: "First value or primary metric string (e.g. '6:25', '6.64', '156', '147')")
-    var valueA: String
-
-    @Guide(description: "Second value or baseline metric string (e.g. '6:14', '5.09', '152', '157')")
-    var valueB: String
-
-    @Guide(description: "Optional metric type: 'pace' (min:sec/km or min:sec/mi), 'heart_rate' (BPM), 'cadence' (SPM), 'distance' (km or mi), 'duration' (minutes or seconds)")
-    var metricType: String?
-}
-
-@available(iOS 26.0, *)
-@Generable
-struct DisplayDrillQuery: Sendable {
-    @Guide(description: "The identifier or title of the corrective drill to display to the runner. Must be one of: 'cadence_pyramids', 'rhythm_intervals', 'tempo_surges', 'strides', 'form_primer', 'hill_bounds', 'recovery_jog', 'aerobic_flush', 'zone_2_run', 'fartlek_primer'.")
-    var drillName: String
 }
 
 // MARK: - FoundationModels Native Tools
@@ -523,7 +459,7 @@ public struct ExecuteCoachActionTool: Tool {
     public typealias Output = String
 
     public let name = "executeCoachAction"
-    public let description = "Executes coaching actions: 'display_drill' to render an interactive drill card; 'export_to_watch' to queue a workout to Apple Watch; 'update_goal' to update the runner's goal; 'record_feedback' to save subjective runner feedback."
+    public let description = "Executes coaching actions: 'display_drill' to render an interactive drill card; 'update_goal' to update the runner's goal; 'record_feedback' to save subjective runner feedback."
 
     let provider: @MainActor @Sendable (ExecuteCoachActionQuery) async -> String
 
@@ -536,211 +472,4 @@ public struct ExecuteCoachActionTool: Tool {
     }
 }
 
-/// Tool providing deterministic retrospective workout telemetry, biomechanics, and physiological verdicts.
-@available(iOS 26.0, *)
-struct FetchWorkoutTelemetryTool: Tool {
-    typealias Arguments = WorkoutAnalysisQuery
-    typealias Output = String
-
-    let name = "fetchWorkoutTelemetry"
-    let description = "Retrieves deterministic overall workout telemetry for this run. For interval workouts, delivers the primary interval_scorecard and complete reps array (work pace, cadence, HR, and grade) as the primary workload, with blended session totals demoted. For continuous runs, delivers kilometer splits and steady pacing metrics."
-
-    let provider: @MainActor @Sendable (WorkoutAnalysisQuery) async -> String
-
-    init(provider: @escaping @MainActor @Sendable (WorkoutAnalysisQuery) async -> String) {
-        self.provider = provider
-    }
-
-    init(simpleProvider: @escaping @MainActor @Sendable () async -> String) {
-        self.provider = { _ in await simpleProvider() }
-    }
-
-    func call(arguments: WorkoutAnalysisQuery) async throws -> String {
-        await provider(arguments)
-    }
-}
-
-/// Tool providing deterministic retrospective workout telemetry, biomechanics, and physiological verdicts.
-@available(iOS 26.0, *)
-struct FetchWorkoutAnalysisTool: Tool {
-    typealias Arguments = WorkoutAnalysisQuery
-    typealias Output = String
-
-    let name = "fetchWorkoutAnalysis"
-    let description = "Retrieves deterministic overall workout telemetry for this run. For interval workouts, delivers the primary interval_scorecard and complete reps array (work pace, cadence, HR, and grade) as the primary workload, with blended session totals demoted. For continuous runs, delivers kilometer splits and steady pacing metrics."
-
-    let provider: @MainActor @Sendable (WorkoutAnalysisQuery) async -> String
-
-    init(provider: @escaping @MainActor @Sendable (WorkoutAnalysisQuery) async -> String) {
-        self.provider = provider
-    }
-
-    init(simpleProvider: @escaping @MainActor @Sendable () async -> String) {
-        self.provider = { _ in await simpleProvider() }
-    }
-
-    func call(arguments: WorkoutAnalysisQuery) async throws -> String {
-        await provider(arguments)
-    }
-}
-
-/// Tool providing discrete interval rep breakdown, work pacing repeatability, and recovery HR drops.
-@available(iOS 26.0, *)
-struct FetchIntervalPerformanceTool: Tool {
-    typealias Arguments = IntervalPerformanceQuery
-    typealias Output = String
-
-    let name = "fetchIntervalPerformance"
-    let description = "Retrieves detailed interval workout performance, including individual rep-by-rep breakdowns (work pace, cadence, heart rate, letter grade, and observation for each repetition), recovery jog paces and heart rate drops between sets, and pace consistency across reps."
-
-    let provider: @MainActor @Sendable (IntervalPerformanceQuery) async -> String
-
-    init(provider: @escaping @MainActor @Sendable (IntervalPerformanceQuery) async -> String) {
-        self.provider = provider
-    }
-
-    init(simpleProvider: @escaping @MainActor @Sendable () async -> String) {
-        self.provider = { _ in await simpleProvider() }
-    }
-
-    func call(arguments: IntervalPerformanceQuery) async throws -> String {
-        await provider(arguments)
-    }
-}
-
-/// Tool providing modeled physical realities: treadmill belt kinetics, thermal buildup in static room air, hill gravity, and cardiac lag.
-@available(iOS 26.0, *)
-struct FetchWorkoutPhysicsTool: Tool {
-    typealias Arguments = WorkoutPhysicsQuery
-    typealias Output = String
-
-    let name = "fetchWorkoutPhysics"
-    let description = "Retrieves modeled biomechanical and environmental physics for this workout: treadmill belt kinetics vs road push-off, indoor heat accumulation and lack of convective cooling vs outdoor wind, hill slope resistance, and cardiac lag."
-
-    let provider: @MainActor @Sendable (WorkoutPhysicsQuery) async -> String
-
-    init(provider: @escaping @MainActor @Sendable (WorkoutPhysicsQuery) async -> String) {
-        self.provider = provider
-    }
-
-    init(simpleProvider: @escaping @MainActor @Sendable () async -> String) {
-        self.provider = { _ in await simpleProvider() }
-    }
-
-    func call(arguments: WorkoutPhysicsQuery) async throws -> String {
-        await provider(arguments)
-    }
-}
-
-/// Tool providing prospective recovery status, rest timeline, and locked training prescriptions for upcoming sessions.
-@available(iOS 26.0, *)
-struct FetchReadinessAndPrescriptionTool: Tool {
-    typealias Arguments = ReadinessQuery
-    typealias Output = String
-
-    let name = "fetchReadinessAndPrescription"
-    let description = "Retrieves the runner's current recovery timeline, readiness to train, and the mathematically locked prescription for their upcoming workout (session type, pace band, duration band, and rationale)."
-
-    let provider: @MainActor @Sendable (ReadinessQuery) async -> String
-
-    init(provider: @escaping @MainActor @Sendable (ReadinessQuery) async -> String) {
-        self.provider = provider
-    }
-
-    init(simpleProvider: @escaping @MainActor @Sendable () async -> String) {
-        self.provider = { _ in await simpleProvider() }
-    }
-
-    func call(arguments: ReadinessQuery) async throws -> String {
-        await provider(arguments)
-    }
-}
-
-/// Tool providing longitudinal athlete identity, experience level, 30-day training volume, and height-calibrated cadence floors.
-@available(iOS 26.0, *)
-struct FetchAthleteProfileTool: Tool {
-    typealias Arguments = AthleteProfileQuery
-    typealias Output = String
-
-    let name = "fetchAthleteProfile"
-    let description = "Retrieves the athlete's 30-day cumulative training volume, experience level, active training goal, and height-calibrated cadence floor."
-
-    let provider: @MainActor @Sendable (AthleteProfileQuery) async -> String
-
-    init(provider: @escaping @MainActor @Sendable (AthleteProfileQuery) async -> String) {
-        self.provider = provider
-    }
-
-    init(simpleProvider: @escaping @MainActor @Sendable () async -> String) {
-        self.provider = { _ in await simpleProvider() }
-    }
-
-    func call(arguments: AthleteProfileQuery) async throws -> String {
-        await provider(arguments)
-    }
-}
-
-/// Tool providing deterministic historical workout comparison telemetry.
-@available(iOS 26.0, *)
-struct FetchHistoricalWorkoutTool: Tool {
-    typealias Arguments = HistoricalWorkoutQuery
-    typealias Output = String
-
-    let name = "fetchHistoricalWorkout"
-    let description = "Retrieves historical workout telemetry from the athlete's recorded history (such as past outdoor runs, treadmill sessions, specific dates, or 30-day rankings) and calculates exact mathematical comparisons and telemetry deltas against the current run."
-
-    let provider: @MainActor @Sendable (HistoricalWorkoutQuery) async -> String
-
-    init(provider: @escaping @MainActor @Sendable (HistoricalWorkoutQuery) async -> String) {
-        self.provider = provider
-    }
-
-    init(simpleProvider: @escaping @MainActor @Sendable () async -> String) {
-        self.provider = { _ in await simpleProvider() }
-    }
-
-    func call(arguments: HistoricalWorkoutQuery) async throws -> String {
-        await provider(arguments)
-    }
-}
-
-/// Tool providing deterministic running math calculations: pace deltas, distance gaps, heart rate changes, and percentages.
-@available(iOS 26.0, *)
-struct ComputeWorkoutMathTool: Tool {
-    typealias Arguments = WorkoutMathQuery
-    typealias Output = String
-
-    let name = "computeWorkoutMath"
-    let description = "Calculates exact deterministic running math: pace deltas (seconds/km and percentage differences), distance deltas with consistent precision, heart rate gaps, cadence differences, and percentage changes between any two workout metrics. Call this instead of calculating numbers mentally."
-
-    let provider: @MainActor @Sendable (WorkoutMathQuery) async -> String
-
-    init(provider: @escaping @MainActor @Sendable (WorkoutMathQuery) async -> String) {
-        self.provider = provider
-    }
-
-    func call(arguments: WorkoutMathQuery) async throws -> String {
-        await provider(arguments)
-    }
-}
-
-/// Tool providing interactive drill card presentation in the runner's chat view.
-@available(iOS 26.0, *)
-struct DisplayDrillTool: Tool {
-    typealias Arguments = DisplayDrillQuery
-    typealias Output = String
-
-    let name = "displayDrill"
-    let description = "Surfaces an interactive drill card in the runner's chat interface when prescribing or recommending a corrective running drill (such as Cadence Pyramids, Strides, Rhythm Intervals, Tempo Surges, Hill Bounds, Form Primer, or Aerobic Flush). Returns the drill structure, target cadence band, purpose, and execution cues so you can explain them clearly."
-
-    let provider: @MainActor @Sendable (DisplayDrillQuery) async -> String
-
-    init(provider: @escaping @MainActor @Sendable (DisplayDrillQuery) async -> String) {
-        self.provider = provider
-    }
-
-    func call(arguments: DisplayDrillQuery) async throws -> String {
-        await provider(arguments)
-    }
-}
 #endif
