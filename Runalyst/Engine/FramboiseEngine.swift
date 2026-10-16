@@ -266,27 +266,9 @@ actor FramboiseEngine {
         let paceCV = calculatePaceCV(bucketPaces: validPaces)
         let hasLargePaceRange = (medPace - p20) >= 30.0
 
-        // Pace Variance (CV) Gating: If CV < 0.10, classify strictly as Steady State or Progression
-        // and emit continuous steady segments only.
-        if paceCV < 0.10 {
-            let totalDur = buckets.map(\.durationSeconds).reduce(0, +)
-            let avgPace = validPaces.isEmpty ? 0 : (validPaces.reduce(0, +) / Double(validPaces.count))
-            let avgCad = buckets.map(\.meanCadence).reduce(0, +) / Double(max(1, buckets.count))
-            let validHRs = buckets.map(\.meanHR).filter { $0 > 0 }
-            let avgHR = validHRs.isEmpty ? 0 : (validHRs.reduce(0, +) / Double(validHRs.count))
-            return [
-                PhaseSegment(
-                    startSeconds: 0,
-                    endSeconds: totalDur,
-                    kind: "steady",
-                    avgPace: avgPace,
-                    avgCadence: avgCad,
-                    avgHR: avgHR
-                )
-            ]
-        }
-
-        let isUniformSteady = false
+        // If pace variability across moving buckets is minimal (CV < 0.10 and pace spread < 20s),
+        // this is deterministically a uniform/steady run. Do not segment into fake work/recovery bouts.
+        let isUniformSteady = paceCV < 0.10 && (medPace - p20) < 20.0
         let surgePaceThreshold = hasLargePaceRange ? min(medPace - 30.0, p20 + 20.0) : (medPace - 20.0)
         let surgeCadenceThreshold = hasLargePaceRange ? (medCad + 4.0) : (medCad + 2.0)
 

@@ -82,9 +82,9 @@ final class RunRecord {
         return speed / workingAvgHeartRate
     }
 
-    /// Evaluates whether active running heart rate is implausibly low (e.g. < 85 BPM during active running > 5 min and pace < 8:00/km).
+    /// Evaluates whether active running heart rate is implausibly low (e.g. < 85 BPM during active running > 5 min).
     var isHeartRateSensorLowConfidence: Bool {
-        guard duration >= 300.0, workingAvgPace > 0, workingAvgPace <= 480.0 else { return false }
+        guard duration >= 300.0, workingAvgPace > 0, workingAvgPace <= 540.0 else { return false }
         return workingAvgHeartRate > 0 && workingAvgHeartRate < 85.0
     }
 

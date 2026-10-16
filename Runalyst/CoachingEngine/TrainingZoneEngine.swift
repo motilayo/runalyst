@@ -69,7 +69,6 @@ struct LockedTrainingPrescription: Sendable, Equatable {
             .replacingOccurrences(of: " minutes", with: " Min")
             .replacingOccurrences(of: " minute", with: " Min")
     }
-
     var promptDescription: String {
         var lines: [String] = []
         lines.append("LOCKED TRAINING ZONES & SESSION PRESCRIPTION:")

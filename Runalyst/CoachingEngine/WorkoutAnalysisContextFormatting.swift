@@ -550,7 +550,7 @@ extension WorkoutAnalysisContext {
         )
 
         let hrConfidence: String = isLowConfidenceHR
-            ? "unreliable_sensor_artifact"
+            ? "unreliable_sensor_artifact (resting/cadence-lock HR < 85 BPM detected; heart rate metrics omitted from payload)"
             : "reliable"
 
         return UnifiedWorkoutToolResponse(
