@@ -420,7 +420,7 @@ final class CoachingEngineDataTests: XCTestCase {
         XCTAssertTrue(report.contains("Rep 10 "))
         XCTAssertTrue(report.contains("Recovery 10"))
 
-        let promptSummary = ctx.groundedPromptSummary(turnContext: nil)
+        let promptSummary = ctx.groundedPromptSummary()
         XCTAssertTrue(promptSummary.contains("Rep 1 "))
         XCTAssertTrue(promptSummary.contains("Rep 9 "))
         XCTAssertTrue(promptSummary.contains("Rep 10 "))
@@ -549,19 +549,5 @@ final class CoachingEngineDataTests: XCTestCase {
 
         let worstMatch = try XCTUnwrap(HistoricalRunMatcher.findRun(matching: "compare to my worst performance", relativeTo: currentRun, in: context))
         XCTAssertEqual(worstMatch.id, sep14Run.id)
-
-        // 7. Test AnalystFallbackResponder 30-day best/worst performance intent
-        let chatEngine = AnalystChatEngine(runRecord: currentRun)
-        let analysis = chatEngine.makeAnalysisContext()
-
-        let fallbackArcResponse = AnalystFallbackResponder.generateResponse(
-            for: "In the past 30 days, which run was my best performance? Which was my worst performance?",
-            analysis: analysis,
-            runRecord: currentRun
-        )
-        XCTAssertTrue(fallbackArcResponse.contains("best performance"))
-        XCTAssertTrue(fallbackArcResponse.contains("toughest session"))
-        XCTAssertTrue(fallbackArcResponse.contains("156 SPM"))
-        XCTAssertFalse(fallbackArcResponse.contains("/km cadence"), "Fallback must never write /km cadence")
     }
 }

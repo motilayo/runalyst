@@ -22,6 +22,12 @@ public struct UnifiedWorkoutToolResponse: Codable, Sendable {
     // THE SPLITS ARRAY (For continuous/steady-state runs)
     public let splits: [SplitDetail]?
 
+    // WORKING STATS (Pause-trimmed moving metrics - default in RunDetailView)
+    public let working_stats: WorkingStatsDetail?
+
+    // WORKOUT STATS (Gross Apple HealthKit session metrics including stopped time)
+    public let workout_stats: WorkoutStatsDetail?
+
     // SECONDARY BACKGROUND (Blended session data - demoted so LLM doesn't confuse it)
     public let background_session_totals: BlendedTotals
 
@@ -41,6 +47,8 @@ public struct UnifiedWorkoutToolResponse: Codable, Sendable {
         reps: [IntervalRepDetail]? = nil,
         steady_state_scorecard: SteadyStateScorecard? = nil,
         splits: [SplitDetail]? = nil,
+        working_stats: WorkingStatsDetail? = nil,
+        workout_stats: WorkoutStatsDetail? = nil,
         background_session_totals: BlendedTotals,
         physiological_verdicts: String,
         heart_rate_confidence: String? = nil,
@@ -54,10 +62,58 @@ public struct UnifiedWorkoutToolResponse: Codable, Sendable {
         self.reps = reps
         self.steady_state_scorecard = steady_state_scorecard
         self.splits = splits
+        self.working_stats = working_stats
+        self.workout_stats = workout_stats
         self.background_session_totals = background_session_totals
         self.physiological_verdicts = physiological_verdicts
         self.heart_rate_confidence = heart_rate_confidence
         self.heart_rate_status = heart_rate_status
+    }
+}
+
+/// Delineates pause-trimmed active moving metrics from gross session totals.
+public struct WorkingStatsDetail: Codable, Sendable {
+    public let moving_time: String
+    public let moving_pace: String
+    public let working_cadence_spm: Int
+    public let working_heart_rate_bpm: Int?
+    public let _description: String
+
+    public init(
+        moving_time: String,
+        moving_pace: String,
+        working_cadence_spm: Int,
+        working_heart_rate_bpm: Int? = nil,
+        _description: String = "Active moving metrics with pauses, red lights, and walking breaks filtered out."
+    ) {
+        self.moving_time = moving_time
+        self.moving_pace = moving_pace
+        self.working_cadence_spm = working_cadence_spm
+        self.working_heart_rate_bpm = working_heart_rate_bpm
+        self._description = _description
+    }
+}
+
+/// Delineates gross HealthKit session totals from active moving metrics.
+public struct WorkoutStatsDetail: Codable, Sendable {
+    public let total_time: String
+    public let gross_pace: String
+    public let raw_cadence_spm: Int
+    public let raw_heart_rate_bpm: Int?
+    public let _description: String
+
+    public init(
+        total_time: String,
+        gross_pace: String,
+        raw_cadence_spm: Int,
+        raw_heart_rate_bpm: Int? = nil,
+        _description: String = "Gross HealthKit session totals from start to finish including stopped time and walking."
+    ) {
+        self.total_time = total_time
+        self.gross_pace = gross_pace
+        self.raw_cadence_spm = raw_cadence_spm
+        self.raw_heart_rate_bpm = raw_heart_rate_bpm
+        self._description = _description
     }
 }
 
@@ -170,7 +226,7 @@ public struct SplitDetail: Codable, Sendable {
     public let heart_rate_bpm: Int?
     public let heart_rate_status: String?
     public let grade: String
-    public let observation: String
+    public let observation: String?
 
     public init(
         split_index: Int,
@@ -179,7 +235,7 @@ public struct SplitDetail: Codable, Sendable {
         heart_rate_bpm: Int? = nil,
         heart_rate_status: String? = nil,
         grade: String,
-        observation: String
+        observation: String? = nil
     ) {
         self.split_index = split_index
         self.pace = pace
@@ -273,6 +329,74 @@ public struct ReadinessToolResponse: Codable, Sendable {
 #if canImport(FoundationModels)
 import FoundationModels
 
+// MARK: - Consolidated Native Tool Enums & Schemas
+
+@available(iOS 26.0, *)
+@Generable
+public enum TrainingFocus: String, Sendable {
+    case readiness = "readiness"
+    case history = "history"
+    case athleteProfile = "athlete_profile"
+}
+
+@available(iOS 26.0, *)
+@Generable
+public enum CoachActionType: String, Sendable {
+    case displayDrill = "display_drill"
+    case exportToWatch = "export_to_watch"
+    case updateGoal = "update_goal"
+    case recordFeedback = "record_feedback"
+}
+
+@available(iOS 26.0, *)
+@Generable
+public struct InspectWorkoutQuery: Sendable {
+    public init() {}
+}
+
+@available(iOS 26.0, *)
+@Generable
+public struct ManageTrainingStateQuery: Sendable {
+    @Guide(description: "Focus: 'readiness' for recovery and tomorrow's prescription; 'history' for mathematical comparisons with past runs; 'athlete_profile' for load and cadence floor.")
+    public var focus: TrainingFocus
+
+    @Guide(description: "Set to true if the runner mentions illness, pain, exhaustion, injury, or severe distress.")
+    public var userReportedDistress: Bool?
+
+    @Guide(description: "Target past run for comparison (e.g. 'previous', 'last outdoor', 'last indoor', 'best', 'worst', 'arc', or specific date like 'September 30'). Used when focus is 'history'.")
+    public var historyTarget: String?
+
+    @Guide(description: "Optional second workout target when focus is 'history' to compare directly against historyTarget.")
+    public var historyCompareWith: String?
+
+    public init(
+        focus: TrainingFocus,
+        userReportedDistress: Bool? = nil,
+        historyTarget: String? = nil,
+        historyCompareWith: String? = nil
+    ) {
+        self.focus = focus
+        self.userReportedDistress = userReportedDistress
+        self.historyTarget = historyTarget
+        self.historyCompareWith = historyCompareWith
+    }
+}
+
+@available(iOS 26.0, *)
+@Generable
+public struct ExecuteCoachActionQuery: Sendable {
+    @Guide(description: "Action: 'display_drill' to present an interactive drill card in chat; 'export_to_watch' to queue drill to Apple Watch; 'update_goal' to adjust training goal; 'record_feedback' to save runner's subjective feedback or exertion.")
+    public var action: CoachActionType
+
+    @Guide(description: "Payload: drill name (e.g. 'cadence_pyramids', 'strides', 'rhythm_intervals') for 'display_drill'; goal title for 'update_goal'; subjective notes or exertion for 'record_feedback'.")
+    public var payload: String?
+
+    public init(action: CoachActionType, payload: String? = nil) {
+        self.action = action
+        self.payload = payload
+    }
+}
+
 // MARK: - Query Parameter Schemas
 
 @available(iOS 26.0, *)
@@ -339,7 +463,78 @@ struct WorkoutMathQuery: Sendable {
     var metricType: String?
 }
 
+@available(iOS 26.0, *)
+@Generable
+struct DisplayDrillQuery: Sendable {
+    @Guide(description: "The identifier or title of the corrective drill to display to the runner. Must be one of: 'cadence_pyramids', 'rhythm_intervals', 'tempo_surges', 'strides', 'form_primer', 'hill_bounds', 'recovery_jog', 'aerobic_flush', 'zone_2_run', 'fartlek_primer'.")
+    var drillName: String
+}
+
 // MARK: - FoundationModels Native Tools
+
+/// Consolidated tool returning full unified workout telemetry without fragmentation.
+@available(iOS 26.0, *)
+public struct InspectWorkoutTool: Tool {
+    public typealias Arguments = InspectWorkoutQuery
+    public typealias Output = String
+
+    public let name = "inspectWorkout"
+    public let description = "Inspects the current workout. Returns the complete unified telemetry payload: moving stats vs gross workout stats, splits, interval scorecard, individual reps, physics, and physiological diagnoses."
+
+    let provider: @MainActor @Sendable (InspectWorkoutQuery) async -> String
+
+    public init(provider: @escaping @MainActor @Sendable (InspectWorkoutQuery) async -> String) {
+        self.provider = provider
+    }
+
+    public init(simpleProvider: @escaping @MainActor @Sendable () async -> String) {
+        self.provider = { _ in await simpleProvider() }
+    }
+
+    public func call(arguments: InspectWorkoutQuery) async throws -> String {
+        await provider(arguments)
+    }
+}
+
+/// Consolidated tool managing readiness, historical comparisons, and athlete profile state.
+@available(iOS 26.0, *)
+public struct ManageTrainingStateTool: Tool {
+    public typealias Arguments = ManageTrainingStateQuery
+    public typealias Output = String
+
+    public let name = "manageTrainingState"
+    public let description = "Manages athlete training state across three foci: 'readiness' (recovery timeline and locked prescription for tomorrow), 'history' (mathematical comparisons against past runs or performance arcs), and 'athlete_profile' (experience level, 30-day load, and cadence floor)."
+
+    let provider: @MainActor @Sendable (ManageTrainingStateQuery) async -> String
+
+    public init(provider: @escaping @MainActor @Sendable (ManageTrainingStateQuery) async -> String) {
+        self.provider = provider
+    }
+
+    public func call(arguments: ManageTrainingStateQuery) async throws -> String {
+        await provider(arguments)
+    }
+}
+
+/// Consolidated tool executing interactive coaching actions.
+@available(iOS 26.0, *)
+public struct ExecuteCoachActionTool: Tool {
+    public typealias Arguments = ExecuteCoachActionQuery
+    public typealias Output = String
+
+    public let name = "executeCoachAction"
+    public let description = "Executes coaching actions: 'display_drill' to render an interactive drill card; 'export_to_watch' to queue a workout to Apple Watch; 'update_goal' to update the runner's goal; 'record_feedback' to save subjective runner feedback."
+
+    let provider: @MainActor @Sendable (ExecuteCoachActionQuery) async -> String
+
+    public init(provider: @escaping @MainActor @Sendable (ExecuteCoachActionQuery) async -> String) {
+        self.provider = provider
+    }
+
+    public func call(arguments: ExecuteCoachActionQuery) async throws -> String {
+        await provider(arguments)
+    }
+}
 
 /// Tool providing deterministic retrospective workout telemetry, biomechanics, and physiological verdicts.
 @available(iOS 26.0, *)
@@ -525,6 +720,26 @@ struct ComputeWorkoutMathTool: Tool {
     }
 
     func call(arguments: WorkoutMathQuery) async throws -> String {
+        await provider(arguments)
+    }
+}
+
+/// Tool providing interactive drill card presentation in the runner's chat view.
+@available(iOS 26.0, *)
+struct DisplayDrillTool: Tool {
+    typealias Arguments = DisplayDrillQuery
+    typealias Output = String
+
+    let name = "displayDrill"
+    let description = "Surfaces an interactive drill card in the runner's chat interface when prescribing or recommending a corrective running drill (such as Cadence Pyramids, Strides, Rhythm Intervals, Tempo Surges, Hill Bounds, Form Primer, or Aerobic Flush). Returns the drill structure, target cadence band, purpose, and execution cues so you can explain them clearly."
+
+    let provider: @MainActor @Sendable (DisplayDrillQuery) async -> String
+
+    init(provider: @escaping @MainActor @Sendable (DisplayDrillQuery) async -> String) {
+        self.provider = provider
+    }
+
+    func call(arguments: DisplayDrillQuery) async throws -> String {
         await provider(arguments)
     }
 }

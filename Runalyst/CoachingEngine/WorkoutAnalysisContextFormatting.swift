@@ -40,7 +40,7 @@ extension WorkoutAnalysisContext {
 
         // Continuous / Distance Splits
         guard !splitEvaluations.isEmpty else {
-            return overallGradeReport.sentence
+            return "\(overallGradeReport.sentence) You held an average pace of **\(workingPaceFormatted)** at **\(workingCadence) SPM**."
         }
 
         let header: String = {
@@ -90,64 +90,7 @@ extension WorkoutAnalysisContext {
     }
 
     /// Formats precomputed analytical findings into a compact context block for the on-device language model.
-    func groundedPromptSummary(turnContext: ManagedTurnContext? = nil) -> String {
-        if let tc = turnContext, tc.stripWorkoutPayload {
-            var lines = ["ATHLETE IDENTITY & CURRENT LOAD:"]
-            lines.append("- Athletic Experience Level: \(runnerProfile.experienceLevel)")
-            lines.append("- Active Training Goal: \(runnerProfile.trainingGoal)")
-            lines.append("- Current Date (Today): \(currentWeekday), \(currentDateFormatted)")
-            lines.append("")
-            lines.append(tc.promptHeader)
-            return lines.joined(separator: "\n")
-        }
-
-        if let tc = turnContext, tc.turnDomain == .futureSessionPlanning || tc.prunePhysiologicalVerdicts {
-            var lines = ["ATHLETE IDENTITY & CURRENT LOAD:"]
-            lines.append("- Athletic Experience Level: \(runnerProfile.experienceLevel)")
-            lines.append("- Active Training Goal: \(runnerProfile.trainingGoal)")
-            lines.append("- Current 30-Day Training Load: \(runnerProfile.loadSummary)")
-            lines.append("- Runner Height: \(Int(runnerProfile.userHeightCm)) cm (Height-calibrated cadence floor: \(runnerProfile.heightAdjustedCadenceFloor) SPM)")
-            lines.append("")
-            lines.append("CALENDAR & TEMPORAL CONTEXT:")
-            lines.append("- Current Date (Today): \(currentWeekday), \(currentDateFormatted)")
-            let elapsedNote: String = {
-                if isWorkoutToday { return "logged earlier today" }
-                if isWorkoutYesterday { return "logged yesterday" }
-                return "\(daysSinceWorkout) days ago on \(workoutWeekday), \(workoutDateFormatted)"
-            }()
-            lines.append("- Workout Date: \(workoutWeekday), \(workoutDateFormatted) (\(elapsedNote))")
-            if isWorkoutToday {
-                lines.append("- Activity Status: This workout took place today.")
-            } else {
-                let todayStatus = hasRunToday ? "Logged another run today." : "Did NOT run today."
-                let yesterdayStatus = hasRunYesterday ? "Logged a run yesterday." : "Did NOT run yesterday."
-                let restNote = daysSinceWorkout > 1 ? "\(daysSinceWorkout) days of rest since this session (fully rested and fresh)." : "1 day of rest since this session."
-                lines.append("- Recent Activity: \(todayStatus) \(yesterdayStatus) (\(restNote))")
-            }
-            let durationMin = max(1, Int((runRecord.duration / 60.0).rounded()))
-            let distKm = String(format: "%.1f km", runRecord.totalDistanceMeters / 1000.0)
-            lines.append("")
-            lines.append("RECENT SESSION CONTEXT (Brief reference for last logged session):")
-            let hrDesc = runRecord.isHeartRateSensorLowConfidence ? "Omitted (sensor lock anomaly < 85 BPM)" : "\(workingHR) BPM"
-            lines.append("- Last Session (\(workoutWeekday)): \(detectedType) (\(isIndoor ? "Treadmill" : "Outdoors")), \(distKm) in \(durationMin) min, Working Pace: \(workingPaceFormatted), Working HR: \(hrDesc)")
-            lines.append("")
-            lines.append("FUTURE TRAINING & READINESS:")
-            lines.append("- Current Readiness: \(recoveryTimeline.state.rawValue)")
-            if recoveryTimeline.readyForHard {
-                lines.append("- Recovery Status: FULLY RECOVERED and fresh. Cleared for any workout including speed, tempo, or intervals (last hard session was \(Int(hoursSinceWorkout))h ago; required was only \(Int(recoveryTimeline.requiredHours))h). Zero residual fatigue remains.")
-            } else if let cap = recoveryTimeline.easyCap {
-                lines.append("- Recovery Status: In active recovery window until \(recoveryTimeline.earliestHardPhrase). Keep next run easy (cap: \(cap.lowerBound)–\(cap.upperBound) min).")
-            }
-            lines.append("")
-            lines.append(lockedPrescription.promptDescription)
-            if let drill = runRecord.insight?.drillRecommendations?.first ?? runRecord.insight?.drillRecommendation {
-                lines.append("- Pre-Run Technique Drill Option: \(drill.drillTitle) (warm-up turnover prep, not mandatory rehab)")
-            }
-            lines.append("")
-            lines.append(tc.promptHeader)
-            return lines.joined(separator: "\n")
-        }
-
+    func groundedPromptSummary() -> String {
         var lines: [String] = []
 
         // Athlete Identity & Current Load
@@ -270,28 +213,20 @@ extension WorkoutAnalysisContext {
             lines.append("- \(diag)")
         }
 
-        // Future Training & Recovery (Included only when runner asks about upcoming runs or readiness)
-        let isFutureTurn = turnContext?.turnDomain == .futureSessionPlanning || turnContext?.turnDomain == .compositeWorkoutAndPlanning
-        if isFutureTurn || turnContext == nil {
-            lines.append("")
-            lines.append("[FUTURE TRAINING & READINESS]:")
-            lines.append("- Current Readiness: \(recoveryTimeline.state.rawValue)")
-            if recoveryTimeline.readyForHard {
-                lines.append("- Recovery Status: FULLY RECOVERED and fresh. Cleared for any workout including speed, tempo, or intervals (last hard session was \(Int(hoursSinceWorkout))h ago; required was only \(Int(recoveryTimeline.requiredHours))h). Zero residual fatigue remains.")
-            } else if let cap = recoveryTimeline.easyCap {
-                lines.append("- Recovery Status: In active recovery window until \(recoveryTimeline.earliestHardPhrase). Keep next run easy (cap: \(cap.lowerBound)–\(cap.upperBound) min).")
-            }
-            lines.append("")
-            lines.append(lockedPrescription.promptDescription)
-
-            if let drill = runRecord.insight?.drillRecommendations?.first ?? runRecord.insight?.drillRecommendation {
-                lines.append("- Pre-Run Technique Drill Option: \(drill.drillTitle) (warm-up turnover prep, not mandatory rehab)")
-            }
+        // Future Training & Recovery
+        lines.append("")
+        lines.append("[FUTURE TRAINING & READINESS]:")
+        lines.append("- Current Readiness: \(recoveryTimeline.state.rawValue)")
+        if recoveryTimeline.readyForHard {
+            lines.append("- Recovery Status: FULLY RECOVERED and fresh. Cleared for any workout including speed, tempo, or intervals (last hard session was \(Int(hoursSinceWorkout))h ago; required was only \(Int(recoveryTimeline.requiredHours))h). Zero residual fatigue remains.")
+        } else if let cap = recoveryTimeline.easyCap {
+            lines.append("- Recovery Status: In active recovery window until \(recoveryTimeline.earliestHardPhrase). Keep next run easy (cap: \(cap.lowerBound)–\(cap.upperBound) min).")
         }
+        lines.append("")
+        lines.append(lockedPrescription.promptDescription)
 
-        if let tc = turnContext {
-            lines.append("")
-            lines.append(tc.promptHeader)
+        if let drill = runRecord.insight?.drillRecommendations?.first ?? runRecord.insight?.drillRecommendation {
+            lines.append("- Pre-Run Technique Drill Option: \(drill.drillTitle) (warm-up turnover prep, not mandatory rehab)")
         }
 
         return lines.joined(separator: "\n")
@@ -528,7 +463,7 @@ extension WorkoutAnalysisContext {
                 cadence_floor_status: "\(avgWorkCad) SPM vs \(floor) SPM floor (\(avgWorkCad >= floor ? "above floor" : "sub-floor"))"
             )
 
-            repsList = intervalEvaluations.prefix(24).map { rep in
+            repsList = intervalEvaluations.prefix(12).map { rep in
                 let recPace = rep.recoveryPaceFormatted ?? "controlled recovery jog"
                 let recDrop = rep.recoveryHeartRateDrop.map { -$0 } ?? 0
                 return IntervalRepDetail(
@@ -540,7 +475,7 @@ extension WorkoutAnalysisContext {
                     recovery_hr_drop_bpm: isLowConfidenceHR ? nil : recDrop,
                     work_heart_rate_bpm: isLowConfidenceHR ? nil : rep.workHeartRate,
                     heart_rate_status: isLowConfidenceHR ? hrStatus : nil,
-                    observation: rep.observation
+                    observation: rep.observation.isEmpty ? nil : rep.observation
                 )
             }
 
@@ -579,7 +514,7 @@ extension WorkoutAnalysisContext {
                 slowest_split: sSplitDesc
             )
 
-            splitsList = splitEvaluations.prefix(24).map { split in
+            splitsList = splitEvaluations.prefix(12).map { split in
                 SplitDetail(
                     split_index: split.index,
                     pace: split.paceFormatted,
@@ -587,13 +522,35 @@ extension WorkoutAnalysisContext {
                     heart_rate_bpm: isLowConfidenceHR ? nil : split.heartRate,
                     heart_rate_status: isLowConfidenceHR ? hrStatus : nil,
                     grade: split.letterGrade,
-                    observation: split.observation
+                    observation: split.observation.isEmpty ? nil : split.observation
                 )
             }
         }
 
+        let movingSec = runRecord.effectiveWorkingDurationSeconds
+        let movingTimeStr = String(format: "%d:%02d", max(0, Int(movingSec) / 60), max(0, Int(movingSec) % 60))
+        let workingStats = WorkingStatsDetail(
+            moving_time: movingTimeStr,
+            moving_pace: workingPaceFormatted,
+            working_cadence_spm: workingCadence,
+            working_heart_rate_bpm: isLowConfidenceHR ? nil : workingHR
+        )
+
+        let totalSec = runRecord.duration
+        let totalTimeStr = String(format: "%d:%02d", max(0, Int(totalSec) / 60), max(0, Int(totalSec) % 60))
+        let grossPaceSec = runRecord.totalDistanceMeters > 0
+            ? (runRecord.duration / (runRecord.totalDistanceMeters / 1000.0))
+            : runRecord.rawAvgPace
+        let grossPaceStr = PaceFormatter.formatPace(secondsPerKilometer: grossPaceSec)
+        let workoutStats = WorkoutStatsDetail(
+            total_time: totalTimeStr,
+            gross_pace: grossPaceStr,
+            raw_cadence_spm: Int(runRecord.rawAvgCadence.rounded()),
+            raw_heart_rate_bpm: isLowConfidenceHR ? nil : Int(runRecord.rawAvgHeartRate.rounded())
+        )
+
         let hrConfidence: String = isLowConfidenceHR
-            ? "unreliable_sensor_artifact (resting/cadence-lock HR < 85 BPM detected; heart rate metrics omitted from payload)"
+            ? "unreliable_sensor_artifact"
             : "reliable"
 
         return UnifiedWorkoutToolResponse(
@@ -605,6 +562,8 @@ extension WorkoutAnalysisContext {
             reps: repsList,
             steady_state_scorecard: steadyScorecard,
             splits: splitsList,
+            working_stats: workingStats,
+            workout_stats: workoutStats,
             background_session_totals: blendedTotals,
             physiological_verdicts: physiologicalVerdicts.promptDescription,
             heart_rate_confidence: hrConfidence,
@@ -612,11 +571,11 @@ extension WorkoutAnalysisContext {
         )
     }
 
-    /// Serializes the unified workout response into clean, pretty-printed JSON.
+    /// Serializes the unified workout response into clean, compact JSON.
     func unifiedWorkoutAnalysisJSON() -> String {
         let response = buildUnifiedWorkoutToolResponse()
         let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         if let data = try? encoder.encode(response),
            let str = String(data: data, encoding: .utf8) {
             return str

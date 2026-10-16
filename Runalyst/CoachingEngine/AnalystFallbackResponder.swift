@@ -6,14 +6,14 @@ import SwiftData
 enum AnalystFallbackResponder {
     static func generateResponse(
         for userQuestion: String,
-        turnContext: ManagedTurnContext? = nil,
+        conversationHistory: [AnalystChatMessage] = [],
         analysis: WorkoutAnalysisContext,
         runRecord: RunRecord
     ) -> String {
         let q = userQuestion.lowercased().replacingOccurrences(of: "’", with: "'")
 
         // 1. Subjective distress override (Illness, Fever)
-        if (turnContext?.isSubjectiveDistress == true && !q.contains("knee") && !q.contains("pain") && !q.contains("hurt")) || q.contains("fever") || q.contains("feel sick") || q.contains("feeling sick") || q.contains("have a cold") || q.contains("flu") {
+        if q.contains("fever") || q.contains("feel sick") || q.contains("feeling sick") || q.contains("have a cold") || q.contains("flu") {
             return "When you're dealing with illness, fever, or acute physical distress, training takes a back seat. Prioritize sleep, hydration, and full rest until your symptoms fully resolve."
         }
 
@@ -53,11 +53,8 @@ enum AnalystFallbackResponder {
         }
 
         // 2. Out-of-scope inquiry
-        if turnContext?.turnDomain == .outOfScopeInquiry {
-            if q.contains("dougie") || q.contains("dance") {
-                return "I'm not equipped to teach dance moves, but I can help you optimize your running performance and recovery. What would you like to explore about your running form, pacing, or workouts?"
-            }
-            return "I'm your personal running coach and exercise physiologist, so I specialize in your running biomechanics, training zones, and recovery. What would you like to explore regarding your runs?"
+        if q.contains("dougie") || q.contains("dance") {
+            return "I'm not equipped to teach dance moves, but I can help you optimize your running performance and recovery. What would you like to explore about your running form, pacing, or workouts?"
         }
 
         // 2.4. 30-Day Performance Arc & Best vs Worst Rankings
@@ -99,12 +96,11 @@ enum AnalystFallbackResponder {
         }
 
         // 2.7. Conversational Follow-Up / Elaboration ("That's all?", "Tell me more", "Why?", "Explain further")
-        let isElaborationIntent = turnContext?.turnDomain == .elaborationOrFollowUp ||
-            q.contains("that's all") || q.contains("thats all") || q.contains("is that all") ||
+        let isElaborationIntent = q.contains("that's all") || q.contains("thats all") || q.contains("is that all") ||
             q.contains("tell me more") || q.contains("elaborate") || q.contains("go deeper")
         if isElaborationIntent {
-            let digest = turnContext?.cleanConversationDigest.lowercased() ?? ""
-            if digest.contains("comparing") || digest.contains("versus") || digest.contains("vs") || digest.contains("september") || digest.contains("faster in current") || digest.contains("slower in current") {
+            let historyText = conversationHistory.suffix(4).map(\.text).joined(separator: " ").lowercased()
+            if historyText.contains("comparing") || historyText.contains("versus") || historyText.contains("vs") || historyText.contains("september") || historyText.contains("faster in current") || historyText.contains("slower in current") {
                 let envNote = analysis.isIndoor ? "on the treadmill" : "outdoors"
                 return "Going deeper into the comparison: the primary physiological difference stems from the workout structure. Your \(analysis.detectedType) \(envNote) had active recovery periods that allowed your cardiovascular system to lower heart rate between work bouts, holding your average to **\(Int(runRecord.workingAvgHeartRate)) BPM**. In contrast, a continuous tempo run demands unbroken threshold effort without recovery valleys, creating much higher cumulative cardiac load. Mechanically, your turnover remained disciplined at **\(Int(runRecord.workingAvgCadence)) SPM**, showing smooth, steady stride rhythm."
             } else if analysis.evaluationModality == .intervals {
@@ -158,7 +154,7 @@ enum AnalystFallbackResponder {
         }
 
         // 4b. Duration / Session length challenge (e.g., "Final 45mins of the run???")
-        let isDurationClarification = (q.contains("45 min") || q.contains("45min") || q.contains("whole run") || q.contains("entire run") || q.contains("final 45"))
+        let isDurationClarification = (q.contains("final 45") || ((q.contains("45 min") || q.contains("45min") || q.contains("whole run") || q.contains("entire run")) && (q.contains("final") || q.contains("whole") || q.contains("entire") || q.contains("???")))) && !q.contains("can i") && !q.contains("today") && !q.contains("tomorrow") && !q.contains("session today")
         if isDurationClarification {
             let durTotal = max(1, Int(runRecord.duration / 60))
             let halfMin = max(1, durTotal / 2)

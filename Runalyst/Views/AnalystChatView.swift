@@ -330,7 +330,7 @@ struct AnalystChatView: View {
                         }
                     }
 
-                    if let drillId = detectedDrill(for: message) {
+                    if let drillId = message.attachedDrillId {
                         InlineChatDrillCard(
                             drillId: drillId,
                             runRecord: runRecord,
@@ -515,88 +515,6 @@ struct AnalystChatView: View {
                 }
             }
         }
-    }
-
-    private func detectedDrill(for message: AnalystChatMessage) -> PreRunDrillId? {
-        Self.detectedDrill(text: message.text, sender: message.sender)
-    }
-
-    static func detectedDrill(text: String, sender: AnalystChatSender = .analyst) -> PreRunDrillId? {
-        guard sender == .analyst else { return nil }
-        let lower = text.lowercased()
-
-        // 1. Guard against diagnostic preambles or retrieval intent announcements
-        let announcementPatterns = [
-            "i'll pull", "ill pull", "i will pull", "first, i'll", "first i'll",
-            "let me pull", "pulling the", "pull your", "checking your"
-        ]
-        if announcementPatterns.contains(where: { lower.contains($0) }) {
-            let hasDirectPrescription = lower.contains("prescribed drill:") || lower.contains("recommended drill:")
-            if !hasDirectPrescription {
-                return nil
-            }
-        }
-
-        // 2. Action verification: The coach must be actively prescribing or recommending a drill
-        let prescriptionTriggers = [
-            "recommend", "prescrib", "suggest", "incorporate",
-            "try doing", "try adding", "try running", "try incorporating", "try out",
-            "drill to try", "recommended drill", "prescribed drill", "form drill",
-            "corrective drill", "focus on", "queue up", "schedule",
-            "before your next", "prior to your next", "run 4-6 strides", "run 4 to 6 strides",
-            "do 4-6 strides", "do 4 to 6 strides", "try strides"
-        ]
-        guard prescriptionTriggers.contains(where: { lower.contains($0) }) else {
-            return nil
-        }
-
-        // 3. Drill candidates with exact phrasing (never bare "stride" or bare "interval")
-        let drillCandidates: [(pattern: String, id: PreRunDrillId)] = [
-            ("cadence pyramid", .cadencePyramids),
-            ("cadence pyramids", .cadencePyramids),
-            ("rhythm interval", .rhythmIntervals),
-            ("rhythm intervals", .rhythmIntervals),
-            ("tempo surge", .tempoSurges),
-            ("tempo surges", .tempoSurges),
-            ("neuromuscular primer", .neuromuscularPrimer),
-            ("form primer", .neuromuscularPrimer),
-            ("biomechanics primer", .neuromuscularPrimer),
-            ("aerobic flush", .aerobicFlush),
-            ("fartlek primer", .fartlekPrimer),
-            ("hill bounds", .hillBounds),
-            ("hill bounding", .hillBounds),
-            ("recovery jog", .recoveryJog),
-            ("zone 2 run", .zone2Run)
-        ]
-
-        for candidate in drillCandidates where lower.contains(candidate.pattern) {
-            return candidate.id
-        }
-
-        // 4. Special handling for Strides:
-        // Must be plural "strides" and cannot be part of purely biomechanical telemetry discussion
-        if lower.contains("strides") {
-            let isBiomechanicalTermOnly = (lower.contains("stride length") ||
-                                           lower.contains("stride mechanics") ||
-                                           lower.contains("stride rate") ||
-                                           lower.contains("stride frequency") ||
-                                           lower.contains("stride turnover") ||
-                                           lower.contains("overstrid")) &&
-                                          !lower.contains("strides drill") &&
-                                          !lower.contains("do strides") &&
-                                          !lower.contains("run strides") &&
-                                          !lower.contains("try strides") &&
-                                          !lower.contains("recommend strides") &&
-                                          !lower.contains("prescribe strides") &&
-                                          !lower.contains("4-6 strides") &&
-                                          !lower.contains("4 to 6 strides")
-
-            if !isBiomechanicalTermOnly {
-                return .strides
-            }
-        }
-
-        return nil
     }
 }
 

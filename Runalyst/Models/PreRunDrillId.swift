@@ -91,6 +91,23 @@ enum PreRunDrillId: String, CaseIterable, Codable, Sendable {
         }
     }
 
+    /// Resolves a drill identifier from natural language or snake_case query string.
+    static func resolve(from string: String) -> PreRunDrillId? {
+        let clean = string.trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .replacingOccurrences(of: " ", with: "_")
+            .replacingOccurrences(of: "-", with: "_")
+        if let direct = PreRunDrillId(rawValue: clean) {
+            return direct
+        }
+        for drill in PreRunDrillId.allCases {
+            if drill.rawValue == clean || drill.title.lowercased() == string.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+                return drill
+            }
+        }
+        return nil
+    }
+
     var title: String {
         switch self {
         case .cadencePyramids: return "Cadence Pyramids"
