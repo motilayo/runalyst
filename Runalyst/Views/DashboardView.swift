@@ -77,6 +77,32 @@ struct DashboardView: View {
         return runs.map { $0.workingAvgPace * $0.duration }.reduce(0, +) / totalDuration
     }
 
+    var canonicalAthleteBaselineCadence: Int? {
+        let calendar = Calendar.current
+        let thirtyDaysAgo = calendar.date(byAdding: .day, value: -30, to: Date()) ?? Date()
+        let recentRuns = runRecords.filter { $0.date >= thirtyDaysAgo && $0.workingAvgCadence > 0 }
+        let candidateRuns = recentRuns.isEmpty ? runRecords.filter { $0.workingAvgCadence > 0 } : recentRuns
+        guard !candidateRuns.isEmpty else { return nil }
+        let totalDuration = candidateRuns.map(\.duration).reduce(0, +)
+        guard totalDuration > 0 else {
+            return Int(candidateRuns.map(\.workingAvgCadence).reduce(0, +)) / candidateRuns.count
+        }
+        return Int(candidateRuns.map { $0.workingAvgCadence * $0.duration }.reduce(0, +) / totalDuration)
+    }
+
+    var canonicalAthleteBaselinePace: Double? {
+        let calendar = Calendar.current
+        let thirtyDaysAgo = calendar.date(byAdding: .day, value: -30, to: Date()) ?? Date()
+        let recentRuns = runRecords.filter { $0.date >= thirtyDaysAgo && $0.workingAvgPace > 0 }
+        let candidateRuns = recentRuns.isEmpty ? runRecords.filter { $0.workingAvgPace > 0 } : recentRuns
+        guard !candidateRuns.isEmpty else { return nil }
+        let totalDuration = candidateRuns.map(\.duration).reduce(0, +)
+        guard totalDuration > 0 else {
+            return candidateRuns.map(\.workingAvgPace).reduce(0, +) / Double(candidateRuns.count)
+        }
+        return candidateRuns.map { $0.workingAvgPace * $0.duration }.reduce(0, +) / totalDuration
+    }
+
     private var previousBaselineCadence: Int? {
         let calendar = Calendar.current
         let now = Date()
@@ -244,17 +270,29 @@ struct DashboardView: View {
         .padding(.vertical, 6)
     }
 
-    @ViewBuilder
+    private var dashboardRunnerProfile: RunnerProfile {
+        RunnerProfile.compute(from: runRecords, now: Date())
+    }
+
+    private var dashboardRecoveryTimeline: RecoveryTimeline {
+        let cutoff = Date().addingTimeInterval(-7 * 24 * 3600)
+        let recent = runRecords.filter { $0.date >= cutoff }
+        let snapshots = recent.map(ReadinessRunSnapshot.init(run:))
+        let readiness = ReadinessEvaluator.assess(runRecords: runRecords)
+        return RecoveryTimeline.build(runs: snapshots, readiness: readiness, now: Date())
+    }
+
     private var deterministicPrescription: LockedTrainingPrescription? {
         guard let latestRun = runRecords.first else { return nil }
+        let profile = dashboardRunnerProfile
         let tzInput = TrainingZoneInput(
-            baselinePaceSec: baselinePace ?? latestRun.workingAvgPace,
+            baselinePaceSec: canonicalAthleteBaselinePace ?? latestRun.workingAvgPace,
             workoutPaceSec: latestRun.workingAvgPace,
             activeGoal: trainingGoal,
-            experienceLevel: "Intermediate",
-            readyForHard: !currentHeadline().localizedCaseInsensitiveContains("fatigue"),
+            experienceLevel: profile.experienceLevel,
+            readyForHard: dashboardRecoveryTimeline.readyForHard,
             daysSinceWorkout: Calendar.current.dateComponents([.day], from: latestRun.date, to: Date()).day ?? 0,
-            heightAdjustedCadenceFloor: 155,
+            heightAdjustedCadenceFloor: profile.heightAdjustedCadenceFloor,
             useMetricSystem: useMetricSystem,
             isSubjectiveDistress: false,
             totalHistoricalRunsCount: runRecords.count
@@ -263,7 +301,7 @@ struct DashboardView: View {
     }
 
     private func hrCapText(for rx: LockedTrainingPrescription) -> String {
-        if rx.intensityCategory.contains("RECOVERY") || rx.intensityCategory.contains("ZONE_2") || currentHeadline().localizedCaseInsensitiveContains("fatigue") {
+        if rx.intensityCategory.contains("RECOVERY") || rx.intensityCategory.contains("ZONE_2") || !dashboardRecoveryTimeline.readyForHard {
             return "HR: < 145"
         } else if rx.intensityCategory.contains("THRESHOLD") || rx.intensityCategory.contains("TEMPO") {
             return "HR: 155–168"
@@ -672,11 +710,11 @@ struct DashboardView: View {
     }
 
     private var activePrimerId: PreRunDrillId {
-        if timeRange == "7 Days" && currentHeadline().localizedCaseInsensitiveContains("fatigue") {
+        if timeRange == "7 Days" && (!dashboardRecoveryTimeline.readyForHard || currentHeadline().localizedCaseInsensitiveContains("fatigue")) {
             return .aerobicFlush
-        } else if let cadence = baselineCadence, cadence < 150 {
+        } else if let cadence = canonicalAthleteBaselineCadence, cadence < 150 {
             return .cadencePyramids
-        } else if let cadence = baselineCadence, cadence < 160 {
+        } else if let cadence = canonicalAthleteBaselineCadence, cadence < 160 {
             return .rhythmIntervals
         } else {
             return .neuromuscularPrimer
@@ -687,7 +725,7 @@ struct DashboardView: View {
     private var proactiveCoachCard: some View {
         ProactiveCoachCard(
             activePrimerId: activePrimerId,
-            baselineCadence: baselineCadence,
+            baselineCadence: canonicalAthleteBaselineCadence,
             timeRange: timeRange,
             runRecords: runRecords,
             isPrimerCompletedToday: isPrimerCompletedToday,
@@ -698,7 +736,7 @@ struct DashboardView: View {
     private func autoSyncStaleWatchDrillIfNeeded() {
         guard !lastExportedDrillId.isEmpty else { return }
         guard #available(iOS 17.0, *) else { return }
-        guard let baseCadence = baselineCadence else { return }
+        guard let baseCadence = canonicalAthleteBaselineCadence else { return }
 
         let preRunId = PreRunDrillId(rawValue: lastExportedDrillId) ?? activePrimerId
         let template = DrillTemplate.template(for: preRunId)
@@ -843,19 +881,18 @@ struct DashboardView: View {
                                 } else {
                                     aiInsightCard
                                         .padding(.horizontal)
-                                    proactiveCoachCard
-                                        .padding(.horizontal)
                                 }
                             }
 
                             filterControlsSection
 
+                            if !timeRangeRuns.isEmpty && horizontalSizeClass != .regular {
+                                proactiveCoachCard
+                                    .padding(.horizontal)
+                            }
+
                             fitnessBaselineCard
                         } else if timeRange == "30 Days" {
-                            filterControlsSection
-
-                            fitnessBaselineCard
-
                             if !timeRangeRuns.isEmpty {
                                 if horizontalSizeClass == .regular {
                                     HStack(alignment: .top, spacing: 16) {
@@ -866,9 +903,16 @@ struct DashboardView: View {
                                 } else {
                                     aiInsightCard
                                         .padding(.horizontal)
-                                    proactiveCoachCard
-                                        .padding(.horizontal)
                                 }
+                            }
+
+                            filterControlsSection
+
+                            fitnessBaselineCard
+
+                            if !timeRangeRuns.isEmpty && horizontalSizeClass != .regular {
+                                proactiveCoachCard
+                                    .padding(.horizontal)
                             }
                         } else { // All Time
                             filterControlsSection

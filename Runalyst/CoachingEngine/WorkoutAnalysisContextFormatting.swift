@@ -168,7 +168,8 @@ extension WorkoutAnalysisContext {
             background_session_totals: blendedTotals,
             physiological_verdicts: physiologicalVerdicts.promptDescription,
             heart_rate_confidence: hrConfidence,
-            heart_rate_status: hrStatus
+            heart_rate_status: hrStatus,
+            duration_summary: "Total elapsed time: \(durMin) minutes"
         )
     }
 

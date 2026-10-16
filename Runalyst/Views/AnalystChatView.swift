@@ -388,7 +388,7 @@ struct AnalystChatView: View {
                     submitQuestion()
                 }
                 if runRecord.evaluationModality == .intervals {
-                    let intervalTitle = runRecord.detectedTypeRaw == "Fartlek" ? "Break Down Fartlek" : "Break Down Intervals"
+                    let intervalTitle = runRecord.detectedTypeRaw == "Fartlek" ? "Surge Analysis" : "Break Down Intervals"
                     chipButton(intervalTitle, icon: "repeat", iconColor: Color(red: 0.0, green: 0.55, blue: 1.0)) {
                         inputText = "Grade my performance in each interval of this run"
                         submitQuestion()
@@ -412,7 +412,7 @@ struct AnalystChatView: View {
             .joined(separator: " ")
 
         let isInterval = runRecord.evaluationModality == .intervals
-        let splitChipTitle = isInterval ? (runRecord.detectedTypeRaw == "Fartlek" ? "Break Down Fartlek" : "Break Down Intervals") : "Break Down Splits"
+        let splitChipTitle = isInterval ? (runRecord.detectedTypeRaw == "Fartlek" ? "Surge Analysis" : "Break Down Intervals") : "Break Down Splits"
         let splitChipPrompt = isInterval ? "Grade my performance in each interval of this run" : "Grade my performance in each split of this run"
         let splitChipIcon = isInterval ? "waveform.path.ecg" : "chart.bar.xaxis"
 

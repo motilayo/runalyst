@@ -707,6 +707,11 @@ final class IndoorIntelligenceTests: XCTestCase {
             let goalAction = ExecuteCoachActionQuery(action: .updateGoal, payload: "Half Marathon")
             XCTAssertEqual(goalAction.action, .updateGoal)
 
+            // 5. ExecuteCoachActionTool - Export to Watch
+            let watchAction = ExecuteCoachActionQuery(action: .exportToWatch, payload: "cadence_pyramids")
+            XCTAssertEqual(watchAction.action, .exportToWatch)
+            XCTAssertEqual(watchAction.payload, "cadence_pyramids")
+
             // 6. ExecuteCoachActionTool - Record Feedback
             let feedbackAction = ExecuteCoachActionQuery(action: .recordFeedback, payload: "Legs felt heavy on rep 4")
             XCTAssertEqual(feedbackAction.action, .recordFeedback)
@@ -1571,10 +1576,14 @@ final class IndoorIntelligenceTests: XCTestCase {
         XCTAssertEqual(workout?.raw_cadence_spm, 158)
         XCTAssertTrue(workout?._description.contains("Gross HealthKit session totals") ?? false)
 
-        // 3. Compact JSON includes both working_stats and workout_stats
+        // 3. Duration Summary (AC-1.4 boundary tagging)
+        XCTAssertEqual(response.duration_summary, "Total elapsed time: 45 minutes")
+
+        // 4. Compact JSON includes working_stats, workout_stats, and duration_summary
         let json = analysis.unifiedWorkoutAnalysisJSON()
         XCTAssertTrue(json.contains("\"working_stats\""))
         XCTAssertTrue(json.contains("\"workout_stats\""))
+        XCTAssertTrue(json.contains("\"duration_summary\":\"Total elapsed time: 45 minutes\""))
         XCTAssertTrue(json.contains("\"moving_pace\":\"5:38/km\""))
     }
 
@@ -1612,6 +1621,9 @@ final class IndoorIntelligenceTests: XCTestCase {
                 case .displayDrill:
                     let resolved = PreRunDrillId.resolve(from: query.payload ?? "") ?? .cadencePyramids
                     return "{\"status\":\"interactive_drill_card_displayed\",\"drill_name\":\"\(resolved.title)\"}"
+                case .exportToWatch:
+                    let resolved = PreRunDrillId.resolve(from: query.payload ?? "") ?? .cadencePyramids
+                    return "{\"status\":\"exported_to_watch\",\"drill_name\":\"\(resolved.title)\"}"
                 case .recordFeedback:
                     return "{\"status\":\"feedback_recorded\",\"message\":\"Subjective feedback recorded successfully.\"}"
                 case .updateGoal:
@@ -1689,6 +1701,7 @@ final class IndoorIntelligenceTests: XCTestCase {
             let instructions = chatEngine.buildLeanSystemInstructions()
             XCTAssertTrue(instructions.contains("update_goal"), "Prompt must declare update_goal rule")
             XCTAssertTrue(instructions.contains("display_drill"), "Prompt must declare display_drill rule")
+            XCTAssertTrue(instructions.contains("export_to_watch"), "Prompt must declare export_to_watch rule")
             XCTAssertTrue(instructions.contains("SPM"), "Prompt must require standard SPM unit notation")
             XCTAssertTrue(instructions.count < 1200, "System instructions must stay strictly under 1,200 chars (was \(instructions.count))")
 

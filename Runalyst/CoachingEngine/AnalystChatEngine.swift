@@ -178,10 +178,10 @@ class AnalystChatEngine: ObservableObject {
         • Call tools only when relevant; never call `executeCoachAction` for off-topic queries.
         • `inspectWorkout`: moving vs gross stats, splits, intervals, reps, physics.
         • `manageTrainingState`: 'readiness' (set `userReportedDistress: true` if ill/injured), 'history', or 'athlete_profile'.
-        • `executeCoachAction`: 'update_goal' for race goals/plans (outline Base, Build, Peak, Taper; explain Runalyst adapts daily workouts from readiness, not rigid calendars; never show drill cards); 'display_drill' only for immediate runs/drills to do now; 'record_feedback'.
+        • `executeCoachAction`: 'update_goal' for race goals/plans (outline Base, Build, Peak, Taper; explain Runalyst adapts daily workouts from readiness; never show drill cards); 'display_drill' for immediate runs/drills to do now; 'export_to_watch' to export to Apple Watch; 'record_feedback'.
         • Formatting: Rich text. Use standard units (SPM, min/km, min/mi). Never use Markdown or LaTeX.
         • Medical Safety: If runner reports pain or illness, prioritize rest, give an AI disclaimer, urge medical care.
-        • Outside Running: For off-topic questions, warmly acknowledge, refocus on training, and invite back. Never force drills.
+        • Outside Running: For off-topic questions, warmly refocus on training and invite back. Never force drills.
         • Never hallucinate unverified telemetry.
 
         Respond in \(language).
@@ -319,6 +319,24 @@ class AnalystChatEngine: ObservableObject {
                     return str
                 }
                 return "{\"drill_name\":\"\(resolved.title)\",\"status\":\"interactive_drill_card_displayed\"}"
+
+            case .exportToWatch:
+                let resolved = PreRunDrillId.resolve(from: query.payload ?? "") ?? .cadencePyramids
+                let template = DrillTemplate.template(for: resolved)
+                let baseCadence = Int(self.runRecord.workingAvgCadence) > 0 ? Int(self.runRecord.workingAvgCadence) : 155
+                let target = template.calculateTargetCadence(baseCadence)
+                let dto = DrillPrescriptionDTO(
+                    title: template.title,
+                    preRunDrillId: resolved.rawValue,
+                    purpose: template.defaultPurpose,
+                    targetCadence: target,
+                    previousCadence: baseCadence
+                )
+                Task {
+                    let bridge = WorkoutBridge()
+                    try? await bridge.scheduleDrill(dto: dto)
+                }
+                return "{\"drill_name\":\"\(resolved.title)\",\"message\":\"Scheduled \(resolved.title) to Apple Watch.\",\"status\":\"exported_to_watch\"}"
 
             case .updateGoal:
                 var newGoal = query.payload?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "Base Building"

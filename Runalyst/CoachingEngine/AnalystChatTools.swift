@@ -38,6 +38,9 @@ public struct UnifiedWorkoutToolResponse: Codable, Sendable {
     public let heart_rate_confidence: String?
     public let heart_rate_status: String?
 
+    // Duration boundary tagging
+    public let duration_summary: String?
+
     public init(
         schema_name: String = "UNIFIED_WORKOUT_TOOL_RESPONSE",
         workout_type: String,
@@ -52,7 +55,8 @@ public struct UnifiedWorkoutToolResponse: Codable, Sendable {
         background_session_totals: BlendedTotals,
         physiological_verdicts: String,
         heart_rate_confidence: String? = nil,
-        heart_rate_status: String? = nil
+        heart_rate_status: String? = nil,
+        duration_summary: String? = nil
     ) {
         self.schema_name = schema_name
         self.workout_type = workout_type
@@ -68,6 +72,7 @@ public struct UnifiedWorkoutToolResponse: Codable, Sendable {
         self.physiological_verdicts = physiological_verdicts
         self.heart_rate_confidence = heart_rate_confidence
         self.heart_rate_status = heart_rate_status
+        self.duration_summary = duration_summary
     }
 }
 
@@ -348,6 +353,7 @@ public enum HistoryScope: String, Sendable {
 @Generable
 public enum CoachActionType: String, Sendable {
     case displayDrill = "display_drill"
+    case exportToWatch = "export_to_watch"
     case updateGoal = "update_goal"
     case recordFeedback = "record_feedback"
 }
@@ -394,10 +400,10 @@ public struct ManageTrainingStateQuery: Sendable {
 @available(iOS 26.0, *)
 @Generable
 public struct ExecuteCoachActionQuery: Sendable {
-    @Guide(description: "Action: 'update_goal' to adjust training goal or when runner asks for race training plans/schedules (e.g. Marathon, Half Marathon, 10K, 5K); 'display_drill' to present an interactive workout card ONLY for immediate runs/drills to perform now (never for race schedules); 'record_feedback' to save subjective feedback.")
+    @Guide(description: "Action: 'update_goal' to adjust training goal or when runner asks for race training plans/schedules (e.g. Marathon, Half Marathon, 10K, 5K); 'display_drill' to present an interactive workout card ONLY for immediate runs/drills to perform now (never for race schedules); 'export_to_watch' to schedule/export a workout or drill to Apple Watch; 'record_feedback' to save subjective feedback.")
     public var action: CoachActionType
 
-    @Guide(description: "Payload: race goal (e.g. 'Marathon', 'Half Marathon', '10K', '5K', 'Base Building') for 'update_goal'; workout or drill name (e.g. 'zone_1_recovery_flush', 'cadence_pyramids', 'zone_2_run', 'strides') for 'display_drill'; subjective notes for 'record_feedback'.")
+    @Guide(description: "Payload: race goal (e.g. 'Marathon', 'Half Marathon', '10K', '5K', 'Base Building') for 'update_goal'; workout or drill name (e.g. 'zone_1_recovery_flush', 'cadence_pyramids', 'zone_2_run', 'strides') for 'display_drill' and 'export_to_watch'; subjective notes for 'record_feedback'.")
     public var payload: String?
 
     public init(action: CoachActionType, payload: String? = nil) {
@@ -459,7 +465,7 @@ public struct ExecuteCoachActionTool: Tool {
     public typealias Output = String
 
     public let name = "executeCoachAction"
-    public let description = "Executes coaching actions: 'update_goal' to update runner's goal or when asked for race training plans/schedules (e.g. Marathon, Half Marathon); 'display_drill' to show an interactive workout card ONLY when runner asks for an immediate workout or drill to run now (never for multi-month race plans); 'record_feedback' to save subjective notes."
+    public let description = "Executes coaching actions: 'update_goal' to update runner's goal or when asked for race training plans/schedules (e.g. Marathon, Half Marathon); 'display_drill' to show an interactive workout card ONLY when runner asks for an immediate workout or drill to run now (never for multi-month race plans); 'export_to_watch' to schedule a workout to Apple Watch; 'record_feedback' to save subjective notes."
 
     let provider: @MainActor @Sendable (ExecuteCoachActionQuery) async -> String
 
