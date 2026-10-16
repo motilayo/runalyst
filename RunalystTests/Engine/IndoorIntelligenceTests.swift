@@ -29,14 +29,17 @@ final class IndoorIntelligenceTests: XCTestCase {
     func testMixedEffortGateWhenConfidenceBelow75Percent() async {
         let modelManager = ModelManager()
         let now = Date()
-        let dummyBuckets = (0..<10).map { i in
-            BucketData(
-                startTime: now.addingTimeInterval(Double(i * 30)),
-                distanceMeters: 100.0,
-                durationSeconds: 30.0,
-                meanPaceSecPerKm: 300.0,
-                meanCadence: 165.0,
-                meanHR: 150.0
+        var dummyBuckets: [BucketData] = []
+        for i in 0..<10 {
+            dummyBuckets.append(
+                BucketData(
+                    startTime: now.addingTimeInterval(Double(i * 30)),
+                    distanceMeters: 100.0,
+                    durationSeconds: 30.0,
+                    meanPaceSecPerKm: 300.0,
+                    meanCadence: 165.0,
+                    meanHR: 150.0
+                )
             )
         }
 
@@ -1166,14 +1169,20 @@ final class IndoorIntelligenceTests: XCTestCase {
         let engine = FramboiseEngine()
         let now = Date()
         // Simulate a steady 7:17/km (437 s/km) run with minimal fluctuations (7:15 - 7:19) and 158 SPM
-        let steadyBuckets = (0..<20).map { i in
-            BucketData(
-                startTime: now.addingTimeInterval(Double(i * 30)),
-                distanceMeters: 68.6,
-                durationSeconds: 30.0,
-                meanPaceSecPerKm: 435.0 + Double(i % 3) * 2.0,
-                meanCadence: 158.0 + Double(i % 2),
-                meanHR: 74.0
+        var steadyBuckets: [BucketData] = []
+        for i in 0..<20 {
+            let offsetSeconds = Double(i * 30)
+            let paceVariance = Double(i % 3) * 2.0
+            let cadenceVariance = Double(i % 2)
+            steadyBuckets.append(
+                BucketData(
+                    startTime: now.addingTimeInterval(offsetSeconds),
+                    distanceMeters: 68.6,
+                    durationSeconds: 30.0,
+                    meanPaceSecPerKm: 435.0 + paceVariance,
+                    meanCadence: 158.0 + cadenceVariance,
+                    meanHR: 74.0
+                )
             )
         }
 
