@@ -196,6 +196,45 @@ final class IndoorIntelligenceTests: XCTestCase {
         XCTAssertTrue(foundAccentTelemetryRun, "Should have styled telemetry citation runs")
     }
 
+    func testTelemetryHighlighterConvertsMarkdownTablesToRichText() {
+        let markdownTable = """
+        Interval Grades (Detailed)
+
+        | Rep | Grade | Key Takeaway |
+        |-----|-------|--------------|
+        | 1 | A | Steady 5:47/km, strong turnover (160 SPM) |
+        | 2 | A | Consistent 5:45/km, efficient energy use |
+        | 3 | A+ | Precise 5:42/km, excellent rhythm |
+        """
+
+        let attributed = TelemetryHighlighter.highlight(markdownTable)
+        let plainCharacters = String(attributed.characters)
+
+        // Raw pipes and divider dashes must not leak into rendered characters
+        XCTAssertFalse(plainCharacters.contains("|"), "Table pipes must be stripped")
+        XCTAssertFalse(plainCharacters.contains("-----"), "Table dividers must be stripped")
+
+        // Formatted rich text bullet structure must be present
+        XCTAssertTrue(plainCharacters.contains("• Rep 1 (A): Steady 5:47/km, strong turnover (160 SPM)"), "Row 1 must be formatted as rich bullet")
+        XCTAssertTrue(plainCharacters.contains("• Rep 2 (A): Consistent 5:45/km, efficient energy use"), "Row 2 must be formatted as rich bullet")
+        XCTAssertTrue(plainCharacters.contains("• Rep 3 (A+): Precise 5:42/km, excellent rhythm"), "Row 3 must be formatted as rich bullet")
+    }
+
+    func testTelemetryHighlighterSanitizesLatexToUnicode() {
+        let latexText = "Your $\\text{VO}_2\\text{max}$ estimate improved, with pace steady at $5 \\times 1000m$ repeats (approx $\\approx$ 4:30/km)."
+        let attributed = TelemetryHighlighter.highlight(latexText)
+        let plainCharacters = String(attributed.characters)
+
+        XCTAssertFalse(plainCharacters.contains("\\text{VO}"), "LaTeX text macros must be converted")
+        XCTAssertFalse(plainCharacters.contains("\\times"), "LaTeX times must be converted")
+        XCTAssertFalse(plainCharacters.contains("\\approx"), "LaTeX approx must be converted")
+        XCTAssertFalse(plainCharacters.contains("$"), "Math dollar delimiters must be stripped")
+
+        XCTAssertTrue(plainCharacters.contains("VO2 Max"), "VO2 Max should be clean unicode")
+        XCTAssertTrue(plainCharacters.contains("×"), "Times symbol should be clean unicode")
+        XCTAssertTrue(plainCharacters.contains("≈"), "Approx symbol should be clean unicode")
+    }
+
     // MARK: - 4. Analyst Chat Guardrails
 
     @MainActor
