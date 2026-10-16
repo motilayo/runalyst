@@ -3,6 +3,10 @@ import SwiftData
 @testable import Runalyst
 
 final class IndoorIntelligenceTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        UserDefaults.standard.set(true, forKey: "useMetricSystem")
+    }
 
     private func makeTestRunRecord(isIndoor: Bool = false) -> RunRecord {
         RunRecord(

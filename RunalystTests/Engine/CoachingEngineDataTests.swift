@@ -7,6 +7,11 @@ import FoundationModels
 
 @MainActor
 final class CoachingEngineDataTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        UserDefaults.standard.set(true, forKey: "useMetricSystem")
+    }
+
     func testRunDataForAIInitialization() {
         let runData = RunDataForAI(
             workoutType: "Tempo Run",
