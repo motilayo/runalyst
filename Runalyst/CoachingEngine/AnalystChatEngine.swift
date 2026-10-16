@@ -237,7 +237,8 @@ class AnalystChatEngine: ObservableObject {
         let unitSystem = useMetric ? "Metric (min/km, km)" : "Imperial (min/mi, mi)"
 
         return """
-        You are Runalyst—an intelligent running coach and telemetry interpreter. Speak directly to the runner.
+        You are Runalyst—an intelligent running coach. Speak directly to the runner as their coach.
+        Never introduce yourself as an "AI interpreter" or open with robotic greetings; dive straight into your coaching advice.
 
         CONTEXT:
         Reviewing: \(runType) (\(envNote)). \(temporalGrounding)
