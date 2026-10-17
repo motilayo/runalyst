@@ -349,6 +349,7 @@ struct RunDetailView: View {
                 .stroke(Color(UIColor.separator).opacity(0.15), lineWidth: 0.5)
         )
         .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
+        .id("aiAnalysisCard")
         .task {
             if !hasBiometrics, let oldInsight = runRecord.insight {
                 modelContext.delete(oldInsight)
@@ -395,6 +396,7 @@ struct RunDetailView: View {
                 isIntervalOrDrill: isIntervalOrDrill,
                 workoutType: runRecord.detectedTypeRaw
             )
+            .id("workoutRhythmChart")
         }
     }
 
@@ -1051,6 +1053,7 @@ struct RunDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.regularMaterial, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
+        .toolbar(.hidden, for: .tabBar)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
@@ -1071,7 +1074,18 @@ struct RunDetailView: View {
             normalizeDrillClassification()
         }
         .task {
-            if ProcessInfo.processInfo.environment["RUNALYST_PREVIEW_SCREEN"] == "AUTO_TOUR" {
+            let previewScroll = ProcessInfo.processInfo.environment["RUNALYST_PREVIEW_SCROLL"]
+            if previewScroll == "CHART" {
+                try? await Task.sleep(nanoseconds: 600_000_000)
+                withAnimation(.easeInOut(duration: 0.5)) {
+                    scrollProxy.scrollTo("workoutRhythmChart", anchor: .top)
+                }
+            } else if previewScroll == "BOTTOM" {
+                try? await Task.sleep(nanoseconds: 600_000_000)
+                withAnimation(.easeInOut(duration: 0.5)) {
+                    scrollProxy.scrollTo("aiAnalysisCard", anchor: .top)
+                }
+            } else if ProcessInfo.processInfo.environment["RUNALYST_PREVIEW_SCREEN"] == "AUTO_TOUR" {
                 Task {
                     try? await Task.sleep(nanoseconds: 3_500_000_000)
                     withAnimation(.easeInOut(duration: 2.2)) {

@@ -116,13 +116,17 @@ struct RunVarianceMapView: View {
                     ForEach(normalizedSegments) { seg in
                         let midTime = (seg.startSeconds + seg.endSeconds) / 120.0
                         let cad = seg.avgCadence > 0 ? seg.avgCadence : averageCadence
+                        let isNearRightEdge = midTime >= (maxMinutes - 1.2)
+                        let isNearLeftEdge = midTime <= 0.8
+                        let annotationAlignment: Alignment = isNearRightEdge ? .trailing : (isNearLeftEdge ? .leading : .center)
+
                         PointMark(
                             x: .value("Time", midTime),
                             y: .value("Cadence", cad)
                         )
                         .foregroundStyle(isIntervalOrDrill ? phaseColor(seg.kind) : Color.purple)
                         .symbolSize(isIntervalOrDrill ? (seg.kind == "work" ? 76 : (seg.kind == "recovery" ? 60 : 44)) : 36)
-                        .annotation(position: .top, alignment: .center) {
+                        .annotation(position: .top, alignment: annotationAlignment) {
                             if isIntervalOrDrill {
                                 if seg.kind == "work" {
                                     Text("\(Int(cad))")
@@ -153,8 +157,8 @@ struct RunVarianceMapView: View {
                         .foregroundStyle(isRecovery ? Color.secondary.opacity(0.6) : Color.red.opacity(0.80))
                 }
                 .chartScrollableAxes(.horizontal)
-                .chartXVisibleDomain(length: min(maxMinutes, 13.0))
-                .chartXScale(domain: 0...maxMinutes)
+                .chartXVisibleDomain(length: min(maxMinutes + 1.0, 13.5))
+                .chartXScale(domain: 0...(maxMinutes + 1.0))
                 .chartYScale(domain: yMin...yMax)
                 .frame(height: 220)
 

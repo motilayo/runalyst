@@ -392,22 +392,18 @@ struct IntervalPerformanceCard: View {
                 .background(Color(red: 0.0, green: 0.75, blue: 0.65).opacity(0.12))
                 .clipShape(Capsule())
             } else if drop == 0 {
-                HStack(spacing: 2) {
-                    Image(systemName: "minus")
-                        .font(.system(size: 8, weight: .bold))
-                    Text("0 BPM")
-                        .font(.system(size: 10, weight: .semibold))
-                }
-                .foregroundColor(.secondary)
-                .padding(.horizontal, 5)
-                .padding(.vertical, 1.5)
-                .background(Color.secondary.opacity(0.12))
-                .clipShape(Capsule())
+                Text("0 BPM")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 1.5)
+                    .background(Color.secondary.opacity(0.12))
+                    .clipShape(Capsule())
             } else {
                 HStack(spacing: 2) {
                     Image(systemName: "arrow.up")
                         .font(.system(size: 8, weight: .bold))
-                    Text("↑ \(abs(drop)) BPM")
+                    Text("\(abs(drop)) BPM")
                         .font(.system(size: 10, weight: .semibold))
                 }
                 .foregroundColor(.orange)
