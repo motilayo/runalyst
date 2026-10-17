@@ -415,7 +415,7 @@ public struct ManageTrainingStateQuery: Sendable {
 @available(iOS 26.0, *)
 @Generable
 public struct ExecuteCoachActionQuery: Sendable {
-    @Guide(description: "Action: 'update_goal' to adjust training goal or when runner asks for race training plans/schedules (e.g. Marathon, Half Marathon, 10K, 5K); 'display_drill' to present an interactive workout card ONLY for immediate runs/drills to perform now (never for race schedules); 'display_explainer' to present an interactive educational card for a metric, physiological concept, or coaching guideline (e.g. 'cadence_floor', 'efficiency_factor', 'cardiac_drift', 'recovery_timeline', 'overstriding'); 'export_to_watch' to schedule/export a workout or drill to Apple Watch; 'record_feedback' to save subjective feedback.")
+    @Guide(description: "Action: 'update_goal' to adjust training goal or when runner asks for race training plans/schedules (e.g. Marathon, Half Marathon, 10K, 5K); 'display_drill' to present an interactive workout card ONLY for immediate runs/drills to perform now (never for race schedules); 'display_explainer' ONLY when the runner explicitly asks to explain or define a metric or physiological concept (e.g. 'what is cadence floor?'). Never call display_explainer when prescribing workouts, answering schedule questions, or if runner did not ask for an explanation; 'export_to_watch' to schedule/export a workout or drill to Apple Watch; 'record_feedback' to save subjective feedback.")
     public var action: CoachActionType
 
     @Guide(description: "Payload: race goal (e.g. 'Marathon', 'Half Marathon', '10K', '5K', 'Base Building') for 'update_goal'; workout or drill name (e.g. 'zone_1_recovery_flush', 'cadence_pyramids', 'zone_2_run', 'strides') for 'display_drill' and 'export_to_watch'; metric or concept key (e.g. 'cadence_floor', 'efficiency_factor', 'cardiac_drift', 'recovery_timeline', 'overstriding') for 'display_explainer'; subjective notes for 'record_feedback'.")
@@ -480,7 +480,7 @@ public struct ExecuteCoachActionTool: Tool {
     public typealias Output = String
 
     public let name = "executeCoachAction"
-    public let description = "Executes coaching actions: 'update_goal' to update runner's goal or when asked for race training plans/schedules (e.g. Marathon, Half Marathon); 'display_drill' to show an interactive workout card ONLY when runner asks for an immediate workout or drill to run now (never for multi-month race plans); 'display_explainer' to show an interactive educational card for a metric or physiological concept (e.g. efficiency factor, cadence floor, cardiac drift); 'export_to_watch' to schedule a workout to Apple Watch; 'record_feedback' to save subjective notes."
+    public let description = "Executes coaching actions: 'update_goal' for race plans; 'display_drill' to show a workout card when runner asks to run now; 'display_explainer' to show an educational card ONLY when the runner explicitly asks to explain or define a metric (e.g. 'what is cadence floor?'); 'export_to_watch'; 'record_feedback'."
 
     let provider: @MainActor @Sendable (ExecuteCoachActionQuery) async -> String
 

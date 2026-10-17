@@ -359,9 +359,7 @@ struct AnalystChatView: View {
                                 openDrillReadout(drillId: drillId)
                             }
                         )
-                    }
-
-                    if let explainerKey = message.attachedExplainerKey {
+                    } else if let explainerKey = message.attachedExplainerKey {
                         InlineChatExplainerCard(
                             explainerKey: explainerKey,
                             runRecord: runRecord,

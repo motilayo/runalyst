@@ -230,7 +230,7 @@ class AnalystChatEngine: ObservableObject {
         • Tools: Call only when needed. Max 1 card per turn.
         • `inspectWorkout`: moving/gross stats, splits, intervals, reps, physics.
         • `manageTrainingState`: 'readiness' (set userReportedDistress: true on pain/illness), 'history', 'athlete_profile'.
-        • `executeCoachAction`: 'update_goal' (race plans; outline Base, Build, Peak, Taper; daily readiness; no drills), 'display_drill', 'display_explainer', 'export_to_watch', 'record_feedback'.
+        • `executeCoachAction`: 'update_goal' (race plans; outline Base, Build, Peak, Taper; daily readiness; no drills), 'display_drill', 'display_explainer' (ONLY if asked to explain a metric), 'export_to_watch', 'record_feedback'.
         • Formatting: Rich text. Standard units (SPM, min/km, min/mi). Never use Markdown or LaTeX.
         • Medical Safety: Prioritize rest on pain/illness, state AI disclaimer, urge medical care.
         • Outside Running: Warmly refocus on training. Never force drills.
@@ -464,7 +464,10 @@ class AnalystChatEngine: ObservableObject {
             case .displayExplainer:
                 let rawKey = query.payload?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                 let asset = CoachingAssetLibrary.resolve(key: rawKey) ?? CoachingAssetLibrary.defaultAsset(for: rawKey)
-                self.explainerRecommendedThisTurn = asset.key
+                // Strictly enforce 'Max 1 card per turn': prioritize workout/session prescription over explainer card
+                if self.sessionRecommendedThisTurn == nil && self.drillRecommendedThisTurn == nil {
+                    self.explainerRecommendedThisTurn = asset.key
+                }
 
                 let dto: [String: String] = [
                     "status": "interactive_explainer_card_displayed",
