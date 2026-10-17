@@ -366,6 +366,7 @@ public enum HistoryScope: String, Sendable {
 @available(iOS 26.0, *)
 @Generable
 public enum CoachActionType: String, Sendable {
+    case displaySession = "display_session"
     case displayDrill = "display_drill"
     case displayExplainer = "display_explainer"
     case exportToWatch = "export_to_watch"
@@ -415,10 +416,10 @@ public struct ManageTrainingStateQuery: Sendable {
 @available(iOS 26.0, *)
 @Generable
 public struct ExecuteCoachActionQuery: Sendable {
-    @Guide(description: "Action: 'update_goal' to adjust training goal or when runner asks for race training plans/schedules (e.g. Marathon, Half Marathon, 10K, 5K, Base Building); 'display_drill' to present an interactive workout card for a specific drill or running session; 'display_explainer' to present an interactive concept card explaining a biomechanical or physiological metric (e.g. cadence floor, cardiac drift, efficiency factor); 'export_to_watch' to schedule/export a workout or drill to Apple Watch; 'record_feedback' to save subjective feedback.")
+    @Guide(description: "Action: 'display_session' to present the interactive next workout session card; 'display_drill' to present an interactive drill card; 'display_explainer' to present an educational concept card explaining a biomechanical or physiological metric (e.g. cadence floor, cardiac drift, efficiency factor); 'update_goal' to adjust training goal; 'export_to_watch' to schedule a workout to Apple Watch; 'record_feedback' to save subjective feedback.")
     public var action: CoachActionType
 
-    @Guide(description: "Payload: race goal (e.g. 'Marathon', 'Half Marathon', '10K', '5K', 'Base Building') for 'update_goal'; workout or drill name (e.g. 'zone_1_recovery_flush', 'cadence_pyramids', 'zone_2_run', 'strides') for 'display_drill' and 'export_to_watch'; metric or concept key (e.g. 'cadence_floor', 'efficiency_factor', 'cardiac_drift', 'recovery_timeline', 'overstriding') for 'display_explainer'; subjective notes for 'record_feedback'.")
+    @Guide(description: "Payload: workout or drill name (e.g. 'cadence_pyramids', 'strides') for 'display_drill' and 'export_to_watch'; metric or concept key (e.g. 'cadence_floor', 'cardiac_drift', 'efficiency_factor') for 'display_explainer'; race goal (e.g. 'Base Building', '5K', 'Marathon') for 'update_goal'; subjective notes for 'record_feedback'.")
     public var payload: String?
 
     public init(action: CoachActionType, payload: String? = nil) {
@@ -480,7 +481,7 @@ public struct ExecuteCoachActionTool: Tool {
     public typealias Output = String
 
     public let name = "executeCoachAction"
-    public let description = "Executes coaching actions: 'update_goal' to adjust training goal; 'display_drill' to present an interactive workout or drill card; 'display_explainer' to present a metric explanation card; 'export_to_watch' to schedule a workout to Apple Watch; 'record_feedback' to save subjective feedback."
+    public let description = "Executes coaching actions: 'display_session' to show the next workout session card; 'display_drill' to show a drill card; 'display_explainer' to show a metric explainer card; 'update_goal' to adjust training goal; 'export_to_watch' to schedule a workout to Apple Watch; 'record_feedback' to save subjective feedback."
 
     let provider: @MainActor @Sendable (ExecuteCoachActionQuery) async -> String
 

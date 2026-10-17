@@ -1697,6 +1697,8 @@ final class IndoorIntelligenceTests: XCTestCase {
             // Test ExecuteCoachActionTool with display_drill for both drills and full recovery sessions
             let coachActionTool = ExecuteCoachActionTool { query in
                 switch query.action {
+                case .displaySession:
+                    return "{\"status\":\"session_card_displayed\"}"
                 case .displayDrill:
                     let resolved = PreRunDrillId.resolve(from: query.payload ?? "") ?? .cadencePyramids
                     return "{\"status\":\"interactive_drill_card_displayed\",\"drill_name\":\"\(resolved.title)\"}"

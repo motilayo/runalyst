@@ -230,7 +230,7 @@ class AnalystChatEngine: ObservableObject {
         • Tools: Call to fetch deterministic telemetry, manage athlete state, or trigger interactive cards.
         • `inspectWorkout`: moving/gross stats, splits, intervals, reps, physics.
         • `manageTrainingState`: 'readiness' (set userReportedDistress: true on pain/illness), 'history', 'athlete_profile'.
-        • `executeCoachAction`: 'update_goal' (race plans; outline Base, Build, Peak, Taper; daily readiness; no drills), 'display_drill', 'display_explainer', 'export_to_watch', 'record_feedback'.
+        • `executeCoachAction`: 'display_session' (show next workout card), 'display_drill' (show drill card), 'display_explainer' (show metric explainer card), 'update_goal' (race plans), 'export_to_watch', 'record_feedback'.
         • Formatting: Rich text. Standard units (SPM, min/km, min/mi). Never use Markdown or LaTeX.
         • Medical Safety: Prioritize rest on pain/illness, state AI disclaimer, urge medical care.
         • Outside Running: Warmly refocus on training. Never force drills.
@@ -295,8 +295,6 @@ class AnalystChatEngine: ObservableObject {
                 let cadenceBand: String
                 let rationale: String
                 let primerName: String?
-                let drillToAttach: PreRunDrillId?
-                let sessionToAttach: PrescribedDailySession?
 
                 switch dailyState {
                 case .preRun(let session):
@@ -307,8 +305,6 @@ class AnalystChatEngine: ObservableObject {
                     cadenceBand = "≥ \(session.cadenceFloor) SPM"
                     rationale = session.groundedRationale
                     primerName = session.primerDrillTitle
-                    drillToAttach = session.primerDrillId
-                    sessionToAttach = session
                 case .completedToday(let completedRun, let tomorrowSession):
                     nextTiming = "TOMORROW (Runner already banked today's workout: \(completedRun.workoutType) \(completedRun.distanceFormatted). Next run is tomorrow)"
                     sessionName = tomorrowSession.sessionTitle
@@ -317,13 +313,6 @@ class AnalystChatEngine: ObservableObject {
                     cadenceBand = "≥ \(tomorrowSession.cadenceFloor) SPM"
                     rationale = tomorrowSession.groundedRationale
                     primerName = tomorrowSession.primerDrillTitle
-                    drillToAttach = tomorrowSession.primerDrillId
-                    sessionToAttach = tomorrowSession
-                }
-
-                if verdict != "MANDATORY_REST_HEALTH_OVERRIDE" {
-                    self.drillRecommendedThisTurn = drillToAttach
-                    self.sessionRecommendedThisTurn = sessionToAttach
                 }
 
                 let humanIntensity: String
@@ -399,6 +388,20 @@ class AnalystChatEngine: ObservableObject {
         let coachActionTool = ExecuteCoachActionTool { [weak self] query in
             guard let self else { return "" }
             switch query.action {
+            case .displaySession:
+                let allRuns = (try? self.runRecord.modelContext?.fetch(FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)]))) ?? [self.runRecord]
+                let dailyState = SessionSynthesisEngine.evaluateDailyState(runRecords: allRuns, now: Date())
+                let sessionToAttach: PrescribedDailySession?
+                switch dailyState {
+                case .preRun(let session):
+                    sessionToAttach = session
+                case .completedToday(_, let tomorrowSession):
+                    sessionToAttach = tomorrowSession
+                }
+                self.sessionRecommendedThisTurn = sessionToAttach
+                let title = sessionToAttach?.sessionTitle ?? "Upcoming Workout"
+                return "{\"status\":\"session_card_displayed\",\"session_title\":\"\(title)\"}"
+
             case .displayDrill:
                 let resolved = PreRunDrillId.resolve(from: query.payload ?? "") ?? .cadencePyramids
                 self.drillRecommendedThisTurn = resolved
