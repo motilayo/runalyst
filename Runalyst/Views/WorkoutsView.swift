@@ -392,11 +392,38 @@ struct WorkoutsView: View {
     // MARK: - Main Run Targets (Done Second)
 
     private func mainRunSection(session: PrescribedDailySession) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("MAIN RUN")
-                .font(.system(size: 10, weight: .bold))
-                .foregroundColor(.secondary)
+        VStack(alignment: .leading, spacing: 10) {
+            // Overline inside main run card
+            HStack {
+                Label("MAIN RUN", systemImage: "figure.run")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(Color(red: 0.0, green: 0.55, blue: 1.0))
 
+                Spacer()
+
+                Text(session.durationBand)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(Color(red: 0.0, green: 0.55, blue: 1.0))
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 2)
+                    .background(Color(red: 0.0, green: 0.55, blue: 1.0).opacity(0.12))
+                    .clipShape(Capsule())
+            }
+
+            // Sub-row: Title & target parameters
+            VStack(alignment: .leading, spacing: 2) {
+                Text(session.sessionTitle)
+                    .font(.subheadline.weight(.bold))
+                    .foregroundColor(.primary)
+
+                Text("Target: \(session.paceBand) • \(session.hrCap.replacingOccurrences(of: "HR: ", with: "Max HR: "))")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+            }
+
+            // Core Targets Grid
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
                 metricCell(
                     icon: "stopwatch.fill",
@@ -424,6 +451,9 @@ struct WorkoutsView: View {
                 )
             }
         }
+        .padding(12)
+        .background(Color(UIColor.tertiarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     private func metricCell(icon: String, title: String, value: String, color: Color) -> some View {
@@ -450,7 +480,7 @@ struct WorkoutsView: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
-        .background(Color(UIColor.tertiarySystemGroupedBackground))
+        .background(Color(UIColor.secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
