@@ -55,6 +55,8 @@ struct PreviewRouterView: View {
             RunDetailPreviewContainer(targetType: nil)
         case "RUN_DETAIL_INTERVALS":
             RunDetailPreviewContainer(targetType: "Intervals")
+        case "RUN_DETAIL_DRILL_INTERVALS":
+            RunDetailPreviewContainer(targetType: "DrillIntervals")
         case "RUN_DETAIL_FARTLEK":
             RunDetailPreviewContainer(targetType: "Fartlek")
         case "DRILL_CARD":
@@ -237,6 +239,10 @@ private struct RunDetailPreviewContainer: View {
 
     var body: some View {
         let matchingRun = runs.first(where: { run in
+            if targetType == "DrillIntervals" {
+                let hasWorkReps = run.signature?.phaseSegments.contains(where: { $0.kind == "work" && $0.avgPace > 0 }) ?? false
+                return run.evaluationModality == .intervals && hasWorkReps
+            }
             if targetType == "Intervals" || targetType == "Fartlek" {
                 let isRecovery = run.detectedTypeRaw == "Recovery Run" || (run.percentZone4 <= 0.02 && run.workingAvgHeartRate > 0 && run.workingAvgHeartRate <= 135 && run.duration >= 600)
                 let hasWorkReps = run.signature?.phaseSegments.contains(where: { $0.kind == "work" && $0.avgPace > 0 }) ?? false
@@ -252,6 +258,11 @@ private struct RunDetailPreviewContainer: View {
         if let run = matchingRun {
             NavigationStack {
                 RunDetailView(runRecord: run)
+                    .onAppear {
+                        if targetType == "DrillIntervals" && run.prescribedDrillName == nil {
+                            WorkoutBridge.linkDrill(to: run, drillId: .rhythmIntervals, baselineCadence: 160)
+                        }
+                    }
             }
         } else {
             ProgressView("Loading run...")

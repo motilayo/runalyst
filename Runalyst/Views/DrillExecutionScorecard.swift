@@ -58,13 +58,33 @@ enum DrillAdherenceTier {
     }
 }
 
+struct DrillDisplayRep: Identifiable, Sendable {
+    var id: Int { repIndex }
+    let repIndex: Int
+    let durationSeconds: Double?
+    let isFastest: Bool
+    let workPaceFormatted: String?
+    let workCadence: Int
+    let workHeartRate: Int
+    let recoveryPaceFormatted: String?
+    let recoveryCadence: Int
+    let recoveryHeartRate: Int
+    let recoveryHeartRateDrop: Int?
+    let paceDeltaVsAverageWorkSec: Int?
+    let isMet: Bool
+    let observation: String?
+}
+
 struct DrillExecutionScorecard: View {
     let runRecord: RunRecord
     let drillId: PreRunDrillId
     let baselineCadence: Double?
     let baselineOscillation: Double?
     var customTitle: String?
+
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var isSetsExpanded: Bool = false
+    @State private var expandedRepIndices: Set<Int> = []
 
     var body: some View {
         let template = DrillTemplate.template(for: drillId)
@@ -100,12 +120,87 @@ struct DrillExecutionScorecard: View {
             return nil
         }()
 
-        let isIntervalDrill = (intervalSummary?.totalIntervals ?? 0) > 1
+        let analysisContext = WorkoutAnalysisContext(
+            runRecord: runRecord,
+            runSignature: runRecord.signature,
+            macroProfile: nil,
+            recoveryTimeline: RecoveryTimeline(
+                now: Date(),
+                lastHard: nil,
+                hardSessionsLast72h: 0,
+                requiredHours: 48,
+                state: .productive
+            ),
+            baselineStats: baselineCadence.map { (avgPace: runRecord.workingAvgPace, avgCadence: $0, avgHR: runRecord.workingAvgHeartRate) }
+        )
+        let intervalEvals = analysisContext.intervalEvaluations
+
+        let displayReps: [DrillDisplayRep] = {
+            if let summary = intervalSummary, summary.totalIntervals > 1, !summary.reps.isEmpty {
+                return summary.reps.map { rep in
+                    let matchedEval = intervalEvals.first(where: { $0.repIndex == rep.repIndex })
+                        ?? (rep.repIndex - 1 >= 0 && rep.repIndex - 1 < intervalEvals.count ? intervalEvals[rep.repIndex - 1] : nil)
+
+                    let workCadence = rep.workCadence > 0 ? rep.workCadence : (matchedEval?.workCadence ?? actualCadence)
+                    let workHR = rep.workHeartRate > 0 ? rep.workHeartRate : (matchedEval?.workHeartRate ?? actualHR)
+                    let recCadence = rep.recoveryCadence > 0 ? rep.recoveryCadence : (matchedEval?.recoveryCadence ?? 0)
+                    let recHR = rep.recoveryHeartRate > 0 ? rep.recoveryHeartRate : (matchedEval?.recoveryHeartRate ?? 0)
+                    let hrDrop: Int? = {
+                        if let drop = matchedEval?.recoveryHeartRateDrop { return drop }
+                        if workHR > 0 && recHR > 0 { return workHR - recHR }
+                        return nil
+                    }()
+
+                    return DrillDisplayRep(
+                        repIndex: rep.repIndex,
+                        durationSeconds: matchedEval?.durationSeconds,
+                        isFastest: matchedEval?.observation.starts(with: "Fastest") ?? false,
+                        workPaceFormatted: matchedEval?.workPaceFormatted,
+                        workCadence: workCadence,
+                        workHeartRate: workHR,
+                        recoveryPaceFormatted: matchedEval?.recoveryPaceFormatted,
+                        recoveryCadence: recCadence,
+                        recoveryHeartRate: recHR,
+                        recoveryHeartRateDrop: hrDrop,
+                        paceDeltaVsAverageWorkSec: matchedEval?.paceDeltaVsAverageWorkSec,
+                        isMet: rep.isMet,
+                        observation: matchedEval?.observation
+                    )
+                }
+            } else if intervalEvals.count > 1 && !drillId.isAerobicContinuous {
+                return intervalEvals.map { eval in
+                    let isMet: Bool = {
+                        if let range = drillObj.effectiveTargetCadence {
+                            return eval.workCadence >= (range.lowerBound - 2) && eval.workCadence <= (range.upperBound + 8)
+                        }
+                        return eval.workCadence >= thirtyDayCadence
+                    }()
+                    return DrillDisplayRep(
+                        repIndex: eval.repIndex,
+                        durationSeconds: eval.durationSeconds,
+                        isFastest: eval.observation.starts(with: "Fastest"),
+                        workPaceFormatted: eval.workPaceFormatted,
+                        workCadence: eval.workCadence,
+                        workHeartRate: eval.workHeartRate,
+                        recoveryPaceFormatted: eval.recoveryPaceFormatted,
+                        recoveryCadence: eval.recoveryCadence ?? 0,
+                        recoveryHeartRate: eval.recoveryHeartRate ?? 0,
+                        recoveryHeartRateDrop: eval.recoveryHeartRateDrop,
+                        paceDeltaVsAverageWorkSec: eval.paceDeltaVsAverageWorkSec,
+                        isMet: isMet,
+                        observation: eval.observation
+                    )
+                }
+            }
+            return []
+        }()
+
+        let isIntervalDrill = (intervalSummary?.totalIntervals ?? 0) > 1 || displayReps.count > 1
 
         let tier: DrillAdherenceTier
         let tierDescription: String
 
-        if let summary = intervalSummary, isIntervalDrill {
+        if let summary = intervalSummary, summary.totalIntervals > 1 {
             if isDualTarget {
                 let intervalsOk = summary.intervalsMet >= (summary.totalIntervals + 1) / 2
                 let zone4Ok = runRecord.percentZone4 >= 0.20
@@ -125,6 +220,19 @@ struct DrillExecutionScorecard: View {
             } else {
                 tier = summary.tier
                 tierDescription = summary.verdict
+            }
+        } else if isIntervalDrill, !displayReps.isEmpty {
+            let metCount = displayReps.filter(\.isMet).count
+            let total = displayReps.count
+            if metCount == total {
+                tier = .met
+                tierDescription = "Flawless turnover discipline: hit all \(total) work intervals on target."
+            } else if metCount >= (total + 1) / 2 {
+                tier = .partiallyMet
+                tierDescription = "Strong turnover adherence: hit \(metCount) of \(total) target intervals."
+            } else {
+                tier = .notMet
+                tierDescription = "Developing turnover: hit \(metCount) of \(total) intervals in target band."
             }
         } else if isDualTarget {
             // Tempo Surges: Cadence + Zone 4 Threshold
@@ -246,16 +354,20 @@ struct DrillExecutionScorecard: View {
             }
 
             // Interval Adherence Meter (Pips + Fraction)
-            if let summary = intervalSummary, isIntervalDrill {
+            if isIntervalDrill, !displayReps.isEmpty {
+                let metCount = displayReps.filter(\.isMet).count
+                let totalCount = displayReps.count
+                let percent = totalCount > 0 ? Int(round(Double(metCount) / Double(totalCount) * 100.0)) : 0
+
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
                         Text("Interval Adherence")
                             .font(.caption.weight(.semibold))
                             .foregroundColor(.secondary)
                         Spacer()
-                        Text("\(summary.intervalsMet) of \(summary.totalIntervals) on Target (\(summary.adherencePercentage)%)")
+                        Text("\(metCount) of \(totalCount) on Target (\(percent)%)")
                             .font(.caption.bold())
-                            .foregroundColor(summary.tier.tintColor)
+                            .foregroundColor(tier.tintColor)
                             .lineLimit(1)
                             .minimumScaleFactor(0.8)
                     }
@@ -263,7 +375,7 @@ struct DrillExecutionScorecard: View {
                     // Pips (R1, R2, ...)
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 6) {
-                            ForEach(summary.reps, id: \.repIndex) { rep in
+                            ForEach(displayReps) { rep in
                                 HStack(spacing: 3) {
                                     Image(systemName: rep.isMet ? "checkmark.circle.fill" : "circle")
                                         .font(.caption2)
@@ -283,7 +395,7 @@ struct DrillExecutionScorecard: View {
                     .mask(
                         HStack(spacing: 0) {
                             Rectangle().fill(Color.black)
-                            if summary.reps.count > 6 {
+                            if displayReps.count > 6 {
                                 LinearGradient(
                                     colors: [Color.black, Color.clear],
                                     startPoint: .leading,
@@ -303,28 +415,38 @@ struct DrillExecutionScorecard: View {
             let hasFormDelta = abs(oscDelta) > 0.01 && runRecord.workingAvgVerticalOscillation != nil
 
             // Primary Target vs Actual Metric Tiles
-            if let summary = intervalSummary, isIntervalDrill {
-                let workCadenceVal = summary.workCadenceAvg > 0 ? summary.workCadenceAvg : actualCadence
+            if isIntervalDrill, !displayReps.isEmpty {
+                let avgWorkCadence: Int = {
+                    if let summary = intervalSummary, summary.workCadenceAvg > 0 { return summary.workCadenceAvg }
+                    let valid = displayReps.map(\.workCadence).filter { $0 > 0 }
+                    return valid.isEmpty ? actualCadence : (valid.reduce(0, +) / valid.count)
+                }()
+                let avgRecCadence: Int = {
+                    if let summary = intervalSummary, summary.recoveryCadenceAvg > 0 { return summary.recoveryCadenceAvg }
+                    let valid = displayReps.map(\.recoveryCadence).filter { $0 > 0 }
+                    return valid.isEmpty ? max(130, actualCadence - 20) : (valid.reduce(0, +) / valid.count)
+                }()
+
                 let workCadenceTargetMet: Bool = {
                     if let range = drillObj.effectiveTargetCadence {
-                        return workCadenceVal >= (range.lowerBound - 2) &&
-                            (drillId == .strides || drillId == .tempoSurges ? workCadenceVal <= 195 : workCadenceVal <= range.upperBound + 8)
+                        return avgWorkCadence >= (range.lowerBound - 2) &&
+                            (drillId == .strides || drillId == .tempoSurges ? avgWorkCadence <= 195 : avgWorkCadence <= range.upperBound + 8)
                     }
-                    return workCadenceVal >= thirtyDayCadence
+                    return avgWorkCadence >= thirtyDayCadence
                 }()
-                let workColor: Color = workCadenceTargetMet ? .green : (summary.tier == .notMet ? .red : .orange)
+                let workColor: Color = workCadenceTargetMet ? .green : (tier == .notMet ? .red : .orange)
 
                 VStack(spacing: 8) {
                     HStack(spacing: 8) {
                         metricTile(
                             label: "WORK CADENCE",
-                            value: "\(workCadenceVal) SPM",
+                            value: "\(avgWorkCadence) SPM",
                             valueColor: workColor,
                             subtitle: "Target: \(targetCadenceStr) SPM"
                         )
                         metricTile(
                             label: "REC CADENCE",
-                            value: "\(summary.recoveryCadenceAvg > 0 ? summary.recoveryCadenceAvg : max(130, actualCadence - 20)) SPM",
+                            value: "\(avgRecCadence) SPM",
                             valueColor: .secondary,
                             subtitle: drillId.recoveryLabel
                         )
@@ -461,24 +583,24 @@ struct DrillExecutionScorecard: View {
             .cornerRadius(8)
 
             // Expandable Rep-by-Rep Breakdown (SETS)
-            if let summary = intervalSummary, isIntervalDrill, !summary.reps.isEmpty {
+            if isIntervalDrill, !displayReps.isEmpty {
                 Divider()
 
                 HStack {
-                    Text("SETS (\(summary.totalIntervals))")
+                    Text("SETS (\(displayReps.count))")
                         .font(.caption.bold())
                         .foregroundColor(.secondary)
 
                     Spacer()
 
-                    if summary.totalIntervals > 2 {
+                    if displayReps.count > 3 {
                         Button {
                             withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                                 isSetsExpanded.toggle()
                             }
                         } label: {
                             HStack(spacing: 4) {
-                                Text(isSetsExpanded ? "Show Less" : "Show All (\(summary.totalIntervals))")
+                                Text(isSetsExpanded ? "Show Less" : "Show All (\(displayReps.count))")
                                     .font(.caption.bold())
                                 Image(systemName: isSetsExpanded ? "chevron.up" : "chevron.down")
                                     .font(.caption2.bold())
@@ -488,44 +610,18 @@ struct DrillExecutionScorecard: View {
                     }
                 }
 
-                let displayedReps = isSetsExpanded ? summary.reps : Array(summary.reps.prefix(2))
-                VStack(spacing: 6) {
-                    ForEach(displayedReps, id: \.repIndex) { rep in
-                        HStack(spacing: 8) {
-                            Text("R\(rep.repIndex)")
-                                .font(.caption.bold())
-                                .foregroundColor(.primary)
-                                .frame(width: 26, alignment: .leading)
-
-                            Image(systemName: rep.isMet ? "checkmark.circle.fill" : "circle")
-                                .font(.caption2)
-                                .foregroundColor(rep.isMet ? .green : .orange)
-
-                            Text("\(rep.workCadence) SPM")
-                                .font(.caption.bold())
-                                .monospacedDigit()
-                                .foregroundColor(rep.isMet ? Color(red: 0.0, green: 0.75, blue: 0.65) : .orange)
-
-                            if rep.recoveryCadence > 0 {
-                                Text("Rec: \(rep.recoveryCadence) SPM")
-                                    .font(.system(size: 11))
-                                    .foregroundColor(.secondary)
-                            }
-
-                            Spacer()
-
-                            Text(rep.isMet ? "On Target" : "Developing")
-                                .font(.system(size: 10, weight: .semibold))
-                                .foregroundColor(rep.isMet ? .green : .orange)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(rep.isMet ? Color.green.opacity(0.12) : Color.orange.opacity(0.12))
-                                .clipShape(Capsule())
+                let displayedReps = isSetsExpanded ? displayReps : Array(displayReps.prefix(3))
+                if horizontalSizeClass == .regular && isSetsExpanded {
+                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                        ForEach(displayedReps) { rep in
+                            drillRepRow(rep, targetRange: drillObj.effectiveTargetCadence)
                         }
-                        .padding(.vertical, 4)
-                        .padding(.horizontal, 8)
-                        .background(Color(UIColor.tertiarySystemGroupedBackground))
-                        .cornerRadius(8)
+                    }
+                } else {
+                    VStack(spacing: 8) {
+                        ForEach(displayedReps) { rep in
+                            drillRepRow(rep, targetRange: drillObj.effectiveTargetCadence)
+                        }
                     }
                 }
             }
@@ -539,6 +635,275 @@ struct DrillExecutionScorecard: View {
                 .stroke(drillId.iconColor.opacity(0.2), lineWidth: 1)
         )
         .shadow(color: Color.black.opacity(0.03), radius: 5, x: 0, y: 2)
+        .onAppear {
+            if ProcessInfo.processInfo.environment["RUNALYST_EXPAND_FIRST_REP"] == "1" {
+                expandedRepIndices.insert(1)
+                isSetsExpanded = true
+            }
+        }
+    }
+
+    // MARK: - Rep Row with Progressive Disclosure (Unified Layout)
+
+    @ViewBuilder
+    private func drillRepRow(_ rep: DrillDisplayRep, targetRange: ClosedRange<Int>?) -> some View {
+        let isRepExpanded = expandedRepIndices.contains(rep.repIndex)
+
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.82)) {
+                    if isRepExpanded {
+                        expandedRepIndices.remove(rep.repIndex)
+                    } else {
+                        expandedRepIndices.insert(rep.repIndex)
+                    }
+                }
+            } label: {
+                VStack(spacing: 6) {
+                    // Line 1: Identity & Duration & Pace & Adherence Badge & Chevron
+                    HStack(alignment: .center, spacing: 5) {
+                        Text("Rep \(rep.repIndex)")
+                            .font(.subheadline.bold())
+                            .foregroundColor(.primary)
+
+                        if let dur = rep.durationSeconds, dur > 0 {
+                            let durMin = Int(dur) / 60
+                            let durSec = Int(dur) % 60
+                            Text(durMin > 0 ? "\(durMin)m \(durSec)s" : "\(durSec)s")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(.secondary)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 2)
+                                .background(Color(UIColor.tertiarySystemFill))
+                                .clipShape(Capsule())
+                        }
+
+                        if rep.isFastest {
+                            HStack(spacing: 2) {
+                                Image(systemName: "hare.fill")
+                                    .font(.system(size: 7))
+                                Text("Fastest")
+                                    .font(.system(size: 8.5, weight: .bold))
+                            }
+                            .foregroundColor(.orange)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1.5)
+                            .background(Color.orange.opacity(0.12))
+                            .clipShape(Capsule())
+                        }
+
+                        Spacer(minLength: 4)
+
+                        if let pace = rep.workPaceFormatted {
+                            Text(pace)
+                                .font(.subheadline.bold())
+                                .monospacedDigit()
+                                .foregroundColor(.primary)
+                        }
+
+                        HStack(spacing: 2.5) {
+                            Image(systemName: rep.isMet ? "checkmark.circle.fill" : "circle")
+                                .font(.system(size: 8, weight: .bold))
+                            Text(rep.isMet ? "On Target" : "Developing")
+                                .font(.system(size: 9.5, weight: .bold))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.75)
+                        }
+                        .foregroundColor(rep.isMet ? Color(red: 0.0, green: 0.75, blue: 0.65) : .orange)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background((rep.isMet ? Color(red: 0.0, green: 0.75, blue: 0.65) : Color.orange).opacity(0.12))
+                        .clipShape(Capsule())
+
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(.secondary.opacity(0.6))
+                            .rotationEffect(.degrees(isRepExpanded ? 90 : 0))
+                    }
+
+                    // Line 2: Biometrics & Recovery Summary
+                    HStack(alignment: .center, spacing: 6) {
+                        HStack(spacing: 4) {
+                            Text("\(rep.workCadence) SPM")
+                                .font(.caption)
+                                .foregroundColor(rep.isMet ? Color(red: 0.0, green: 0.75, blue: 0.65) : .orange)
+
+                            if rep.workHeartRate > 0 {
+                                Text("·")
+                                    .font(.caption.bold())
+                                    .foregroundColor(.secondary.opacity(0.4))
+
+                                Text("\(rep.workHeartRate) BPM")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+
+                        Spacer()
+
+                        HStack(spacing: 4) {
+                            if let recPace = rep.recoveryPaceFormatted {
+                                Text("Rec \(recPace)")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            } else if rep.recoveryCadence > 0 {
+                                Text("Rec: \(rep.recoveryCadence) SPM")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
+
+                            if let drop = rep.recoveryHeartRateDrop {
+                                recoveryHeartRateBadge(drop: drop)
+                            }
+                        }
+                    }
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            // Expanded Deep-Dive (Progressive Disclosure)
+            if isRepExpanded {
+                VStack(alignment: .leading, spacing: 8) {
+                    Divider()
+                        .padding(.vertical, 4)
+
+                    // Telemetry Breakdown Badges
+                    HStack(spacing: 8) {
+                        if let range = targetRange {
+                            let delta = rep.workCadence - range.lowerBound
+                            telemetryPill(
+                                label: "Target Band",
+                                value: "\(range.lowerBound)–\(range.upperBound) SPM (\(delta >= 0 ? "+\(delta)" : "\(delta)"))",
+                                color: rep.isMet ? Color(red: 0.0, green: 0.75, blue: 0.65) : .orange
+                            )
+                        } else {
+                            telemetryPill(
+                                label: "Cadence",
+                                value: "\(rep.workCadence) SPM",
+                                color: rep.isMet ? Color(red: 0.0, green: 0.75, blue: 0.65) : .orange
+                            )
+                        }
+
+                        if let delta = rep.paceDeltaVsAverageWorkSec {
+                            telemetryPill(
+                                label: "Pacing",
+                                value: paceDeltaString(delta),
+                                color: abs(delta) <= 5 ? .blue : .orange
+                            )
+                        }
+
+                        if let drop = rep.recoveryHeartRateDrop {
+                            let hrValue: String = drop > 0 ? "-\(drop) BPM" : (drop == 0 ? "0 BPM" : "+\(abs(drop)) BPM")
+                            let hrColor: Color = drop >= 10 ? Color(red: 1.0, green: 0.22, blue: 0.55) : (drop < 0 ? .orange : .secondary)
+                            telemetryPill(
+                                label: "HR Drop",
+                                value: hrValue,
+                                color: hrColor
+                            )
+                        }
+                    }
+
+                    // Coach's Observation
+                    let observationText: String = {
+                        if let obs = rep.observation, !obs.isEmpty {
+                            return obs
+                        }
+                        return rep.isMet
+                            ? "Turnover met the target cadence requirement for this interval."
+                            : "Turnover fell short of the prescribed cadence band."
+                    }()
+
+                    HStack(alignment: .top, spacing: 6) {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 10))
+                            .foregroundColor(drillId.iconColor)
+                            .padding(.top, 1)
+
+                        Text(observationText)
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(UIColor.secondarySystemGroupedBackground).opacity(0.7))
+                    .cornerRadius(6)
+                }
+                .padding(.top, 4)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .padding(10)
+        .background(Color(UIColor.tertiarySystemGroupedBackground))
+        .cornerRadius(10)
+    }
+
+    @ViewBuilder
+    private func recoveryHeartRateBadge(drop: Int?) -> some View {
+        if let drop = drop {
+            if drop > 0 {
+                HStack(spacing: 2) {
+                    Image(systemName: "arrow.down")
+                        .font(.system(size: 8, weight: .bold))
+                    Text("\(drop) BPM")
+                        .font(.system(size: 10, weight: .semibold))
+                }
+                .foregroundColor(Color(red: 0.0, green: 0.75, blue: 0.65))
+                .padding(.horizontal, 5)
+                .padding(.vertical, 1.5)
+                .background(Color(red: 0.0, green: 0.75, blue: 0.65).opacity(0.12))
+                .clipShape(Capsule())
+            } else if drop == 0 {
+                Text("0 BPM")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 1.5)
+                    .background(Color.secondary.opacity(0.12))
+                    .clipShape(Capsule())
+            } else {
+                HStack(spacing: 2) {
+                    Image(systemName: "arrow.up")
+                        .font(.system(size: 8, weight: .bold))
+                    Text("\(abs(drop)) BPM")
+                        .font(.system(size: 10, weight: .semibold))
+                }
+                .foregroundColor(.orange)
+                .padding(.horizontal, 5)
+                .padding(.vertical, 1.5)
+                .background(Color.orange.opacity(0.12))
+                .clipShape(Capsule())
+            }
+        }
+    }
+
+    private func telemetryPill(label: String, value: String, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(label.uppercased())
+                .font(.system(size: 8, weight: .bold))
+                .foregroundColor(.secondary)
+            Text(value)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(color)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 4)
+        .background(Color(UIColor.secondarySystemGroupedBackground))
+        .cornerRadius(6)
+    }
+
+    private func paceDeltaString(_ delta: Int) -> String {
+        if delta == 0 {
+            return "Even pace"
+        } else if delta > 0 {
+            return "+\(delta)s vs avg"
+        } else {
+            return "\(delta)s vs avg"
+        }
     }
 
     @ViewBuilder
