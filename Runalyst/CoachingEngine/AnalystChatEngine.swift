@@ -202,19 +202,20 @@ class AnalystChatEngine: ObservableObject {
         let unitSystem = useMetric ? "Metric (min/km, km)" : "Imperial (min/mi, mi)"
 
         let contextBlock: String
-        let temporalRule: String
 
         if mode == .macroCoach {
-            contextBlock = "Scope: Macro AI Coach. Today: \(todayStr).\nWorkout Today: \(isRunToday ? "Logged \(runType)." : "None.")\nLast Run: \(dateStr) (\(daysDiff)d ago: \(runType), \(envNote))."
-            temporalRule = isRunToday
-                ? "• Workout completed today (\(runType))."
-                : "• Today is \(todayStr). Runner did NOT run today. Never call \(dateStr)'s run 'today's session'."
+            let allRuns = (try? runRecord.modelContext?.fetch(FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)]))) ?? [runRecord]
+            let dailyState = SessionSynthesisEngine.evaluateDailyState(runRecords: allRuns, now: Date())
+
+            switch dailyState {
+            case .preRun(let session):
+                contextBlock = "Scope: Macro AI Coach. Today: \(todayStr).\nAthlete State: Pre-Run (no workouts logged today).\nNext Prescribed Session: TODAY — \(session.sessionTitle) (\(session.durationBand), \(session.paceBand)) with \(session.primerDrillTitle) primer."
+            case .completedToday(let completedRun, let tomorrowSession):
+                contextBlock = "Scope: Macro AI Coach. Today: \(todayStr).\nAthlete State: Completed Today (\(completedRun.workoutType) \(completedRun.distanceFormatted), Grade \(completedRun.letterGrade)). Daily load banked.\nNext Prescribed Session: TOMORROW — \(tomorrowSession.sessionTitle) (\(tomorrowSession.durationBand), \(tomorrowSession.paceBand))."
+            }
         } else {
             let temporalGrounding = daysDiff == 0 ? "Today" : "\(dateStr) (\(daysDiff)d ago)"
             contextBlock = "Scope: Workout Inspection.\nReviewing: \(runType) (\(envNote), \(temporalGrounding))."
-            temporalRule = daysDiff > 0
-                ? "• Workout was on \(dateStr) (\(daysDiff)d ago), NOT today. Do not call it today's session."
-                : ""
         }
 
         return """
@@ -225,7 +226,6 @@ class AnalystChatEngine: ObservableObject {
         Units: \(unitSystem).
 
         RULES:
-        \(temporalRule)
         • NEXT RUN: If no run logged today, next run is TODAY. If run logged today, next run is TOMORROW. Always surface next workout card.
         • Tools: Call only when needed. Max 1 card per turn.
         • `inspectWorkout`: moving/gross stats, splits, intervals, reps, physics.
