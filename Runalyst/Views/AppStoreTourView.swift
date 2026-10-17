@@ -38,9 +38,7 @@ struct AppStoreTourView: View {
                     DashboardView(onSync: nil)
                 }
             case 2:
-                NavigationStack {
-                    DrillsLibraryView()
-                }
+                WorkoutsView()
                 .transition(.asymmetric(insertion: .move(edge: .trailing), removal: .move(edge: .leading)))
             case 3:
                 drillReadoutView
