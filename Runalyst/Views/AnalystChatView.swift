@@ -351,7 +351,8 @@ struct AnalystChatView: View {
                                 openDrillReadout(drillId: session.primerDrillId)
                             }
                         )
-                    } else if let drillId = message.attachedDrillId {
+                    }
+                    if let drillId = message.attachedDrillId {
                         InlineChatDrillCard(
                             drillId: drillId,
                             runRecord: runRecord,
@@ -359,7 +360,8 @@ struct AnalystChatView: View {
                                 openDrillReadout(drillId: drillId)
                             }
                         )
-                    } else if let explainerKey = message.attachedExplainerKey {
+                    }
+                    if let explainerKey = message.attachedExplainerKey {
                         InlineChatExplainerCard(
                             explainerKey: explainerKey,
                             runRecord: runRecord,
