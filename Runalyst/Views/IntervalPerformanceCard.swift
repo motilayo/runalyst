@@ -70,6 +70,48 @@ struct IntervalPerformanceCard: View {
                 .clipShape(Capsule())
             }
 
+            // MARK: - Execution Ribbon (Pips R1, R2, ...)
+            if !evaluations.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Text("Rep Execution")
+                            .font(.caption.weight(.semibold))
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        let metCount = evaluations.filter { $0.letterGrade.starts(with: "A") || $0.letterGrade.starts(with: "B") }.count
+                        Text("\(metCount) of \(evaluations.count) Well Executed (\(Int((Double(metCount) / Double(evaluations.count) * 100).rounded()))%)")
+                            .font(.caption.bold())
+                            .foregroundColor(gradeColor(for: overallGrade))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                    }
+
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 6) {
+                            ForEach(evaluations) { rep in
+                                let isMet = rep.letterGrade.starts(with: "A") || rep.letterGrade.starts(with: "B")
+                                HStack(spacing: 3) {
+                                    Image(systemName: isMet ? "checkmark.circle.fill" : "circle")
+                                        .font(.caption2)
+                                        .foregroundColor(isMet ? .green : .orange)
+                                    Text("R\(rep.repIndex)")
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundColor(isMet ? .primary : .secondary)
+                                }
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 4)
+                                .background(isMet ? Color.green.opacity(0.12) : Color.orange.opacity(0.12))
+                                .clipShape(Capsule())
+                            }
+                        }
+                        .padding(.horizontal, 1)
+                    }
+                }
+                .padding(10)
+                .background(Color(UIColor.tertiarySystemGroupedBackground))
+                .cornerRadius(10)
+            }
+
             // MARK: - Core Metric Stat Tiles (Pacing, Cadence Floor, HR Drop)
             HStack(spacing: 8) {
                 metricTile(
@@ -138,6 +180,7 @@ struct IntervalPerformanceCard: View {
                 }
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
         .background(Color(UIColor.secondarySystemGroupedBackground))
         .cornerRadius(16)
@@ -396,7 +439,7 @@ struct IntervalPerformanceCard: View {
 
     private func paceDeltaString(_ delta: Int) -> String {
         if delta == 0 {
-            return "On target"
+            return "Even pace"
         } else if delta > 0 {
             return "+\(delta)s vs avg"
         } else {

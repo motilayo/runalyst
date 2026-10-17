@@ -156,9 +156,9 @@ struct AppleWatchBiomechanicsBridgeView: View {
 
                 TelemetryComparisonRow(
                     metricName: "Cadence",
-                    goodRange: "165 – 180 SPM",
-                    overstrideRange: "< 155 SPM",
-                    explanation: "A slower cadence gives your lead leg time to reach too far forward. Quicker steps naturally encourage your feet to land beneath your hips."
+                    goodRange: "≥ Floor (150+ SPM)",
+                    overstrideRange: "< 150 SPM Floor",
+                    explanation: "A cadence below your calibrated floor (< 150 SPM) gives your lead leg time to reach too far forward. Maintaining your target rhythm naturally encourages your feet to land beneath your center of mass."
                 )
 
                 Divider()

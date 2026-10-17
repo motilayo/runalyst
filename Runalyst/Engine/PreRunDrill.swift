@@ -254,4 +254,29 @@ struct PreRunDrill: Sendable {
 
         return phases
     }
+
+    /// Total duration in seconds calculated from all generated phases (warm-up, work/recovery reps, cool-down).
+    var totalPhasesDurationSeconds: Int {
+        generatePhases().reduce(0) { $0 + $1.durationSeconds }
+    }
+
+    /// Formatted duration string for card headers (e.g. "7m 30s drill (Trimmed from 10 min)" or "10 min drill").
+    var dynamicDurationTitle: String {
+        let totalSec = totalPhasesDurationSeconds
+        let minutes = totalSec / 60
+        let seconds = totalSec % 60
+        let formattedDuration: String
+        if seconds > 0 {
+            formattedDuration = "\(minutes)m \(seconds)s"
+        } else {
+            formattedDuration = "\(minutes)m"
+        }
+
+        let standardSec = duration.rawValue * 60
+        if totalSec < standardSec {
+            return "\(formattedDuration) drill (Trimmed from \(duration.title))"
+        } else {
+            return "\(formattedDuration) drill"
+        }
+    }
 }

@@ -57,6 +57,25 @@ struct ProgressionChartView: View {
     @State private var selectedHorizon: ChartTimeHorizon
     @State private var selectedRunType: String?
     @State private var selectedDate: Date?
+    @State private var showingInfo = false
+
+    private var latestMetricDisplay: String? {
+        let matchingRuns = horizonRuns.filter { run in
+            if let selType = selectedRunType {
+                return run.normalizedClassification == selType
+            }
+            return true
+        }
+        guard let latestRun = matchingRuns.sorted(by: { $0.date > $1.date }).first else {
+            return nil
+        }
+        if selectedMetric == .efficiencyFactor, let ef = latestRun.efficiencyFactor, ef > 0 {
+            return String(format: "%.2f EF", ef)
+        } else if selectedMetric == .pace, latestRun.workingAvgPace > 0 {
+            return PaceFormatter.formatPace(secondsPerKilometer: latestRun.workingAvgPace)
+        }
+        return nil
+    }
 
     private let defaultHorizon: ChartTimeHorizon
 
@@ -284,6 +303,19 @@ struct ProgressionChartView: View {
                             .foregroundColor(.primary)
                     }
                     Spacer()
+
+                    Button(action: {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        showingInfo = true
+                    }) {
+                        Image(systemName: "info.circle")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Longitudinal Progression Explanation")
                 }
 
                 // Full-width metric selector
@@ -487,21 +519,35 @@ struct ProgressionChartView: View {
                 .animation(.easeInOut(duration: 0.3), value: selectedRunType)
             }
 
-            // Descriptive Subtitle / Metric Context
-            HStack(spacing: 4) {
-                Image(systemName: "info.circle")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-                if selectedMetric == .efficiencyFactor {
-                    Text("Efficiency Factor (Speed ÷ Heart Rate) tracks physiological economy for \(selectedRunType ?? "this workout type").")
-                        .font(.caption2)
+            // Descriptive Subtitle / Metric Context (Interactive Explainer Trigger)
+            Button(action: {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                showingInfo = true
+            }) {
+                HStack(spacing: 6) {
+                    Image(systemName: "info.circle")
+                        .font(.caption)
                         .foregroundColor(.secondary)
-                } else {
-                    Text("Pace progression over time reveals pure speed adaptation for \(selectedRunType ?? "this workout type").")
+                    if selectedMetric == .efficiencyFactor {
+                        Text("Efficiency Factor (Speed ÷ Heart Rate) tracks physiological economy for \(selectedRunType ?? "this workout type").")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.leading)
+                    } else {
+                        Text("Pace progression over time reveals pure speed adaptation for \(selectedRunType ?? "this workout type").")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.leading)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right")
                         .font(.caption2)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(.secondary.opacity(0.5))
                 }
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Learn more about this metric")
         }
         .padding(16)
         .background(Color(UIColor.secondarySystemGroupedBackground))
@@ -510,6 +556,26 @@ struct ProgressionChartView: View {
         .padding(.horizontal)
         .onAppear {
             syncDefaultSelectedRunType()
+        }
+        .sheet(isPresented: $showingInfo) {
+            let contextType = selectedRunType ?? "Steady Effort"
+            MetricExplainerSheet(
+                title: selectedMetric == .efficiencyFactor ? "Efficiency Factor Progression" : "Pace Progression",
+                mode: "\(contextType) • \(selectedHorizon.rawValue)",
+                overview: selectedMetric == .efficiencyFactor
+                    ? "Efficiency Factor (Speed ÷ Heart Rate) tracks physiological economy over time. By comparing how fast you run against the cardiovascular effort required, Runalyst shows whether your aerobic engine is becoming more efficient."
+                    : "Pace progression tracks your speed development over time across identical workout classifications, showing true aerobic speed development independent of race-day surges.",
+                modeContext: selectedMetric == .efficiencyFactor
+                    ? "Isolated to \(contextType) runs across \(selectedHorizon.rawValue) to eliminate pacing noise and ensure authentic physiological comparisons."
+                    : "Filtered strictly to \(contextType) runs across \(selectedHorizon.rawValue) using pause-trimmed Working Pace.",
+                whyItMatters: selectedMetric == .efficiencyFactor
+                    ? "Aerobic Economy: As aerobic endurance improves through base training, you run faster at the same heart rate, or maintain the same speed at a lower heart rate. A declining trend signals accumulated fatigue, dehydration, or heat stress."
+                    : "Speed Development: Consistent, unforced speed gains at comfortable heart rates reflect genuine muscular and metabolic adaptation.",
+                targetRange: selectedMetric == .efficiencyFactor
+                    ? "Target: Upward or stable trajectory across training cycles.\n\n• Rising: You are getting fitter and faster with less cardiovascular effort.\n• Dropping: You may be tired, overtraining, or battling heat/dehydration."
+                    : "Target: Steady, gradual progression over 6–12 week mesocycles without spiking cardiovascular strain.",
+                userMetricDisplay: latestMetricDisplay
+            )
         }
     }
 }

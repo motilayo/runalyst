@@ -198,7 +198,7 @@ struct LifetimeMilestonesCard: View {
                     .font(.caption2.bold())
                     .foregroundColor(.secondary)
 
-                HStack(spacing: 12) {
+                HStack(spacing: 8) {
                     // Longest Run
                     VStack(alignment: .leading, spacing: 2) {
                         HStack(spacing: 4) {
@@ -208,10 +208,13 @@ struct LifetimeMilestonesCard: View {
                             Text("Longest")
                                 .font(.caption2)
                                 .foregroundColor(.secondary)
+                                .lineLimit(1)
                         }
                         Text(longestRunFormatted)
                             .font(.subheadline.bold())
                             .foregroundColor(.primary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.80)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -224,10 +227,13 @@ struct LifetimeMilestonesCard: View {
                             Text("Fastest")
                                 .font(.caption2)
                                 .foregroundColor(.secondary)
+                                .lineLimit(1)
                         }
                         Text(fastestPaceFormatted)
                             .font(.subheadline.bold())
                             .foregroundColor(.primary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.80)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -240,10 +246,13 @@ struct LifetimeMilestonesCard: View {
                             Text("Cadence")
                                 .font(.caption2)
                                 .foregroundColor(.secondary)
+                                .lineLimit(1)
                         }
                         Text(highestCadenceFormatted)
                             .font(.subheadline.bold())
                             .foregroundColor(.primary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.80)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -256,10 +265,13 @@ struct LifetimeMilestonesCard: View {
                             Text("Peak EF")
                                 .font(.caption2)
                                 .foregroundColor(.secondary)
+                                .lineLimit(1)
                         }
                         Text(peakEfficiencyFactorFormatted)
                             .font(.subheadline.bold())
                             .foregroundColor(.primary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.80)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }

@@ -60,7 +60,7 @@ enum DrillPatternRecognizer {
         // A run with low-to-moderate cadence variability across the session is a continuous aerobic run
         // (e.g. Easy Run, Steady Effort, Recovery Run, Tempo Run).
         // Continuous runs MUST NEVER be autonomously recognized as drills; standard run classifiers handle them.
-        guard cadenceCV >= 0.045 && stdCadence >= 7.0 else {
+        guard cadenceCV >= 0.020 && stdCadence >= 2.5 else {
             return nil
         }
 
@@ -75,17 +75,18 @@ enum DrillPatternRecognizer {
             smoothedCadences.append(avg)
         }
 
-        // A true interval workout requires significant cadence contrast between work and recovery (> 18 SPM).
-        // Terrain fluctuations and street corner dips (10-15 SPM) do not constitute an interval drill.
-        guard let minC = smoothedCadences.min(),
-              let maxC = smoothedCadences.max(),
-              (maxC - minC) >= 18.0 else {
+        // A true interval workout requires clear cadence contrast between work and recovery (at least 4.0 SPM).
+        // Terrain fluctuations and street corner dips (10-15 SPM) do not constitute an interval drill without interval alternation.
+        guard let rawMinC = cadences.min(),
+              let rawMaxC = cadences.max(),
+              (rawMaxC - rawMinC) >= 4.0 else {
             return nil
         }
 
-        let splitThreshold = (minC + maxC) / 2.0
-
-        // Segment contiguous buckets into candidate work and recovery regions
+        // Segment contiguous buckets into candidate work and recovery regions.
+        // Uses a two-pass approach:
+        // Pass 1: Global midpoint threshold (min + max) / 2.
+        // Pass 2: High-cadence float recovery search when a slow warmup pulls global threshold below active recovery.
         struct CandidateSegment {
             let isWork: Bool
             var duration: Double
@@ -102,43 +103,74 @@ enum DrillPatternRecognizer {
             }
         }
 
-        var segments: [CandidateSegment] = []
-        var currentIsWork = smoothedCadences[0] >= splitThreshold
-        var currentBuckets: [BucketData] = [active[0]]
+        func buildSegments(withThreshold threshold: Double) -> (workReps: [CandidateSegment], recReps: [CandidateSegment], allIntervalSegments: [CandidateSegment]) {
+            var rawSegments: [CandidateSegment] = []
+            var currentIsWork = smoothedCadences[0] >= threshold
+            var currentBuckets: [BucketData] = [active[0]]
 
-        for i in 1..<smoothedCadences.count {
-            let isWork = smoothedCadences[i] >= splitThreshold
-            let curAvgCadence = currentBuckets.map(\.meanCadence).reduce(0, +) / Double(currentBuckets.count)
-            let curDuration = currentBuckets.map(\.durationSeconds).reduce(0, +)
+            for i in 1..<smoothedCadences.count {
+                let isWork = smoothedCadences[i] >= threshold
+                let curAvgCadence = currentBuckets.map(\.meanCadence).reduce(0, +) / Double(currentBuckets.count)
+                let curDuration = currentBuckets.map(\.durationSeconds).reduce(0, +)
+                let isCadenceStep = curDuration >= 60.0 && abs(smoothedCadences[i] - curAvgCadence) >= 10.0
 
-            // Detect segment boundary either by threshold crossing or by significant cadence step
-            // from an extended phase (e.g. warmup of >= 60s transitioning into an interval)
-            let isCadenceStep = curDuration >= 60.0 && abs(smoothedCadences[i] - curAvgCadence) >= 10.0
-
-            if isWork == currentIsWork && !isCadenceStep {
-                currentBuckets.append(active[i])
-            } else {
+                if isWork == currentIsWork && !isCadenceStep {
+                    currentBuckets.append(active[i])
+                } else {
+                    let dur = currentBuckets.map(\.durationSeconds).reduce(0, +)
+                    rawSegments.append(CandidateSegment(isWork: currentIsWork, duration: dur, buckets: currentBuckets))
+                    currentIsWork = isWork
+                    currentBuckets = [active[i]]
+                }
+            }
+            if !currentBuckets.isEmpty {
                 let dur = currentBuckets.map(\.durationSeconds).reduce(0, +)
-                segments.append(CandidateSegment(isWork: currentIsWork, duration: dur, buckets: currentBuckets))
-                currentIsWork = isWork
-                currentBuckets = [active[i]]
+                rawSegments.append(CandidateSegment(isWork: currentIsWork, duration: dur, buckets: currentBuckets))
+            }
+
+            var intervalSegments = rawSegments
+            if intervalSegments.count >= 3 && !intervalSegments[0].isWork && intervalSegments[0].duration >= 45.0 {
+                intervalSegments.removeFirst()
+            }
+
+            let work = intervalSegments.filter { $0.isWork && $0.duration >= 15.0 && $0.duration <= 130.0 }
+            let rec = intervalSegments.filter { !$0.isWork && $0.duration >= 20.0 }
+            return (work, rec, intervalSegments)
+        }
+
+        let globalThreshold = (rawMinC + rawMaxC) / 2.0
+        var (workReps, recReps, intervalSegments) = buildSegments(withThreshold: globalThreshold)
+
+        // Pass 2: High-cadence float recovery search
+        // When a slow warmup pulls globalThreshold below recovery cadence,
+        // search for peaks and valleys within the elevated region (>= globalThreshold - 2.0)
+        if !(workReps.count >= 3 && recReps.count >= 2) {
+            var elevatedPeaks: [Double] = []
+            var elevatedValleys: [Double] = []
+
+            for i in 1..<(smoothedCadences.count - 1) {
+                guard smoothedCadences[i] >= globalThreshold - 2.0 else { continue }
+                if smoothedCadences[i] >= smoothedCadences[i - 1] && smoothedCadences[i] >= smoothedCadences[i + 1] && (smoothedCadences[i] > smoothedCadences[i - 1] || smoothedCadences[i] > smoothedCadences[i + 1]) {
+                    elevatedPeaks.append(smoothedCadences[i])
+                } else if smoothedCadences[i] <= smoothedCadences[i - 1] && smoothedCadences[i] <= smoothedCadences[i + 1] && (smoothedCadences[i] < smoothedCadences[i - 1] || smoothedCadences[i] < smoothedCadences[i + 1]) {
+                    elevatedValleys.append(smoothedCadences[i])
+                }
+            }
+
+            if elevatedPeaks.count >= 2 && elevatedValleys.count >= 2 {
+                let medPeak = elevatedPeaks.sorted()[elevatedPeaks.count / 2]
+                let medValley = elevatedValleys.sorted()[elevatedValleys.count / 2]
+                if (medPeak - medValley) >= 3.5 {
+                    let floatThreshold = (medPeak + medValley) / 2.0
+                    let (pass2Work, pass2Rec, pass2Intervals) = buildSegments(withThreshold: floatThreshold)
+                    if pass2Work.count >= 3 && pass2Rec.count >= 2 {
+                        workReps = pass2Work
+                        recReps = pass2Rec
+                        intervalSegments = pass2Intervals
+                    }
+                }
             }
         }
-        if !currentBuckets.isEmpty {
-            let dur = currentBuckets.map(\.durationSeconds).reduce(0, +)
-            segments.append(CandidateSegment(isWork: currentIsWork, duration: dur, buckets: currentBuckets))
-        }
-
-        // Strip leading Warmup bookend if present (duration >= 90s before alternating intervals)
-        var intervalSegments = segments
-        if intervalSegments.count >= 3 && intervalSegments[0].duration >= 90.0 {
-            intervalSegments.removeFirst()
-        }
-
-        // Real interval work reps last between 15s and 130s.
-        // Recovery reps must be intentional recovery (duration >= 20s), not momentary 5s street pauses.
-        let workReps = intervalSegments.filter { $0.isWork && $0.duration >= 15.0 && $0.duration <= 130.0 }
-        let recReps = intervalSegments.filter { !$0.isWork && $0.duration >= 20.0 }
 
         // Structured intervals require alternating sets with at least 3 distinct recovery reps
         guard workReps.count >= 3 && recReps.count >= 2 else {
@@ -184,7 +216,7 @@ enum DrillPatternRecognizer {
 
         // MARK: 2. Cadence Pyramids vs Rhythm Intervals
         let intervalWorkReps = workReps.filter { $0.duration >= 20.0 && $0.duration <= 130.0 }
-        if intervalWorkReps.count >= 4 && recReps.count >= 3 {
+        if intervalWorkReps.count >= 3 && recReps.count >= 2 {
             let workCadences = intervalWorkReps.map { $0.avgCadence }
             let wMean = workCadences.reduce(0, +) / Double(workCadences.count)
             let avgRecC = recReps.map { $0.avgCadence }.reduce(0, +) / Double(recReps.count)
@@ -239,10 +271,17 @@ enum DrillPatternRecognizer {
 
             // Rhythm Intervals:
             // Crucial Guardrail: The work cadence MUST be distinctly elevated above the aerobic baseline
-            // (at least baseline + 5.0 SPM, and >= 160 SPM).
-            // Recovery must be genuine recovery below baseline, contrast >= 15 SPM, and work consistency metronomic (wStd <= 2.5).
+            // (at least baseline - 2.0 SPM when baseline is supplied), with easy jog float recovery,
+            // contrast >= 4.0 SPM, and tight metronomic work consistency (wStd <= 3.8).
             let wVariance = workCadences.map { pow($0 - wMean, 2) }.reduce(0, +) / Double(workCadences.count)
             let wStd = sqrt(wVariance)
+
+            let isElevatedAboveBaseline: Bool = {
+                if baselineCadence > 0 {
+                    return wMean >= Double(baselineCadence) - 2.0
+                }
+                return true
+            }()
 
             if let sched = DrillSchedule.findMatchingSchedule(
                 workoutDuration: workoutDuration,
@@ -250,11 +289,9 @@ enum DrillPatternRecognizer {
                 avgWorkDuration: avgWorkDur,
                 avgRecoveryDuration: avgRecDur,
                 candidateDrills: [.rhythmIntervals]
-            ), contrast >= 15.0 &&
-               wMean >= (refBaseline + 5.0) &&
-               wMean >= 160.0 &&
-               avgRecC <= (refBaseline - 5.0) &&
-               wStd <= 2.5 {
+            ), contrast >= 4.0 &&
+               isElevatedAboveBaseline &&
+               wStd <= 3.8 {
                 return DrillPatternMatch(
                     drillId: .rhythmIntervals,
                     confidence: 0.95,

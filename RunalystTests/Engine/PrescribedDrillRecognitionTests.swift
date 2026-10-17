@@ -160,6 +160,61 @@ final class PrescribedDrillRecognitionTests: XCTestCase {
         XCTAssertNil(unprescribed, "Unscheduled runs with no drill metadata must not match as a drill")
     }
 
+    func testRhythmIntervalsSingularAndVariationsMatching() {
+        let date = Date()
+
+        // 1. Singular "Rhythm Interval" in metadata
+        let singular = WorkoutBridge.matchDrill(
+            workoutDate: date,
+            durationSeconds: 900,
+            metadata: ["HKWorkoutPlanDisplayName": "Rhythm Interval"]
+        )
+        XCTAssertNotNil(singular, "Singular 'Rhythm Interval' must match Rhythm Intervals")
+        XCTAssertEqual(singular?.drillTitle, "Rhythm Intervals")
+        XCTAssertEqual(singular?.preRunDrillId, "rhythm_intervals")
+
+        // 2. Kebab-case "rhythm-interval"
+        let kebab = WorkoutBridge.matchDrill(
+            workoutDate: date,
+            durationSeconds: 600,
+            metadata: ["workoutTitle": "rhythm-interval"]
+        )
+        XCTAssertNotNil(kebab)
+        XCTAssertEqual(kebab?.drillTitle, "Rhythm Intervals")
+
+        // 3. Substring "Outdoor Run - Rhythm"
+        let substring = WorkoutBridge.matchDrill(
+            workoutDate: date,
+            durationSeconds: 600,
+            metadata: ["displayName": "Outdoor Run - Rhythm"]
+        )
+        XCTAssertNotNil(substring)
+        XCTAssertEqual(substring?.drillTitle, "Rhythm Intervals")
+    }
+
+    func testRhythmIntervalsExtendedRunDurationMatching() {
+        let scheduledDate = Date().addingTimeInterval(-1800) // 30 mins ago
+        let intent = ScheduledDrillIntent(
+            drillTitle: "Rhythm Intervals",
+            preRunDrillId: "rhythm_intervals",
+            scheduledDate: scheduledDate,
+            durationMinutes: 10,
+            targetCadence: "162"
+        )
+        WorkoutBridge.saveDrillIntent(intent)
+
+        // Incoming workout completed 5 mins ago, but user ran for 22 minutes (1320s) with warm-up/cool-down
+        let workoutDate = Date().addingTimeInterval(-300)
+        let matched = WorkoutBridge.matchDrill(
+            workoutDate: workoutDate,
+            durationSeconds: 1320,
+            metadata: nil
+        )
+
+        XCTAssertNotNil(matched, "10-minute scheduled intent must match 22-minute session containing the drill")
+        XCTAssertEqual(matched?.drillTitle, "Rhythm Intervals")
+    }
+
     func testRunBaselineDataIncludesAllRunsWeighted() {
         let now = Date()
         let allRuns = [

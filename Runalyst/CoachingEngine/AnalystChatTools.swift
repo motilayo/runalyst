@@ -41,6 +41,9 @@ public struct UnifiedWorkoutToolResponse: Codable, Sendable {
     // Duration boundary tagging
     public let duration_summary: String?
 
+    // Canonical compact explainer dictionary grounding the metrics present in this run
+    public let metric_explainers: [String: String]?
+
     public init(
         schema_name: String = "UNIFIED_WORKOUT_TOOL_RESPONSE",
         workout_type: String,
@@ -56,7 +59,8 @@ public struct UnifiedWorkoutToolResponse: Codable, Sendable {
         physiological_verdicts: String,
         heart_rate_confidence: String? = nil,
         heart_rate_status: String? = nil,
-        duration_summary: String? = nil
+        duration_summary: String? = nil,
+        metric_explainers: [String: String]? = nil
     ) {
         self.schema_name = schema_name
         self.workout_type = workout_type
@@ -73,6 +77,7 @@ public struct UnifiedWorkoutToolResponse: Codable, Sendable {
         self.heart_rate_confidence = heart_rate_confidence
         self.heart_rate_status = heart_rate_status
         self.duration_summary = duration_summary
+        self.metric_explainers = metric_explainers
     }
 }
 
@@ -303,6 +308,7 @@ public struct ReadinessToolResponse: Codable, Sendable {
     public let prescribed_duration_band: String
     public let prescribed_cadence_band: String
     public let session_rationale: String
+    public let guidance_notes: [String: String]?
 
     public init(
         schema_name: String = "READINESS_AND_PRESCRIPTION_RESPONSE",
@@ -313,7 +319,8 @@ public struct ReadinessToolResponse: Codable, Sendable {
         prescribed_pace_band: String,
         prescribed_duration_band: String,
         prescribed_cadence_band: String,
-        session_rationale: String
+        session_rationale: String,
+        guidance_notes: [String: String]? = nil
     ) {
         self.schema_name = schema_name
         self.readiness_verdict = readiness_verdict
@@ -324,6 +331,7 @@ public struct ReadinessToolResponse: Codable, Sendable {
         self.prescribed_duration_band = prescribed_duration_band
         self.prescribed_cadence_band = prescribed_cadence_band
         self.session_rationale = session_rationale
+        self.guidance_notes = guidance_notes
     }
 }
 // swiftlint:enable identifier_name
@@ -353,6 +361,7 @@ public enum HistoryScope: String, Sendable {
 @Generable
 public enum CoachActionType: String, Sendable {
     case displayDrill = "display_drill"
+    case displayExplainer = "display_explainer"
     case exportToWatch = "export_to_watch"
     case updateGoal = "update_goal"
     case recordFeedback = "record_feedback"
@@ -400,10 +409,10 @@ public struct ManageTrainingStateQuery: Sendable {
 @available(iOS 26.0, *)
 @Generable
 public struct ExecuteCoachActionQuery: Sendable {
-    @Guide(description: "Action: 'update_goal' to adjust training goal or when runner asks for race training plans/schedules (e.g. Marathon, Half Marathon, 10K, 5K); 'display_drill' to present an interactive workout card ONLY for immediate runs/drills to perform now (never for race schedules); 'export_to_watch' to schedule/export a workout or drill to Apple Watch; 'record_feedback' to save subjective feedback.")
+    @Guide(description: "Action: 'update_goal' to adjust training goal or when runner asks for race training plans/schedules (e.g. Marathon, Half Marathon, 10K, 5K); 'display_drill' to present an interactive workout card ONLY for immediate runs/drills to perform now (never for race schedules); 'display_explainer' to present an interactive educational card for a metric, physiological concept, or coaching guideline (e.g. 'cadence_floor', 'efficiency_factor', 'cardiac_drift', 'recovery_timeline', 'overstriding'); 'export_to_watch' to schedule/export a workout or drill to Apple Watch; 'record_feedback' to save subjective feedback.")
     public var action: CoachActionType
 
-    @Guide(description: "Payload: race goal (e.g. 'Marathon', 'Half Marathon', '10K', '5K', 'Base Building') for 'update_goal'; workout or drill name (e.g. 'zone_1_recovery_flush', 'cadence_pyramids', 'zone_2_run', 'strides') for 'display_drill' and 'export_to_watch'; subjective notes for 'record_feedback'.")
+    @Guide(description: "Payload: race goal (e.g. 'Marathon', 'Half Marathon', '10K', '5K', 'Base Building') for 'update_goal'; workout or drill name (e.g. 'zone_1_recovery_flush', 'cadence_pyramids', 'zone_2_run', 'strides') for 'display_drill' and 'export_to_watch'; metric or concept key (e.g. 'cadence_floor', 'efficiency_factor', 'cardiac_drift', 'recovery_timeline', 'overstriding') for 'display_explainer'; subjective notes for 'record_feedback'.")
     public var payload: String?
 
     public init(action: CoachActionType, payload: String? = nil) {
@@ -465,7 +474,7 @@ public struct ExecuteCoachActionTool: Tool {
     public typealias Output = String
 
     public let name = "executeCoachAction"
-    public let description = "Executes coaching actions: 'update_goal' to update runner's goal or when asked for race training plans/schedules (e.g. Marathon, Half Marathon); 'display_drill' to show an interactive workout card ONLY when runner asks for an immediate workout or drill to run now (never for multi-month race plans); 'export_to_watch' to schedule a workout to Apple Watch; 'record_feedback' to save subjective notes."
+    public let description = "Executes coaching actions: 'update_goal' to update runner's goal or when asked for race training plans/schedules (e.g. Marathon, Half Marathon); 'display_drill' to show an interactive workout card ONLY when runner asks for an immediate workout or drill to run now (never for multi-month race plans); 'display_explainer' to show an interactive educational card for a metric or physiological concept (e.g. efficiency factor, cadence floor, cardiac drift); 'export_to_watch' to schedule a workout to Apple Watch; 'record_feedback' to save subjective notes."
 
     let provider: @MainActor @Sendable (ExecuteCoachActionQuery) async -> String
 

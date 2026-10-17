@@ -6,7 +6,7 @@ struct UserProfileView: View {
 
     @AppStorage("useMetricSystem") private var useMetricSystem: Bool = Locale.current.measurementSystem == .metric
     @AppStorage("trainingGoal") private var trainingGoal: String = "Base Building"
-    @AppStorage("userExperienceLevel") private var userExperienceLevel: String = "Intermediate / Enthusiast"
+    @AppStorage("userExperienceLevel") private var userExperienceLevel: String = "Auto"
     @AppStorage("userHeightCm") private var userHeightCm: Double = 175.0
 
     let goalOptions = [
@@ -23,12 +23,17 @@ struct UserProfileView: View {
         let profile = RunnerProfile.compute(
             from: runRecords,
             trainingGoal: trainingGoal,
-            experienceLevel: userExperienceLevel,
+            experienceLevel: userExperienceLevel == "Auto" ? nil : userExperienceLevel,
             userHeightCm: userHeightCm
         )
 
         Form {
-            Section(header: Text("Runner Identity")) {
+            Section(
+                header: Text("Runner Identity"),
+                footer: Text(userExperienceLevel == "Auto"
+                    ? "Experience level is automatically calibrated from your 30-day running volume, frequency, and personal records."
+                    : "Manual override active. Select 'Auto' to let Runalyst calibrate your experience level from your running telemetry.")
+            ) {
                 Picker("Training Goal", selection: $trainingGoal) {
                     ForEach(goalOptions, id: \.self) { option in
                         Text(option).tag(option)
@@ -36,6 +41,7 @@ struct UserProfileView: View {
                 }
 
                 Picker("Experience Level", selection: $userExperienceLevel) {
+                    Text("Auto (\(profile.calculatedExperienceLevel))").tag("Auto")
                     ForEach(RunnerProfile.experienceLevelOptions, id: \.self) { option in
                         Text(option).tag(option)
                     }
@@ -67,6 +73,20 @@ struct UserProfileView: View {
                 header: Text("Current 30-Day Training Load"),
                 footer: Text("Runalyst automatically tracks your empirical load and consistency from your last 30 days of workout telemetry.")
             ) {
+                HStack {
+                    Text("Athletic Maturity Tier")
+                    Spacer()
+                    HStack(spacing: 4) {
+                        if profile.isAutoCalculated {
+                            Image(systemName: "sparkles")
+                                .font(.caption2)
+                                .foregroundColor(.purple)
+                        }
+                        Text(profile.experienceLevel)
+                            .foregroundColor(.secondary)
+                    }
+                }
+
                 HStack {
                     Text("Weekly Volume")
                     Spacer()

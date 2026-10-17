@@ -149,6 +149,27 @@ struct DashboardView: View {
         return previousRuns.map { $0.workingAvgPace * $0.duration }.reduce(0, +) / totalDuration
     }
 
+    private var isTrajectoryEaseUp: Bool {
+        if timeRange == "30 Days" {
+            let validRuns = timeRangeRuns.filter { $0.workingAvgPace > 0 && $0.workingAvgHeartRate > 0 }
+            let midDate = Calendar.current.date(byAdding: .day, value: -15, to: Date()) ?? Date()
+            let recentRuns = validRuns.filter { $0.date >= midDate }
+            let olderRuns = validRuns.filter { $0.date < midDate }
+            let recentEF = recentRuns.compactMap(\.efficiencyFactor)
+            let olderEF = olderRuns.compactMap(\.efficiencyFactor)
+            let avgRecentEF = recentEF.isEmpty ? 0.0 : (recentEF.reduce(0, +) / Double(recentEF.count))
+            let avgOlderEF = olderEF.isEmpty ? 0.0 : (olderEF.reduce(0, +) / Double(olderEF.count))
+            let efDelta = (avgRecentEF > 0 && avgOlderEF > 0) ? (avgRecentEF - avgOlderEF) : 0.0
+
+            let recentHR = recentRuns.map(\.workingAvgHeartRate).reduce(0, +) / Double(max(1, recentRuns.count))
+            let olderHR = olderRuns.map(\.workingAvgHeartRate).reduce(0, +) / Double(max(1, olderRuns.count))
+            let hrDelta = (recentHR > 0 && olderHR > 0) ? (recentHR - olderHR) : 0.0
+
+            return (efDelta <= -0.02 && olderEF.count >= 2) || (hrDelta >= 3.0 && olderHR > 0)
+        }
+        return false
+    }
+
     private var workoutDensityTier: String {
         let uniqueDays = Set(timeRangeRuns.map { Calendar.current.startOfDay(for: $0.date) })
         let count = uniqueDays.count
@@ -159,15 +180,14 @@ struct DashboardView: View {
             if count <= 3 { return "Moderate" }
             if count <= 5 { return "Optimal" }
             return "High"
-        case "30 Days":
+        default: // 30 Days
+            if isTrajectoryEaseUp && count >= 14 {
+                return "High"
+            }
             if count <= 6 { return "Low" }
             if count <= 12 { return "Moderate" }
             if count <= 18 { return "Optimal" }
             return "High"
-        default: // All Time
-            if count <= 10 { return "Low" }
-            if count <= 25 { return "Moderate" }
-            return "Optimal"
         }
     }
 
@@ -227,7 +247,6 @@ struct DashboardView: View {
             Picker("Time Range", selection: $timeRange) {
                 Text("7 Days").tag("7 Days")
                 Text("30 Days").tag("30 Days")
-                Text("All Time").tag("All Time")
             }
             .pickerStyle(.segmented)
             .onChange(of: timeRange) { _, _ in
@@ -414,6 +433,9 @@ struct DashboardView: View {
         )
         .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
         .onAppear {
+            if timeRange != "7 Days" && timeRange != "30 Days" {
+                timeRange = "30 Days"
+            }
             checkAndFetchInsight()
         }
         .onChange(of: timeRange) {
@@ -870,56 +892,30 @@ struct DashboardView: View {
             ScrollViewReader { scrollProxy in
                 ScrollView {
                     LazyVStack(spacing: 20) {
-                        if timeRange == "7 Days" {
-                            if !timeRangeRuns.isEmpty {
-                                if horizontalSizeClass == .regular {
-                                    HStack(alignment: .top, spacing: 16) {
-                                        aiInsightCard
-                                        proactiveCoachCard
-                                    }
-                                    .padding(.horizontal)
-                                } else {
+                        // 1. Pinned Filter Controls (Locked to top beneath header)
+                        filterControlsSection
+
+                        // 2. AI Coach Directive / 30-Day Trends Card
+                        if !timeRangeRuns.isEmpty {
+                            if horizontalSizeClass == .regular {
+                                HStack(alignment: .top, spacing: 16) {
                                     aiInsightCard
-                                        .padding(.horizontal)
+                                    proactiveCoachCard
                                 }
-                            }
-
-                            filterControlsSection
-
-                            if !timeRangeRuns.isEmpty && horizontalSizeClass != .regular {
-                                proactiveCoachCard
+                                .padding(.horizontal)
+                            } else {
+                                aiInsightCard
                                     .padding(.horizontal)
                             }
+                        }
 
-                            fitnessBaselineCard
-                        } else if timeRange == "30 Days" {
-                            if !timeRangeRuns.isEmpty {
-                                if horizontalSizeClass == .regular {
-                                    HStack(alignment: .top, spacing: 16) {
-                                        aiInsightCard
-                                        proactiveCoachCard
-                                    }
-                                    .padding(.horizontal)
-                                } else {
-                                    aiInsightCard
-                                        .padding(.horizontal)
-                                }
-                            }
+                        // 3. Fitness Baseline Quadrant Card
+                        fitnessBaselineCard
 
-                            filterControlsSection
-
-                            fitnessBaselineCard
-
-                            if !timeRangeRuns.isEmpty && horizontalSizeClass != .regular {
-                                proactiveCoachCard
-                                    .padding(.horizontal)
-                            }
-                        } else { // All Time
-                            filterControlsSection
-
-                            LifetimeMilestonesCard(allRuns: runRecords)
-
-                            ProgressionChartView(allRuns: runRecords, defaultHorizon: .allTime)
+                        // 4. Proactive Coach Card (Phone portrait layout)
+                        if !timeRangeRuns.isEmpty && horizontalSizeClass != .regular {
+                            proactiveCoachCard
+                                .padding(.horizontal)
                         }
 
                     if !availableFilters.isEmpty {
@@ -1063,39 +1059,19 @@ struct DashboardView: View {
                 }
             }
             .background(Color(UIColor.systemGroupedBackground).ignoresSafeArea())
+            .navigationTitle("Dashboard")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    NavigationLink(destination: DrillsLibraryView()) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "figure.run")
-                                .font(.headline)
-                        }
-                    }
-                }
-                ToolbarItem(placement: .principal) {
-                    HStack {
-                        Text("Dashboard")
-                            .font(.headline)
-                        Spacer()
-                    }
-                }
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    HStack(spacing: 14) {
-                        if !runRecords.isEmpty {
-                            Button {
-                                showingAnalystChat = true
-                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                            } label: {
-                                Image(systemName: "bubble.left.and.bubble.right.fill")
-                                    .foregroundColor(.purple)
-                            }
-                            .accessibilityLabel("AI Coach")
+                    if !runRecords.isEmpty {
+                        Button {
+                            showingAnalystChat = true
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        } label: {
+                            Image(systemName: "bubble.left.and.bubble.right.fill")
+                                .foregroundColor(.purple)
                         }
-
-                        NavigationLink(destination: SettingsView(onForceSync: onSync)) {
-                            Image(systemName: "gearshape")
-                        }
+                        .accessibilityLabel("AI Coach")
                     }
                 }
             }

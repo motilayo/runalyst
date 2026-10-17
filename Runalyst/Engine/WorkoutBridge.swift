@@ -169,8 +169,18 @@ final class WorkoutBridge {
 
         // 1. Direct Metadata Check (highest priority: authentic HealthKit/WorkoutKit workout title)
         for text in allMetadataStrings {
+            if let resolved = PreRunDrillId.resolve(from: text) {
+                return ScheduledDrillIntent(
+                    drillTitle: resolved.title,
+                    preRunDrillId: resolved.rawValue,
+                    scheduledDate: workoutDate,
+                    durationMinutes: max(1, Int(round(durationSeconds / 60.0)))
+                )
+            }
             for candidate in PreRunDrillId.allCases {
+                let singularTitle = candidate.title.hasSuffix("s") ? String(candidate.title.dropLast()) : candidate.title
                 if text.localizedCaseInsensitiveContains(candidate.title) ||
+                   text.localizedCaseInsensitiveContains(singularTitle) ||
                    (!candidate.rawValue.isEmpty && text.localizedCaseInsensitiveContains(candidate.rawValue)) {
                     return ScheduledDrillIntent(
                         drillTitle: candidate.title,
@@ -184,8 +194,18 @@ final class WorkoutBridge {
 
         // 2. WorkoutKit CustomWorkout Check (iOS 17+)
         if let custom = customWorkout, let name = custom.displayName {
+            if let resolved = PreRunDrillId.resolve(from: name) {
+                return ScheduledDrillIntent(
+                    drillTitle: resolved.title,
+                    preRunDrillId: resolved.rawValue,
+                    scheduledDate: workoutDate,
+                    durationMinutes: max(1, Int(round(durationSeconds / 60.0)))
+                )
+            }
             for candidate in PreRunDrillId.allCases {
+                let singularTitle = candidate.title.hasSuffix("s") ? String(candidate.title.dropLast()) : candidate.title
                 if name.localizedCaseInsensitiveContains(candidate.title) ||
+                   name.localizedCaseInsensitiveContains(singularTitle) ||
                    (!candidate.rawValue.isEmpty && name.localizedCaseInsensitiveContains(candidate.rawValue)) {
                     return ScheduledDrillIntent(
                         drillTitle: candidate.title,
@@ -238,9 +258,9 @@ final class WorkoutBridge {
 
             let expectedDuration = Double(intent.durationMinutes * 60)
             if durationSeconds > 0 {
-                let tolerance = max(expectedDuration * 0.60, 600.0)
-                let durationDiff = abs(durationSeconds - expectedDuration)
-                guard durationDiff <= tolerance else { return false }
+                let minAllowed = max(180.0, expectedDuration * 0.40)
+                let maxAllowed = max(expectedDuration * 2.5, expectedDuration + 1200.0)
+                guard durationSeconds >= minAllowed && durationSeconds <= maxAllowed else { return false }
             }
             return true
         }
@@ -290,8 +310,18 @@ final class WorkoutBridge {
 
         // 1. Direct Metadata Check
         for text in allMetadataStrings {
+            if let resolved = PreRunDrillId.resolve(from: text) {
+                return ScheduledDrillIntent(
+                    drillTitle: resolved.title,
+                    preRunDrillId: resolved.rawValue,
+                    scheduledDate: workoutDate,
+                    durationMinutes: max(1, Int(round(durationSeconds / 60.0)))
+                )
+            }
             for candidate in PreRunDrillId.allCases {
+                let singularTitle = candidate.title.hasSuffix("s") ? String(candidate.title.dropLast()) : candidate.title
                 if text.localizedCaseInsensitiveContains(candidate.title) ||
+                   text.localizedCaseInsensitiveContains(singularTitle) ||
                    (!candidate.rawValue.isEmpty && text.localizedCaseInsensitiveContains(candidate.rawValue)) {
                     return ScheduledDrillIntent(
                         drillTitle: candidate.title,
@@ -312,9 +342,9 @@ final class WorkoutBridge {
 
             let expectedDuration = Double(intent.durationMinutes * 60)
             if durationSeconds > 0 {
-                let tolerance = max(expectedDuration * 0.60, 600.0)
-                let durationDiff = abs(durationSeconds - expectedDuration)
-                guard durationDiff <= tolerance else { return false }
+                let minAllowed = max(180.0, expectedDuration * 0.40)
+                let maxAllowed = max(expectedDuration * 2.5, expectedDuration + 1200.0)
+                guard durationSeconds >= minAllowed && durationSeconds <= maxAllowed else { return false }
             }
             return true
         }

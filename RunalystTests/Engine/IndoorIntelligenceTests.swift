@@ -258,6 +258,72 @@ final class IndoorIntelligenceTests: XCTestCase {
     }
 
     @MainActor
+    func testRunnerProfileExperienceLevel_AutoAdjustmentTiers() {
+        let now = Date()
+
+        // 1. Cold start (0 runs) -> Novice / Beginner
+        let coldStartLevel = RunnerProfile.calculateExperienceLevel(from: [], now: now)
+        XCTAssertEqual(coldStartLevel, "Novice / Beginner")
+
+        // 2. Novice runner: 3 runs of 3 km
+        let noviceRuns = (1...3).map { i -> RunRecord in
+            let r = makeTestRunRecord()
+            r.date = now.addingTimeInterval(Double(-i * 3 * 86400))
+            r.totalDistanceMeters = 3000
+            r.duration = 1200
+            r.workingAvgPace = 400
+            return r
+        }
+        let noviceLevel = RunnerProfile.calculateExperienceLevel(from: noviceRuns, now: now)
+        XCTAssertEqual(noviceLevel, "Novice / Beginner")
+
+        // 3. Intermediate runner: 10 runs, 5-8 km each, total ~25 km/wk
+        let intermediateRuns = (1...10).map { i -> RunRecord in
+            let r = makeTestRunRecord()
+            r.date = now.addingTimeInterval(Double(-i * 2 * 86400))
+            r.totalDistanceMeters = i == 1 ? 8000 : 5000
+            r.duration = TimeInterval(r.totalDistanceMeters / 1000 * 330)
+            r.workingAvgPace = 330
+            return r
+        }
+        let intermediateLevel = RunnerProfile.calculateExperienceLevel(from: intermediateRuns, now: now)
+        XCTAssertEqual(intermediateLevel, "Intermediate / Enthusiast")
+
+        // 4. Advanced runner: 16 runs, 38 km/wk, longest run 16 km
+        let advancedRuns = (1...16).map { i -> RunRecord in
+            let r = makeTestRunRecord()
+            r.date = now.addingTimeInterval(-Double(i) * 86400.0 * 1.8)
+            r.totalDistanceMeters = i == 1 ? 16000 : 7500
+            r.duration = TimeInterval(r.totalDistanceMeters / 1000.0 * 290.0)
+            r.workingAvgPace = 290
+            return r
+        }
+        let advancedLevel = RunnerProfile.calculateExperienceLevel(from: advancedRuns, now: now)
+        XCTAssertEqual(advancedLevel, "Advanced / Veteran")
+
+        // 5. Elite runner: 25 runs, 70 km/wk, longest run 22 km, fast pace
+        let eliteRuns = (1...25).map { i -> RunRecord in
+            let r = makeTestRunRecord()
+            r.date = now.addingTimeInterval(-Double(i) * 86400.0 * 1.1)
+            r.totalDistanceMeters = i == 1 ? 22000 : 11000
+            r.duration = TimeInterval(r.totalDistanceMeters / 1000.0 * 240.0)
+            r.workingAvgPace = 240
+            return r
+        }
+        let eliteLevel = RunnerProfile.calculateExperienceLevel(from: eliteRuns, now: now)
+        XCTAssertEqual(eliteLevel, "Competitive / Elite")
+
+        // 6. Profile compute auto-adjusts vs respects manual override
+        let autoProfile = RunnerProfile.compute(from: intermediateRuns, now: now)
+        XCTAssertEqual(autoProfile.experienceLevel, "Intermediate / Enthusiast")
+        XCTAssertTrue(autoProfile.isAutoCalculated)
+
+        let overrideProfile = RunnerProfile.compute(from: intermediateRuns, experienceLevel: "Competitive / Elite", now: now)
+        XCTAssertEqual(overrideProfile.experienceLevel, "Competitive / Elite")
+        XCTAssertFalse(overrideProfile.isAutoCalculated)
+    }
+
+    @MainActor
     func testWorkoutAnalysisContextHeightCalibratedArchetypeAndIndoorFallback() {
         // Outdoor run with vertical oscillation and stride length
         let outdoorRun = makeTestRunRecord(isIndoor: false)
@@ -1634,6 +1700,8 @@ final class IndoorIntelligenceTests: XCTestCase {
                 case .displayDrill:
                     let resolved = PreRunDrillId.resolve(from: query.payload ?? "") ?? .cadencePyramids
                     return "{\"status\":\"interactive_drill_card_displayed\",\"drill_name\":\"\(resolved.title)\"}"
+                case .displayExplainer:
+                    return "{\"status\":\"interactive_explainer_card_displayed\"}"
                 case .exportToWatch:
                     let resolved = PreRunDrillId.resolve(from: query.payload ?? "") ?? .cadencePyramids
                     return "{\"status\":\"exported_to_watch\",\"drill_name\":\"\(resolved.title)\"}"

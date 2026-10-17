@@ -97,9 +97,6 @@ struct DrillCardView: View {
     let totalDrills: Int
     @Binding var activeCardIndex: Int
     @Query(sort: \RunRecord.date, order: .reverse) private var runRecords: [RunRecord]
-    @State private var isShowingWorkoutPreview = false
-    @State private var activeWorkoutPlan: WorkoutPlan = PreRunDrill(id: .strides).buildWorkoutPlan()
-    @State private var pendingWatchDrillDTO: DrillPrescriptionDTO?
     @State private var activeReadoutItem: ActiveDrillReadoutItem?
     @AppStorage("lastWatchExportTimestamp") private var lastWatchExportTimestamp: Double = 0
     @AppStorage("lastExportedDrillId") private var lastExportedDrillId: String = ""
@@ -220,7 +217,7 @@ struct DrillCardView: View {
                     Text(displayTitle)
                         .font(.headline)
                         .foregroundColor(.primary)
-                    Text("\(currentDrill.duration.title) drill")
+                    Text(currentDrill.dynamicDurationTitle)
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
@@ -341,23 +338,13 @@ struct DrillCardView: View {
                 readout: item.readout,
                 workoutPlan: item.plan,
                 prescriptionDTO: item.dto,
-                onCommitToWatch: { plan, dto in
-                    activeWorkoutPlan = plan
-                    pendingWatchDrillDTO = dto
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                        isShowingWorkoutPreview = true
-                    }
+                onCommitToWatch: { _, dto in
+                    self.lastWatchExportTimestamp = Date().timeIntervalSince1970
+                    self.lastExportedDrillId = dto.preRunDrillId ?? ""
                 }
             )
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
-        }
-        .workoutPreview(activeWorkoutPlan, isPresented: $isShowingWorkoutPreview)
-        .onChange(of: isShowingWorkoutPreview) { oldValue, newValue in
-            if oldValue && !newValue, let dto = pendingWatchDrillDTO {
-                pendingWatchDrillDTO = nil
-                scheduleToWatch(dto: dto)
-            }
         }
     }
 
@@ -379,23 +366,5 @@ struct DrillCardView: View {
             readiness: readiness,
             customCoachingTip: coachingCue
         )
-    }
-
-    private func scheduleToWatch(dto: DrillPrescriptionDTO) {
-        Task {
-            if #available(iOS 17.0, *) {
-                do {
-                    let bridge = WorkoutBridge()
-                    try await bridge.scheduleDrill(dto: dto)
-                    await MainActor.run {
-                        self.lastWatchExportTimestamp = Date().timeIntervalSince1970
-                        self.lastExportedDrillId = dto.preRunDrillId ?? ""
-                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    }
-                } catch {
-                    print("[RunDetailView] Failed to schedule drill: \(error.localizedDescription)")
-                }
-            }
-        }
     }
 }

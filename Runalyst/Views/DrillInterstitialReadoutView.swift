@@ -12,6 +12,10 @@ struct DrillInterstitialReadoutView: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var showingReadinessInfo = false
+    @State private var isScheduling = false
+    @State private var scheduleSuccess = false
+    @State private var scheduleError: String?
+    @State private var showSettingsAlert = false
 
     var body: some View {
         NavigationStack {
@@ -129,27 +133,60 @@ struct DrillInterstitialReadoutView: View {
                 .padding(.bottom, 16)
             }
             .safeAreaInset(edge: .bottom) {
-                Button(action: {
-                    commitAndStart()
-                }) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "applewatch")
-                            .font(.headline)
-                        Text("Send to Apple Watch")
-                            .font(.subheadline.bold())
+                VStack(spacing: 8) {
+                    if let err = scheduleError, !showSettingsAlert {
+                        Text(err)
+                            .font(.caption)
+                            .foregroundColor(.red)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
                     }
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(Color.green)
-                    .cornerRadius(12)
-                    .shadow(color: Color.green.opacity(0.25), radius: 6, x: 0, y: 3)
+
+                    Button(action: {
+                        commitAndStart()
+                    }) {
+                        HStack(spacing: 8) {
+                            if isScheduling {
+                                ProgressView()
+                                    .tint(.white)
+                                Text("Sending to Apple Watch...")
+                                    .font(.subheadline.bold())
+                            } else if scheduleSuccess {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.headline)
+                                Text("Sent to Apple Watch!")
+                                    .font(.subheadline.bold())
+                            } else {
+                                Image(systemName: "applewatch")
+                                    .font(.headline)
+                                Text("Send to Apple Watch")
+                                    .font(.subheadline.bold())
+                            }
+                        }
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(scheduleSuccess ? Color.blue : Color.green)
+                        .cornerRadius(12)
+                        .shadow(color: (scheduleSuccess ? Color.blue : Color.green).opacity(0.25), radius: 6, x: 0, y: 3)
+                    }
+                    .disabled(isScheduling || scheduleSuccess)
                 }
                 .frame(maxWidth: 860)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
                 .frame(maxWidth: .infinity)
                 .background(.ultraThinMaterial)
+            }
+            .alert("WorkoutKit Permission Required", isPresented: $showSettingsAlert) {
+                Button("Open Settings") {
+                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                        UIApplication.shared.open(url)
+                    }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Runalyst needs permission to schedule custom workouts to your Apple Watch. Please enable WorkoutKit permissions in the iOS Settings app.")
             }
             .background(Color(UIColor.systemGroupedBackground).ignoresSafeArea())
             .navigationTitle(readout.title)
@@ -309,8 +346,43 @@ struct DrillInterstitialReadoutView: View {
     }
 
     private func commitAndStart() {
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        dismiss()
-        onCommitToWatch?(workoutPlan, prescriptionDTO)
+        guard !isScheduling else { return }
+        isScheduling = true
+        scheduleError = nil
+
+        Task {
+            if #available(iOS 17.0, *) {
+                do {
+                    let bridge = WorkoutBridge()
+                    try await bridge.scheduleDrill(dto: prescriptionDTO)
+                    await MainActor.run {
+                        self.isScheduling = false
+                        self.scheduleSuccess = true
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        UINotificationFeedbackGenerator().notificationOccurred(.success)
+                        self.onCommitToWatch?(self.workoutPlan, self.prescriptionDTO)
+                    }
+                    try? await Task.sleep(nanoseconds: 750_000_000)
+                    await MainActor.run {
+                        self.dismiss()
+                    }
+                } catch {
+                    await MainActor.run {
+                        self.isScheduling = false
+                        self.scheduleError = error.localizedDescription
+                        let isDenied = error.localizedDescription.localizedCaseInsensitiveContains("denied")
+                        if isDenied {
+                            self.showSettingsAlert = true
+                        }
+                        UINotificationFeedbackGenerator().notificationOccurred(.error)
+                    }
+                }
+            } else {
+                await MainActor.run {
+                    self.isScheduling = false
+                    self.scheduleError = "WorkoutKit requires iOS 17.0 or newer."
+                }
+            }
+        }
     }
 }

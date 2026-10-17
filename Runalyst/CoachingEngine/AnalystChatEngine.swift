@@ -12,6 +12,7 @@ struct AnalystChatMessage: Identifiable, Equatable {
     let text: String
     let timestamp: Date
     let attachedDrillId: PreRunDrillId?
+    let attachedExplainerKey: String?
 
     enum MessageSender: Equatable {
         case user
@@ -23,13 +24,15 @@ struct AnalystChatMessage: Identifiable, Equatable {
         sender: MessageSender,
         text: String,
         timestamp: Date = Date(),
-        attachedDrillId: PreRunDrillId? = nil
+        attachedDrillId: PreRunDrillId? = nil,
+        attachedExplainerKey: String? = nil
     ) {
         self.id = id
         self.sender = sender
         self.text = text
         self.timestamp = timestamp
         self.attachedDrillId = attachedDrillId
+        self.attachedExplainerKey = attachedExplainerKey
     }
 }
 
@@ -49,6 +52,8 @@ class AnalystChatEngine: ObservableObject {
     private var modelSession: Any? // LanguageModelSession on iOS 26+
     /// Tracks a drill or session card recommended during the active conversation turn.
     var drillRecommendedThisTurn: PreRunDrillId?
+    /// Tracks an interactive explainer card recommended during the active conversation turn.
+    var explainerRecommendedThisTurn: String?
     #endif
 
     #if DEBUG
@@ -95,6 +100,7 @@ class AnalystChatEngine: ObservableObject {
         #if canImport(FoundationModels)
         if #available(iOS 26.0, *) {
             self.drillRecommendedThisTurn = nil
+            self.explainerRecommendedThisTurn = nil
         }
         #endif
 
@@ -107,7 +113,7 @@ class AnalystChatEngine: ObservableObject {
             if let responder = modelResponder {
                 do {
                     let responseText = try await responder(buildLeanSystemInstructions(), trimmed)
-                    messages.append(AnalystChatMessage(sender: .analyst, text: responseText, attachedDrillId: drillRecommendedThisTurn))
+                    messages.append(AnalystChatMessage(sender: .analyst, text: responseText, attachedDrillId: drillRecommendedThisTurn, attachedExplainerKey: explainerRecommendedThisTurn))
                     return
                 } catch {
                     print("Model responder error: \(error)")
@@ -117,7 +123,7 @@ class AnalystChatEngine: ObservableObject {
             if SystemLanguageModel.default.isAvailable {
                 do {
                     let responseText = try await generateFoundationModelResponse(for: trimmed)
-                    messages.append(AnalystChatMessage(sender: .analyst, text: responseText, attachedDrillId: drillRecommendedThisTurn))
+                    messages.append(AnalystChatMessage(sender: .analyst, text: responseText, attachedDrillId: drillRecommendedThisTurn, attachedExplainerKey: explainerRecommendedThisTurn))
                     return
                 } catch {
                     print("FoundationModels chat error: \(error)")
@@ -160,9 +166,13 @@ class AnalystChatEngine: ObservableObject {
 
         let cal = Calendar.current
         let daysDiff = cal.dateComponents([.day], from: cal.startOfDay(for: runRecord.date), to: cal.startOfDay(for: Date())).day ?? 0
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "en_US_POSIX")
+        df.dateFormat = "EEE, MMM d"
+        let dateStr = df.string(from: runRecord.date)
         let temporalGrounding = daysDiff == 0
             ? "Workout took place today."
-            : "Workout took place \(daysDiff) days ago."
+            : "Workout took place on \(dateStr) (\(daysDiff)d ago)."
 
         let useMetric = (UserDefaults.standard.object(forKey: "useMetricSystem") as? Bool) ?? true
         let unitSystem = useMetric ? "Metric (min/km, km)" : "Imperial (min/mi, mi)"
@@ -175,13 +185,13 @@ class AnalystChatEngine: ObservableObject {
         Units: \(unitSystem).
 
         RULES:
-        • Call tools only when relevant; never call `executeCoachAction` for off-topic queries.
-        • `inspectWorkout`: moving vs gross stats, splits, intervals, reps, physics.
+        • Call tools only when relevant. Max 1 card per turn. Never call `executeCoachAction` for off-topic queries.
+        • `inspectWorkout`: moving vs gross stats, splits, intervals, reps, physics, metric definitions.
         • `manageTrainingState`: 'readiness' (set `userReportedDistress: true` if ill/injured), 'history', or 'athlete_profile'.
-        • `executeCoachAction`: 'update_goal' for race goals/plans (outline Base, Build, Peak, Taper; explain Runalyst adapts daily workouts from readiness; never show drill cards); 'display_drill' for immediate runs/drills to do now; 'export_to_watch' to export to Apple Watch; 'record_feedback'.
+        • `executeCoachAction`: 'update_goal' for race plans (outline Base, Build, Peak, Taper; explain daily readiness; no drill cards); 'display_drill' for workouts to do now; 'display_explainer' to show a metric card; 'export_to_watch'; 'record_feedback'.
         • Formatting: Rich text. Use standard units (SPM, min/km, min/mi). Never use Markdown or LaTeX.
-        • Medical Safety: If runner reports pain or illness, prioritize rest, give an AI disclaimer, urge medical care.
-        • Outside Running: For off-topic questions, warmly refocus on training and invite back. Never force drills.
+        • Medical Safety: Prioritize rest on pain/illness, state AI disclaimer, urge medical care.
+        • Outside Running: For off-topic chat, warmly refocus on training. Never force drills.
         • Never hallucinate unverified telemetry.
 
         Respond in \(language).
@@ -241,6 +251,8 @@ class AnalystChatEngine: ObservableObject {
                     humanIntensity = rx.intensityCategory.replacingOccurrences(of: "_", with: " ").capitalized
                 }
 
+                let guidance = CoachingAssetLibrary.readinessGuidance(for: verdict, isDistress: isDistress || rx.isSubjectiveOverride)
+
                 let response = ReadinessToolResponse(
                     schema_name: "READINESS_AND_PRESCRIPTION_RESPONSE",
                     readiness_verdict: verdict,
@@ -250,7 +262,8 @@ class AnalystChatEngine: ObservableObject {
                     prescribed_pace_band: rx.prescribedPaceBand,
                     prescribed_duration_band: rx.prescribedDurationBand,
                     prescribed_cadence_band: rx.prescribedCadenceBand,
-                    session_rationale: rx.sessionRationale
+                    session_rationale: rx.sessionRationale,
+                    guidance_notes: guidance
                 )
 
                 let encoder = JSONEncoder()
@@ -356,6 +369,25 @@ class AnalystChatEngine: ObservableObject {
                 }
                 UserDefaults.standard.set(newGoal, forKey: "trainingGoal")
                 return "{\"status\":\"training_goal_updated\",\"goal\":\"\(newGoal)\",\"message\":\"Training goal updated to \(newGoal).\"}"
+
+            case .displayExplainer:
+                let rawKey = query.payload?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                let asset = CoachingAssetLibrary.resolve(key: rawKey) ?? CoachingAssetLibrary.defaultAsset(for: rawKey)
+                self.explainerRecommendedThisTurn = asset.key
+
+                let dto: [String: String] = [
+                    "status": "interactive_explainer_card_displayed",
+                    "explainer_key": asset.key,
+                    "title": asset.title,
+                    "domain": asset.domain.rawValue,
+                    "compact_definition": asset.compactSummary
+                ]
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+                if let data = try? encoder.encode(dto), let str = String(data: data, encoding: .utf8) {
+                    return str
+                }
+                return "{\"explainer_key\":\"\(asset.key)\",\"status\":\"interactive_explainer_card_displayed\",\"title\":\"\(asset.title)\"}"
 
             case .recordFeedback:
                 let feedback = query.payload ?? ""

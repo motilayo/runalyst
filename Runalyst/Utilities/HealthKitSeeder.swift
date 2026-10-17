@@ -40,6 +40,9 @@ class HealthKitSeeder {
     let healthStore = HKHealthStore()
 
     static func profile(forIndex index: Int) -> MockRunProfile {
+        if index == 37 {
+            return .fartlek
+        }
         let phase1: [MockRunProfile] = [
             .recovery, .easy, .urbanTraffic, .easy,
             .recovery, .pyramids, .urbanTraffic, .easy,
@@ -88,8 +91,6 @@ class HealthKitSeeder {
             return .cadencePyramids
         case 35: // Phase 3 Intervals -> Strides (Exceeded)
             return .strides
-        case 37: // Phase 3 Tempo -> Tempo Surges (Exceeded)
-            return .tempoSurges
         default:
             return nil
         }
@@ -300,13 +301,18 @@ class HealthKitSeeder {
         for index in 0..<totalRuns {
             let profile = Self.profile(forIndex: index)
             let progress = Double(index) / Double(max(1, totalRuns - 1))
-            let daysAgo = 90.0 - (Double(index) * (89.0 / Double(max(1, totalRuns - 1))))
+            let daysAgo: Double = {
+                if index == totalRuns - 1 { return 2.0 } // Thursday Oct 15
+                if index == totalRuns - 2 { return 4.0 } // Tuesday Oct 13
+                if index == totalRuns - 3 { return 6.0 } // Sunday Oct 11
+                return 90.0 - (Double(index) * (82.0 / Double(max(1, totalRuns - 4))))
+            }()
             guard let date = calendar.date(byAdding: .day, value: -Int(daysAgo), to: today) else { continue }
 
-            let rawDurationSec = TimeInterval(profile.durationMinutes * 60)
+            let rawDurationSec: TimeInterval = (index == 37) ? 2475.0 : TimeInterval(profile.durationMinutes * 60)
 
             // Calculate active working duration vs pause duration
-            let pauseSec: TimeInterval = {
+            let pauseSec: TimeInterval = (index == 37) ? 0.0 : {
                 switch profile {
                 case .urbanTraffic: return 120.0
                 case .intervals: return 60.0
@@ -327,11 +333,12 @@ class HealthKitSeeder {
                 case .easy: return 15.0
                 case .longRun: return 20.0
                 case .hillRepeats: return 10.0
+                case .fartlek: return -25.0
                 default: return 0.0
                 }
             }()
-            let workingPaceSec = max(275.0, basePace + profilePaceOffset + Double.random(in: -3...3))
-            let distanceMeters = (workingSec / workingPaceSec) * 1000.0
+            let workingPaceSec = (index == 37) ? 342.0 : max(275.0, basePace + profilePaceOffset + Double.random(in: -3...3))
+            let distanceMeters = (index == 37) ? 5800.0 : ((workingSec / workingPaceSec) * 1000.0)
             let distanceKm = distanceMeters / 1000.0
 
             // Exact mathematical averages:
@@ -450,7 +457,7 @@ class HealthKitSeeder {
 
             // Aligned Drill Recommendation
             let prescribed = Self.prescribedDrill(forIndex: index, profile: profile, progress: progress)
-            let drillId = prescribed ?? Self.recommendedDrillId(for: profile, progress: progress)
+            let drillId = (index == 37) ? .cadencePyramids : (prescribed ?? Self.recommendedDrillId(for: profile, progress: progress))
             let template = DrillTemplate.template(for: drillId)
             let targetCadenceString = template.calculateTargetCadence(Int(baseCadence))
 
@@ -472,7 +479,7 @@ class HealthKitSeeder {
             let observation: String
             if index == 37 {
                 headline = "Dynamic Cadence Turnover"
-                observation = "Your turnover held a crisp rhythm through every surge while maintaining quiet, compact foot strikes. Your aerobic efficiency is climbing—cadence adapted seamlessly to pace changes without triggering excess vertical bounce or cardiac strain."
+                observation = "Your turnover held a crisp 163 SPM rhythm through all 5 fartlek surges while maintaining compact foot strikes beneath your hips. Cardiac drift was observed (+10 BPM) across later sets on the indoor track."
             } else if progress < 0.33 {
                 headline = "Cadence Rhythm Foundation"
                 observation = "Early baseline indicates room to quicken your turnover and soften your foot strike. Focus on light, agile strides beneath your hips to protect knees and build consistency."
@@ -493,22 +500,26 @@ class HealthKitSeeder {
 
             let isIndoor: Bool = (index == 37 || index == 36)
             let dataSource: String = (index == 36) ? "gymkit" : "wrist"
-            let needsInclineReview: Bool = (index == 37)
-            let classificationConfidence: Double = (index == 37) ? 0.72 : 0.94
-            let effectiveType: String = (index == 37) ? "Mixed Effort (Review)" : (prescribed?.correspondingClassification ?? profile.rawValue)
+            let needsInclineReview: Bool = false
+            let classificationConfidence: Double = (index == 37) ? 0.96 : ((index == 36) ? 0.94 : 0.95)
+            let effectiveType: String = (index == 37) ? "Fartlek" : (prescribed?.correspondingClassification ?? profile.rawValue)
 
             let seededSignatureData: Data? = {
                 let segments: [PhaseSegment]
                 let floor: Double
                 if index == 37 {
                     segments = [
-                        PhaseSegment(startSeconds: 0, endSeconds: 300, kind: "steady", avgPace: 330, avgCadence: 160, avgHR: 138),
-                        PhaseSegment(startSeconds: 300, endSeconds: 600, kind: "work", avgPace: 270, avgCadence: 174, avgHR: 168),
-                        PhaseSegment(startSeconds: 600, endSeconds: 780, kind: "recovery", avgPace: 360, avgCadence: 154, avgHR: 142),
-                        PhaseSegment(startSeconds: 780, endSeconds: 1080, kind: "work", avgPace: 265, avgCadence: 176, avgHR: 172),
-                        PhaseSegment(startSeconds: 1080, endSeconds: 1260, kind: "recovery", avgPace: 365, avgCadence: 152, avgHR: 145),
-                        PhaseSegment(startSeconds: 1260, endSeconds: 1560, kind: "work", avgPace: 260, avgCadence: 178, avgHR: 175),
-                        PhaseSegment(startSeconds: 1560, endSeconds: 1800, kind: "steady", avgPace: 340, avgCadence: 158, avgHR: 140)
+                        PhaseSegment(startSeconds: 0, endSeconds: 300, kind: "steady", avgPace: 360, avgCadence: 156, avgHR: 136),
+                        PhaseSegment(startSeconds: 300, endSeconds: 540, kind: "work", avgPace: 339, avgCadence: 164, avgHR: 162),
+                        PhaseSegment(startSeconds: 540, endSeconds: 720, kind: "recovery", avgPace: 385, avgCadence: 152, avgHR: 138),
+                        PhaseSegment(startSeconds: 720, endSeconds: 960, kind: "work", avgPace: 344, avgCadence: 162, avgHR: 166),
+                        PhaseSegment(startSeconds: 960, endSeconds: 1140, kind: "recovery", avgPace: 390, avgCadence: 150, avgHR: 140),
+                        PhaseSegment(startSeconds: 1140, endSeconds: 1380, kind: "work", avgPace: 341, avgCadence: 163, avgHR: 169),
+                        PhaseSegment(startSeconds: 1380, endSeconds: 1560, kind: "recovery", avgPace: 395, avgCadence: 150, avgHR: 143),
+                        PhaseSegment(startSeconds: 1560, endSeconds: 1800, kind: "work", avgPace: 343, avgCadence: 164, avgHR: 173),
+                        PhaseSegment(startSeconds: 1800, endSeconds: 1980, kind: "recovery", avgPace: 400, avgCadence: 148, avgHR: 147),
+                        PhaseSegment(startSeconds: 1980, endSeconds: 2220, kind: "work", avgPace: 342, avgCadence: 163, avgHR: 176),
+                        PhaseSegment(startSeconds: 2220, endSeconds: 2475, kind: "steady", avgPace: 370, avgCadence: 154, avgHR: 148)
                     ]
                     floor = 152
                 } else if index == 36 {
@@ -568,6 +579,11 @@ class HealthKitSeeder {
                 detectedTypeRaw: effectiveType,
                 framboiseTags: {
                     var tags = [effectiveType]
+                    if isIndoor { tags.append("indoor") }
+                    if index == 37 {
+                        tags.append("cardiacDrift")
+                        tags.append("fatigueDrift")
+                    }
                     if let drill = prescribed {
                         tags.append("prescribedDrill")
                         tags.append(drill.rawValue)

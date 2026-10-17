@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 
 struct PreviewRouterView: View {
     let previewScreen: String
@@ -42,16 +43,20 @@ struct PreviewRouterView: View {
         )
     }
 
+    @Query(sort: \RunRecord.date, order: .reverse) private var queriedRuns: [RunRecord]
+
+    private var effectiveRuns: [RunRecord] {
+        queriedRuns.isEmpty ? existingRuns : queriedRuns
+    }
+
     var body: some View {
         switch previewScreen {
         case "RUN_DETAIL":
-            if let run = existingRuns.first {
-                NavigationStack {
-                    RunDetailView(runRecord: run)
-                }
-            } else {
-                DashboardView(onSync: nil)
-            }
+            RunDetailPreviewContainer(targetType: nil)
+        case "RUN_DETAIL_INTERVALS":
+            RunDetailPreviewContainer(targetType: "Intervals")
+        case "RUN_DETAIL_FARTLEK":
+            RunDetailPreviewContainer(targetType: "Fartlek")
         case "DRILL_CARD":
             if let run = existingRuns.first, let drills = run.insight?.drillRecommendations, !drills.isEmpty {
                 NavigationStack {
@@ -93,6 +98,10 @@ struct PreviewRouterView: View {
             NavigationStack {
                 SettingsView(onForceSync: nil)
             }
+        case "PROFILE":
+            NavigationStack {
+                UserProfileView()
+            }
         case "PROGRESSION":
             NavigationStack {
                 ScrollView {
@@ -107,6 +116,8 @@ struct PreviewRouterView: View {
             } else {
                 DashboardView(onSync: nil)
             }
+        case "WORKOUTS":
+            WorkoutsView()
         case "READINESS":
             ReadinessMathModal(acuteLoad: 168.5, chronicWeeklyLoad: 165.2, acwr: 1.02)
         case "DETAIL":
@@ -192,8 +203,60 @@ struct PreviewRouterView: View {
             AppStoreTourView(existingRuns: existingRuns)
         case "DASHBOARD":
             DashboardView(onSync: nil)
+        case "ANALYSIS":
+            AnalysisDashboardView()
+        case "PROGRESSION_EXPLAINER":
+            MetricExplainerSheet(
+                title: "Efficiency Factor Progression",
+                mode: "Steady Effort • 30 Days",
+                overview: "Efficiency Factor (Speed ÷ Heart Rate) tracks physiological economy over time. By comparing how fast you run against the cardiovascular effort required, Runalyst shows whether your aerobic engine is becoming more efficient.",
+                modeContext: "Isolated to Steady Effort runs across 30 Days to eliminate pacing noise and ensure authentic physiological comparisons.",
+                whyItMatters: "Aerobic Economy: As aerobic endurance improves through base training, you run faster at the same heart rate, or maintain the same speed at a lower heart rate. A declining trend signals accumulated fatigue, dehydration, or heat stress.",
+                targetRange: "Target: Upward or stable trajectory across training cycles.\n\n• Rising: You are getting fitter and faster with less cardiovascular effort.\n• Dropping: You may be tired, overtraining, or battling heat/dehydration.",
+                userMetricDisplay: "1.48 EF"
+            )
+        case "MILESTONES":
+            NavigationStack {
+                ScrollView {
+                    LifetimeMilestonesCard(allRuns: existingRuns)
+                        .padding(.top, 16)
+                }
+                .background(Color(UIColor.systemGroupedBackground).ignoresSafeArea())
+                .navigationTitle("Milestones")
+                .navigationBarTitleDisplayMode(.inline)
+            }
         default:
             DashboardView(onSync: nil)
+        }
+    }
+}
+
+private struct RunDetailPreviewContainer: View {
+    let targetType: String?
+    @Query(sort: \RunRecord.date, order: .reverse) private var runs: [RunRecord]
+
+    var body: some View {
+        let matchingRun = runs.first(where: { run in
+            if targetType == "Intervals" || targetType == "Fartlek" {
+                let isRecovery = run.detectedTypeRaw == "Recovery Run" || (run.percentZone4 <= 0.02 && run.workingAvgHeartRate > 0 && run.workingAvgHeartRate <= 135 && run.duration >= 600)
+                let hasWorkReps = run.signature?.phaseSegments.contains(where: { $0.kind == "work" && $0.avgPace > 0 }) ?? false
+                let hasPrescribedDrill = run.framboiseTags.contains("prescribedDrill")
+                return run.evaluationModality == .intervals && hasWorkReps && !isRecovery && !hasPrescribedDrill
+            }
+            if let target = targetType {
+                return run.detectedTypeRaw == target
+            }
+            return true
+        }) ?? runs.first
+
+        if let run = matchingRun {
+            NavigationStack {
+                RunDetailView(runRecord: run)
+            }
+        } else {
+            ProgressView("Loading run...")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color(UIColor.systemGroupedBackground))
         }
     }
 }
