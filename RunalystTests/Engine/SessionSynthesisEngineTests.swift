@@ -235,6 +235,24 @@ final class SessionSynthesisEngineTests: XCTestCase {
         XCTAssertTrue(microcycle.contains(where: { $0.sessionTitle.contains("4.5 mi") }))
     }
 
+    @MainActor
+    func testMicrocycleHorizon_BaseBuildingGoal_SynthesizesAerobicConsistencySchedule() {
+        let now = Date()
+        let microcycle = SessionSynthesisEngine.generateMicrocycle(
+            activeGoal: "Base Building",
+            now: now,
+            useMetric: true,
+            isRecoveryWindow: false
+        )
+
+        XCTAssertEqual(microcycle.count, 5)
+        // Verify Base Building contains Aerobic volume, not Marathon Pace Progress
+        XCTAssertTrue(microcycle.contains(where: { $0.sessionTitle.contains("Aerobic Consistency") }))
+        XCTAssertTrue(microcycle.contains(where: { $0.sessionTitle.contains("Easy Aerobic Base") }))
+        XCTAssertFalse(microcycle.contains(where: { $0.sessionTitle.contains("Marathon Pace Progress") }))
+        XCTAssertFalse(microcycle.contains(where: { $0.sessionTitle.contains("16 km") }))
+    }
+
     // MARK: - 5. Relative Workout Referencing Tests
 
     @MainActor

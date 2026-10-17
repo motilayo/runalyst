@@ -7,7 +7,7 @@ import WorkoutKit
 /// Top Goal header, Daily Prescription card, Linked Pre-Run Drill card, and Microcycle Progression.
 struct WorkoutsView: View {
     @Query(sort: \RunRecord.date, order: .reverse) private var runRecords: [RunRecord]
-    @AppStorage("trainingGoal") private var trainingGoal: String = "5K"
+    @AppStorage("trainingGoal") private var trainingGoal: String = "Base Building"
     @AppStorage("useMetricSystem") private var useMetricSystem: Bool = Locale.current.measurementSystem == .metric
 
     @State private var showingUserProfile = false
@@ -576,7 +576,11 @@ struct WorkoutsView: View {
             return (name, detail)
         }
         // Handle trailing distance/duration like "Tempo Surges 30m" or "Long Run 16 km" or "Zone 2 Steady 45m"
-        let patterns = [" 16 km", " 10 mi", " 7 km", " 4.5 mi", " 5 km", " 3 mi", " 30m", " 45m", " 40m", " 50m"]
+        let patterns = [
+            " 16 km", " 14 km", " 10 km", " 8 km", " 7 km", " 6 km", " 5 km",
+            " 10 mi", " 8.5 mi", " 6 mi", " 5 mi", " 4.5 mi", " 3.5 mi", " 3 mi",
+            " 50m", " 45m", " 40m", " 35m", " 30m", " 25m", " 20m"
+        ]
         for pattern in patterns where title.hasSuffix(pattern) {
             let name = String(title.dropLast(pattern.count))
             let detail = pattern.trimmingCharacters(in: .whitespaces)

@@ -424,7 +424,73 @@ enum SessionSynthesisEngine {
                     iconName = "figure.run"
                     isRest = false
                 }
-            } else {
+            } else if activeGoal.localizedCaseInsensitiveContains("10K") {
+                switch offset {
+                case 1:
+                    if isRecoveryWindow {
+                        sessionTitle = useMetric ? "Zone 1 Recovery Flush (5 km)" : "Zone 1 Recovery Flush (3 mi)"
+                        iconName = "leaf.fill"
+                        isRest = false
+                    } else {
+                        sessionTitle = "5x1 km Threshold Intervals (40m)"
+                        iconName = "flag.fill"
+                        isRest = false
+                    }
+                case 2:
+                    sessionTitle = useMetric ? "6 km Easy Aerobic Run" : "3.5 mi Easy Aerobic Run"
+                    iconName = "figure.run"
+                    isRest = false
+                case 3:
+                    sessionTitle = "Rest Day"
+                    iconName = "bed.double.fill"
+                    isRest = true
+                case 4:
+                    sessionTitle = "Tempo Progression (35m)"
+                    iconName = "bolt.fill"
+                    isRest = false
+                case 5:
+                    sessionTitle = useMetric ? "Long Run 10 km" : "Long Run 6 mi"
+                    iconName = "point.topleft.down.to.point.bottomright.curvepath.fill"
+                    isRest = false
+                default:
+                    sessionTitle = useMetric ? "Easy Aerobic Run (6 km)" : "Easy Aerobic Run (3.5 mi)"
+                    iconName = "figure.run"
+                    isRest = false
+                }
+            } else if activeGoal.localizedCaseInsensitiveContains("Half") {
+                switch offset {
+                case 1:
+                    if isRecoveryWindow {
+                        sessionTitle = useMetric ? "Zone 1 Recovery Flush (40m)" : "Zone 1 Recovery Flush (40m)"
+                        iconName = "leaf.fill"
+                        isRest = false
+                    } else {
+                        sessionTitle = "Zone 2 Steady 45m"
+                        iconName = "figure.run"
+                        isRest = false
+                    }
+                case 2:
+                    sessionTitle = "Tempo Surges (35m)"
+                    iconName = "bolt.fill"
+                    isRest = false
+                case 3:
+                    sessionTitle = "Rest Day"
+                    iconName = "bed.double.fill"
+                    isRest = true
+                case 4:
+                    sessionTitle = useMetric ? "Half Marathon Progress (8 km)" : "Half Marathon Progress (5 mi)"
+                    iconName = "waveform.path.ecg"
+                    isRest = false
+                case 5:
+                    sessionTitle = useMetric ? "Long Run 14 km" : "Long Run 8.5 mi"
+                    iconName = "point.topleft.down.to.point.bottomright.curvepath.fill"
+                    isRest = false
+                default:
+                    sessionTitle = "Easy Aerobic Run"
+                    iconName = "figure.run"
+                    isRest = false
+                }
+            } else if activeGoal.localizedCaseInsensitiveContains("Marathon") {
                 switch offset {
                 case 1:
                     if isRecoveryWindow {
@@ -454,6 +520,67 @@ enum SessionSynthesisEngine {
                     isRest = false
                 default:
                     sessionTitle = "Easy Aerobic Run"
+                    iconName = "figure.run"
+                    isRest = false
+                }
+            } else if activeGoal.localizedCaseInsensitiveContains("Recovery") || activeGoal.localizedCaseInsensitiveContains("Injury") {
+                switch offset {
+                case 1:
+                    sessionTitle = "Zone 1 Recovery Flush (25m)"
+                    iconName = "leaf.fill"
+                    isRest = false
+                case 2:
+                    sessionTitle = "Rest & Mobility Day"
+                    iconName = "bed.double.fill"
+                    isRest = true
+                case 3:
+                    sessionTitle = "Walk-Jog Progression (20m)"
+                    iconName = "figure.walk"
+                    isRest = false
+                case 4:
+                    sessionTitle = "Rest Day"
+                    iconName = "bed.double.fill"
+                    isRest = true
+                case 5:
+                    sessionTitle = "Zone 1 Easy Aerobic (30m)"
+                    iconName = "figure.run"
+                    isRest = false
+                default:
+                    sessionTitle = "Recovery Flush (20m)"
+                    iconName = "leaf.fill"
+                    isRest = false
+                }
+            } else {
+                // Base Building / Just for Fun (Aerobic Foundation)
+                switch offset {
+                case 1:
+                    if isRecoveryWindow {
+                        sessionTitle = useMetric ? "Zone 1 Recovery Flush (40m)" : "Zone 1 Recovery Flush (40m)"
+                        iconName = "leaf.fill"
+                        isRest = false
+                    } else {
+                        sessionTitle = "Zone 2 Steady (40m)"
+                        iconName = "figure.run"
+                        isRest = false
+                    }
+                case 2:
+                    sessionTitle = "Easy Aerobic Base (30m)"
+                    iconName = "figure.run"
+                    isRest = false
+                case 3:
+                    sessionTitle = "Rest Day"
+                    iconName = "bed.double.fill"
+                    isRest = true
+                case 4:
+                    sessionTitle = "Aerobic Consistency Run (35m)"
+                    iconName = "waveform.path"
+                    isRest = false
+                case 5:
+                    sessionTitle = useMetric ? "Aerobic Long Run (8 km)" : "Aerobic Long Run (5 mi)"
+                    iconName = "point.topleft.down.to.point.bottomright.curvepath.fill"
+                    isRest = false
+                default:
+                    sessionTitle = useMetric ? "Easy Aerobic Run (5 km)" : "Easy Aerobic Run (3 mi)"
                     iconName = "figure.run"
                     isRest = false
                 }
