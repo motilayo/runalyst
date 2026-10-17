@@ -58,7 +58,7 @@ enum SessionSynthesisEngine {
     @MainActor
     static func evaluateDailyState(
         runRecords: [RunRecord],
-        activeGoal: String = "5K",
+        activeGoal: String = "Base Building",
         experienceLevel: String = "Intermediate",
         useMetric: Bool = true,
         now: Date = Date()

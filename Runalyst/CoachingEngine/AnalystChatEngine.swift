@@ -205,7 +205,15 @@ class AnalystChatEngine: ObservableObject {
 
         if mode == .macroCoach {
             let allRuns = (try? runRecord.modelContext?.fetch(FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)]))) ?? [runRecord]
-            let dailyState = SessionSynthesisEngine.evaluateDailyState(runRecords: allRuns, now: Date())
+            let activeGoal = UserDefaults.standard.string(forKey: "trainingGoal") ?? "Base Building"
+            let profile = RunnerProfile.compute(from: allRuns)
+            let dailyState = SessionSynthesisEngine.evaluateDailyState(
+                runRecords: allRuns,
+                activeGoal: activeGoal,
+                experienceLevel: profile.experienceLevel,
+                useMetric: useMetric,
+                now: Date()
+            )
 
             switch dailyState {
             case .preRun(let session):
@@ -390,7 +398,16 @@ class AnalystChatEngine: ObservableObject {
             switch query.action {
             case .displaySession:
                 let allRuns = (try? self.runRecord.modelContext?.fetch(FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)]))) ?? [self.runRecord]
-                let dailyState = SessionSynthesisEngine.evaluateDailyState(runRecords: allRuns, now: Date())
+                let activeGoal = UserDefaults.standard.string(forKey: "trainingGoal") ?? "Base Building"
+                let profile = RunnerProfile.compute(from: allRuns)
+                let useMetric = (UserDefaults.standard.object(forKey: "useMetricSystem") as? Bool) ?? true
+                let dailyState = SessionSynthesisEngine.evaluateDailyState(
+                    runRecords: allRuns,
+                    activeGoal: activeGoal,
+                    experienceLevel: profile.experienceLevel,
+                    useMetric: useMetric,
+                    now: Date()
+                )
                 let sessionToAttach: PrescribedDailySession?
                 switch dailyState {
                 case .preRun(let session):
