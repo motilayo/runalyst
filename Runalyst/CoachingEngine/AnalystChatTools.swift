@@ -302,7 +302,9 @@ public struct ReadinessToolResponse: Codable, Sendable {
     public let schema_name: String
     public let readiness_verdict: String
     public let recovery_status: String
+    public let next_run_timing: String?
     public let prescribed_session_name: String
+    public let primer_drill_name: String?
     public let intensity_category: String
     public let prescribed_pace_band: String
     public let prescribed_duration_band: String
@@ -314,7 +316,9 @@ public struct ReadinessToolResponse: Codable, Sendable {
         schema_name: String = "READINESS_AND_PRESCRIPTION_RESPONSE",
         readiness_verdict: String,
         recovery_status: String,
+        next_run_timing: String? = nil,
         prescribed_session_name: String,
+        primer_drill_name: String? = nil,
         intensity_category: String,
         prescribed_pace_band: String,
         prescribed_duration_band: String,
@@ -325,7 +329,9 @@ public struct ReadinessToolResponse: Codable, Sendable {
         self.schema_name = schema_name
         self.readiness_verdict = readiness_verdict
         self.recovery_status = recovery_status
+        self.next_run_timing = next_run_timing
         self.prescribed_session_name = prescribed_session_name
+        self.primer_drill_name = primer_drill_name
         self.intensity_category = intensity_category
         self.prescribed_pace_band = prescribed_pace_band
         self.prescribed_duration_band = prescribed_duration_band
