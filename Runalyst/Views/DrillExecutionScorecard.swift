@@ -280,11 +280,27 @@ struct DrillExecutionScorecard: View {
                         }
                         .padding(.horizontal, 1)
                     }
+                    .mask(
+                        HStack(spacing: 0) {
+                            Rectangle().fill(Color.black)
+                            if summary.reps.count > 6 {
+                                LinearGradient(
+                                    colors: [Color.black, Color.clear],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                                .frame(width: 18)
+                            }
+                        }
+                    )
                 }
                 .padding(10)
                 .background(Color(UIColor.tertiarySystemGroupedBackground))
                 .cornerRadius(10)
             }
+
+            // Secondary Form Availability
+            let hasFormDelta = abs(oscDelta) > 0.01 && runRecord.workingAvgVerticalOscillation != nil
 
             // Primary Target vs Actual Metric Tiles
             if let summary = intervalSummary, isIntervalDrill {
@@ -299,7 +315,7 @@ struct DrillExecutionScorecard: View {
                 let workColor: Color = workCadenceTargetMet ? .green : (summary.tier == .notMet ? .red : .orange)
 
                 VStack(spacing: 8) {
-                    HStack(spacing: 10) {
+                    HStack(spacing: 8) {
                         metricTile(
                             label: "WORK CADENCE",
                             value: "\(workCadenceVal) SPM",
@@ -307,11 +323,19 @@ struct DrillExecutionScorecard: View {
                             subtitle: "Target: \(targetCadenceStr) SPM"
                         )
                         metricTile(
-                            label: "RECOVERY CADENCE",
+                            label: "REC CADENCE",
                             value: "\(summary.recoveryCadenceAvg > 0 ? summary.recoveryCadenceAvg : max(130, actualCadence - 20)) SPM",
                             valueColor: .secondary,
                             subtitle: drillId.recoveryLabel
                         )
+                        if hasFormDelta {
+                            metricTile(
+                                label: "FORM DELTA",
+                                value: String(format: "%+.1f cm", oscDelta),
+                                valueColor: oscDelta <= 0 ? Color(red: 0.0, green: 0.75, blue: 0.65) : .orange,
+                                subtitle: oscDelta <= 0 ? "Controlled" : "Elevated bounce"
+                            )
+                        }
                     }
 
                     if isDualTarget {
@@ -382,7 +406,7 @@ struct DrillExecutionScorecard: View {
                 }
             } else {
                 // Cadence Hero Metric
-                HStack(spacing: 10) {
+                HStack(spacing: 8) {
                     metricTile(
                         label: "TARGET CADENCE",
                         value: "\(targetCadenceStr) SPM",
@@ -393,60 +417,31 @@ struct DrillExecutionScorecard: View {
                         value: "\(actualCadence) SPM",
                         valueColor: tier == .notMet ? .red : (tier == .partiallyMet ? .orange : .green)
                     )
+                    if hasFormDelta {
+                        metricTile(
+                            label: "FORM DELTA",
+                            value: String(format: "%+.1f cm", oscDelta),
+                            valueColor: oscDelta <= 0 ? Color(red: 0.0, green: 0.75, blue: 0.65) : .orange,
+                            subtitle: oscDelta <= 0 ? "Controlled" : "Elevated bounce"
+                        )
+                    }
                 }
             }
 
-            // Secondary Form / Guardrail Chips
-            let hasFormDelta = abs(oscDelta) > 0.01 && runRecord.workingAvgVerticalOscillation != nil
-            let hasTurnoverChip = isHRTarget && actualCadence > 0
-            let hasZone4Chip = !isDualTarget && runRecord.percentZone4 > 0.15
-
-            if hasFormDelta || hasTurnoverChip || hasZone4Chip {
-                HStack(spacing: 8) {
-                    if hasFormDelta {
-                        HStack(spacing: 4) {
-                            Image(systemName: oscDelta < 0 ? "arrow.down.right" : "arrow.up.right")
-                                .font(.caption2.bold())
-                            Text(String(format: "Form Delta: %+.1f cm", oscDelta))
-                                .font(.caption2.bold())
-                        }
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(oscDelta < 0 ? Color.green.opacity(0.12) : Color.orange.opacity(0.12))
-                        .foregroundColor(oscDelta < 0 ? .green : .orange)
-                        .clipShape(Capsule())
-                    }
-
-                    if hasTurnoverChip {
-                        HStack(spacing: 4) {
-                            Image(systemName: "shoeprints.fill")
-                                .font(.caption2)
-                            Text("Turnover: \(actualCadence) SPM")
-                                .font(.caption2.bold())
-                        }
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Color.secondary.opacity(0.12))
-                        .foregroundColor(.secondary)
-                        .clipShape(Capsule())
-                    }
-
-                    if hasZone4Chip {
-                        HStack(spacing: 4) {
-                            Image(systemName: "bolt.fill")
-                                .font(.caption2)
-                            Text(String(format: "Zone 4 Spike: %.0f%%", runRecord.percentZone4 * 100))
-                                .font(.caption2.bold())
-                        }
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Color.orange.opacity(0.12))
-                        .foregroundColor(.orange)
-                        .clipShape(Capsule())
-                    }
-
+            // High threshold guardrail chip (if unexpected Zone 4 spike)
+            if !isDualTarget && runRecord.percentZone4 > 0.15 {
+                HStack(spacing: 4) {
+                    Image(systemName: "bolt.fill")
+                        .font(.caption2)
+                    Text(String(format: "Zone 4 Spike: %.0f%% (elevated threshold effort)", runRecord.percentZone4 * 100))
+                        .font(.caption2.bold())
                     Spacer()
                 }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Color.orange.opacity(0.12))
+                .foregroundColor(.orange)
+                .clipShape(Capsule())
             }
 
             // Coaching Verdict Callout Banner

@@ -106,6 +106,19 @@ struct IntervalPerformanceCard: View {
                         }
                         .padding(.horizontal, 1)
                     }
+                    .mask(
+                        HStack(spacing: 0) {
+                            Rectangle().fill(Color.black)
+                            if evaluations.count > 6 {
+                                LinearGradient(
+                                    colors: [Color.black, Color.clear],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                                .frame(width: 18)
+                            }
+                        }
+                    )
                 }
                 .padding(10)
                 .background(Color(UIColor.tertiarySystemGroupedBackground))
