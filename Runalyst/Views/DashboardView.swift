@@ -1055,7 +1055,7 @@ struct DashboardView: View {
             }
             .sheet(isPresented: $showingAnalystChat) {
                 if let latestRun = runRecords.first {
-                    AnalystChatView(runRecord: latestRun)
+                    AnalystChatView(runRecord: latestRun, mode: .macroCoach)
                 }
             }
             .background(Color(UIColor.systemGroupedBackground).ignoresSafeArea())

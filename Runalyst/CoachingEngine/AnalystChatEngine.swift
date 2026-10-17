@@ -38,12 +38,21 @@ struct AnalystChatMessage: Identifiable, Equatable {
 
 typealias AnalystChatSender = AnalystChatMessage.MessageSender
 
+/// Defines the scope and framing of an AI Analyst conversation.
+enum AnalystChatMode: Equatable, Sendable {
+    /// Anchored to inspecting a specific historical workout.
+    case runInspection
+    /// Anchored globally as the athlete's macro running & recovery coach.
+    case macroCoach
+}
+
 /// Actor managing the interactive RAG Analyst Chat session with FoundationModels and strict operational guardrails.
 @MainActor
 class AnalystChatEngine: ObservableObject {
     @Published var messages: [AnalystChatMessage] = []
     @Published var isResponding: Bool = false
 
+    private let mode: AnalystChatMode
     private let runSignature: RunSignature?
     private let macroProfile: MacroProfile?
     private let runRecord: RunRecord
@@ -82,8 +91,14 @@ class AnalystChatEngine: ObservableObject {
         )
     }
 
-    init(runRecord: RunRecord, runSignature: RunSignature? = nil, macroProfile: MacroProfile? = nil) {
+    init(
+        runRecord: RunRecord,
+        mode: AnalystChatMode = .runInspection,
+        runSignature: RunSignature? = nil,
+        macroProfile: MacroProfile? = nil
+    ) {
         self.runRecord = runRecord
+        self.mode = mode
         self.runSignature = runSignature ?? runRecord.signature
         self.macroProfile = macroProfile ?? MacroProfile.load()
     }
@@ -165,26 +180,56 @@ class AnalystChatEngine: ObservableObject {
         let envNote = (runRecord.isIndoor ?? false) ? "Indoor Treadmill" : "Outdoors"
 
         let cal = Calendar.current
+        let isRunToday = cal.isDateInToday(runRecord.date)
         let daysDiff = cal.dateComponents([.day], from: cal.startOfDay(for: runRecord.date), to: cal.startOfDay(for: Date())).day ?? 0
         let df = DateFormatter()
         df.locale = Locale(identifier: "en_US_POSIX")
         df.dateFormat = "EEE, MMM d"
         let dateStr = df.string(from: runRecord.date)
-        let temporalGrounding = daysDiff == 0
-            ? "Workout took place today."
-            : "Workout took place on \(dateStr) (\(daysDiff)d ago)."
+
+        let todayDF = DateFormatter()
+        todayDF.locale = Locale(identifier: "en_US_POSIX")
+        todayDF.dateFormat = "EEEE, MMM d"
+        let todayStr = todayDF.string(from: Date())
 
         let useMetric = (UserDefaults.standard.object(forKey: "useMetricSystem") as? Bool) ?? true
         let unitSystem = useMetric ? "Metric (min/km, km)" : "Imperial (min/mi, mi)"
+
+        let contextBlock: String
+        let temporalRule: String
+
+        if mode == .macroCoach {
+            contextBlock = """
+            Scope: Macro AI Running Coach (general training & recovery guidance).
+            Today's Date: \(todayStr).
+            Workout Today: \(isRunToday ? "User logged a \(runType) today." : "User has NOT run today.")
+            Last Completed Workout: \(dateStr) (\(daysDiff)d ago: \(runType), \(envNote)).
+            """
+            temporalRule = isRunToday
+                ? "• TEMPORAL ACCURACY: A workout was completed today (\(runType))."
+                : "• TEMPORAL ACCURACY: Today is \(todayStr). The runner did NOT run today. NEVER call the previous workout from \(dateStr) 'today's session' or 'your run today'. If discussing it, refer to it explicitly as '\(dateStr)'s \(runType)' (e.g. 'Thursday's Fartlek')."
+        } else {
+            let temporalGrounding = daysDiff == 0
+                ? "Workout took place today."
+                : "Workout took place on \(dateStr) (\(daysDiff)d ago)."
+            contextBlock = """
+            Scope: Workout Inspection.
+            Reviewing: \(runType) (\(envNote)). \(temporalGrounding)
+            """
+            temporalRule = daysDiff > 0
+                ? "• TEMPORAL ACCURACY: This workout took place on \(dateStr) (\(daysDiff)d ago), NOT today. Do not call it today's session."
+                : ""
+        }
 
         return """
         You are Runalyst—an intelligent, conversational running coach. Speak directly to the runner with warmth and encouragement.
 
         CONTEXT:
-        Reviewing: \(runType) (\(envNote)). \(temporalGrounding)
+        \(contextBlock)
         Units: \(unitSystem).
 
         RULES:
+        \(temporalRule)
         • Call tools only when relevant. Max 1 card per turn. Never call `executeCoachAction` for off-topic queries.
         • `inspectWorkout`: moving vs gross stats, splits, intervals, reps, physics, metric definitions.
         • `manageTrainingState`: 'readiness' (set `userReportedDistress: true` if ill/injured), 'history', or 'athlete_profile'.

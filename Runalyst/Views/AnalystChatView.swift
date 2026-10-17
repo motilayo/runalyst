@@ -17,10 +17,12 @@ struct AnalystChatView: View {
     @AppStorage("lastExportedDrillId") private var lastExportedDrillId: String = ""
 
     let runRecord: RunRecord
+    let mode: AnalystChatMode
 
-    init(runRecord: RunRecord) {
+    init(runRecord: RunRecord, mode: AnalystChatMode = .runInspection) {
         self.runRecord = runRecord
-        _engine = StateObject(wrappedValue: AnalystChatEngine(runRecord: runRecord))
+        self.mode = mode
+        _engine = StateObject(wrappedValue: AnalystChatEngine(runRecord: runRecord, mode: mode))
     }
 
     private var headerSubtitle: String {
@@ -31,7 +33,19 @@ struct AnalystChatView: View {
         let isIndoor = runRecord.isIndoor ?? false
         let envStr = isIndoor ? "Indoor" : "Outdoor"
         let typeStr = runRecord.detectedTypeRaw.isEmpty ? "Run" : runRecord.detectedTypeRaw
-        return "🔒 On-Device • \(dateStr) \(envStr) \(typeStr)"
+
+        let cal = Calendar.current
+        let isRunToday = cal.isDateInToday(runRecord.date)
+
+        if mode == .macroCoach {
+            if isRunToday {
+                return "🔒 On-Device • Today's \(typeStr) Logged"
+            } else {
+                return "🔒 On-Device • Last Run: \(dateStr) (\(typeStr))"
+            }
+        } else {
+            return "🔒 On-Device • \(dateStr) \(envStr) \(typeStr)"
+        }
     }
 
     private var emptyState: some View {
@@ -39,9 +53,11 @@ struct AnalystChatView: View {
             Image(systemName: "bubble.left.and.text.bubble.right.fill")
                 .font(.system(size: 34))
                 .foregroundStyle(.purple.gradient)
-            Text("Ask about this run")
+            Text(mode == .macroCoach ? "Ask Your AI Coach" : "Ask about this run")
                 .font(.system(.headline, design: .rounded))
-            Text("Pace, heart rate, cadence, recovery. Answered on-device from your Health data.")
+            Text(mode == .macroCoach
+                ? "Readiness, today's workout, recovery, or training guidance from your Health data."
+                : "Pace, heart rate, cadence, recovery. Answered on-device from your Health data.")
                 .font(.footnote)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
@@ -357,33 +373,61 @@ struct AnalystChatView: View {
     private var quickPromptChips: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                chipButton("Stride Rhythm", icon: "waveform.path", iconColor: Color(red: 0.18, green: 0.82, blue: 0.35)) {
-                    inputText = "How was my cadence and rhythm during this run?"
-                    submitQuestion()
-                }
-                chipButton("Heart Rate Drift", icon: "heart.fill", iconColor: Color(red: 1.0, green: 0.18, blue: 0.55)) {
-                    inputText = "Did my heart rate stay steady, or did I start tiring out?"
-                    submitQuestion()
-                }
-                chipButton("Pacing Consistency", icon: "speedometer", iconColor: Color(red: 0.0, green: 0.55, blue: 1.0)) {
-                    inputText = "What does pacing consistency mean, and how was my pacing?"
-                    submitQuestion()
-                }
-                chipButton("Should I Run Tomorrow?", icon: "calendar", iconColor: .purple) {
-                    inputText = "Should I run tomorrow, and what kind of session should I focus on?"
-                    submitQuestion()
-                }
-                if runRecord.evaluationModality == .intervals {
-                    let intervalTitle = runRecord.detectedTypeRaw == "Fartlek" ? "Surge Analysis" : "Break Down Intervals"
-                    chipButton(intervalTitle, icon: "repeat", iconColor: Color(red: 0.0, green: 0.55, blue: 1.0)) {
-                        inputText = "Grade my performance in each interval of this run"
+                let cal = Calendar.current
+                let isRunToday = cal.isDateInToday(runRecord.date)
+
+                if mode == .macroCoach {
+                    chipButton("Readiness & Recovery", icon: "heart.text.square.fill", iconColor: Color(red: 1.0, green: 0.18, blue: 0.55)) {
+                        inputText = isRunToday
+                            ? "How is my recovery looking after today's run?"
+                            : "Am I recovered to run today, or should I take a rest day?"
                         submitQuestion()
                     }
-                }
-                if runRecord.isIndoor == true {
-                    chipButton("Treadmill Form", icon: "figure.run", iconColor: Color(red: 0.18, green: 0.82, blue: 0.35)) {
-                        inputText = "Did I overstride or reach too far on the treadmill?"
+                    chipButton("Today's Session", icon: "figure.run", iconColor: Color(red: 0.0, green: 0.55, blue: 1.0)) {
+                        inputText = "What session should I focus on today?"
                         submitQuestion()
+                    }
+                    chipButton("Review Last Run", icon: "clock.arrow.circlepath", iconColor: Color(red: 0.18, green: 0.82, blue: 0.35)) {
+                        let df = DateFormatter()
+                        df.locale = Locale(identifier: "en_US_POSIX")
+                        df.dateFormat = "EEEE"
+                        let weekday = df.string(from: runRecord.date)
+                        inputText = "How was my effort and pacing during \(weekday)'s \(runRecord.detectedTypeRaw)?"
+                        submitQuestion()
+                    }
+                    chipButton("Weekly Training Status", icon: "calendar", iconColor: .purple) {
+                        inputText = "How is my weekly mileage and overall training balance?"
+                        submitQuestion()
+                    }
+                } else {
+                    chipButton("Stride Rhythm", icon: "waveform.path", iconColor: Color(red: 0.18, green: 0.82, blue: 0.35)) {
+                        inputText = "How was my cadence and rhythm during this run?"
+                        submitQuestion()
+                    }
+                    chipButton("Heart Rate Drift", icon: "heart.fill", iconColor: Color(red: 1.0, green: 0.18, blue: 0.55)) {
+                        inputText = "Did my heart rate stay steady, or did I start tiring out?"
+                        submitQuestion()
+                    }
+                    chipButton("Pacing Consistency", icon: "speedometer", iconColor: Color(red: 0.0, green: 0.55, blue: 1.0)) {
+                        inputText = "What does pacing consistency mean, and how was my pacing?"
+                        submitQuestion()
+                    }
+                    chipButton("Should I Run Tomorrow?", icon: "calendar", iconColor: .purple) {
+                        inputText = "Should I run tomorrow, and what kind of session should I focus on?"
+                        submitQuestion()
+                    }
+                    if runRecord.evaluationModality == .intervals {
+                        let intervalTitle = runRecord.detectedTypeRaw == "Fartlek" ? "Surge Analysis" : "Break Down Intervals"
+                        chipButton(intervalTitle, icon: "repeat", iconColor: Color(red: 0.0, green: 0.55, blue: 1.0)) {
+                            inputText = "Grade my performance in each interval of this run"
+                            submitQuestion()
+                        }
+                    }
+                    if runRecord.isIndoor == true {
+                        chipButton("Treadmill Form", icon: "figure.run", iconColor: Color(red: 0.18, green: 0.82, blue: 0.35)) {
+                            inputText = "Did I overstride or reach too far on the treadmill?"
+                            submitQuestion()
+                        }
                     }
                 }
             }

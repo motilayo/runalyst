@@ -399,7 +399,7 @@ enum SessionSynthesisEngine {
                         iconName = "leaf.fill"
                         isRest = false
                     } else {
-                        sessionTitle = "4x800m 5K Rhythm Intervals"
+                        sessionTitle = "4x800m 5K Rhythm Intervals (35m)"
                         iconName = "flag.fill"
                         isRest = false
                     }
@@ -412,7 +412,7 @@ enum SessionSynthesisEngine {
                     iconName = "bed.double.fill"
                     isRest = true
                 case 4:
-                    sessionTitle = "8x1 min Hill Surges"
+                    sessionTitle = "8x1 min Hill Surges (30m)"
                     iconName = "mountain.2.fill"
                     isRest = false
                 case 5:
@@ -445,7 +445,7 @@ enum SessionSynthesisEngine {
                     iconName = "bed.double.fill"
                     isRest = true
                 case 4:
-                    sessionTitle = "Marathon Pace Progress"
+                    sessionTitle = useMetric ? "Marathon Pace Progress (8 km)" : "Marathon Pace Progress (5 mi)"
                     iconName = "waveform.path.ecg"
                     isRest = false
                 case 5:

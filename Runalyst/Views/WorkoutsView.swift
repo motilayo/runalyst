@@ -80,7 +80,7 @@ struct WorkoutsView: View {
             .toolbarBackground(.regularMaterial, for: .navigationBar)
             .sheet(isPresented: $showingAnalystChat) {
                 if let latestRun = runRecords.first {
-                    AnalystChatView(runRecord: latestRun)
+                    AnalystChatView(runRecord: latestRun, mode: .macroCoach)
                 }
             }
             .sheet(isPresented: $showingUserProfile) {
@@ -307,16 +307,6 @@ struct WorkoutsView: View {
                     .foregroundColor(Color(red: 0.0, green: 0.8, blue: 0.65))
 
                 Spacer()
-
-                if session.isTrimmed {
-                    Text("Trimmed for Readiness")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(.orange)
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 2)
-                        .background(Color.orange.opacity(0.12))
-                        .clipShape(Capsule())
-                }
             }
 
             // Sub-row: Title & subtitle on left, actions on right
@@ -335,21 +325,21 @@ struct WorkoutsView: View {
 
                 Spacer(minLength: 6)
 
-                // Inline quick Start button
+                // Inline quick Start / Review button
                 Button {
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     openReadout(for: session)
                 } label: {
                     HStack(spacing: 4) {
-                        Image(systemName: "play.fill")
+                        Image(systemName: isDrillCompleted ? "arrow.counterclockwise" : "play.fill")
                             .font(.system(size: 9, weight: .bold))
-                        Text("Start")
+                        Text(isDrillCompleted ? "Review" : "Start")
                             .font(.caption.bold())
                     }
                     .padding(.horizontal, 12)
                     .frame(height: 32)
-                    .background(Color.primary)
-                    .foregroundColor(Color(UIColor.systemBackground))
+                    .background(isDrillCompleted ? Color(UIColor.secondarySystemFill) : Color.primary)
+                    .foregroundColor(isDrillCompleted ? .primary : Color(UIColor.systemBackground))
                     .clipShape(Capsule())
                 }
 
@@ -408,19 +398,6 @@ struct WorkoutsView: View {
                     .padding(.vertical, 2)
                     .background(Color(red: 0.0, green: 0.55, blue: 1.0).opacity(0.12))
                     .clipShape(Capsule())
-            }
-
-            // Sub-row: Title & target parameters
-            VStack(alignment: .leading, spacing: 2) {
-                Text(session.sessionTitle)
-                    .font(.subheadline.weight(.bold))
-                    .foregroundColor(.primary)
-
-                Text("Target: \(session.paceBand) • \(session.hrCap.replacingOccurrences(of: "HR: ", with: "Max HR: "))")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.85)
             }
 
             // Core Targets Grid
@@ -610,14 +587,14 @@ struct WorkoutsView: View {
 
     private func microcycleSection(microcycle: [MicrocycleDay]) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("THIS WEEK'S SCHEDULE")
+            Text("UPCOMING SCHEDULE")
                 .font(.system(size: 11, weight: .bold))
                 .foregroundColor(.secondary)
                 .padding(.horizontal, 4)
 
             VStack(spacing: 0) {
                 ForEach(Array(microcycle.enumerated()), id: \.element.id) { index, day in
-                    HStack(spacing: 10) {
+                    HStack(spacing: 8) {
                         Image(systemName: day.iconName)
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundColor(day.isRestDay ? .secondary : Color(red: 0.0, green: 0.55, blue: 1.0))
@@ -626,7 +603,7 @@ struct WorkoutsView: View {
                         Text(day.dayLabel)
                             .font(.subheadline.weight(.semibold))
                             .foregroundColor(day.isRestDay ? .secondary : .primary)
-                            .frame(width: 78, alignment: .leading)
+                            .frame(width: day.dayLabel == "Tomorrow" ? nil : 36, alignment: .leading)
                             .lineLimit(1)
 
                         let parsed = parseSessionSchedule(day.sessionTitle)

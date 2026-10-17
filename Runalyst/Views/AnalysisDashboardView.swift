@@ -46,7 +46,7 @@ struct AnalysisDashboardView: View {
             .toolbarBackground(.regularMaterial, for: .navigationBar)
             .sheet(isPresented: $showingAnalystChat) {
                 if let latestRun = existingRuns.first {
-                    AnalystChatView(runRecord: latestRun)
+                    AnalystChatView(runRecord: latestRun, mode: .macroCoach)
                 }
             }
             .sheet(isPresented: $showingUserProfile) {
