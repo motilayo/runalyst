@@ -255,7 +255,7 @@ actor FramboiseEngine {
     func generatePhaseSegments(from buckets: [BucketData], cadenceFloor: Double = 150.0) -> [PhaseSegment] {
         guard !buckets.isEmpty else { return [] }
 
-        let moving = buckets.filter { $0.meanCadence >= 120 }
+        let moving = buckets.filter { $0.meanCadence >= 135 }
         let medCad = moving.isEmpty ? 160.0 : moving.map(\.meanCadence).sorted()[moving.count / 2]
         let validPaces = moving.map(\.meanPaceSecPerKm).filter { $0 > 0 }.sorted()
         let medPace = validPaces.isEmpty ? 300.0 : validPaces[validPaces.count / 2]
@@ -277,21 +277,34 @@ actor FramboiseEngine {
         var segStart: Double = 0
         var pSum = 0.0, cSum = 0.0, hrSum = 0.0, count = 0.0, elapsed = 0.0
 
-        for b in buckets {
-            // Incline/Hill push on treadmill: pace remains near base pace, but cardiac strain spikes into Zone 4/5
-            let isCardioInclineSurge = b.meanHR >= max(155.0, medHR + 5.0)
-                && b.meanCadence >= cadenceFloor
-                && b.meanPaceSecPerKm > 0
-                && b.meanPaceSecPerKm <= medPace + 15.0
+        for (index, b) in buckets.enumerated() {
+            // 20-bucket rolling centered window (as mandated by AGENTS.md ADR-0006/0007)
+            let windowSize = 20
+            let windowStart = max(0, index - windowSize / 2)
+            let windowEnd = min(buckets.count - 1, index + windowSize / 2)
+            let localWindow = buckets[windowStart...windowEnd].filter { $0.meanCadence >= 135 }
+
+            let localMedCad: Double = {
+                guard !localWindow.isEmpty else { return medCad }
+                let sorted = localWindow.map(\.meanCadence).sorted()
+                return sorted[sorted.count / 2]
+            }()
+            let localPaces = localWindow.map(\.meanPaceSecPerKm).filter { $0 > 0 }.sorted()
+            let localMedPace: Double = {
+                guard !localPaces.isEmpty else { return medPace }
+                return localPaces[localPaces.count / 2]
+            }()
 
             let isSurge = !isUniformSteady && (
-                (b.meanPaceSecPerKm > 0 && b.meanPaceSecPerKm <= surgePaceThreshold && b.meanCadence >= medCad)
-                || (b.meanCadence >= surgeCadenceThreshold && b.meanPaceSecPerKm > 0 && b.meanPaceSecPerKm <= medPace - 15.0)
-                || isCardioInclineSurge
+                (b.meanPaceSecPerKm > 0 && b.meanPaceSecPerKm <= (localMedPace - 15.0) && b.meanCadence >= localMedCad - 1.0)
+                || (b.meanCadence >= (localMedCad + 2.0) && b.meanPaceSecPerKm > 0 && b.meanPaceSecPerKm <= localMedPace)
+                || (b.meanPaceSecPerKm > 0 && b.meanPaceSecPerKm <= surgePaceThreshold && b.meanCadence >= cadenceFloor)
             )
 
             let isRec = !isUniformSteady && (
-                b.meanPaceSecPerKm >= medPace + 20.0 || (b.meanCadence < medCad - 5.0 && b.meanCadence < cadenceFloor)
+                b.meanPaceSecPerKm >= (localMedPace + 15.0)
+                || (b.meanCadence <= localMedCad - 2.0)
+                || (b.meanCadence < cadenceFloor)
             )
 
             let kind = (b.meanCadence < cadenceFloor && b.meanCadence < 135.0) ? "walking" : (isSurge ? "work" : (isRec ? "recovery" : "steady"))
@@ -380,7 +393,7 @@ actor FramboiseEngine {
                       seg.kind == "work",
                       let gap = bridged.last,
                       gap.kind != "work",
-                      gap.durationSeconds <= 15.0 || (gap.kind == "steady" && gap.durationSeconds <= 20.0 && gap.avgCadence >= 158.0),
+                      gap.durationSeconds <= 15.0 || (gap.kind == "steady" && gap.durationSeconds <= 20.0 && gap.avgCadence >= 156.0),
                       bridged[bridged.count - 2].kind == "work" {
                 _ = bridged.removeLast()
                 let prev = bridged.removeLast()
@@ -390,14 +403,23 @@ actor FramboiseEngine {
             }
         }
 
-        // Step 2: Outlier rejection: remove stray pickups vastly slower than true work reps
+        // Step 2: Outlier rejection: remove stray pickups vastly slower or shorter than true work reps
         let workPaces = bridged.filter { $0.kind == "work" && $0.avgPace > 0 }.map(\.avgPace).sorted()
         var filtered = bridged
         if workPaces.count >= 4 {
             let medWork = workPaces[workPaces.count / 2]
+            let workDurs = bridged.filter { $0.kind == "work" }.map(\.durationSeconds).sorted()
+            let medWorkDur = workDurs.isEmpty ? 60.0 : workDurs[workDurs.count / 2]
+
             filtered = bridged.map { seg in
-                if seg.kind == "work" && ((seg.avgPace > medWork + 55.0 && seg.avgCadence < 160.0) || seg.durationSeconds < 14.0) {
-                    return PhaseSegment(startSeconds: seg.startSeconds, endSeconds: seg.endSeconds, kind: "steady", avgPace: seg.avgPace, avgCadence: seg.avgCadence, avgHR: seg.avgHR)
+                if seg.kind == "work" {
+                    let isVastlySlower = (seg.avgPace > medWork + 45.0 && seg.avgCadence < 162.0)
+                    let isMicroGlitch = seg.durationSeconds <= 16.0 && medWorkDur >= 50.0 && seg.avgPace > medWork + 30.0
+                    let isTooBrief = seg.durationSeconds < 14.0
+
+                    if isVastlySlower || isMicroGlitch || isTooBrief {
+                        return PhaseSegment(startSeconds: seg.startSeconds, endSeconds: seg.endSeconds, kind: "steady", avgPace: seg.avgPace, avgCadence: seg.avgCadence, avgHR: seg.avgHR)
+                    }
                 }
                 return seg
             }

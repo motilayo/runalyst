@@ -834,4 +834,160 @@ final class FramboiseEngineTests: XCTestCase {
         let work = consolidated.filter { $0.kind == "work" }
         XCTAssertEqual(work.count, 9, "Engine must preserve all 9 work intervals and not drop the 9th rep due to extended rest")
     }
+
+    func testGeneratePhaseSegments_FiveRepsWithElevatedHeartRateRecovery_PreservesAllFiveReps() async {
+        // Simulates a 5-rep stride / interval drill where HR drifts up and remains elevated (159 BPM)
+        // during Recovery 3, while recovery cadence is held at 158 SPM (above 150 floor) and 6:49/km pace.
+        // Verifies that Recovery 3 is not erroneously classified as a work surge,
+        // and that Rep 3 and Rep 4 are not merged into one giant 2m45s rep.
+        var buckets: [BucketData] = []
+        var now = Date()
+
+        // Warm-up: 3 minutes steady (6 buckets of 30s) at 420 s/km (7:00/km), 150 SPM, 126 BPM
+        for _ in 0..<6 {
+            buckets.append(BucketData(startTime: now, distanceMeters: 71.4, durationSeconds: 30, meanPaceSecPerKm: 420, meanCadence: 150, meanHR: 126))
+            now = now.addingTimeInterval(30)
+        }
+
+        // 5 reps of ~45s work + 75s recovery:
+        // Rep 1: 45s at 322 s/km (5:22/km), 163 SPM, 146 BPM
+        buckets.append(BucketData(startTime: now, distanceMeters: 139.7, durationSeconds: 45, meanPaceSecPerKm: 322, meanCadence: 163, meanHR: 146))
+        now = now.addingTimeInterval(45)
+        // Rec 1: 75s at 412 s/km (6:52/km), 158 SPM, 146 BPM
+        buckets.append(BucketData(startTime: now, distanceMeters: 182.0, durationSeconds: 75, meanPaceSecPerKm: 412, meanCadence: 158, meanHR: 146))
+        now = now.addingTimeInterval(75)
+
+        // Rep 2: 45s at 344 s/km (5:44/km), 163 SPM, 153 BPM
+        buckets.append(BucketData(startTime: now, distanceMeters: 130.8, durationSeconds: 45, meanPaceSecPerKm: 344, meanCadence: 163, meanHR: 153))
+        now = now.addingTimeInterval(45)
+        // Rec 2: 75s at 423 s/km (7:03/km), 158 SPM, 150 BPM
+        buckets.append(BucketData(startTime: now, distanceMeters: 177.3, durationSeconds: 75, meanPaceSecPerKm: 423, meanCadence: 158, meanHR: 150))
+        now = now.addingTimeInterval(75)
+
+        // Rep 3: 45s at 335 s/km (5:35/km), 163 SPM, 159 BPM
+        buckets.append(BucketData(startTime: now, distanceMeters: 134.3, durationSeconds: 45, meanPaceSecPerKm: 335, meanCadence: 163, meanHR: 159))
+        now = now.addingTimeInterval(45)
+        // Rec 3: 75s at 409 s/km (6:49/km), 158 SPM, 159 BPM (elevated HR >= 155, cadence >= 150 floor)
+        buckets.append(BucketData(startTime: now, distanceMeters: 183.4, durationSeconds: 75, meanPaceSecPerKm: 409, meanCadence: 158, meanHR: 159))
+        now = now.addingTimeInterval(75)
+
+        // Rep 4: 45s at 343 s/km (5:43/km), 163 SPM, 162 BPM
+        buckets.append(BucketData(startTime: now, distanceMeters: 131.2, durationSeconds: 45, meanPaceSecPerKm: 343, meanCadence: 163, meanHR: 162))
+        now = now.addingTimeInterval(45)
+        // Rec 4: 75s at 409 s/km (6:49/km), 158 SPM, 158 BPM
+        buckets.append(BucketData(startTime: now, distanceMeters: 183.4, durationSeconds: 75, meanPaceSecPerKm: 409, meanCadence: 158, meanHR: 158))
+        now = now.addingTimeInterval(75)
+
+        // Rep 5: 45s at 343 s/km (5:43/km), 160 SPM, 162 BPM
+        buckets.append(BucketData(startTime: now, distanceMeters: 131.2, durationSeconds: 45, meanPaceSecPerKm: 343, meanCadence: 160, meanHR: 162))
+        now = now.addingTimeInterval(45)
+
+        // Cooldown: 3 minutes walking at 564 s/km (9:24/km), 126 SPM, 141 BPM
+        for _ in 0..<6 {
+            buckets.append(BucketData(startTime: now, distanceMeters: 53.2, durationSeconds: 30, meanPaceSecPerKm: 564, meanCadence: 126, meanHR: 141))
+            now = now.addingTimeInterval(30)
+        }
+
+        let phaseSegments = await engine.generatePhaseSegments(from: buckets, cadenceFloor: 150.0)
+        let workSegments = phaseSegments.filter { $0.kind == "work" }
+
+        XCTAssertEqual(workSegments.count, 5, "Must produce exactly 5 work segments without merging Rep 3 and Rep 4")
+        for (idx, seg) in workSegments.enumerated() {
+            XCTAssertLessThanOrEqual(seg.durationSeconds, 60.0, "Rep \(idx + 1) duration should be ~45s, not merged (was \(seg.durationSeconds)s)")
+        }
+    }
+
+    func testConsolidatePhaseSegments_ScottTreadmillWorkout_PreservesTwelvePushesAndRejectsArtifact() {
+        // Simulates Scott's Apple Fitness+ treadmill workout ("4 hills + 6 two-minute speed pushes + 2 one-minute all-out sprints"):
+        // Total intended work efforts = 12 (4 hills + 2 one-minute sprints + 6 two-minute pushes).
+        // Telemetry includes an erroneous 15s recovery jog spike at 6:25/km between the two 1-minute sprints.
+        // Verifies:
+        // 1. The 15s glitch at recovery pace (6:25/km) is rejected as steady/recovery
+        // 2. Both 1-minute all-out sprints are preserved as separate distinct work reps (not merged)
+        // 3. Exactly 12 true work intervals are produced
+        var segments: [PhaseSegment] = []
+        var t: Double = 0
+
+        // Warmup: 300s steady at 155 SPM
+        segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 300, kind: "steady", avgPace: 380, avgCadence: 155, avgHR: 135))
+        t += 300
+
+        // Phase 1: 4 Hills (Reps 1 to 4)
+        segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 135, kind: "work", avgPace: 355, avgCadence: 158, avgHR: 150)) // Hill 1: 2m 15s
+        t += 135
+        segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 60, kind: "recovery", avgPace: 434, avgCadence: 150, avgHR: 144))
+        t += 60
+
+        segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 90, kind: "work", avgPace: 360, avgCadence: 155, avgHR: 144)) // Hill 2: 1m 30s
+        t += 90
+        segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 60, kind: "recovery", avgPace: 423, avgCadence: 150, avgHR: 140))
+        t += 60
+
+        segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 60, kind: "work", avgPace: 348, avgCadence: 159, avgHR: 142)) // Hill 3: 1m 00s
+        t += 60
+        segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 60, kind: "recovery", avgPace: 435, avgCadence: 150, avgHR: 140))
+        t += 60
+
+        segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 105, kind: "work", avgPace: 363, avgCadence: 157, avgHR: 150)) // Hill 4: 1m 45s
+        t += 105
+        segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 60, kind: "recovery", avgPace: 437, avgCadence: 150, avgHR: 144))
+        t += 60
+
+        // Phase 2: Speed Push 1 (Rep 5: 2m 00s @ 5:26/km)
+        segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 120, kind: "work", avgPace: 326, avgCadence: 165, avgHR: 137))
+        t += 120
+        segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 60, kind: "recovery", avgPace: 431, avgCadence: 150, avgHR: 144))
+        t += 60
+
+        // Phase 3: All-Out Sprint 1 (Rep 6: 1m 00s @ 5:25/km, 166 SPM)
+        segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 60, kind: "work", avgPace: 325, avgCadence: 166, avgHR: 158))
+        t += 60
+
+        // Recovery between sprints with a 15s artifact spike at recovery pace
+        segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 25, kind: "recovery", avgPace: 438, avgCadence: 150, avgHR: 152))
+        t += 25
+        segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 15, kind: "work", avgPace: 385, avgCadence: 159, avgHR: 144)) // 6:25/km artifact
+        t += 15
+        segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 35, kind: "recovery", avgPace: 435, avgCadence: 150, avgHR: 150))
+        t += 35
+
+        // Phase 4: All-Out Sprint 2 (Rep 8: 1m 00s @ 5:37/km, 162 SPM)
+        segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 60, kind: "work", avgPace: 337, avgCadence: 162, avgHR: 160))
+        t += 60
+        segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 60, kind: "recovery", avgPace: 435, avgCadence: 150, avgHR: 148))
+        t += 60
+
+        // Phase 5: Speed Pushes 2 to 6 (~2 mins each)
+        segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 105, kind: "work", avgPace: 332, avgCadence: 164, avgHR: 169)) // Push 2: 1m 45s
+        t += 105
+        segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 60, kind: "recovery", avgPace: 433, avgCadence: 150, avgHR: 150))
+        t += 60
+
+        segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 135, kind: "work", avgPace: 337, avgCadence: 165, avgHR: 168)) // Push 3: 2m 15s
+        t += 135
+        segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 60, kind: "recovery", avgPace: 460, avgCadence: 148, avgHR: 150))
+        t += 60
+
+        segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 105, kind: "work", avgPace: 377, avgCadence: 158, avgHR: 156)) // Push 4: 1m 45s
+        t += 105
+        segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 60, kind: "recovery", avgPace: 470, avgCadence: 148, avgHR: 152))
+        t += 60
+
+        segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 120, kind: "work", avgPace: 344, avgCadence: 164, avgHR: 171)) // Push 5: 2m 00s
+        t += 120
+        segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 60, kind: "recovery", avgPace: 452, avgCadence: 148, avgHR: 152))
+        t += 60
+
+        segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 105, kind: "work", avgPace: 339, avgCadence: 161, avgHR: 169)) // Push 6: 1m 45s
+        t += 105
+        segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 180, kind: "steady", avgPace: 466, avgCadence: 145, avgHR: 140))
+        t += 180
+
+        let consolidated = FramboiseEngine.consolidatePhaseSegments(segments)
+        let work = consolidated.filter { $0.kind == "work" }
+
+        XCTAssertEqual(work.count, 12, "Should preserve exactly 12 work efforts (4 hills + 2 one-minute sprints + 6 two-minute speed pushes), discarding the 15s artifact")
+        XCTAssertEqual(work[5].durationSeconds, 60.0, "All-Out Sprint 1 must remain a clean 1-minute rep")
+        XCTAssertEqual(work[6].durationSeconds, 60.0, "All-Out Sprint 2 must remain a clean 1-minute rep")
+    }
 }

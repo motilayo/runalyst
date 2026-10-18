@@ -137,6 +137,13 @@ struct DrillExecutionScorecard: View {
 
         let displayReps: [DrillDisplayRep] = {
             if let summary = intervalSummary, summary.totalIntervals > 1, !summary.reps.isEmpty {
+                let durationCategory: DrillDuration = {
+                    if runRecord.duration <= 720 { return .tenMinutes }
+                    if runRecord.duration >= 1500 { return .thirtyMinutes }
+                    return .fifteenMinutes
+                }()
+                let sched = DrillSchedule.schedule(for: drillId, duration: durationCategory)
+
                 return summary.reps.map { rep in
                     let matchedEval = intervalEvals.first(where: { $0.repIndex == rep.repIndex })
                         ?? (rep.repIndex - 1 >= 0 && rep.repIndex - 1 < intervalEvals.count ? intervalEvals[rep.repIndex - 1] : nil)
@@ -151,11 +158,19 @@ struct DrillExecutionScorecard: View {
                         return nil
                     }()
 
+                    let fallbackDuration = sched.workSeconds > 0 ? sched.workSeconds : nil
+                    let fallbackWorkPace: String? = {
+                        if runRecord.workingAvgPace > 0 {
+                            return PaceFormatter.formatPace(secondsPerKilometer: runRecord.workingAvgPace)
+                        }
+                        return nil
+                    }()
+
                     return DrillDisplayRep(
                         repIndex: rep.repIndex,
-                        durationSeconds: matchedEval?.durationSeconds,
+                        durationSeconds: matchedEval?.durationSeconds ?? fallbackDuration,
                         isFastest: matchedEval?.observation.starts(with: "Fastest") ?? false,
-                        workPaceFormatted: matchedEval?.workPaceFormatted,
+                        workPaceFormatted: matchedEval?.workPaceFormatted ?? fallbackWorkPace,
                         workCadence: workCadence,
                         workHeartRate: workHR,
                         recoveryPaceFormatted: matchedEval?.recoveryPaceFormatted,
