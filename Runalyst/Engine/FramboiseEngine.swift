@@ -414,7 +414,7 @@ actor FramboiseEngine {
             filtered = bridged.map { seg in
                 if seg.kind == "work" {
                     let isVastlySlower = (seg.avgPace > medWork + 45.0 && seg.avgCadence < 162.0)
-                    let isMicroGlitch = seg.durationSeconds <= 16.0 && medWorkDur >= 50.0 && seg.avgPace > medWork + 30.0
+                    let isMicroGlitch = seg.durationSeconds <= 20.0 && seg.avgPace > medWork + 20.0
                     let isTooBrief = seg.durationSeconds < 14.0
 
                     if isVastlySlower || isMicroGlitch || isTooBrief {
