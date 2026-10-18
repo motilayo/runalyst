@@ -5,12 +5,20 @@ OUTPUT_DIR_PORTRAIT_2778 = "/Users/motilayo/workspace/runalyzer/Media/Screenshot
 OUTPUT_DIR_PORTRAIT_2688 = "/Users/motilayo/workspace/runalyzer/Media/Screenshots/AppStore_1242x2688"
 OUTPUT_DIR_LANDSCAPE_2778 = "/Users/motilayo/workspace/runalyzer/Media/Screenshots/AppStore_2778x1284"
 OUTPUT_DIR_LANDSCAPE_2688 = "/Users/motilayo/workspace/runalyzer/Media/Screenshots/AppStore_2688x1242"
+OUTPUT_DIR_DUO_OUTER_PORTRAIT = "/Users/motilayo/workspace/runalyzer/Media/Screenshots/iPhoneDuo_Outer_1398x2034"
+OUTPUT_DIR_DUO_OUTER_LANDSCAPE = "/Users/motilayo/workspace/runalyzer/Media/Screenshots/iPhoneDuo_Outer_2034x1398"
+OUTPUT_DIR_DUO_INNER_PORTRAIT = "/Users/motilayo/workspace/runalyzer/Media/Screenshots/iPhoneDuo_Inner_2007x2853"
+OUTPUT_DIR_DUO_INNER_LANDSCAPE = "/Users/motilayo/workspace/runalyzer/Media/Screenshots/iPhoneDuo_Inner_2853x2007"
 WEB_DIR = "/Users/motilayo/workspace/runalyzer/website/assets/images"
 
 os.makedirs(OUTPUT_DIR_PORTRAIT_2778, exist_ok=True)
 os.makedirs(OUTPUT_DIR_PORTRAIT_2688, exist_ok=True)
 os.makedirs(OUTPUT_DIR_LANDSCAPE_2778, exist_ok=True)
 os.makedirs(OUTPUT_DIR_LANDSCAPE_2688, exist_ok=True)
+os.makedirs(OUTPUT_DIR_DUO_OUTER_PORTRAIT, exist_ok=True)
+os.makedirs(OUTPUT_DIR_DUO_OUTER_LANDSCAPE, exist_ok=True)
+os.makedirs(OUTPUT_DIR_DUO_INNER_PORTRAIT, exist_ok=True)
+os.makedirs(OUTPUT_DIR_DUO_INNER_LANDSCAPE, exist_ok=True)
 os.makedirs(WEB_DIR, exist_ok=True)
 
 # Target App Store Connect Specifications:
@@ -96,6 +104,18 @@ def render_portrait_card(title, subtitle, screenshot_path, output_filename):
     bg_2688.save(out_2688, "PNG", quality=98)
     print(f"Rendered Portrait 1242x2688: {out_2688}")
 
+    # Save iPhone Duo Outer Display 1398 x 2034 (Portrait)
+    out_duo_outer = os.path.join(OUTPUT_DIR_DUO_OUTER_PORTRAIT, output_filename)
+    bg_duo_outer = bg_rgb.resize((1398, 2034), Image.Resampling.LANCZOS)
+    bg_duo_outer.save(out_duo_outer, "PNG", quality=98)
+    print(f"Rendered iPhone Duo Outer Portrait 1398x2034: {out_duo_outer}")
+
+    # Save iPhone Duo Inner Display 2007 x 2853 (Portrait)
+    out_duo_inner = os.path.join(OUTPUT_DIR_DUO_INNER_PORTRAIT, output_filename)
+    bg_duo_inner = bg_rgb.resize((2007, 2853), Image.Resampling.LANCZOS)
+    bg_duo_inner.save(out_duo_inner, "PNG", quality=98)
+    print(f"Rendered iPhone Duo Inner Portrait 2007x2853: {out_duo_inner}")
+
     # Save to website assets
     out_web = os.path.join(WEB_DIR, output_filename)
     bg_rgb.save(out_web, "PNG", quality=98)
@@ -152,6 +172,18 @@ def render_landscape_card(title, subtitle, screenshot_path, output_filename):
     bg_2688 = bg_rgb.resize((2688, 1242), Image.Resampling.LANCZOS)
     bg_2688.save(out_2688, "PNG", quality=98)
     print(f"Rendered Landscape 2688x1242: {out_2688}")
+
+    # Save iPhone Duo Outer Display 2034 x 1398 (Landscape)
+    out_duo_outer_l = os.path.join(OUTPUT_DIR_DUO_OUTER_LANDSCAPE, output_filename)
+    bg_duo_outer_l = bg_rgb.resize((2034, 1398), Image.Resampling.LANCZOS)
+    bg_duo_outer_l.save(out_duo_outer_l, "PNG", quality=98)
+    print(f"Rendered iPhone Duo Outer Landscape 2034x1398: {out_duo_outer_l}")
+
+    # Save iPhone Duo Inner Display 2853 x 2007 (Landscape)
+    out_duo_inner_l = os.path.join(OUTPUT_DIR_DUO_INNER_LANDSCAPE, output_filename)
+    bg_duo_inner_l = bg_rgb.resize((2853, 2007), Image.Resampling.LANCZOS)
+    bg_duo_inner_l.save(out_duo_inner_l, "PNG", quality=98)
+    print(f"Rendered iPhone Duo Inner Landscape 2853x2007: {out_duo_inner_l}")
 
 cards = [
     {
