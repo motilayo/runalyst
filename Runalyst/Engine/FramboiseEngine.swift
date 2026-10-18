@@ -259,9 +259,6 @@ actor FramboiseEngine {
         let medCad = moving.isEmpty ? 160.0 : moving.map(\.meanCadence).sorted()[moving.count / 2]
         let validPaces = moving.map(\.meanPaceSecPerKm).filter { $0 > 0 }.sorted()
         let medPace = validPaces.isEmpty ? 300.0 : validPaces[validPaces.count / 2]
-        let validHRs = moving.map(\.meanHR).filter { $0 > 0 }.sorted()
-        let medHR = validHRs.isEmpty ? 150.0 : validHRs[validHRs.count / 2]
-
         let p20 = validPaces.isEmpty ? medPace : validPaces[validPaces.count / 5]
         let paceCV = calculatePaceCV(bucketPaces: validPaces)
         let hasLargePaceRange = (medPace - p20) >= 30.0
@@ -270,7 +267,6 @@ actor FramboiseEngine {
         // this is deterministically a uniform/steady run. Do not segment into fake work/recovery bouts.
         let isUniformSteady = paceCV < 0.10 && (medPace - p20) < 20.0
         let surgePaceThreshold = hasLargePaceRange ? min(medPace - 30.0, p20 + 20.0) : (medPace - 20.0)
-        let surgeCadenceThreshold = hasLargePaceRange ? (medCad + 4.0) : (medCad + 2.0)
 
         var raw: [PhaseSegment] = []
         var curKind = ""
@@ -384,7 +380,7 @@ actor FramboiseEngine {
     static func consolidatePhaseSegments(_ segments: [PhaseSegment]) -> [PhaseSegment] {
         guard !segments.isEmpty else { return [] }
 
-        // Step 1: Gap bridging: merge work segments separated by brief momentary flutter (<= 15s any or <= 20s high-cadence steady)
+        // Step 1: Gap bridging: merge work segments separated by brief momentary flutter (<= 15s any) or steady compound transitions (<= 75s steady without recovery drop)
         var bridged: [PhaseSegment] = []
         for seg in segments {
             if let last = bridged.last, last.kind == "work" && seg.kind == "work" {
@@ -393,7 +389,7 @@ actor FramboiseEngine {
                       seg.kind == "work",
                       let gap = bridged.last,
                       gap.kind != "work",
-                      gap.durationSeconds <= 15.0 || (gap.kind == "steady" && gap.durationSeconds <= 20.0 && gap.avgCadence >= 156.0),
+                      gap.durationSeconds <= 15.0 || (gap.kind == "steady" && gap.durationSeconds <= 75.0),
                       bridged[bridged.count - 2].kind == "work" {
                 _ = bridged.removeLast()
                 let prev = bridged.removeLast()
@@ -408,8 +404,6 @@ actor FramboiseEngine {
         var filtered = bridged
         if workPaces.count >= 4 {
             let medWork = workPaces[workPaces.count / 2]
-            let workDurs = bridged.filter { $0.kind == "work" }.map(\.durationSeconds).sorted()
-            let medWorkDur = workDurs.isEmpty ? 60.0 : workDurs[workDurs.count / 2]
 
             filtered = bridged.map { seg in
                 if seg.kind == "work" {
