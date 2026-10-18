@@ -1,10 +1,10 @@
-# Runalyst v2.4.0 — Interactive AI Coach, Structured Runs & Primers, ACWR Readiness & Treadmill Intelligence 🏃‍♂️🧠
+# Runalyst v2.5.0 — Interactive AI Coach, Structured Runs & Primers, ACWR Readiness & Treadmill Intelligence 🏃‍♂️🧠
 
-Runalyst 2.4.0 is a milestone release delivering an on-device conversational AI Running Coach powered natively by Apple FoundationModels, a dedicated Workouts & Pre-Run Primers training hub, Acute:Chronic Workload Ratio (ACWR) readiness tracking, and indoor treadmill intelligence.
+Runalyst 2.5.0 is a milestone release delivering an on-device conversational AI Running Coach powered natively by Apple FoundationModels, a dedicated Workouts & Pre-Run Primers training hub, Acute:Chronic Workload Ratio (ACWR) readiness tracking, and indoor treadmill intelligence.
 
 ---
 
-### 🌟 What's New in v2.4.0
+### 🌟 What's New in v2.5.0
 
 #### 1. 🧠 Interactive On-Device AI Running Coach (`AnalystChatView`)
 - **Apple FoundationModels Native Tool Calling**: Pure tool-calling facade (`inspectWorkout`, `manageTrainingState`, `executeCoachAction`) giving the on-device language model direct access to deterministic Swift math and physics.
@@ -51,4 +51,4 @@ Runalyst 2.4.0 is a milestone release delivering an on-device conversational AI 
 
 ---
 
-**Full Changelog**: https://github.com/motilayo/runalyzer/compare/v2.3.0...v2.4.0
+**Full Changelog**: https://github.com/motilayo/runalyzer/compare/v2.3.0...v2.5.0
