@@ -134,11 +134,13 @@ final class SessionSynthesisEngineTests: XCTestCase {
 
     @MainActor
     func testCompletedTodayState_WhenRunLoggedToday_PromotesAndAdaptsTomorrow() {
-        let now = Date()
+        let calendar = Calendar.current
+        let now = calendar.date(bySettingHour: 15, minute: 0, second: 0, of: Date()) ?? Date()
+        let runDate = calendar.date(bySettingHour: 14, minute: 0, second: 0, of: now) ?? now.addingTimeInterval(-3600)
 
         // Runner already ran today (e.g. an indoor Fartlek)
         let todaysFartlek = makeRun(
-            date: now.addingTimeInterval(-3600), // 1 hour ago today
+            date: runDate, // 1 hour ago today
             duration: 2475.0, // 41:15
             distanceMeters: 6200.0,
             workingAvgCadence: 164.0,
