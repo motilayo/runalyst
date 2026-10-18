@@ -14,9 +14,6 @@ struct DrillsLibraryView: View {
     @AppStorage("lastWatchExportTimestamp") private var lastWatchExportTimestamp: Double = 0
     @AppStorage("lastExportedDrillId") private var lastExportedDrillId: String = ""
 
-    @State private var activeWorkoutPlan: WorkoutPlan = PreRunDrill(id: .strides).buildWorkoutPlan()
-    @State private var pendingWatchDrillDTO: DrillPrescriptionDTO?
-    @State private var isShowingWorkoutPreview: Bool = false
     @State private var activeReadoutItem: ActiveDrillReadoutItem?
     @State private var isAutoSyncing: Bool = false
     @State private var autoSyncSuccess: Bool = false
@@ -293,23 +290,13 @@ struct DrillsLibraryView: View {
                 readout: item.readout,
                 workoutPlan: item.plan,
                 prescriptionDTO: item.dto,
-                onCommitToWatch: { plan, dto in
-                    activeWorkoutPlan = plan
-                    pendingWatchDrillDTO = dto
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                        isShowingWorkoutPreview = true
-                    }
+                onCommitToWatch: { _, dto in
+                    self.lastExportedDrillId = dto.preRunDrillId ?? ""
+                    self.lastWatchExportTimestamp = Date().timeIntervalSince1970
                 }
             )
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
-        }
-        .workoutPreview(activeWorkoutPlan, isPresented: $isShowingWorkoutPreview)
-        .onChange(of: isShowingWorkoutPreview) { oldValue, newValue in
-            if oldValue && !newValue, let dto = pendingWatchDrillDTO {
-                pendingWatchDrillDTO = nil
-                scheduleDrillToWatch(dto: dto)
-            }
         }
         .background(Color(UIColor.systemGroupedBackground).ignoresSafeArea())
         .navigationTitle("🏃 Runs & Drills")

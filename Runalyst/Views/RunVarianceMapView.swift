@@ -8,6 +8,12 @@ struct RunVarianceMapView: View {
     let cadenceFloor: Double
     let averageCadence: Double
     var workoutDuration: Double?
+    var isIntervalOrDrill: Bool = true
+    var workoutType: String?
+
+    private var isRecovery: Bool {
+        workoutType == "Recovery Run"
+    }
 
     private var normalizedSegments: [PhaseSegment] {
         guard let targetDuration = workoutDuration, targetDuration > 0,
@@ -51,9 +57,9 @@ struct RunVarianceMapView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
-                Text("Workout Rhythm & Intervals")
+                Text(isIntervalOrDrill ? "Workout Rhythm & Intervals" : "Cadence Rhythm")
                     .font(.headline)
-                Text("Cadence surges, steady running, and recoveries across your run")
+                Text(isIntervalOrDrill ? "Cadence surges, steady running, and recoveries across your run" : (isRecovery ? "Gentle active recovery cadence trajectory with low mechanical strain" : "Continuous cadence trajectory across your session"))
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
@@ -65,15 +71,17 @@ struct RunVarianceMapView: View {
                     .frame(height: 120)
             } else {
                 Chart {
-                    // Background phase blocks
-                    ForEach(normalizedSegments) { seg in
-                        RectangleMark(
-                            xStart: .value("Start", seg.startSeconds / 60.0),
-                            xEnd: .value("End", seg.endSeconds / 60.0),
-                            yStart: .value("Min Y", yMin),
-                            yEnd: .value("Max Y", yMax)
-                        )
-                        .foregroundStyle(phaseColor(seg.kind).opacity(seg.kind == "work" ? 0.22 : 0.12))
+                    // Background phase blocks (only for intervals/drills)
+                    if isIntervalOrDrill {
+                        ForEach(normalizedSegments) { seg in
+                            RectangleMark(
+                                xStart: .value("Start", seg.startSeconds / 60.0),
+                                xEnd: .value("End", seg.endSeconds / 60.0),
+                                yStart: .value("Min Y", yMin),
+                                yEnd: .value("Max Y", yMax)
+                            )
+                            .foregroundStyle(phaseColor(seg.kind).opacity(seg.kind == "work" ? 0.22 : 0.12))
+                        }
                     }
 
                     // Soft gradient under the cadence line
@@ -108,69 +116,102 @@ struct RunVarianceMapView: View {
                     ForEach(normalizedSegments) { seg in
                         let midTime = (seg.startSeconds + seg.endSeconds) / 120.0
                         let cad = seg.avgCadence > 0 ? seg.avgCadence : averageCadence
+                        let isNearRightEdge = midTime >= (maxMinutes - 1.2)
+                        let isNearLeftEdge = midTime <= 0.8
+                        let annotationAlignment: Alignment = isNearRightEdge ? .trailing : (isNearLeftEdge ? .leading : .center)
+
                         PointMark(
                             x: .value("Time", midTime),
                             y: .value("Cadence", cad)
                         )
-                        .foregroundStyle(phaseColor(seg.kind))
-                        .symbolSize(seg.kind == "work" ? 76 : (seg.kind == "recovery" ? 60 : 44))
-                        .annotation(position: .top, alignment: .center) {
-                            if seg.kind == "work" {
-                                Text("\(Int(cad))")
-                                    .font(.system(size: 10, weight: .bold))
-                                    .foregroundColor(.purple)
-                                    .padding(.horizontal, 5)
-                                    .padding(.vertical, 2)
-                                    .background(Color(UIColor.secondarySystemGroupedBackground))
-                                    .clipShape(Capsule())
-                                    .shadow(color: Color.black.opacity(0.12), radius: 2)
-                            } else if seg.kind == "recovery" {
-                                Text("\(Int(cad))")
-                                    .font(.system(size: 9, weight: .bold))
-                                    .foregroundColor(.teal)
-                                    .padding(.horizontal, 4)
-                                    .padding(.vertical, 1)
-                                    .background(Color(UIColor.secondarySystemGroupedBackground))
-                                    .clipShape(Capsule())
-                                    .shadow(color: Color.black.opacity(0.12), radius: 2)
+                        .foregroundStyle(isIntervalOrDrill ? phaseColor(seg.kind) : Color.purple)
+                        .symbolSize(isIntervalOrDrill ? (seg.kind == "work" ? 76 : (seg.kind == "recovery" ? 60 : 44)) : 36)
+                        .annotation(position: .top, alignment: annotationAlignment) {
+                            if isIntervalOrDrill {
+                                if seg.kind == "work" {
+                                    Text("\(Int(cad))")
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundColor(.purple)
+                                        .padding(.horizontal, 5)
+                                        .padding(.vertical, 2)
+                                        .background(Color(UIColor.secondarySystemGroupedBackground))
+                                        .clipShape(Capsule())
+                                        .shadow(color: Color.black.opacity(0.12), radius: 2)
+                                } else if seg.kind == "recovery" {
+                                    Text("\(Int(cad))")
+                                        .font(.system(size: 9, weight: .bold))
+                                        .foregroundColor(.teal)
+                                        .padding(.horizontal, 4)
+                                        .padding(.vertical, 1)
+                                        .background(Color(UIColor.secondarySystemGroupedBackground))
+                                        .clipShape(Capsule())
+                                        .shadow(color: Color.black.opacity(0.12), radius: 2)
+                                }
                             }
                         }
                     }
 
-                    // Cadence Floor Rule (clean reference line without obstructing data)
+                    // Cadence Floor Rule (context-aware: muted for recovery runs, alert for intervals)
                     RuleMark(y: .value("Cadence Floor", cadenceFloor))
                         .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [4, 4]))
-                        .foregroundStyle(Color.red.opacity(0.80))
+                        .foregroundStyle(isRecovery ? Color.secondary.opacity(0.6) : Color.red.opacity(0.80))
                 }
                 .chartScrollableAxes(.horizontal)
-                .chartXVisibleDomain(length: min(maxMinutes, 13.0))
-                .chartXScale(domain: 0...maxMinutes)
+                .chartXVisibleDomain(length: min(maxMinutes + 1.0, 13.5))
+                .chartXScale(domain: 0...(maxMinutes + 1.0))
                 .chartYScale(domain: yMin...yMax)
                 .frame(height: 220)
 
                 // Legend
-                HStack(spacing: 10) {
-                    legendItem(color: .purple, label: "Fast / Surge")
-                    legendItem(color: .teal, label: "Recovery")
-                    legendItem(color: .blue, label: "Steady")
-                    legendItem(color: .gray, label: "Walking")
-                    HStack(spacing: 4) {
-                        HStack(spacing: 2) {
-                            Rectangle()
-                                .fill(Color.red.opacity(0.85))
-                                .frame(width: 4, height: 1.5)
-                            Rectangle()
-                                .fill(Color.red.opacity(0.85))
-                                .frame(width: 4, height: 1.5)
+                if isIntervalOrDrill {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 10) {
+                            legendItem(color: .purple, label: "Fast / Surge")
+                            legendItem(color: .teal, label: "Recovery")
+                            legendItem(color: .blue, label: "Steady")
+                            legendItem(color: .gray, label: "Walking")
+                            HStack(spacing: 4) {
+                                HStack(spacing: 2) {
+                                    Rectangle()
+                                        .fill(Color.red.opacity(0.85))
+                                        .frame(width: 4, height: 1.5)
+                                    Rectangle()
+                                        .fill(Color.red.opacity(0.85))
+                                        .frame(width: 4, height: 1.5)
+                                }
+                                Text("Floor: \(Int(cadenceFloor))")
+                                    .font(.caption2.weight(.medium))
+                                    .foregroundColor(.secondary)
+                            }
                         }
-                        Text("Floor: \(Int(cadenceFloor))")
-                            .font(.caption2.weight(.medium))
-                            .foregroundColor(.secondary)
+                        .padding(.horizontal, 1)
                     }
+                    .padding(.top, 4)
+                } else {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 12) {
+                            legendItem(color: .purple, label: "Cadence")
+                            HStack(spacing: 4) {
+                                HStack(spacing: 2) {
+                                    Rectangle()
+                                        .fill(isRecovery ? Color.secondary.opacity(0.7) : Color.red.opacity(0.85))
+                                        .frame(width: 4, height: 1.5)
+                                    Rectangle()
+                                        .fill(isRecovery ? Color.secondary.opacity(0.7) : Color.red.opacity(0.85))
+                                        .frame(width: 4, height: 1.5)
+                                }
+                                Text(isRecovery ? "Recovery Baseline (\(Int(cadenceFloor)))" : "Floor: \(Int(cadenceFloor)) SPM")
+                                    .font(.caption2.weight(.medium))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .padding(.horizontal, 1)
+                    }
+                    .padding(.top, 4)
                 }
-                .padding(.top, 4)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
         .background(Color(UIColor.secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))

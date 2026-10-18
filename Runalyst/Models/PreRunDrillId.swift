@@ -109,13 +109,13 @@ enum PreRunDrillId: String, CaseIterable, Codable, Sendable {
         if clean.contains("recovery_jog") {
             return .recoveryJog
         }
-        if clean.contains("cadence_pyramid") {
+        if clean.contains("cadence_pyramid") || clean.contains("pyramid") {
             return .cadencePyramids
         }
-        if clean.contains("rhythm_interval") {
+        if clean.contains("rhythm") {
             return .rhythmIntervals
         }
-        if clean.contains("tempo_surge") {
+        if clean.contains("tempo_surge") || clean.contains("surge") {
             return .tempoSurges
         }
         if clean.contains("stride") {
@@ -252,6 +252,10 @@ enum PreRunDrillId: String, CaseIterable, Codable, Sendable {
             return PreRunDrillId.zone2Run.correspondingClassification
         }
 
+        if let resolved = PreRunDrillId.resolve(from: clean) {
+            return resolved.correspondingClassification
+        }
+
         for drill in PreRunDrillId.allCases {
             if drill.rawValue.localizedCaseInsensitiveCompare(clean) == .orderedSame ||
                drill.title.localizedCaseInsensitiveCompare(clean) == .orderedSame {
@@ -298,6 +302,10 @@ enum PreRunDrillId: String, CaseIterable, Codable, Sendable {
            clean.localizedCaseInsensitiveCompare("zone_2_easy_aerobic_maintenance") == .orderedSame ||
            clean.localizedCaseInsensitiveCompare("Zone 2 Easy Aerobic Maintenance") == .orderedSame {
             return "Zone 2 Run"
+        }
+
+        if let resolved = PreRunDrillId.resolve(from: clean) {
+            return resolved.title
         }
 
         for drill in PreRunDrillId.allCases {

@@ -94,10 +94,14 @@ actor RunAnalyzerActor {
 
         if let base = baseline {
             let cadenceDelta = run.workingAvgCadence - base.avgCadence
-            let isSubFloor = run.workingAvgCadence < 150.0
+            let isRecoveryRun = run.detectedTypeRaw == "Recovery Run" || (run.percentZone4 <= 0.02 && run.workingAvgHeartRate > 0 && run.workingAvgHeartRate <= 135)
+            let effectiveFloor = isRecoveryRun ? 140.0 : 150.0
+            let isSubFloor = run.workingAvgCadence < effectiveFloor
             let isCadenceImproved = (cadenceDelta >= 0 || run.workingAvgCadence >= 170) && !isSubFloor
             let cadenceSummary: String
-            if isSubFloor {
+            if isRecoveryRun {
+                cadenceSummary = "Cadence averaged \(Int(run.workingAvgCadence)) SPM during this active recovery session. Effort and heart rate were kept low to flush fatigue without mechanical strain."
+            } else if isSubFloor {
                 cadenceSummary = "Cadence was \(Int(run.workingAvgCadence)) SPM (BELOW the 150 SPM floor). Turnover is slow with prolonged ground contact; DO NOT praise form or turnover precision."
             } else if isCadenceImproved {
                 if run.workingAvgCadence >= 170 && cadenceDelta < 0 {

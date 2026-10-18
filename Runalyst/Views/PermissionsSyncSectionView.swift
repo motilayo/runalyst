@@ -88,9 +88,22 @@ struct PermissionsSyncSectionView: View {
                 }
             }
             .alert("WorkoutKit Handoff", isPresented: $showWorkoutKitSettingsAlert) {
-                Button("OK", role: .cancel) {}
+                if workoutKitAuthStatus == "Denied" {
+                    Button("Open Settings") {
+                        if let url = URL(string: UIApplication.openSettingsURLString) {
+                            UIApplication.shared.open(url)
+                        }
+                    }
+                    Button("Cancel", role: .cancel) {}
+                } else {
+                    Button("OK", role: .cancel) {}
+                }
             } message: {
-                Text("WorkoutKit permission is already \(workoutKitAuthStatus.lowercased()) on this device.")
+                if workoutKitAuthStatus == "Denied" {
+                    Text("WorkoutKit permission is currently denied. To enable sending drills directly to your Apple Watch, please enable WorkoutKit in your iOS Settings.")
+                } else {
+                    Text("WorkoutKit permission is already \(workoutKitAuthStatus.lowercased()) on this device.")
+                }
             }
         }
         .task {

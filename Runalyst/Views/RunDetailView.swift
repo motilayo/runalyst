@@ -115,8 +115,21 @@ struct RunDetailView: View {
     private var formattedRunDate: String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "EEEE, MMM d, yyyy 'at' hh:mm a"
+        formatter.dateFormat = "EEEE, MMM d, yyyy"
         return formatter.string(from: runRecord.date)
+    }
+
+    private var formattedRunTimeRange: String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "h:mm a"
+        let startStr = formatter.string(from: runRecord.date)
+        if runRecord.duration > 0 {
+            let endDate = runRecord.date.addingTimeInterval(runRecord.duration)
+            let endStr = formatter.string(from: endDate)
+            return "\(startStr) – \(endStr)"
+        }
+        return startStr
     }
 
     private let classificationOptions = [
@@ -205,8 +218,12 @@ struct RunDetailView: View {
         var components: [String] = []
 
         // 1. Cadence & Biomechanics
+        let isRecovery = runRecord.detectedTypeRaw == "Recovery Run" || (runRecord.percentZone4 <= 0.02 && runRecord.workingAvgHeartRate > 0 && runRecord.workingAvgHeartRate <= 135)
+        let effectiveFloor = isRecovery ? max(138, floor - 10) : floor
         if cad > 0 {
-            if cad >= floor {
+            if isRecovery {
+                components.append("Turnover averaged \(cad) SPM with relaxed, low-impact stride mechanics, ideal for active recovery and flushing fatigue.")
+            } else if cad >= effectiveFloor {
                 components.append("Turnover averaged \(cad) SPM, safely above your \(floor) SPM mechanical floor. This cadence helps keep foot strikes underneath your hips and cushions joint impact\(isIndoor ? " on the treadmill belt" : "").")
             } else {
                 components.append("Turnover averaged \(cad) SPM, dipping below your \(floor) SPM mechanical floor. Increasing step rate will shorten your stride and cushion joint landing\(isIndoor ? " on the moving belt" : "").")
@@ -266,23 +283,22 @@ struct RunDetailView: View {
                 .padding(.vertical, 2)
             } else {
                 VStack(alignment: .leading, spacing: 8) {
-                    if let insight = runRecord.insight, !insight.longitudinalObservation.isEmpty || !insight.headline.isEmpty {
-                        if !insight.headline.isEmpty {
-                            Text(insight.headline)
-                                .font(.headline)
-                                .foregroundColor(.primary)
-                        }
-                        if !insight.longitudinalObservation.isEmpty {
-                            Text(insight.longitudinalObservation)
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                                .lineSpacing(2)
-                        } else if let groundedSummary = deterministicRunAnalysisSummary {
-                            Text(groundedSummary)
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                                .lineSpacing(2)
-                        }
+                    if let insight = runRecord.insight, !insight.headline.isEmpty {
+                        Text(insight.headline)
+                            .font(.headline)
+                            .foregroundColor(.primary)
+                    }
+
+                    if let groundedSummary = deterministicRunAnalysisSummary {
+                        Text(groundedSummary)
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                            .lineSpacing(2)
+                    } else if let insight = runRecord.insight, !insight.longitudinalObservation.isEmpty {
+                        Text(insight.longitudinalObservation)
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                            .lineSpacing(2)
                     } else if isGeneratingInsight {
                         AnimatedLoadingView(
                             text: "Generating AI insight...",
@@ -293,11 +309,6 @@ struct RunDetailView: View {
                         )
                         .foregroundColor(.secondary)
                         .padding(.vertical, 8)
-                    } else if let groundedSummary = deterministicRunAnalysisSummary {
-                        Text(groundedSummary)
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                            .lineSpacing(2)
                     }
                 }
             }
@@ -338,6 +349,7 @@ struct RunDetailView: View {
                 .stroke(Color(UIColor.separator).opacity(0.15), lineWidth: 0.5)
         )
         .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
+        .id("aiAnalysisCard")
         .task {
             if !hasBiometrics, let oldInsight = runRecord.insight {
                 modelContext.delete(oldInsight)
@@ -367,24 +379,43 @@ struct RunDetailView: View {
     @ViewBuilder
     private var workoutRhythmTimeline: some View {
         if !showRawMetrics, let segments = runRecord.signature?.phaseSegments, !segments.isEmpty {
+            let isIntervalOrDrill: Bool = {
+                if effectiveScorecardDrillId != nil { return true }
+                if runRecord.evaluationModality == .intervals { return true }
+                let type = runRecord.detectedTypeRaw
+                return type == "Intervals" || type == "Fartlek" || type == "Pyramids" || type == "Hill Repeats"
+            }()
+            let isRecovery = runRecord.detectedTypeRaw == "Recovery Run" || (runRecord.percentZone4 <= 0.02 && runRecord.workingAvgHeartRate > 0 && runRecord.workingAvgHeartRate <= 135)
+            let effectiveFloor = isRecovery ? min(runRecord.signature?.cadenceFloor ?? 150.0, 142.0) : (runRecord.signature?.cadenceFloor ?? 150.0)
+
             RunVarianceMapView(
                 phaseSegments: segments,
-                cadenceFloor: runRecord.signature?.cadenceFloor ?? 150.0,
+                cadenceFloor: effectiveFloor,
                 averageCadence: runRecord.workingAvgCadence,
-                workoutDuration: runRecord.duration
+                workoutDuration: runRecord.duration,
+                isIntervalOrDrill: isIntervalOrDrill,
+                workoutType: runRecord.detectedTypeRaw
             )
+            .id("workoutRhythmChart")
         }
     }
 
     @ViewBuilder
     private var performanceAndAnalysisSection: some View {
-        if let drillId = effectiveScorecardDrillId {
+        let isRecovery = runRecord.detectedTypeRaw == "Recovery Run" || (runRecord.percentZone4 <= 0.02 && runRecord.workingAvgHeartRate > 0 && runRecord.workingAvgHeartRate <= 135 && runRecord.duration >= 600)
+        let resolvedDrillId: PreRunDrillId? = {
+            if let drillId = effectiveScorecardDrillId { return drillId }
+            if isRecovery { return .aerobicFlush }
+            return nil
+        }()
+
+        if let drillId = resolvedDrillId {
             let scorecard = DrillExecutionScorecard(
                 runRecord: runRecord,
                 drillId: drillId,
                 baselineCadence: baselineCadence,
                 baselineOscillation: baselineOscillation,
-                customTitle: "Drill Performance"
+                customTitle: isRecovery && prescribedDrillName == nil ? "Recovery Performance" : "Drill Performance"
             )
             if horizontalSizeClass == .regular {
                 HStack(alignment: .top, spacing: 16) {
@@ -443,10 +474,16 @@ struct RunDetailView: View {
             ScrollView {
                 VStack(spacing: 20) {
                 // Formatted run date header
-                HStack {
-                    Text(formattedRunDate)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundColor(.secondary)
+                HStack(alignment: .center) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(formattedRunDate)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundColor(.secondary)
+
+                        Text(formattedRunTimeRange)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundColor(.secondary)
+                    }
 
                     Spacer()
 
@@ -869,95 +906,51 @@ struct RunDetailView: View {
                 .padding(.horizontal)
                 .id("metricsGrid")
 
-                // MARK: Drills Section
+                // MARK: Drills Section (Only on runs <= 7 days old)
                 let isOlderThan7Days = (Calendar.current.dateComponents([.day], from: runRecord.date, to: Date()).day ?? 0) > 7
+                let hasBiometrics = runRecord.workingAvgCadence > 0 || runRecord.workingAvgHeartRate > 0
 
-                if isOlderThan7Days {
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack {
-                            Text("Pre-Run Drills")
-                                .font(.headline)
-                                .foregroundColor(.primary)
-                            Spacer()
-                        }
-
-                        VStack(spacing: 12) {
-                            HStack(spacing: 12) {
-                                Image(systemName: "figure.run.circle.fill")
-                                    .font(.system(size: 32))
-                                    .foregroundColor(.accentColor)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("Drills Library")
-                                        .font(.subheadline.bold())
-                                    Text("Drill recommendations are tailored for recent runs. Explore all pre-run technique drills in the library.")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                }
-                                Spacer()
-                            }
-
-                            NavigationLink(destination: DrillsLibraryView()) {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "list.bullet.rectangle.portrait.fill")
-                                    Text("View All Drills")
-                                }
-                                .font(.subheadline.bold())
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 14)
-                                .background(Color.accentColor)
-                                .foregroundColor(.white)
-                                .clipShape(RoundedRectangle(cornerRadius: 12))
-                            }
-                        }
-                        .padding()
-                        .background(Color(UIColor.secondarySystemGroupedBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                .stroke(Color(UIColor.separator).opacity(0.15), lineWidth: 0.5)
-                        )
-                        .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
-                    }
-                    .padding(.horizontal)
-                    .padding(.top, 12)
-                } else if let insight = runRecord.insight {
-                    if let drills = insight.drillRecommendations, !drills.isEmpty {
-                        VStack(alignment: .leading, spacing: 12) {
-                            HStack {
-                                Text("Recommended Drills")
-                                    .font(.headline)
-                                    .foregroundColor(.primary)
-                                Spacer()
-                                NavigationLink(destination: DrillsLibraryView()) {
-                                    HStack(spacing: 2) {
-                                        Text("All Drills")
-                                        Image(systemName: "chevron.right")
+                if !isOlderThan7Days {
+                    if let insight = runRecord.insight {
+                        if let drills = insight.drillRecommendations, !drills.isEmpty {
+                            VStack(alignment: .leading, spacing: 12) {
+                                HStack {
+                                    Text("Recommended Drills")
+                                        .font(.headline)
+                                        .foregroundColor(.primary)
+                                    Spacer()
+                                    NavigationLink(destination: DrillsLibraryView()) {
+                                        HStack(spacing: 2) {
+                                            Text("All Drills")
+                                            Image(systemName: "chevron.right")
+                                        }
+                                        .font(.caption.bold())
+                                        .foregroundColor(.accentColor)
                                     }
-                                    .font(.caption.bold())
-                                    .foregroundColor(.accentColor)
                                 }
-                            }
-                            .padding(.horizontal)
+                                .padding(.horizontal)
 
-                            DrillDeckView(drills: drills)
+                                DrillDeckView(drills: drills)
+                            }
+                            .padding(.top, 12)
                         }
-                        .padding(.top, 12)
+                    } else if hasBiometrics {
+                        AnimatedLoadingView(
+                            text: "Generating Coaching Insight...",
+                            isHorizontal: false,
+                            imageSize: 60,
+                            textFont: .subheadline,
+                            textColor: .secondary,
+                            iconColor: .purple,
+                            spacing: 20
+                        )
+                        .multilineTextAlignment(.center)
+                        .frame(minHeight: 1)
+                        .padding(32)
                     }
-                } else {
-                    AnimatedLoadingView(
-                        text: "Generating Coaching Insight...",
-                        isHorizontal: false,
-                        imageSize: 60,
-                        textFont: .subheadline,
-                        textColor: .secondary,
-                        iconColor: .purple,
-                        spacing: 20
-                    )
-                    .multilineTextAlignment(.center)
-                    .frame(minHeight: 1)
-                    .padding(32)
                 }
             }
+            .frame(maxWidth: .infinity)
             .padding(.vertical)
 
             .task(id: runRecord.id) {
@@ -976,7 +969,14 @@ struct RunDetailView: View {
                 // ONLY if the run has NO drill assigned yet and user hasn't manually linked or unlinked one
                 if prescribedDrillName == nil && !runRecord.framboiseTags.contains("userLinkedDrill") && !runRecord.framboiseTags.contains("userUnlinkedDrill") {
                     if let workout = try? await HealthKitManager.shared.fetchWorkout(with: runRecord.hkWorkoutID) {
-                        let matched = WorkoutBridge.matchDrill(workout: workout, durationSeconds: runRecord.duration)
+                        let buckets = (try? await HealthKitManager.shared.fetchBucketedSamples(for: workout)) ?? []
+                        let baseline = runRecord.computeHistoricalBaselineCadence().map(Int.init)
+                        let matched = WorkoutBridge.matchDrill(
+                            workout: workout,
+                            durationSeconds: runRecord.duration,
+                            buckets: buckets,
+                            baselineCadence: baseline
+                        )
                         if let matched = matched {
                             let canonical = PreRunDrillId.canonicalDrillTitle(for: matched.drillTitle) ?? matched.drillTitle
                             let drillTag = "drill:\(canonical)"
@@ -994,6 +994,30 @@ struct RunDetailView: View {
                                runRecord.detectedTypeRaw != parentClass {
                                 runRecord.detectedTypeRaw = parentClass
                             }
+
+                            if let drillId = PreRunDrillId(rawValue: matched.preRunDrillId ?? "")
+                                ?? PreRunDrillId.allCases.first(where: { $0.title == matched.drillTitle }) {
+                                let thirtyDayCadence = baseline ?? Int(runRecord.workingAvgCadence > 0 ? runRecord.workingAvgCadence : 155)
+                                let oscDelta = (runRecord.workingAvgVerticalOscillation ?? 9.5) - 9.5
+                                let intervalSummary = DrillIntervalEvaluator.evaluate(
+                                    workout: workout,
+                                    buckets: buckets,
+                                    drillId: drillId,
+                                    baselineCadence: thirtyDayCadence,
+                                    workoutDuration: runRecord.duration,
+                                    oscDelta: oscDelta
+                                )
+                                runRecord.framboiseTags.removeAll {
+                                    $0.hasPrefix("drillIntervals:") ||
+                                    $0.hasPrefix("drillWorkCadence:") ||
+                                    $0.hasPrefix("drillRecCadence:") ||
+                                    $0.hasPrefix("drillReps:")
+                                }
+                                for tag in intervalSummary.framboiseTags where !runRecord.framboiseTags.contains(tag) {
+                                    runRecord.framboiseTags.append(tag)
+                                }
+                            }
+
                             try? modelContext.save()
                         }
                     }
@@ -1027,6 +1051,9 @@ struct RunDetailView: View {
         .background(Color(UIColor.systemGroupedBackground).ignoresSafeArea())
         .navigationTitle("Run Details")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.regularMaterial, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+        .toolbar(.hidden, for: .tabBar)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
@@ -1047,7 +1074,18 @@ struct RunDetailView: View {
             normalizeDrillClassification()
         }
         .task {
-            if ProcessInfo.processInfo.environment["RUNALYST_PREVIEW_SCREEN"] == "AUTO_TOUR" {
+            let previewScroll = ProcessInfo.processInfo.environment["RUNALYST_PREVIEW_SCROLL"]
+            if previewScroll == "CHART" {
+                try? await Task.sleep(nanoseconds: 600_000_000)
+                withAnimation(.easeInOut(duration: 0.5)) {
+                    scrollProxy.scrollTo("workoutRhythmChart", anchor: .top)
+                }
+            } else if previewScroll == "BOTTOM" {
+                try? await Task.sleep(nanoseconds: 600_000_000)
+                withAnimation(.easeInOut(duration: 0.5)) {
+                    scrollProxy.scrollTo("aiAnalysisCard", anchor: .top)
+                }
+            } else if ProcessInfo.processInfo.environment["RUNALYST_PREVIEW_SCREEN"] == "AUTO_TOUR" {
                 Task {
                     try? await Task.sleep(nanoseconds: 3_500_000_000)
                     withAnimation(.easeInOut(duration: 2.2)) {

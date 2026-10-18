@@ -52,6 +52,84 @@ final class DrillPatternRecognitionTests: XCTestCase {
         XCTAssertEqual(match?.detectedIntervalCount, 5)
     }
 
+    func testRhythmIntervalsFloatRecoveryPatternDetection() {
+        var buckets: [BucketData] = []
+        var t: Double = 0
+
+        // Warmup: 120s at 150 SPM
+        for _ in 0..<8 {
+            buckets.append(createBucket(offsetSeconds: t, cadence: 150.0, hr: 135.0))
+            t += 15.0
+        }
+
+        // 4 reps (10 min drill): 30s work at 158 SPM (+8 above 150 baseline), 45s easy jog float recovery at 149 SPM (-1 below baseline)
+        for _ in 0..<4 {
+            for _ in 0..<2 { // 30s
+                buckets.append(createBucket(offsetSeconds: t, cadence: 158.0, hr: 155.0))
+                t += 15.0
+            }
+            for _ in 0..<3 { // 45s
+                buckets.append(createBucket(offsetSeconds: t, cadence: 149.0, hr: 140.0))
+                t += 15.0
+            }
+        }
+
+        // Cooldown: 60s at 148 SPM
+        for _ in 0..<4 {
+            buckets.append(createBucket(offsetSeconds: t, cadence: 148.0, hr: 132.0))
+            t += 15.0
+        }
+
+        let match = DrillPatternRecognizer.recognizeDrill(
+            buckets: buckets,
+            baselineCadence: 150,
+            workoutDuration: t
+        )
+
+        XCTAssertNotNil(match, "Rhythm Intervals with float recovery (9 SPM contrast) must be recognized")
+        XCTAssertEqual(match?.drillId, .rhythmIntervals)
+        XCTAssertEqual(match?.detectedIntervalCount, 4)
+    }
+
+    func testRhythmIntervalsFiveMinutesThreeRepsDetection() {
+        var buckets: [BucketData] = []
+        var t: Double = 0
+
+        // Warmup: 60s at 150 SPM
+        for _ in 0..<4 {
+            buckets.append(createBucket(offsetSeconds: t, cadence: 150.0, hr: 130.0))
+            t += 15.0
+        }
+
+        // 3 reps (5 min drill): 30s work at 162 SPM, 30s float recovery at 151 SPM
+        for _ in 0..<3 {
+            for _ in 0..<2 { // 30s
+                buckets.append(createBucket(offsetSeconds: t, cadence: 162.0, hr: 154.0))
+                t += 15.0
+            }
+            for _ in 0..<2 { // 30s
+                buckets.append(createBucket(offsetSeconds: t, cadence: 151.0, hr: 138.0))
+                t += 15.0
+            }
+        }
+
+        // Cooldown: 30s at 148 SPM
+        for _ in 0..<2 {
+            buckets.append(createBucket(offsetSeconds: t, cadence: 148.0, hr: 130.0))
+            t += 15.0
+        }
+
+        let match = DrillPatternRecognizer.recognizeDrill(
+            buckets: buckets,
+            baselineCadence: 152,
+            workoutDuration: t
+        )
+
+        XCTAssertNotNil(match, "5-minute 3-rep Rhythm Intervals must be recognized")
+        XCTAssertEqual(match?.drillId, .rhythmIntervals)
+        XCTAssertEqual(match?.detectedIntervalCount, 3)
+    }
+
     func testCadencePyramidsPatternDetection() {
         var buckets: [BucketData] = []
         var t: Double = 0
@@ -387,5 +465,40 @@ final class DrillPatternRecognitionTests: XCTestCase {
         XCTAssertNotNil(match, "15-minute Tempo Surges (3 x 120s) must be recognized")
         XCTAssertEqual(match?.drillId, .tempoSurges)
         XCTAssertEqual(match?.detectedIntervalCount, 3)
+    }
+
+    func testRhythmIntervalsWithSlowWarmupAndFloatRecovery() {
+        var buckets: [BucketData] = []
+        var t: Double = 0
+
+        // Slow warmup: 60s at 126 SPM
+        for _ in 0..<4 {
+            buckets.append(createBucket(offsetSeconds: t, cadence: 126.0, hr: 120.0))
+            t += 15.0
+        }
+
+        // 5 reps: 45s work at 163 SPM, 75s easy jog float recovery at 157 SPM
+        for _ in 0..<5 {
+            for _ in 0..<3 { // 45s work
+                buckets.append(createBucket(offsetSeconds: t, cadence: 163.0, hr: 160.0))
+                t += 15.0
+            }
+            for _ in 0..<5 { // 75s float recovery
+                buckets.append(createBucket(offsetSeconds: t, cadence: 157.0, hr: 142.0))
+                t += 15.0
+            }
+        }
+
+        let match = DrillPatternRecognizer.recognizeDrill(
+            buckets: buckets,
+            baselineCadence: 154,
+            workoutDuration: t
+        )
+
+        XCTAssertNotNil(match, "Rhythm Intervals with 126 SPM slow warmup and 157 SPM float recovery must be autonomously recognized")
+        XCTAssertEqual(match?.drillId, .rhythmIntervals)
+        XCTAssertEqual(match?.detectedIntervalCount, 5)
+        XCTAssertEqual(match?.avgWorkCadence, 163)
+        XCTAssertEqual(match?.avgRecoveryCadence, 157)
     }
 }

@@ -12,9 +12,6 @@ struct ProactiveCoachCard: View {
     @AppStorage("lastWatchExportTimestamp") private var lastWatchExportTimestamp: Double = 0
     @AppStorage("lastExportedDrillId") private var lastExportedDrillId: String = ""
 
-    @State private var isShowingWorkoutPreview: Bool = false
-    @State private var activeWorkoutPlan: WorkoutPlan = PreRunDrill(id: .strides).buildWorkoutPlan()
-    @State private var pendingWatchDrillDTO: DrillPrescriptionDTO?
     @State private var activeReadoutItem: ActiveDrillReadoutItem?
 
     var body: some View {
@@ -108,8 +105,8 @@ struct ProactiveCoachCard: View {
                     return "Target: Zone 2 HR"
                 }
                 if let target = adaptedTarget.targetCadence, let base = baseCadence {
-                    if adaptedTarget.isCadenceRelaxed, let std = adaptedTarget.standardTargetCadence {
-                        return "Target: \(target) SPM (Relaxed from \(std))"
+                    if adaptedTarget.isCadenceRelaxed {
+                        return "Target: \(target) SPM (Adapted)"
                     } else {
                         return "Target: \(target) SPM (\(timeRange) Baseline: \(base) SPM)"
                     }
@@ -176,23 +173,13 @@ struct ProactiveCoachCard: View {
                 readout: item.readout,
                 workoutPlan: item.plan,
                 prescriptionDTO: item.dto,
-                onCommitToWatch: { plan, dto in
-                    activeWorkoutPlan = plan
-                    pendingWatchDrillDTO = dto
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                        isShowingWorkoutPreview = true
-                    }
+                onCommitToWatch: { _, dto in
+                    self.lastWatchExportTimestamp = Date().timeIntervalSince1970
+                    self.lastExportedDrillId = dto.preRunDrillId ?? ""
                 }
             )
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
-        }
-        .workoutPreview(activeWorkoutPlan, isPresented: $isShowingWorkoutPreview)
-        .onChange(of: isShowingWorkoutPreview) { oldValue, newValue in
-            if oldValue && !newValue, let dto = pendingWatchDrillDTO {
-                pendingWatchDrillDTO = nil
-                scheduleDashboardDrillToWatch(dto: dto)
-            }
         }
     }
 
@@ -207,23 +194,5 @@ struct ProactiveCoachCard: View {
         )
         let readiness = ReadinessEvaluator.assess(runRecords: runRecords)
         activeReadoutItem = ActiveDrillReadoutItem.adaptive(dto: standardDTO, readiness: readiness)
-    }
-
-    private func scheduleDashboardDrillToWatch(dto: DrillPrescriptionDTO) {
-        Task {
-            if #available(iOS 17.0, *) {
-                do {
-                    let bridge = WorkoutBridge()
-                    try await bridge.scheduleDrill(dto: dto)
-                    await MainActor.run {
-                        self.lastWatchExportTimestamp = Date().timeIntervalSince1970
-                        self.lastExportedDrillId = dto.preRunDrillId ?? ""
-                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    }
-                } catch {
-                    print("[DashboardView] Failed to schedule drill: \(error.localizedDescription)")
-                }
-            }
-        }
     }
 }

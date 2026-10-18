@@ -154,6 +154,18 @@ extension WorkoutAnalysisContext {
             ? "unreliable_sensor_artifact (resting/cadence-lock HR < 85 BPM detected; heart rate metrics omitted from payload)"
             : "reliable"
 
+        let metricExplainers = CoachingAssetLibrary.selectExplainers(
+            features: CoachingAssetLibrary.WorkoutFeatureSet(
+                isIndoor: isIndoor,
+                hasCardiacDrift: hasCardiacDrift,
+                hasEfficiencyFactor: efficiencyFactor != nil,
+                hasVerticalOscillation: (runRecord.workingAvgVerticalOscillation ?? runRecord.rawAvgVerticalOscillation) != nil,
+                hasGroundContactTime: false,
+                hasStrideLength: (runRecord.workingAvgStrideLength ?? runRecord.rawAvgStrideLength) != nil,
+                isIntervals: isIntervals
+            )
+        )
+
         return UnifiedWorkoutToolResponse(
             schema_name: "UNIFIED_WORKOUT_TOOL_RESPONSE",
             workout_type: detectedType,
@@ -169,7 +181,8 @@ extension WorkoutAnalysisContext {
             physiological_verdicts: physiologicalVerdicts.promptDescription,
             heart_rate_confidence: hrConfidence,
             heart_rate_status: hrStatus,
-            duration_summary: "Total elapsed time: \(durMin) minutes"
+            duration_summary: "Total elapsed time: \(durMin) minutes",
+            metric_explainers: metricExplainers
         )
     }
 

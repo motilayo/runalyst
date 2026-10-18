@@ -22,8 +22,10 @@ struct ContentView: View {
     @State private var syncError: String?
     @State private var showError = false
 
+    @AppStorage("selectedTab") private var selectedTab: Int = 0
+
     private var previewScreen: String? {
-        ProcessInfo.processInfo.environment["RUNALYST_PREVIEW_SCREEN"]
+        UserDefaults.standard.string(forKey: "RUNALYST_PREVIEW_SCREEN") ?? ProcessInfo.processInfo.environment["RUNALYST_PREVIEW_SCREEN"]
     }
 
     var body: some View {
@@ -31,12 +33,40 @@ struct ContentView: View {
             if let previewScreen {
                 PreviewRouterView(previewScreen: previewScreen, existingRuns: existingRuns)
             } else if hasCompletedOnboarding {
-                DashboardView(onSync: { force in
-                    await syncData(force: force)
-                })
+                TabView(selection: $selectedTab) {
+                    DashboardView(onSync: { force in
+                        await syncData(force: force)
+                    })
+                    .tabItem {
+                        Label("Dashboard", systemImage: "square.grid.2x2.fill")
+                    }
+                    .tag(0)
+
+                    WorkoutsView()
+                        .tabItem {
+                            Label("Workouts", systemImage: "figure.run")
+                        }
+                        .tag(1)
+
+                    AnalysisDashboardView()
+                        .tabItem {
+                            Label("Analysis", systemImage: "chart.bar.fill")
+                        }
+                        .tag(2)
+
+                    NavigationStack {
+                        SettingsView(onForceSync: { force in
+                            await syncData(force: force)
+                        })
+                    }
+                    .tabItem {
+                        Label("Settings", systemImage: "gearshape.fill")
+                    }
+                    .tag(3)
+                }
                 .task {
                     guard NSClassFromString("XCTestCase") == nil else { return }
-                     Task {
+                    Task {
                         await syncData()
                     }
 
@@ -166,8 +196,9 @@ struct ContentView: View {
                     )
                 }
 
-            // 3. Extract and insert new runs incrementally (newest first)
-            let sortedNewWorkouts = newWorkouts.sorted { $0.startDate > $1.startDate }
+            // 3. Extract and insert new runs incrementally (oldest to newest)
+            // Chronological order ensures trailing 30-day baselines are available for accurate classification.
+            let sortedNewWorkouts = newWorkouts.sorted { $0.startDate < $1.startDate }
             if !sortedNewWorkouts.isEmpty {
                 logger.info("Found \(sortedNewWorkouts.count) new workouts to sync.")
                 if sortedNewWorkouts.count > 5 {
@@ -222,10 +253,20 @@ struct ContentView: View {
                             )
                             if let openDrills = try? modelContext.fetch(openDrillsDescriptor) {
                                 for drill in openDrills {
+                                    let resolvedDrillId = drill.preRunDrillId.flatMap(PreRunDrillId.init(rawValue:))
+                                        ?? PreRunDrillId.resolve(from: drill.drillTitle)
                                     let matchesId = drill.preRunDrillId.map { dto.framboiseTags.contains($0) } ?? false
                                     let matchesTag = dto.framboiseTags.contains("drill:\(drill.drillTitle)")
                                     let matchesTitle = drill.drillTitle.localizedCaseInsensitiveCompare(dto.detectedTypeRaw) == .orderedSame
-                                    if matchesTitle || matchesId || matchesTag {
+                                    let matchesResolved: Bool = {
+                                        guard let rId = resolvedDrillId else { return false }
+                                        return dto.framboiseTags.contains(rId.rawValue) ||
+                                               dto.framboiseTags.contains("drill:\(rId.title)") ||
+                                               dto.framboiseTags.contains("drill:\(rId.rawValue)") ||
+                                               dto.detectedTypeRaw.localizedCaseInsensitiveCompare(rId.title) == .orderedSame ||
+                                               dto.detectedTypeRaw.localizedCaseInsensitiveCompare(rId.correspondingClassification) == .orderedSame
+                                    }()
+                                    if matchesTitle || matchesId || matchesTag || matchesResolved {
                                         drill.isCompleted = true
                                         logger.info("Auto-completed prescribed drill recommendation: \(drill.drillTitle)")
                                     }
@@ -334,10 +375,18 @@ struct ContentView: View {
         } catch is CancellationError {
             logger.info("Sync data task cancelled.")
         } catch {
-            logger.error("Failed to sync data: \(error.localizedDescription)")
-            await MainActor.run {
-                self.syncError = error.localizedDescription
-                self.showError = true
+            let nsError = error as NSError
+            let isAuthNotDetermined = (error as? HKError)?.code == .errorAuthorizationNotDetermined ||
+                                      (nsError.domain == HKErrorDomain && nsError.code == HKError.Code.errorAuthorizationNotDetermined.rawValue) ||
+                                      error.localizedDescription.localizedCaseInsensitiveContains("Authorization not determined")
+            if isAuthNotDetermined {
+                logger.info("HealthKit authorization not yet determined; skipping sync error alert.")
+            } else {
+                logger.error("Failed to sync data: \(error.localizedDescription)")
+                await MainActor.run {
+                    self.syncError = error.localizedDescription
+                    self.showError = true
+                }
             }
         }
     }

@@ -63,16 +63,16 @@ struct DrillSchedule: Sendable, Equatable {
         switch durationCategory {
         case .fiveMinutes:
             minDuration = 180.0  // 3 min
-            maxDuration = 480.0  // 8 min
+            maxDuration = 600.0  // 10 min
         case .tenMinutes:
             minDuration = 360.0  // 6 min
-            maxDuration = drillId == .tempoSurges ? 1500.0 : 840.0  // 14 min (up to 25 min for tempo surges)
+            maxDuration = drillId == .tempoSurges ? 1500.0 : 1200.0  // 20 min (up to 25 min for tempo surges)
         case .fifteenMinutes:
-            minDuration = 720.0  // 12 min
-            maxDuration = drillId == .tempoSurges ? 1800.0 : 1320.0 // 22 min (up to 30 min for tempo surges)
+            minDuration = 600.0  // 10 min
+            maxDuration = drillId == .tempoSurges ? 1800.0 : 1680.0 // 28 min (up to 30 min for tempo surges)
         case .thirtyMinutes:
-            minDuration = 1380.0 // 23 min
-            maxDuration = drillId == .tempoSurges ? 2700.0 : 2400.0 // 40 min (up to 45 min for tempo surges)
+            minDuration = 1200.0 // 20 min
+            maxDuration = drillId == .tempoSurges ? 2700.0 : 2520.0 // 42 min (up to 45 min for tempo surges)
         }
         guard workoutDuration >= minDuration && workoutDuration <= maxDuration else {
             return false

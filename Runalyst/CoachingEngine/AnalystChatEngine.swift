@@ -12,6 +12,8 @@ struct AnalystChatMessage: Identifiable, Equatable {
     let text: String
     let timestamp: Date
     let attachedDrillId: PreRunDrillId?
+    let attachedSession: PrescribedDailySession?
+    let attachedExplainerKey: String?
 
     enum MessageSender: Equatable {
         case user
@@ -23,17 +25,29 @@ struct AnalystChatMessage: Identifiable, Equatable {
         sender: MessageSender,
         text: String,
         timestamp: Date = Date(),
-        attachedDrillId: PreRunDrillId? = nil
+        attachedDrillId: PreRunDrillId? = nil,
+        attachedSession: PrescribedDailySession? = nil,
+        attachedExplainerKey: String? = nil
     ) {
         self.id = id
         self.sender = sender
         self.text = text
         self.timestamp = timestamp
         self.attachedDrillId = attachedDrillId
+        self.attachedSession = attachedSession
+        self.attachedExplainerKey = attachedExplainerKey
     }
 }
 
 typealias AnalystChatSender = AnalystChatMessage.MessageSender
+
+/// Defines the scope and framing of an AI Analyst conversation.
+enum AnalystChatMode: Equatable, Sendable {
+    /// Anchored to inspecting a specific historical workout.
+    case runInspection
+    /// Anchored globally as the athlete's macro running & recovery coach.
+    case macroCoach
+}
 
 /// Actor managing the interactive RAG Analyst Chat session with FoundationModels and strict operational guardrails.
 @MainActor
@@ -41,14 +55,19 @@ class AnalystChatEngine: ObservableObject {
     @Published var messages: [AnalystChatMessage] = []
     @Published var isResponding: Bool = false
 
+    private let mode: AnalystChatMode
     private let runSignature: RunSignature?
     private let macroProfile: MacroProfile?
     private let runRecord: RunRecord
 
     #if canImport(FoundationModels)
     private var modelSession: Any? // LanguageModelSession on iOS 26+
-    /// Tracks a drill or session card recommended during the active conversation turn.
+    /// Tracks a drill recommended during the active conversation turn.
     var drillRecommendedThisTurn: PreRunDrillId?
+    /// Tracks a prescribed daily session recommended during the active conversation turn.
+    var sessionRecommendedThisTurn: PrescribedDailySession?
+    /// Tracks an interactive explainer card recommended during the active conversation turn.
+    var explainerRecommendedThisTurn: String?
     #endif
 
     #if DEBUG
@@ -77,8 +96,14 @@ class AnalystChatEngine: ObservableObject {
         )
     }
 
-    init(runRecord: RunRecord, runSignature: RunSignature? = nil, macroProfile: MacroProfile? = nil) {
+    init(
+        runRecord: RunRecord,
+        mode: AnalystChatMode = .runInspection,
+        runSignature: RunSignature? = nil,
+        macroProfile: MacroProfile? = nil
+    ) {
         self.runRecord = runRecord
+        self.mode = mode
         self.runSignature = runSignature ?? runRecord.signature
         self.macroProfile = macroProfile ?? MacroProfile.load()
     }
@@ -95,6 +120,8 @@ class AnalystChatEngine: ObservableObject {
         #if canImport(FoundationModels)
         if #available(iOS 26.0, *) {
             self.drillRecommendedThisTurn = nil
+            self.sessionRecommendedThisTurn = nil
+            self.explainerRecommendedThisTurn = nil
         }
         #endif
 
@@ -107,7 +134,7 @@ class AnalystChatEngine: ObservableObject {
             if let responder = modelResponder {
                 do {
                     let responseText = try await responder(buildLeanSystemInstructions(), trimmed)
-                    messages.append(AnalystChatMessage(sender: .analyst, text: responseText, attachedDrillId: drillRecommendedThisTurn))
+                    messages.append(AnalystChatMessage(sender: .analyst, text: responseText, attachedDrillId: drillRecommendedThisTurn, attachedSession: sessionRecommendedThisTurn, attachedExplainerKey: explainerRecommendedThisTurn))
                     return
                 } catch {
                     print("Model responder error: \(error)")
@@ -117,7 +144,7 @@ class AnalystChatEngine: ObservableObject {
             if SystemLanguageModel.default.isAvailable {
                 do {
                     let responseText = try await generateFoundationModelResponse(for: trimmed)
-                    messages.append(AnalystChatMessage(sender: .analyst, text: responseText, attachedDrillId: drillRecommendedThisTurn))
+                    messages.append(AnalystChatMessage(sender: .analyst, text: responseText, attachedDrillId: drillRecommendedThisTurn, attachedSession: sessionRecommendedThisTurn, attachedExplainerKey: explainerRecommendedThisTurn))
                     return
                 } catch {
                     print("FoundationModels chat error: \(error)")
@@ -159,29 +186,62 @@ class AnalystChatEngine: ObservableObject {
         let envNote = (runRecord.isIndoor ?? false) ? "Indoor Treadmill" : "Outdoors"
 
         let cal = Calendar.current
+        let isRunToday = cal.isDateInToday(runRecord.date)
         let daysDiff = cal.dateComponents([.day], from: cal.startOfDay(for: runRecord.date), to: cal.startOfDay(for: Date())).day ?? 0
-        let temporalGrounding = daysDiff == 0
-            ? "Workout took place today."
-            : "Workout took place \(daysDiff) days ago."
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "en_US_POSIX")
+        df.dateFormat = "EEE, MMM d"
+        let dateStr = df.string(from: runRecord.date)
+
+        let todayDF = DateFormatter()
+        todayDF.locale = Locale(identifier: "en_US_POSIX")
+        todayDF.dateFormat = "EEEE, MMM d"
+        let todayStr = todayDF.string(from: Date())
 
         let useMetric = (UserDefaults.standard.object(forKey: "useMetricSystem") as? Bool) ?? true
         let unitSystem = useMetric ? "Metric (min/km, km)" : "Imperial (min/mi, mi)"
+
+        let contextBlock: String
+
+        if mode == .macroCoach {
+            let allRuns = (try? runRecord.modelContext?.fetch(FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)]))) ?? [runRecord]
+            let activeGoal = UserDefaults.standard.string(forKey: "trainingGoal") ?? "Base Building"
+            let profile = RunnerProfile.compute(from: allRuns)
+            let dailyState = SessionSynthesisEngine.evaluateDailyState(
+                runRecords: allRuns,
+                activeGoal: activeGoal,
+                experienceLevel: profile.experienceLevel,
+                useMetric: useMetric,
+                now: Date()
+            )
+
+            switch dailyState {
+            case .preRun(let session):
+                contextBlock = "Scope: Macro AI Coach. Today: \(todayStr).\nAthlete State: Pre-Run (no workouts logged today).\nNext Prescribed Session: TODAY — \(session.sessionTitle) (\(session.durationBand), \(session.paceBand)) with \(session.primerDrillTitle) primer."
+            case .completedToday(let completedRun, let tomorrowSession):
+                contextBlock = "Scope: Macro AI Coach. Today: \(todayStr).\nAthlete State: Completed Today (\(completedRun.workoutType) \(completedRun.distanceFormatted), Grade \(completedRun.letterGrade)). Daily load banked.\nNext Prescribed Session: TOMORROW — \(tomorrowSession.sessionTitle) (\(tomorrowSession.durationBand), \(tomorrowSession.paceBand))."
+            }
+        } else {
+            let temporalGrounding = daysDiff == 0 ? "Today" : "\(dateStr) (\(daysDiff)d ago)"
+            contextBlock = "Scope: Workout Inspection.\nReviewing: \(runType) (\(envNote), \(temporalGrounding))."
+        }
 
         return """
         You are Runalyst—an intelligent, conversational running coach. Speak directly to the runner with warmth and encouragement.
 
         CONTEXT:
-        Reviewing: \(runType) (\(envNote)). \(temporalGrounding)
+        \(contextBlock)
         Units: \(unitSystem).
 
         RULES:
-        • Call tools only when relevant; never call `executeCoachAction` for off-topic queries.
-        • `inspectWorkout`: moving vs gross stats, splits, intervals, reps, physics.
-        • `manageTrainingState`: 'readiness' (set `userReportedDistress: true` if ill/injured), 'history', or 'athlete_profile'.
-        • `executeCoachAction`: 'update_goal' for race goals/plans (outline Base, Build, Peak, Taper; explain Runalyst adapts daily workouts from readiness; never show drill cards); 'display_drill' for immediate runs/drills to do now; 'export_to_watch' to export to Apple Watch; 'record_feedback'.
-        • Formatting: Rich text. Use standard units (SPM, min/km, min/mi). Never use Markdown or LaTeX.
-        • Medical Safety: If runner reports pain or illness, prioritize rest, give an AI disclaimer, urge medical care.
-        • Outside Running: For off-topic questions, warmly refocus on training and invite back. Never force drills.
+        • NEXT RUN: If no run logged today, next run is TODAY. If run logged today, next run is TOMORROW. Always surface next workout card.
+        • Tools: Call to fetch deterministic telemetry, manage athlete state, or trigger interactive cards.
+        • `inspectWorkout`: moving/gross stats, splits, intervals, reps, physics.
+        • `manageTrainingState`: 'readiness' (set userReportedDistress: true on pain/illness), 'history', 'athlete_profile'.
+        • `executeCoachAction`: 'display_session' (show next workout card), 'display_drill' (show drill card), 'display_explainer' (show metric explainer card), 'update_goal' (race plans), 'export_to_watch', 'record_feedback'.
+        • Formatting: Rich text. Standard units (SPM, min/km, min/mi). Never use Markdown or LaTeX.
+        • Medical Safety: Prioritize rest on pain/illness, state AI disclaimer, urge medical care.
+        • Outside Running: Warmly refocus on training. Never force drills.
         • Never hallucinate unverified telemetry.
 
         Respond in \(language).
@@ -222,9 +282,45 @@ class AnalystChatEngine: ObservableObject {
                     recoveryStatus = "Light movement only until \(analysis.recoveryTimeline.earliestHardPhrase)."
                 }
 
-                if verdict != "MANDATORY_REST_HEALTH_OVERRIDE",
-                   let resolvedSession = PreRunDrillId.resolve(from: rx.nextSessionName) {
-                    self.drillRecommendedThisTurn = resolvedSession
+                // Deterministically evaluate the runner's daily session state
+                let allRuns = (try? self.runRecord.modelContext?.fetch(FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)]))) ?? [self.runRecord]
+                let activeGoal = UserDefaults.standard.string(forKey: "trainingGoal") ?? "Base Building"
+                let profile = RunnerProfile.compute(from: allRuns)
+                let useMetric = (UserDefaults.standard.object(forKey: "useMetricSystem") as? Bool) ?? true
+
+                let dailyState = SessionSynthesisEngine.evaluateDailyState(
+                    runRecords: allRuns,
+                    activeGoal: activeGoal,
+                    experienceLevel: profile.experienceLevel,
+                    useMetric: useMetric,
+                    now: Date()
+                )
+
+                let nextTiming: String
+                let sessionName: String
+                let durationBand: String
+                let paceBand: String
+                let cadenceBand: String
+                let rationale: String
+                let primerName: String?
+
+                switch dailyState {
+                case .preRun(let session):
+                    nextTiming = "TODAY (Runner has NOT logged a run today. Today's proposed session IS the next run)"
+                    sessionName = session.sessionTitle
+                    durationBand = session.durationBand
+                    paceBand = session.paceBand
+                    cadenceBand = "≥ \(session.cadenceFloor) SPM"
+                    rationale = session.groundedRationale
+                    primerName = session.primerDrillTitle
+                case .completedToday(let completedRun, let tomorrowSession):
+                    nextTiming = "TOMORROW (Runner already banked today's workout: \(completedRun.workoutType) \(completedRun.distanceFormatted). Next run is tomorrow)"
+                    sessionName = tomorrowSession.sessionTitle
+                    durationBand = tomorrowSession.durationBand
+                    paceBand = tomorrowSession.paceBand
+                    cadenceBand = "≥ \(tomorrowSession.cadenceFloor) SPM"
+                    rationale = tomorrowSession.groundedRationale
+                    primerName = tomorrowSession.primerDrillTitle
                 }
 
                 let humanIntensity: String
@@ -241,16 +337,21 @@ class AnalystChatEngine: ObservableObject {
                     humanIntensity = rx.intensityCategory.replacingOccurrences(of: "_", with: " ").capitalized
                 }
 
+                let guidance = CoachingAssetLibrary.readinessGuidance(for: verdict, isDistress: isDistress || rx.isSubjectiveOverride)
+
                 let response = ReadinessToolResponse(
                     schema_name: "READINESS_AND_PRESCRIPTION_RESPONSE",
                     readiness_verdict: verdict,
                     recovery_status: recoveryStatus,
-                    prescribed_session_name: rx.nextSessionName,
+                    next_run_timing: nextTiming,
+                    prescribed_session_name: sessionName,
+                    primer_drill_name: primerName,
                     intensity_category: humanIntensity,
-                    prescribed_pace_band: rx.prescribedPaceBand,
-                    prescribed_duration_band: rx.prescribedDurationBand,
-                    prescribed_cadence_band: rx.prescribedCadenceBand,
-                    session_rationale: rx.sessionRationale
+                    prescribed_pace_band: paceBand,
+                    prescribed_duration_band: durationBand,
+                    prescribed_cadence_band: cadenceBand,
+                    session_rationale: rationale,
+                    guidance_notes: guidance
                 )
 
                 let encoder = JSONEncoder()
@@ -259,7 +360,7 @@ class AnalystChatEngine: ObservableObject {
                    let json = String(data: data, encoding: .utf8) {
                     return json
                 }
-                return "{\"intensity_category\":\"\(humanIntensity)\",\"prescribed_pace_band\":\"\(rx.prescribedPaceBand)\",\"prescribed_session_name\":\"\(rx.nextSessionName)\",\"readiness_verdict\":\"\(verdict)\"}"
+                return "{\"intensity_category\":\"\(humanIntensity)\",\"prescribed_pace_band\":\"\(paceBand)\",\"prescribed_session_name\":\"\(sessionName)\",\"next_run_timing\":\"\(nextTiming)\",\"readiness_verdict\":\"\(verdict)\"}"
 
             case .history:
                 let context = self.runRecord.modelContext
@@ -295,6 +396,29 @@ class AnalystChatEngine: ObservableObject {
         let coachActionTool = ExecuteCoachActionTool { [weak self] query in
             guard let self else { return "" }
             switch query.action {
+            case .displaySession:
+                let allRuns = (try? self.runRecord.modelContext?.fetch(FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)]))) ?? [self.runRecord]
+                let activeGoal = UserDefaults.standard.string(forKey: "trainingGoal") ?? "Base Building"
+                let profile = RunnerProfile.compute(from: allRuns)
+                let useMetric = (UserDefaults.standard.object(forKey: "useMetricSystem") as? Bool) ?? true
+                let dailyState = SessionSynthesisEngine.evaluateDailyState(
+                    runRecords: allRuns,
+                    activeGoal: activeGoal,
+                    experienceLevel: profile.experienceLevel,
+                    useMetric: useMetric,
+                    now: Date()
+                )
+                let sessionToAttach: PrescribedDailySession?
+                switch dailyState {
+                case .preRun(let session):
+                    sessionToAttach = session
+                case .completedToday(_, let tomorrowSession):
+                    sessionToAttach = tomorrowSession
+                }
+                self.sessionRecommendedThisTurn = sessionToAttach
+                let title = sessionToAttach?.sessionTitle ?? "Upcoming Workout"
+                return "{\"status\":\"session_card_displayed\",\"session_title\":\"\(title)\"}"
+
             case .displayDrill:
                 let resolved = PreRunDrillId.resolve(from: query.payload ?? "") ?? .cadencePyramids
                 self.drillRecommendedThisTurn = resolved
@@ -356,6 +480,25 @@ class AnalystChatEngine: ObservableObject {
                 }
                 UserDefaults.standard.set(newGoal, forKey: "trainingGoal")
                 return "{\"status\":\"training_goal_updated\",\"goal\":\"\(newGoal)\",\"message\":\"Training goal updated to \(newGoal).\"}"
+
+            case .displayExplainer:
+                let rawKey = query.payload?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                let asset = CoachingAssetLibrary.resolve(key: rawKey) ?? CoachingAssetLibrary.defaultAsset(for: rawKey)
+                self.explainerRecommendedThisTurn = asset.key
+
+                let dto: [String: String] = [
+                    "status": "interactive_explainer_card_displayed",
+                    "explainer_key": asset.key,
+                    "title": asset.title,
+                    "domain": asset.domain.rawValue,
+                    "compact_definition": asset.compactSummary
+                ]
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+                if let data = try? encoder.encode(dto), let str = String(data: data, encoding: .utf8) {
+                    return str
+                }
+                return "{\"explainer_key\":\"\(asset.key)\",\"status\":\"interactive_explainer_card_displayed\",\"title\":\"\(asset.title)\"}"
 
             case .recordFeedback:
                 let feedback = query.payload ?? ""

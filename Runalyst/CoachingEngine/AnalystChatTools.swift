@@ -41,6 +41,9 @@ public struct UnifiedWorkoutToolResponse: Codable, Sendable {
     // Duration boundary tagging
     public let duration_summary: String?
 
+    // Canonical compact explainer dictionary grounding the metrics present in this run
+    public let metric_explainers: [String: String]?
+
     public init(
         schema_name: String = "UNIFIED_WORKOUT_TOOL_RESPONSE",
         workout_type: String,
@@ -56,7 +59,8 @@ public struct UnifiedWorkoutToolResponse: Codable, Sendable {
         physiological_verdicts: String,
         heart_rate_confidence: String? = nil,
         heart_rate_status: String? = nil,
-        duration_summary: String? = nil
+        duration_summary: String? = nil,
+        metric_explainers: [String: String]? = nil
     ) {
         self.schema_name = schema_name
         self.workout_type = workout_type
@@ -73,6 +77,7 @@ public struct UnifiedWorkoutToolResponse: Codable, Sendable {
         self.heart_rate_confidence = heart_rate_confidence
         self.heart_rate_status = heart_rate_status
         self.duration_summary = duration_summary
+        self.metric_explainers = metric_explainers
     }
 }
 
@@ -297,33 +302,42 @@ public struct ReadinessToolResponse: Codable, Sendable {
     public let schema_name: String
     public let readiness_verdict: String
     public let recovery_status: String
+    public let next_run_timing: String?
     public let prescribed_session_name: String
+    public let primer_drill_name: String?
     public let intensity_category: String
     public let prescribed_pace_band: String
     public let prescribed_duration_band: String
     public let prescribed_cadence_band: String
     public let session_rationale: String
+    public let guidance_notes: [String: String]?
 
     public init(
         schema_name: String = "READINESS_AND_PRESCRIPTION_RESPONSE",
         readiness_verdict: String,
         recovery_status: String,
+        next_run_timing: String? = nil,
         prescribed_session_name: String,
+        primer_drill_name: String? = nil,
         intensity_category: String,
         prescribed_pace_band: String,
         prescribed_duration_band: String,
         prescribed_cadence_band: String,
-        session_rationale: String
+        session_rationale: String,
+        guidance_notes: [String: String]? = nil
     ) {
         self.schema_name = schema_name
         self.readiness_verdict = readiness_verdict
         self.recovery_status = recovery_status
+        self.next_run_timing = next_run_timing
         self.prescribed_session_name = prescribed_session_name
+        self.primer_drill_name = primer_drill_name
         self.intensity_category = intensity_category
         self.prescribed_pace_band = prescribed_pace_band
         self.prescribed_duration_band = prescribed_duration_band
         self.prescribed_cadence_band = prescribed_cadence_band
         self.session_rationale = session_rationale
+        self.guidance_notes = guidance_notes
     }
 }
 // swiftlint:enable identifier_name
@@ -352,7 +366,9 @@ public enum HistoryScope: String, Sendable {
 @available(iOS 26.0, *)
 @Generable
 public enum CoachActionType: String, Sendable {
+    case displaySession = "display_session"
     case displayDrill = "display_drill"
+    case displayExplainer = "display_explainer"
     case exportToWatch = "export_to_watch"
     case updateGoal = "update_goal"
     case recordFeedback = "record_feedback"
@@ -400,10 +416,10 @@ public struct ManageTrainingStateQuery: Sendable {
 @available(iOS 26.0, *)
 @Generable
 public struct ExecuteCoachActionQuery: Sendable {
-    @Guide(description: "Action: 'update_goal' to adjust training goal or when runner asks for race training plans/schedules (e.g. Marathon, Half Marathon, 10K, 5K); 'display_drill' to present an interactive workout card ONLY for immediate runs/drills to perform now (never for race schedules); 'export_to_watch' to schedule/export a workout or drill to Apple Watch; 'record_feedback' to save subjective feedback.")
+    @Guide(description: "Action: 'display_session' to present the interactive next workout session card; 'display_drill' to present an interactive drill card; 'display_explainer' to present an educational concept card explaining a biomechanical or physiological metric (e.g. cadence floor, cardiac drift, efficiency factor); 'update_goal' to adjust training goal; 'export_to_watch' to schedule a workout to Apple Watch; 'record_feedback' to save subjective feedback.")
     public var action: CoachActionType
 
-    @Guide(description: "Payload: race goal (e.g. 'Marathon', 'Half Marathon', '10K', '5K', 'Base Building') for 'update_goal'; workout or drill name (e.g. 'zone_1_recovery_flush', 'cadence_pyramids', 'zone_2_run', 'strides') for 'display_drill' and 'export_to_watch'; subjective notes for 'record_feedback'.")
+    @Guide(description: "Payload: workout or drill name (e.g. 'cadence_pyramids', 'strides') for 'display_drill' and 'export_to_watch'; metric or concept key (e.g. 'cadence_floor', 'cardiac_drift', 'efficiency_factor') for 'display_explainer'; race goal (e.g. 'Base Building', '5K', 'Marathon') for 'update_goal'; subjective notes for 'record_feedback'.")
     public var payload: String?
 
     public init(action: CoachActionType, payload: String? = nil) {
@@ -465,7 +481,7 @@ public struct ExecuteCoachActionTool: Tool {
     public typealias Output = String
 
     public let name = "executeCoachAction"
-    public let description = "Executes coaching actions: 'update_goal' to update runner's goal or when asked for race training plans/schedules (e.g. Marathon, Half Marathon); 'display_drill' to show an interactive workout card ONLY when runner asks for an immediate workout or drill to run now (never for multi-month race plans); 'export_to_watch' to schedule a workout to Apple Watch; 'record_feedback' to save subjective notes."
+    public let description = "Executes coaching actions: 'display_session' to show the next workout session card; 'display_drill' to show a drill card; 'display_explainer' to show a metric explainer card; 'update_goal' to adjust training goal; 'export_to_watch' to schedule a workout to Apple Watch; 'record_feedback' to save subjective feedback."
 
     let provider: @MainActor @Sendable (ExecuteCoachActionQuery) async -> String
 

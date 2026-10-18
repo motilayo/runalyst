@@ -11,18 +11,18 @@ struct AnalystChatView: View {
     @FocusState private var isInputFocused: Bool
 
     @State private var activeReadoutItem: ActiveDrillReadoutItem?
-    @State private var activeWorkoutPlan: WorkoutPlan = PreRunDrill(id: .strides).buildWorkoutPlan()
-    @State private var pendingWatchDrillDTO: DrillPrescriptionDTO?
-    @State private var isShowingWorkoutPreview: Bool = false
+    @State private var activeExplainerInfo: MetricExplainerInfo?
     @State private var isShowingDrillsLibrary: Bool = false
     @AppStorage("lastWatchExportTimestamp") private var lastWatchExportTimestamp: Double = 0
     @AppStorage("lastExportedDrillId") private var lastExportedDrillId: String = ""
 
     let runRecord: RunRecord
+    let mode: AnalystChatMode
 
-    init(runRecord: RunRecord) {
+    init(runRecord: RunRecord, mode: AnalystChatMode = .runInspection) {
         self.runRecord = runRecord
-        _engine = StateObject(wrappedValue: AnalystChatEngine(runRecord: runRecord))
+        self.mode = mode
+        _engine = StateObject(wrappedValue: AnalystChatEngine(runRecord: runRecord, mode: mode))
     }
 
     private var headerSubtitle: String {
@@ -33,7 +33,19 @@ struct AnalystChatView: View {
         let isIndoor = runRecord.isIndoor ?? false
         let envStr = isIndoor ? "Indoor" : "Outdoor"
         let typeStr = runRecord.detectedTypeRaw.isEmpty ? "Run" : runRecord.detectedTypeRaw
-        return "🔒 On-Device • \(dateStr) \(envStr) \(typeStr)"
+
+        let cal = Calendar.current
+        let isRunToday = cal.isDateInToday(runRecord.date)
+
+        if mode == .macroCoach {
+            if isRunToday {
+                return "🔒 On-Device • Today's \(typeStr) Logged"
+            } else {
+                return "🔒 On-Device • Last Run: \(dateStr) (\(typeStr))"
+            }
+        } else {
+            return "🔒 On-Device • \(dateStr) \(envStr) \(typeStr)"
+        }
     }
 
     private var emptyState: some View {
@@ -41,9 +53,11 @@ struct AnalystChatView: View {
             Image(systemName: "bubble.left.and.text.bubble.right.fill")
                 .font(.system(size: 34))
                 .foregroundStyle(.purple.gradient)
-            Text("Ask about this run")
+            Text(mode == .macroCoach ? "Ask Your AI Coach" : "Ask about this run")
                 .font(.system(.headline, design: .rounded))
-            Text("Pace, heart rate, cadence, recovery. Answered on-device from your Health data.")
+            Text(mode == .macroCoach
+                ? "Readiness, today's workout, recovery, or training guidance from your Health data."
+                : "Pace, heart rate, cadence, recovery. Answered on-device from your Health data.")
                 .font(.footnote)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
@@ -189,21 +203,6 @@ struct AnalystChatView: View {
             .navigationTitle("AI Coach")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        dismissKeyboard()
-                        isShowingDrillsLibrary = true
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "figure.run.circle")
-                                .font(.system(size: 16, weight: .semibold))
-                            Text("Runs & Drills")
-                                .font(.subheadline.weight(.semibold))
-                        }
-                        .foregroundColor(.primary)
-                    }
-                }
-
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         dismissKeyboard()
@@ -221,28 +220,21 @@ struct AnalystChatView: View {
                     readout: item.readout,
                     workoutPlan: item.plan,
                     prescriptionDTO: item.dto,
-                    onCommitToWatch: { plan, dto in
-                        activeWorkoutPlan = plan
-                        pendingWatchDrillDTO = dto
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                            isShowingWorkoutPreview = true
-                        }
+                    onCommitToWatch: { _, dto in
+                        self.lastWatchExportTimestamp = Date().timeIntervalSince1970
+                        self.lastExportedDrillId = dto.preRunDrillId ?? ""
                     }
                 )
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
             }
-            .workoutPreview(activeWorkoutPlan, isPresented: $isShowingWorkoutPreview)
-            .onChange(of: isShowingWorkoutPreview) { oldValue, newValue in
-                if oldValue && !newValue, let dto = pendingWatchDrillDTO {
-                    pendingWatchDrillDTO = nil
-                    scheduleToWatch(dto: dto)
-                }
-            }
             .sheet(isPresented: $isShowingDrillsLibrary) {
                 NavigationStack {
                     DrillsLibraryView()
                 }
+            }
+            .sheet(item: $activeExplainerInfo) { info in
+                MetricExplainerSheet(info: info)
             }
             .task {
                 if ProcessInfo.processInfo.environment["RUNALYST_PREVIEW_SCREEN"] == "ANALYST_ACTIVE" {
@@ -352,12 +344,29 @@ struct AnalystChatView: View {
                         }
                     }
 
+                    if let session = message.attachedSession {
+                        InlineChatNextSessionCard(
+                            session: session,
+                            onOpenDrill: {
+                                openDrillReadout(drillId: session.primerDrillId)
+                            }
+                        )
+                    }
                     if let drillId = message.attachedDrillId {
                         InlineChatDrillCard(
                             drillId: drillId,
                             runRecord: runRecord,
                             onOpenReadout: {
                                 openDrillReadout(drillId: drillId)
+                            }
+                        )
+                    }
+                    if let explainerKey = message.attachedExplainerKey {
+                        InlineChatExplainerCard(
+                            explainerKey: explainerKey,
+                            runRecord: runRecord,
+                            onOpenExplainer: { info in
+                                activeExplainerInfo = info
                             }
                         )
                     }
@@ -371,33 +380,61 @@ struct AnalystChatView: View {
     private var quickPromptChips: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                chipButton("Stride Rhythm", icon: "waveform.path", iconColor: Color(red: 0.18, green: 0.82, blue: 0.35)) {
-                    inputText = "How was my cadence and rhythm during this run?"
-                    submitQuestion()
-                }
-                chipButton("Heart Rate Drift", icon: "heart.fill", iconColor: Color(red: 1.0, green: 0.18, blue: 0.55)) {
-                    inputText = "Did my heart rate stay steady, or did I start tiring out?"
-                    submitQuestion()
-                }
-                chipButton("Pacing Consistency", icon: "speedometer", iconColor: Color(red: 0.0, green: 0.55, blue: 1.0)) {
-                    inputText = "What does pacing consistency mean, and how was my pacing?"
-                    submitQuestion()
-                }
-                chipButton("Should I Run Tomorrow?", icon: "calendar", iconColor: .purple) {
-                    inputText = "Should I run tomorrow, and what kind of session should I focus on?"
-                    submitQuestion()
-                }
-                if runRecord.evaluationModality == .intervals {
-                    let intervalTitle = runRecord.detectedTypeRaw == "Fartlek" ? "Surge Analysis" : "Break Down Intervals"
-                    chipButton(intervalTitle, icon: "repeat", iconColor: Color(red: 0.0, green: 0.55, blue: 1.0)) {
-                        inputText = "Grade my performance in each interval of this run"
+                let cal = Calendar.current
+                let isRunToday = cal.isDateInToday(runRecord.date)
+
+                if mode == .macroCoach {
+                    chipButton("When Should I Run Next?", icon: "figure.run", iconColor: Color(red: 0.0, green: 0.55, blue: 1.0)) {
+                        inputText = "When should I run next, and what kind of session should I focus on?"
                         submitQuestion()
                     }
-                }
-                if runRecord.isIndoor == true {
-                    chipButton("Treadmill Form", icon: "figure.run", iconColor: Color(red: 0.18, green: 0.82, blue: 0.35)) {
-                        inputText = "Did I overstride or reach too far on the treadmill?"
+                    chipButton("Readiness & Recovery", icon: "heart.text.square.fill", iconColor: Color(red: 1.0, green: 0.18, blue: 0.55)) {
+                        inputText = isRunToday
+                            ? "How is my recovery looking after today's run?"
+                            : "Am I recovered to run today, or should I take a rest day?"
                         submitQuestion()
+                    }
+                    chipButton("Review Last Run", icon: "clock.arrow.circlepath", iconColor: Color(red: 0.18, green: 0.82, blue: 0.35)) {
+                        let df = DateFormatter()
+                        df.locale = Locale(identifier: "en_US_POSIX")
+                        df.dateFormat = "EEEE"
+                        let weekday = df.string(from: runRecord.date)
+                        inputText = "How was my effort and pacing during \(weekday)'s \(runRecord.detectedTypeRaw)?"
+                        submitQuestion()
+                    }
+                    chipButton("Weekly Training Status", icon: "calendar", iconColor: .purple) {
+                        inputText = "How is my weekly mileage and overall training balance?"
+                        submitQuestion()
+                    }
+                } else {
+                    chipButton("When Should I Run Next?", icon: "calendar", iconColor: .purple) {
+                        inputText = "When should I run next, and what kind of session should I focus on?"
+                        submitQuestion()
+                    }
+                    chipButton("Stride Rhythm", icon: "waveform.path", iconColor: Color(red: 0.18, green: 0.82, blue: 0.35)) {
+                        inputText = "How was my cadence and rhythm during this run?"
+                        submitQuestion()
+                    }
+                    chipButton("Heart Rate Drift", icon: "heart.fill", iconColor: Color(red: 1.0, green: 0.18, blue: 0.55)) {
+                        inputText = "Did my heart rate stay steady, or did I start tiring out?"
+                        submitQuestion()
+                    }
+                    chipButton("Pacing Consistency", icon: "speedometer", iconColor: Color(red: 0.0, green: 0.55, blue: 1.0)) {
+                        inputText = "What does pacing consistency mean, and how was my pacing?"
+                        submitQuestion()
+                    }
+                    if runRecord.evaluationModality == .intervals {
+                        let intervalTitle = runRecord.detectedTypeRaw == "Fartlek" ? "Surge Analysis" : "Break Down Intervals"
+                        chipButton(intervalTitle, icon: "repeat", iconColor: Color(red: 0.0, green: 0.55, blue: 1.0)) {
+                            inputText = "Grade my performance in each interval of this run"
+                            submitQuestion()
+                        }
+                    }
+                    if runRecord.isIndoor == true {
+                        chipButton("Treadmill Form", icon: "figure.run", iconColor: Color(red: 0.18, green: 0.82, blue: 0.35)) {
+                            inputText = "Did I overstride or reach too far on the treadmill?"
+                            submitQuestion()
+                        }
                     }
                 }
             }
@@ -523,22 +560,188 @@ struct AnalystChatView: View {
         )
     }
 
-    private func scheduleToWatch(dto: DrillPrescriptionDTO) {
-        Task {
-            if #available(iOS 17.0, *) {
-                do {
-                    let bridge = WorkoutBridge()
-                    try await bridge.scheduleDrill(dto: dto)
-                    await MainActor.run {
-                        self.lastWatchExportTimestamp = Date().timeIntervalSince1970
-                        self.lastExportedDrillId = dto.preRunDrillId ?? ""
-                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+}
+
+/// An inline workout card surfaced directly inside chat messages displaying the upcoming prescribed session.
+struct InlineChatNextSessionCard: View {
+    let session: PrescribedDailySession
+    let onOpenDrill: () -> Void
+
+    @Query(sort: \RunRecord.date, order: .reverse) private var runRecords: [RunRecord]
+
+    private var isRunToday: Bool {
+        guard let latest = runRecords.first else { return false }
+        return Calendar.current.isDateInToday(latest.date)
+    }
+
+    private var timingBadgeText: String {
+        isRunToday ? "TOMORROW'S TARGET" : "TODAY'S WORKOUT"
+    }
+
+    private var timingBadgeColor: Color {
+        isRunToday ? Color(red: 0.0, green: 0.55, blue: 1.0) : Color(red: 0.0, green: 0.75, blue: 0.65)
+    }
+
+    private var timingBadgeIcon: String {
+        isRunToday ? "arrow.forward.circle.fill" : "sparkles"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Header: Timing Badge + Goal Pill
+            HStack {
+                Label(timingBadgeText, systemImage: timingBadgeIcon)
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(timingBadgeColor)
+
+                Spacer()
+
+                Text(session.targetGoal)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color(UIColor.tertiarySystemGroupedBackground))
+                    .clipShape(Capsule())
+            }
+
+            // Title & Rationale
+            VStack(alignment: .leading, spacing: 4) {
+                Text(session.sessionTitle)
+                    .font(.headline.weight(.bold))
+                    .foregroundColor(.primary)
+
+                Text(session.groundedRationale)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            // Step 1: Pre-Run Primer Box
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 6) {
+                    Text("1. PRE-RUN PRIMER")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(session.primerDrillId.iconColor)
+
+                    Spacer()
+
+                    Text(session.primerPhasesDuration)
+                        .font(.system(size: 10, weight: .semibold).monospacedDigit())
+                        .foregroundColor(.secondary)
+                }
+
+                HStack(spacing: 10) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(session.primerDrillId.iconColor.opacity(0.15))
+                            .frame(width: 32, height: 32)
+                        Image(systemName: session.primerDrillId.iconName)
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(session.primerDrillId.iconColor)
                     }
-                } catch {
-                    print("[AnalystChatView] Failed to schedule drill: \(error.localizedDescription)")
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(session.primerDrillTitle)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundColor(.primary)
+
+                        Text("Target: \(session.primerTargetCadence)")
+                            .font(.caption2.weight(.medium).monospacedDigit())
+                            .foregroundColor(session.primerDrillId.iconColor)
+                    }
+
+                    Spacer()
+
+                    Button(action: onOpenDrill) {
+                        Text("Review")
+                            .font(.caption.bold())
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(Color(UIColor.secondarySystemFill))
+                            .foregroundColor(.primary)
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
                 }
             }
+            .padding(10)
+            .background(Color(UIColor.tertiarySystemGroupedBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+            // Step 2: Main Run Prescription Metrics
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("2. MAIN RUN TARGETS")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(Color(red: 0.0, green: 0.55, blue: 1.0))
+                    Spacer()
+                }
+
+                HStack(spacing: 8) {
+                    metricTile(label: "Pace", value: session.paceBand, color: Color(red: 0.0, green: 0.55, blue: 1.0))
+                    metricTile(label: "Duration", value: session.durationBand, color: .primary)
+                }
+                HStack(spacing: 8) {
+                    metricTile(
+                        label: "Cadence",
+                        value: "≥ \(session.cadenceFloor) SPM",
+                        color: Color(red: 0.18, green: 0.82, blue: 0.35)
+                    )
+                    metricTile(
+                        label: "Heart Rate",
+                        value: session.hrCap,
+                        color: Color(red: 1.0, green: 0.18, blue: 0.55)
+                    )
+                }
+            }
+            .padding(10)
+            .background(Color(UIColor.tertiarySystemGroupedBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+            // Action Button
+            Button(action: onOpenDrill) {
+                HStack(spacing: 6) {
+                    Image(systemName: "play.fill")
+                        .font(.caption.weight(.bold))
+                    Text("Start \(session.primerDrillTitle)")
+                        .font(.subheadline.weight(.semibold))
+                }
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: 44)
+                .background(Color.accentColor)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+            .buttonStyle(.plain)
         }
+        .padding(14)
+        .background(Color(UIColor.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(timingBadgeColor.opacity(0.3), lineWidth: 1)
+        )
+        .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 2)
+    }
+
+    private func metricTile(label: String, value: String, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label.uppercased())
+                .font(.system(size: 9, weight: .bold))
+                .foregroundColor(.secondary)
+            Text(value)
+                .font(.system(size: 11, weight: .semibold).monospacedDigit())
+                .foregroundColor(color)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(Color(UIColor.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 }
 
@@ -586,14 +789,15 @@ struct InlineChatDrillCard: View {
                 readiness: readiness,
                 now: Date()
             )
+            let profile = RunnerProfile.compute(from: runRecords)
             let tzInput = TrainingZoneInput(
                 baselinePaceSec: runRecord.workingAvgPace > 0 ? runRecord.workingAvgPace : nil,
                 workoutPaceSec: runRecord.workingAvgPace > 0 ? runRecord.workingAvgPace : nil,
                 activeGoal: UserDefaults.standard.string(forKey: "trainingGoal") ?? "Base Building",
-                experienceLevel: "Intermediate",
+                experienceLevel: profile.experienceLevel,
                 readyForHard: timeline.readyForHard,
                 daysSinceWorkout: Calendar.current.dateComponents([.day], from: runRecord.date, to: Date()).day ?? 0,
-                heightAdjustedCadenceFloor: 155,
+                heightAdjustedCadenceFloor: profile.heightAdjustedCadenceFloor,
                 useMetricSystem: useMetric,
                 totalHistoricalRunsCount: runRecords.count
             )
@@ -619,7 +823,7 @@ struct InlineChatDrillCard: View {
 
     private var targetBadgeText: String {
         if drillId.isHeartRateTargeted {
-            return drillId.targetHeartRateZoneName ?? "Zone 1 HR"
+            return "Zone 1 HR"
         } else {
             return targetCadenceDisplay.contains("SPM") ? targetCadenceDisplay : "\(targetCadenceDisplay) SPM"
         }
@@ -655,18 +859,23 @@ struct InlineChatDrillCard: View {
                     Text(displayTitle)
                         .font(.headline)
                         .foregroundColor(.primary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
                     Text(drillCategorySubtitle)
                         .font(.caption2.weight(.medium))
                         .foregroundColor(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
                 }
 
-                Spacer()
+                Spacer(minLength: 4)
 
                 HStack(spacing: 4) {
                     Image(systemName: targetBadgeIcon)
                         .font(.caption2.bold())
                     Text(targetBadgeText)
                         .font(.caption2.bold().monospacedDigit())
+                        .lineLimit(1)
                 }
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
@@ -732,6 +941,188 @@ struct InlineChatDrillCard: View {
         .overlay(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(drillId.iconColor.opacity(0.3), lineWidth: 1)
+        )
+        .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
+    }
+}
+
+/// An inline, interactive educational card surfaced directly in chat messages
+/// when an explainer or physiological concept is referenced.
+struct InlineChatExplainerCard: View {
+    let explainerKey: String
+    let runRecord: RunRecord
+    let onOpenExplainer: (MetricExplainerInfo) -> Void
+
+    private var asset: CoachingAssetLibrary.Asset {
+        CoachingAssetLibrary.resolve(key: explainerKey) ?? CoachingAssetLibrary.defaultAsset(for: explainerKey)
+    }
+
+    private var accentColor: Color {
+        switch asset.domain {
+        case .cardio:
+            return Color(red: 1.0, green: 0.18, blue: 0.55) // Neon Pink
+        case .pacing:
+            return Color(red: 0.0, green: 0.55, blue: 1.0)  // Electric Blue
+        case .biomechanics:
+            return Color(red: 0.18, green: 0.82, blue: 0.35) // Vibrant Green
+        case .physiology:
+            return .purple
+        case .physics, .drills, .system:
+            return .orange
+        }
+    }
+
+    private var iconName: String {
+        switch asset.key {
+        case "cadence", "cadence_floor", "target_cadence":
+            return "waveform.path"
+        case "vertical_oscillation", "vertical_ratio", "overstriding":
+            return "arrow.up.and.down"
+        case "ground_contact_time":
+            return "stopwatch.fill"
+        case "stride_length":
+            return "ruler.fill"
+        case "heart_rate", "zone_1_hr", "zone_2_hr":
+            return "heart.fill"
+        case "cardiac_drift":
+            return "chart.line.uptrend.xyaxis"
+        case "efficiency_factor":
+            return "bolt.heart.fill"
+        case "pace", "pacing_consistency":
+            return "speedometer"
+        case "recovery_timeline":
+            return "bed.double.fill"
+        case "training_load":
+            return "chart.bar.fill"
+        case "treadmill_physics":
+            return "figure.run"
+        case "vo2_max":
+            return "lungs.fill"
+        default:
+            return "info.circle.fill"
+        }
+    }
+
+    private var liveMetricDisplay: String? {
+        switch asset.key {
+        case "cadence_floor":
+            let floor = RunnerProfile.compute(from: [runRecord], now: runRecord.date).heightAdjustedCadenceFloor
+            return "\(floor) SPM Floor"
+        case "cadence":
+            let cad = Int(runRecord.workingAvgCadence.rounded())
+            return cad > 0 ? "\(cad) SPM" : nil
+        case "pace":
+            return runRecord.workingAvgPace > 0 ? PaceFormatter.formatPace(secondsPerKilometer: runRecord.workingAvgPace) : nil
+        case "heart_rate":
+            let hr = Int(runRecord.workingAvgHeartRate.rounded())
+            return hr > 0 ? "\(hr) BPM" : nil
+        case "efficiency_factor":
+            if let ef = runRecord.efficiencyFactor {
+                return String(format: "%.2f m/beat", ef)
+            }
+            return nil
+        case "vertical_oscillation":
+            if let vo = runRecord.workingAvgVerticalOscillation ?? runRecord.rawAvgVerticalOscillation {
+                return String(format: "%.1f cm", vo)
+            }
+            return nil
+        case "stride_length":
+            if let sl = runRecord.workingAvgStrideLength ?? runRecord.rawAvgStrideLength {
+                return String(format: "%.2f m", sl)
+            }
+            return nil
+        case "bounce_ratio", "vertical_ratio":
+            if let vr = runRecord.verticalRatio {
+                return String(format: "%.1f%%", vr * 100.0)
+            }
+            return nil
+        case "pacing_consistency", "pace_cv":
+            return String(format: "%.2f CV", runRecord.paceCV)
+        default:
+            return nil
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            // Header: Icon + Title + Domain & Live Badge
+            HStack(spacing: 10) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(accentColor.opacity(0.15))
+                        .frame(width: 38, height: 38)
+                    Image(systemName: iconName)
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(accentColor)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(asset.title)
+                        .font(.headline)
+                        .foregroundColor(.primary)
+                    Text(asset.domain.rawValue)
+                        .font(.caption2.weight(.medium))
+                        .foregroundColor(.secondary)
+                }
+
+                Spacer()
+
+                if let live = liveMetricDisplay {
+                    HStack(spacing: 4) {
+                        Image(systemName: "waveform.path.ecg")
+                            .font(.caption2.bold())
+                        Text(live)
+                            .font(.caption2.bold().monospacedDigit())
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(accentColor.opacity(0.15))
+                    .foregroundColor(accentColor)
+                    .clipShape(Capsule())
+                }
+            }
+
+            // Compact Definition Box
+            Text(asset.compactSummary)
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .lineSpacing(2)
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(UIColor.tertiarySystemGroupedBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+            // Primary Action Button (Sweaty Hands minimum 44pt height target)
+            Button(action: {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                if let info = CoachingAssetLibrary.explainerInfo(for: asset.key, userMetricDisplay: liveMetricDisplay) {
+                    onOpenExplainer(info)
+                }
+            }) {
+                HStack(spacing: 8) {
+                    Image(systemName: "book.pages")
+                        .font(.subheadline.weight(.semibold))
+                    Text("Read Full Explainer & Guide")
+                        .font(.subheadline.weight(.semibold))
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption.bold())
+                }
+                .foregroundColor(.primary)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .frame(minHeight: 44)
+                .background(Color(UIColor.tertiarySystemFill))
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(14)
+        .background(Color(UIColor.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(accentColor.opacity(0.3), lineWidth: 1)
         )
         .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
     }
