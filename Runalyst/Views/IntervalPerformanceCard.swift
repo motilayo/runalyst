@@ -143,7 +143,15 @@ struct IntervalPerformanceCard: View {
 
                 metricTile(
                     label: "AVG HR DROP",
-                    value: avgHRDrop.map { "-\($0) BPM" } ?? "--",
+                    value: avgHRDrop.map { drop in
+                        if drop > 0 {
+                            return "↓ \(drop) BPM"
+                        } else if drop == 0 {
+                            return "0 BPM"
+                        } else {
+                            return "↑ \(abs(drop)) BPM"
+                        }
+                    } ?? "--",
                     valueColor: avgHRDrop != nil ? Color(red: 1.0, green: 0.22, blue: 0.55) : .secondary,
                     subtitle: hrDropSubtitle(avgHRDrop: avgHRDrop, isIndoor: isIndoor)
                 )
@@ -324,7 +332,7 @@ struct IntervalPerformanceCard: View {
                         )
 
                         if let drop = rep.recoveryHeartRateDrop {
-                            let hrValue: String = drop > 0 ? "-\(drop) BPM" : (drop == 0 ? "0 BPM" : "+\(abs(drop)) BPM")
+                            let hrValue: String = drop > 0 ? "↓ \(drop) BPM" : (drop == 0 ? "0 BPM" : "↑ \(abs(drop)) BPM")
                             let hrColor: Color = drop >= 10 ? Color(red: 1.0, green: 0.22, blue: 0.55) : (drop < 0 ? .orange : .secondary)
                             telemetryPill(
                                 label: "HR Drop",
@@ -460,6 +468,11 @@ struct IntervalPerformanceCard: View {
 
     private func hrDropSubtitle(avgHRDrop: Int?, isIndoor: Bool) -> String {
         guard let drop = avgHRDrop else { return "Recovery" }
+        if drop < 0 {
+            return isIndoor ? "Heat-blunted" : "Cardiac Lag"
+        } else if drop == 0 {
+            return "Flat Recovery"
+        }
         if isIndoor {
             return drop >= 18 ? "Strong Drop" : (drop >= 12 ? "Solid Drop" : "Heat-blunted")
         } else {

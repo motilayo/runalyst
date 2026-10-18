@@ -807,7 +807,7 @@ struct DrillExecutionScorecard: View {
                         }
 
                         if let drop = rep.recoveryHeartRateDrop {
-                            let hrValue: String = drop > 0 ? "-\(drop) BPM" : (drop == 0 ? "0 BPM" : "+\(abs(drop)) BPM")
+                            let hrValue: String = drop > 0 ? "↓ \(drop) BPM" : (drop == 0 ? "0 BPM" : "↑ \(abs(drop)) BPM")
                             let hrColor: Color = drop >= 10 ? Color(red: 1.0, green: 0.22, blue: 0.55) : (drop < 0 ? .orange : .secondary)
                             telemetryPill(
                                 label: "HR Drop",

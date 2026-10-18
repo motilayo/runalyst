@@ -991,86 +991,56 @@ final class FramboiseEngineTests: XCTestCase {
         XCTAssertEqual(work[6].durationSeconds, 60.0, "All-Out Sprint 2 must remain a clean 1-minute rep")
     }
 
-    func testConsolidatePhaseSegments_ShericaTreadmillWorkout_PreservesTenExecutedEffortsAndRejectsTrailingArtifact() {
-        // Simulates Sherica's 30-minute Peloton treadmill workout (6 rounds of 1-minute hard hill + 30-second all-out push).
-        // Telemetry reflects the runner's execution across all 6 rounds:
-        // Round 1: Rep 1 (2m 15s continuous, hill + push run back-to-back)
-        // Round 2: Rep 2 (45s hill) + 25s transition + Rep 3 (30s push)
-        // Round 3: Rep 4 (1m 15s hill)
-        // Round 4: Rep 5 (1m 15s hill) + 25s transition + Rep 6 (45s push)
-        // Round 5: Rep 7 (1m 15s hill) + 25s transition + Rep 8 (45s push @ 5:00/km)
-        // Round 6: Rep 9 (45s hill) + 25s transition + Rep 10 (45s push @ 5:23/km)
-        // Trailing artifact: 15s jog at 6:01/km during recovery
+    func testConsolidatePhaseSegments_ShericaTreadmillWorkout_PreservesSixCompoundRepsAndRejectsTrailingArtifact() {
+        // Authentically extracted from the user's physical device database (RunRecord ID 0452BD1C-A23E-4A9B-A067-B8DDB7C0CDFB):
+        // 30-minute Peloton treadmill workout with Sherica (6 rounds of 1-minute hard hill + 30-second all-out push back-to-back).
+        // Each round consists of 1m hill + 30s push run back-to-back (~1m 15s - 2m 30s total) followed by true recovery.
+        // In Round 2 and Round 6, treadmill flat transitions (60s and 45s steady at 158-159 SPM) occur between hill and push.
         // Verifies:
-        // 1. Exactly 10 genuine work efforts are preserved (Rounds 4 & 5 properly unmerged)
-        // 2. The trailing 15s slow pickup (6:01/km vs 5:30/km work pace) is rejected as steady/recovery
-        var segments: [PhaseSegment] = []
-        var t: Double = 0
-
-        // Round 1 (Hill + Push run continuous: 2m 15s)
-        segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 135, kind: "work", avgPace: 338, avgCadence: 164, avgHR: 151))
-        t += 135
-        segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 60, kind: "recovery", avgPace: 408, avgCadence: 150, avgHR: 154))
-        t += 60
-
-        // Round 2 (45s hill + 25s transition + 30s push)
-        segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 45, kind: "work", avgPace: 331, avgCadence: 164, avgHR: 150))
-        t += 45
-        segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 25, kind: "steady", avgPace: 370, avgCadence: 154, avgHR: 152))
-        t += 25
-        segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 30, kind: "work", avgPace: 303, avgCadence: 170, avgHR: 154))
-        t += 30
-        segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 60, kind: "recovery", avgPace: 413, avgCadence: 150, avgHR: 165))
-        t += 60
-
-        // Round 3 (1m 15s hill)
-        segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 75, kind: "work", avgPace: 353, avgCadence: 161, avgHR: 161))
-        t += 75
-        segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 60, kind: "recovery", avgPace: 392, avgCadence: 150, avgHR: 139))
-        t += 60
-
-        // Round 4 (1m 15s hill + 25s transition + 45s push)
-        segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 75, kind: "work", avgPace: 335, avgCadence: 163, avgHR: 129))
-        t += 75
-        segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 25, kind: "steady", avgPace: 370, avgCadence: 154, avgHR: 155))
-        t += 25
-        segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 45, kind: "work", avgPace: 329, avgCadence: 167, avgHR: 166))
-        t += 45
-        segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 60, kind: "recovery", avgPace: 374, avgCadence: 150, avgHR: 133))
-        t += 60
-
-        // Round 5 (1m 15s hill + 25s transition + 45s push)
-        segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 75, kind: "work", avgPace: 335, avgCadence: 162, avgHR: 166))
-        t += 75
-        segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 25, kind: "steady", avgPace: 370, avgCadence: 154, avgHR: 155))
-        t += 25
-        segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 45, kind: "work", avgPace: 300, avgCadence: 167, avgHR: 171))
-        t += 45
-        segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 60, kind: "recovery", avgPace: 380, avgCadence: 150, avgHR: 134))
-        t += 60
-
-        // Round 6 (45s hill + 25s transition + 45s push)
-        segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 45, kind: "work", avgPace: 327, avgCadence: 163, avgHR: 110))
-        t += 45
-        segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 25, kind: "steady", avgPace: 370, avgCadence: 154, avgHR: 155))
-        t += 25
-        segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 45, kind: "work", avgPace: 323, avgCadence: 165, avgHR: 175))
-        t += 45
-        segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 45, kind: "recovery", avgPace: 400, avgCadence: 150, avgHR: 169))
-        t += 45
-
-        // Trailing 15s recovery jog artifact at 6:01/km (361 s/km)
-        segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 15, kind: "work", avgPace: 361, avgCadence: 163, avgHR: 174))
-        t += 15
-        segments.append(PhaseSegment(startSeconds: t, endSeconds: t + 120, kind: "steady", avgPace: 450, avgCadence: 145, avgHR: 140))
-        t += 120
+        // 1. Exactly 6 genuine compound interval reps are produced (matching the 6 prescribed rounds)
+        // 2. All 6 reps are properly bounded by authentic recovery intervals
+        let segments: [PhaseSegment] = [
+            PhaseSegment(startSeconds: 0, endSeconds: 75, kind: "recovery", avgPace: 446.6, avgCadence: 149.4, avgHR: 116),
+            PhaseSegment(startSeconds: 75, endSeconds: 90, kind: "steady", avgPace: 420.2, avgCadence: 153.5, avgHR: 130),
+            PhaseSegment(startSeconds: 90, endSeconds: 105, kind: "recovery", avgPace: 411.2, avgCadence: 151.3, avgHR: 131),
+            PhaseSegment(startSeconds: 105, endSeconds: 240, kind: "steady", avgPace: 409.3, avgCadence: 154.4, avgHR: 134),
+            PhaseSegment(startSeconds: 240, endSeconds: 375, kind: "work", avgPace: 337.8, avgCadence: 164.6, avgHR: 152),
+            PhaseSegment(startSeconds: 375, endSeconds: 390, kind: "steady", avgPace: 377.6, avgCadence: 159.3, avgHR: 163),
+            PhaseSegment(startSeconds: 390, endSeconds: 465, kind: "recovery", avgPace: 407.6, avgCadence: 155.3, avgHR: 154),
+            PhaseSegment(startSeconds: 465, endSeconds: 480, kind: "steady", avgPace: 380.7, avgCadence: 159.3, avgHR: 138),
+            PhaseSegment(startSeconds: 480, endSeconds: 525, kind: "work", avgPace: 331.1, avgCadence: 164.6, avgHR: 150),
+            PhaseSegment(startSeconds: 525, endSeconds: 585, kind: "steady", avgPace: 382.8, avgCadence: 158.3, avgHR: 157),
+            PhaseSegment(startSeconds: 585, endSeconds: 615, kind: "work", avgPace: 303.0, avgCadence: 170.3, avgHR: 155),
+            PhaseSegment(startSeconds: 615, endSeconds: 630, kind: "steady", avgPace: 361.8, avgCadence: 161.3, avgHR: 166),
+            PhaseSegment(startSeconds: 630, endSeconds: 660, kind: "recovery", avgPace: 412.5, avgCadence: 155.3, avgHR: 165),
+            PhaseSegment(startSeconds: 660, endSeconds: 675, kind: "steady", avgPace: 385.7, avgCadence: 159.3, avgHR: 162),
+            PhaseSegment(startSeconds: 675, endSeconds: 705, kind: "recovery", avgPace: 381.6, avgCadence: 156.3, avgHR: 156),
+            PhaseSegment(startSeconds: 705, endSeconds: 720, kind: "steady", avgPace: 368.2, avgCadence: 157.3, avgHR: 156),
+            PhaseSegment(startSeconds: 720, endSeconds: 795, kind: "work", avgPace: 352.5, avgCadence: 161.7, avgHR: 162),
+            PhaseSegment(startSeconds: 795, endSeconds: 825, kind: "steady", avgPace: 373.9, avgCadence: 159.3, avgHR: 163),
+            PhaseSegment(startSeconds: 825, endSeconds: 840, kind: "walking", avgPace: 393.7, avgCadence: 107.4, avgHR: 161),
+            PhaseSegment(startSeconds: 840, endSeconds: 975, kind: "recovery", avgPace: 392.4, avgCadence: 157.5, avgHR: 140),
+            PhaseSegment(startSeconds: 975, endSeconds: 1125, kind: "work", avgPace: 332.7, avgCadence: 164.8, avgHR: 143),
+            PhaseSegment(startSeconds: 1125, endSeconds: 1200, kind: "recovery", avgPace: 373.9, avgCadence: 158.5, avgHR: 134),
+            PhaseSegment(startSeconds: 1200, endSeconds: 1350, kind: "work", avgPace: 322.0, avgCadence: 164.3, avgHR: 168),
+            PhaseSegment(startSeconds: 1350, endSeconds: 1425, kind: "recovery", avgPace: 380.5, avgCadence: 156.9, avgHR: 135),
+            PhaseSegment(startSeconds: 1425, endSeconds: 1440, kind: "steady", avgPace: 344.4, avgCadence: 159.3, avgHR: 164),
+            PhaseSegment(startSeconds: 1440, endSeconds: 1485, kind: "work", avgPace: 326.8, avgCadence: 163.3, avgHR: 111),
+            PhaseSegment(startSeconds: 1485, endSeconds: 1530, kind: "steady", avgPace: 354.5, avgCadence: 159.3, avgHR: 171),
+            PhaseSegment(startSeconds: 1530, endSeconds: 1575, kind: "work", avgPace: 322.8, avgCadence: 166.0, avgHR: 175),
+            PhaseSegment(startSeconds: 1575, endSeconds: 1650, kind: "steady", avgPace: 365.9, avgCadence: 160.1, avgHR: 139),
+            PhaseSegment(startSeconds: 1650, endSeconds: 1674, kind: "recovery", avgPace: 400.2, avgCadence: 152.6, avgHR: 168)
+        ]
 
         let consolidated = FramboiseEngine.consolidatePhaseSegments(segments)
         let work = consolidated.filter { $0.kind == "work" }
 
-        XCTAssertEqual(work.count, 10, "Should preserve exactly 10 genuine work efforts, rejecting the trailing 15s artifact")
-        XCTAssertEqual(work[1].durationSeconds, 45.0, "Rep 2 (Hill) preserved as 45s")
-        XCTAssertEqual(work[2].durationSeconds, 30.0, "Rep 3 (Push) preserved as 30s")
-        XCTAssertEqual(work[7].durationSeconds, 45.0, "Rep 8 (Push, fastest) preserved as 45s at 5:00/km")
+        XCTAssertEqual(work.count, 6, "Must yield exactly 6 compound interval reps matching the 6 rounds")
+        XCTAssertEqual(work[0].durationSeconds, 135.0, "Rep 1 (Round 1): 2m 15s")
+        XCTAssertEqual(work[1].durationSeconds, 135.0, "Rep 2 (Round 2 bridged): 2m 15s")
+        XCTAssertEqual(work[2].durationSeconds, 75.0, "Rep 3 (Round 3): 1m 15s")
+        XCTAssertEqual(work[3].durationSeconds, 150.0, "Rep 4 (Round 4): 2m 30s")
+        XCTAssertEqual(work[4].durationSeconds, 150.0, "Rep 5 (Round 5): 2m 30s")
+        XCTAssertEqual(work[5].durationSeconds, 135.0, "Rep 6 (Round 6 bridged): 2m 15s")
     }
 }
