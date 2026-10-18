@@ -83,8 +83,8 @@ Ready for direct App Store Connect product page upload:
    * Headline: *Biomechanical Form Analysis*
    * Subtitle: *Vertical bounce, ground contact time & overstride alerts*
 5. **`05_PreRun_Library.png`**
-   * Headline: *Curated Pre-Run Drills*
-   * Subtitle: *Customizable durations, workout phases & haptic cues*
+   * Headline: *Structured Runs & Primers*
+   * Subtitle: *Daily workout prescriptions & pre-run primers for Watch*
 6. **`06_Longitudinal_Progression.png`**
    * Headline: *Longitudinal Progression*
    * Subtitle: *Track efficiency factor gains and cadence over time*
@@ -106,7 +106,7 @@ Features high-resolution tablet presentation cards framing the app UI with categ
 2. `02_AI_Coaching.png`
 3. `03_Targeted_Drills.png`
 4. `04_Biomechanical_Analysis.png`
-5. `05_PreRun_Library.png`
+5. `05_PreRun_Library.png` (Structured Runs & Primers)
 6. `06_Longitudinal_Progression.png`
 7. `07_HealthKit_Privacy.png`
 
@@ -119,6 +119,7 @@ Features high-resolution tablet presentation cards framing the app UI with categ
 ---
 
 ## Automation Scripts
+* `capture_raw_screenshots.py` — Programmatically boots and captures pixel-perfect unscaled simulator screenshots for iPhone and iPad across all key views.
 * `record_app_previews.py` — Orchestrates simulator setup and on-device recording of the automated App Store feature tour.
 * `encode_app_previews.py` — Encodes and validates all iPhone and iPad App Preview resolutions meeting Apple specifications with H.264 High Profile Level 4.2, 30 fps CFR, stereo AAC audio, and +faststart.
 * `generate_app_store_screenshots.py` — Renders iPhone screenshot presentation cards (1284×2778 and 1242×2688) and updates website assets.

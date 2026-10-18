@@ -1,45 +1,54 @@
-# Runalyst v2.3.0 — 11-Profile Taxonomic Classifier, Workout Timelines & Drill Readout Modal 🏃‍♂️🧬
+# Runalyst v2.4.0 — Interactive AI Coach, Structured Runs & Primers, ACWR Readiness & Treadmill Intelligence 🏃‍♂️🧠
 
-Runalyst 2.3 is a major release introducing continuous 11-profile taxonomic workout classification, interactive workout phase timelines, bespoke sports-science biomechanical illustrations, and an interstitial mental preparation drill readout modal.
+Runalyst 2.4.0 is a milestone release delivering an on-device conversational AI Running Coach powered natively by Apple FoundationModels, a dedicated Workouts & Pre-Run Primers training hub, Acute:Chronic Workload Ratio (ACWR) readiness tracking, and indoor treadmill intelligence.
 
 ---
 
-### 🌟 What's New in v2.3.0
+### 🌟 What's New in v2.4.0
 
-#### 1. 🧬 11-Profile Taxonomic Classification Engine (ADR-0008)
-- **15-Dimensional Feature Vectors**: `FramboiseEngine` extracts multi-resolution sliding-window features—analyzing acceleration gradients, peak cadence clustering, elevation correlation, and stop-to-run transition dynamics.
-- **New Biomechanical Profiles**: Adds high-accuracy detection for *Pyramid Workouts* (ascending/descending interval structures), *Hill Repeats* (elevation–cadence gradient coupling), and *Urban Traffic Runs* (frequent pause recovery cycles) alongside Intervals, Tempo Surges, Strides, Steady Effort, Long Run, Recovery Run, Progression Run, and Fartlek.
-- **Retrained CoreML Model**: CoreML `RunalystClassifier.mlmodel` retrained on authentic multi-runner time-series datasets, boosting classification accuracy to 98.26%.
-- **Continuous vs. Intermittent Topological Guardrails**: Safeguards continuous tempo and progression efforts against misclassification under transient speed spikes.
+#### 1. 🧠 Interactive On-Device AI Running Coach (`AnalystChatView`)
+- **Apple FoundationModels Native Tool Calling**: Pure tool-calling facade (`inspectWorkout`, `manageTrainingState`, `executeCoachAction`) giving the on-device language model direct access to deterministic Swift math and physics.
+- **Zero-Hallucination Architectural Doctrine**: Swift deterministically computes moving vs. gross stats, split letter grades, pacing variances, and physiological verdicts. FoundationModels acts purely as the empathetic conversational interpreter.
+- **Dual Conversation Modes**:
+  - `Macro Coach`: Anchored globally to your weekly progression, active goal (5K to Marathon), and today's readiness.
+  - `Workout Inspection`: Deep-dives into telemetry anomalies, cadence floor compliance, and cardiac lag from a specific run.
+- **Interactive Inline Cards**: Dynamic coaching suggestions render rich, tappable workout and drill cards with one-tap Apple Watch WorkoutKit export.
+- **Temporal Calendar Grounding**: Real-world date awareness accurately contextualizes workouts (*“Thursday’s Fartlek”*, *“Today’s Steady Run”*).
 
-#### 2. ⏱️ Workout Phase Timeline Visualizer
-- **Proportional Phase Geometry**: `WorkoutPhaseTimelineView` visualizes warmups, hard surges, recovery intervals, and cooldowns with proportionally scaled horizontal blocks.
-- **Embedded Everywhere**: Integrated into `DrillPrimerCardView`, `DrillCardView`, and the main dashboard for quick pre-run visualization.
-- **Adaptive Color Coding**: Visual feedback across warmup (amber), work surges (emerald), recoveries (sky blue), and cooldowns (indigo).
+#### 2. ⚡ Structured Workouts & Pre-Run Primers Hub (`WorkoutsView`)
+- **Unified Training Taxonomy**: Dedicated "Workouts" navigation hub organizing daily training into two intuitive steps:
+  - **Pre-Run Primer**: 5–15 minute neuromuscular form primers (*Cadence Pyramids*, *Rhythm Intervals*, *Strides*) with customizable haptics.
+  - **Today's Run**: Locked aerobic session (*Zone 2 Easy Base*, *Tempo Surges*, *Threshold Intervals*) with dynamic duration bands (e.g. 30–45 min) tailored to your active goal.
+- **Multi-Goal Schedule Synthesis**: Supports *Base Building*, *5K*, *10K*, *Half Marathon*, *Marathon*, and *Injury Recovery*.
+- **Apple Watch WorkoutKit Bridge**: One-tap handoff sends structured interval blocks and target cadence bands straight to your Apple Watch.
 
-#### 3. 🧘 Interstitial Mental Preparation Readout Modal
-- **Comprehensive Drill Readiness**: `DrillInterstitialReadoutView` delivers an expandable half-sheet modal before starting a prescribed drill.
-- **Structured 5-Point Readout**: Presents Target Cues, Biomechanical Focus, Phase Breakdown, Execution Strategy, and Effort Bands.
-- **Dynamic Duration Scaling**: Seamlessly scales work and rest cycles across 5-minute, 10-minute, and 15-minute presets.
-- **Direct Apple Watch Export**: One-tap handoff sends customized interval workouts directly to Apple Watch WorkoutKit.
+#### 3. 🛡️ Acute Readiness & ACWR (Acute:Chronic Workload Ratio)
+- **Workload Protection Mandate**: Benchmarks 7-day acute workload against 28-day chronic rolling volume to calculate your ACWR.
+- **Automatic Fatigue Safeguards**: When cardiac drift, high ACWR (> 1.2), or consecutive hard training days are flagged, Runalyst automatically scales down workout intensity and prescribes active recovery flushes.
+- **Glass-Box Math Modal**: Transparent half-sheet bottom modal revealing the exact mathematical formula and data points behind your readiness status.
 
-#### 4. 🏃 Kinematic Stride Illustrations & Overstride Biomechanics
-- **Sports-Science Kinematics**: Bespoke royalty-free anatomical illustrations contrasting optimal elastic recoil against high-braking overstride.
-- **3-Pillar Overstride Logic**: Evaluates overstride risk as a physical conjunction of low cadence, excessive stride length, and elevated ground contact time.
-- **Kinematic Cues & Apple Watch Bridge**: Actionable cues (*“Quick off the ground”*, *“Run on ice”*, *“Drive through glutes”*) paired with wrist-based inertial ranges.
+#### 4. 🏃‍♂️ Indoor Intelligence & Treadmill Physics
+- **Arm Swing Heuristics**: Applies median pace filtering and 25% outlier clamping to dampen erratic arm motion during treadmill workouts.
+- **Incline Surge Detection**: Identifies steep treadmill incline intervals when heart rate spikes while pace remains flat and cadence drops.
+- **Dual-Scope Data Ingestion**: Cleanly reconciles HealthKit distance calibration mutations while preserving user overrides.
 
-#### 5. 📱 App Store Screenshot Packages & Media Assets
-- **Multi-Form Factor Previews**: High-resolution iPhone (1284x2778, 1242x2688) and iPad (2048x2732, 2064x2752) App Store presentation assets.
-- **Promo Video Showcase**: Refined visual tour demonstrating live cadence deltas, 30-day baselines, and local AI coaching.
+#### 5. 📊 Workout Rhythm & Variance Map (`RunVarianceMapView`)
+- **Continuous Rhythm Segmentation**: Maps intervals, steady running segments, and walking recoveries along with your personal cadence floor boundary.
+- **Pacing Quality Scoring**: Evaluates continuous pacing consistency (CV) and flags deceleration fade vs. controlled negative splits.
+
+#### 6. 📱 App Store Release Assets & Website Tour
+- **Apple Review Compliant Previews**: 25.0s H.264 High Profile Level 4.2 video tours with stereo AAC audio across iPhone (886x1920, 1284x2778, 1242x2688) and iPad (1200x1600, 2732x2048, 2752x2064).
+- **High-Resolution Presentation Cards**: 7 bespoke marketing screenshot suites framing live biometrics, AI coaching, structured runs, overstride kinematics, progression, and privacy.
+- **Refreshed Promo Videos**: 9:16 vertical and 16:9 landscape cinematic marketing videos for social launches and web showcase.
+- **Updated Website (runalyst.ca)**: Live interactive showcase tabs, responsive feature highlights, and updated video tour.
 
 ---
 
 ### 🛠️ Technical Improvements & Architecture
-- **Expanded Test Suite**: Broadened test coverage from 112 to 137 automated unit and integration tests across 7 specialized test domains (`RunalystTests`) with 100% pass rate.
-- **Golden Telemetry Fixtures**: Added authentic golden fixtures for Pyramids, Hill Repeats, Urban Traffic, and Interstitial Drill Readouts.
-- **Strict SwiftLint Quality Gate**: 100% compliance across all 57 Swift source files with zero violations under `--strict`.
-- **Architectural Documentation**: Standardized design decisions codified in `docs/adr/0008-feature-vector-extraction-and-taxonomic-classification-engine.md`.
+- **Expanded Test Coverage**: Comprehensive suite of 227 automated unit and integration tests across 110 Swift source files with 100% pass rate.
+- **Strict SwiftLint Gate**: Zero violations under `--strict` across the entire codebase.
+- **Apple TN3193 Context Conservation**: Streamlined tool schemas and compact JSON payloads keeping token utilization well within device limits.
 
 ---
 
-**Full Changelog**: https://github.com/motilayo/runalyzer/compare/v2.2.1...v2.3.0
+**Full Changelog**: https://github.com/motilayo/runalyzer/compare/v2.3.0...v2.4.0

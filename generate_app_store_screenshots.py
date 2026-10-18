@@ -179,8 +179,8 @@ cards = [
         "output": "04_Biomechanical_Analysis.png",
     },
     {
-        "title": "Curated Pre-Run Drills",
-        "subtitle": "Customizable durations, workout phases & haptic cues",
+        "title": "Structured Runs & Primers",
+        "subtitle": "Daily workout prescriptions & pre-run primers for Watch",
         "screenshot": "/Users/motilayo/workspace/runalyzer/Media/Screenshots/iPhone_Raw/screen_drills.png",
         "output": "05_PreRun_Library.png",
     },

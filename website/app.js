@@ -37,10 +37,10 @@ function initScreenshotShowcase() {
     coaching: {
       src: 'assets/images/02_AI_Coaching.png',
       badge: '02 / ON-DEVICE FOUNDATION MODELS',
-      title: 'On-Device AI Coaching Engine',
-      desc: 'Powered natively by Apple FoundationModels running strictly on Apple Silicon. Get conversational, highly tailored feedback after every run with zero latency and zero cloud tracking.',
-      b1: 'Mathematical determinism: Swift evaluates physiological rules before prompting',
-      b2: 'Actionable observations grouped into Cardio, Form, and Pacing',
+      title: 'Interactive AI Running Analyst & Coach',
+      desc: 'Powered natively by Apple FoundationModels with pure native tool calling. Ask anything about your workouts, fatigue, pacing, or race preparation. Swift does the math; the AI coaches with empathy.',
+      b1: 'Native tool calling: queries workout physics, interval scorecards, and athlete state on demand',
+      b2: 'Zero math hallucinations: Swift deterministically calculates baselines and training loads',
       b3: '100% on-device inference: private, instant, and works completely offline'
     },
     drills: {
@@ -63,12 +63,12 @@ function initScreenshotShowcase() {
     },
     catalog: {
       src: 'assets/images/05_PreRun_Library.png',
-      badge: '05 / CURATED PRE-RUN DRILL CATALOG',
-      title: 'Curated Pre-Run Drills Library',
-      desc: 'Browse a complete library of biomechanically targeted primers—from Form Primers and Cadence Pyramids to Aerobic Flushes. Adjust drill duration (5, 10, 15, or 30 mins) with one tap.',
-      b1: '10+ structured drill archetypes covering foundation, tempo surges, hills, and recovery',
-      b2: 'Live haptic feedback toggle for wrist vibration cues on interval transitions',
-      b3: 'Seamless one-tap push to Apple Watch WorkoutKit for guided wrist workouts'
+      badge: '05 / STRUCTURED RUNS & PRE-RUN PRIMERS',
+      title: 'Structured Runs & Pre-Run Primers',
+      desc: 'Take the guesswork out of daily training. Runalyst prescribes adaptive daily sessions locked to your active goal (from 5K to Marathon), paired with biomechanically targeted pre-run primers ready for one-tap Apple Watch export.',
+      b1: 'Locked aerobic prescriptions with dynamic duration bands and cadence floors',
+      b2: 'Pre-run primers with active work-to-rest intervals and haptic cues',
+      b3: 'Seamless one-tap export to Apple Watch WorkoutKit for guided wrist workouts'
     },
     progression: {
       src: 'assets/images/06_Longitudinal_Progression.png',
