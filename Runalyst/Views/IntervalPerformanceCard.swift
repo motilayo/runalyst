@@ -145,11 +145,11 @@ struct IntervalPerformanceCard: View {
                     label: "AVG HR DROP",
                     value: avgHRDrop.map { drop in
                         if drop > 0 {
-                            return "-\(drop) BPM"
+                            return "↓ \(drop) BPM"
                         } else if drop == 0 {
                             return "0 BPM"
                         } else {
-                            return "+\(abs(drop)) BPM"
+                            return "↑ \(abs(drop)) BPM"
                         }
                     } ?? "--",
                     valueColor: avgHRDrop != nil ? Color(red: 1.0, green: 0.22, blue: 0.55) : .secondary,
@@ -332,7 +332,7 @@ struct IntervalPerformanceCard: View {
                         )
 
                         if let drop = rep.recoveryHeartRateDrop {
-                            let hrValue: String = drop > 0 ? "-\(drop) BPM" : (drop == 0 ? "0 BPM" : "+\(abs(drop)) BPM")
+                            let hrValue: String = drop > 0 ? "↓ \(drop) BPM" : (drop == 0 ? "0 BPM" : "↑ \(abs(drop)) BPM")
                             let hrColor: Color = drop >= 10 ? Color(red: 1.0, green: 0.22, blue: 0.55) : (drop < 0 ? .orange : .secondary)
                             telemetryPill(
                                 label: "HR Drop",
