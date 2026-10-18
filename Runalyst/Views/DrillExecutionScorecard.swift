@@ -626,17 +626,9 @@ struct DrillExecutionScorecard: View {
                 }
 
                 let displayedReps = isSetsExpanded ? displayReps : Array(displayReps.prefix(3))
-                if horizontalSizeClass == .regular && isSetsExpanded {
-                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
-                        ForEach(displayedReps) { rep in
-                            drillRepRow(rep, targetRange: drillObj.effectiveTargetCadence)
-                        }
-                    }
-                } else {
-                    VStack(spacing: 8) {
-                        ForEach(displayedReps) { rep in
-                            drillRepRow(rep, targetRange: drillObj.effectiveTargetCadence)
-                        }
+                VStack(spacing: 8) {
+                    ForEach(displayedReps) { rep in
+                        drillRepRow(rep, targetRange: drillObj.effectiveTargetCadence)
                     }
                 }
             }
@@ -680,6 +672,7 @@ struct DrillExecutionScorecard: View {
                         Text("Rep \(rep.repIndex)")
                             .font(.subheadline.bold())
                             .foregroundColor(.primary)
+                            .lineLimit(1)
 
                         if let dur = rep.durationSeconds, dur > 0 {
                             let durMin = Int(dur) / 60
@@ -687,6 +680,7 @@ struct DrillExecutionScorecard: View {
                             Text(durMin > 0 ? "\(durMin)m \(durSec)s" : "\(durSec)s")
                                 .font(.system(size: 11, weight: .medium))
                                 .foregroundColor(.secondary)
+                                .lineLimit(1)
                                 .padding(.horizontal, 5)
                                 .padding(.vertical, 2)
                                 .background(Color(UIColor.tertiarySystemFill))
@@ -701,6 +695,7 @@ struct DrillExecutionScorecard: View {
                                     .font(.system(size: 8.5, weight: .bold))
                             }
                             .foregroundColor(.orange)
+                            .lineLimit(1)
                             .padding(.horizontal, 4)
                             .padding(.vertical, 1.5)
                             .background(Color.orange.opacity(0.12))
@@ -714,6 +709,8 @@ struct DrillExecutionScorecard: View {
                                 .font(.subheadline.bold())
                                 .monospacedDigit()
                                 .foregroundColor(.primary)
+                                .lineLimit(1)
+                                .layoutPriority(1)
                         }
 
                         HStack(spacing: 2.5) {
@@ -742,6 +739,7 @@ struct DrillExecutionScorecard: View {
                             Text("\(rep.workCadence) SPM")
                                 .font(.caption)
                                 .foregroundColor(rep.isMet ? Color(red: 0.0, green: 0.75, blue: 0.65) : .orange)
+                                .lineLimit(1)
 
                             if rep.workHeartRate > 0 {
                                 Text("·")

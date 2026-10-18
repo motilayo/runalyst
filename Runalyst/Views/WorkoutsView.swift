@@ -9,6 +9,7 @@ struct WorkoutsView: View {
     @Query(sort: \RunRecord.date, order: .reverse) private var runRecords: [RunRecord]
     @AppStorage("trainingGoal") private var trainingGoal: String = "Base Building"
     @AppStorage("useMetricSystem") private var useMetricSystem: Bool = Locale.current.measurementSystem == .metric
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     @State private var showingUserProfile = false
     @State private var showingAnalystChat = false
@@ -40,6 +41,8 @@ struct WorkoutsView: View {
                         completedTodayContent(completedRun: completedRun, tomorrowSession: tomorrowSession)
                     }
                 }
+                .frame(maxWidth: horizontalSizeClass == .regular ? 720 : .infinity)
+                .frame(maxWidth: .infinity)
                 .padding(.horizontal, 16)
                 .padding(.top, 14)
                 .padding(.bottom, 90)

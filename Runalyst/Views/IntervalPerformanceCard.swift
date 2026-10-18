@@ -178,17 +178,9 @@ struct IntervalPerformanceCard: View {
                 }
 
                 let displayedReps = isExpanded ? evaluations : Array(evaluations.prefix(3))
-                if horizontalSizeClass == .regular && isExpanded {
-                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
-                        ForEach(displayedReps) { rep in
-                            repRow(rep, cadenceFloor: cadenceFloor)
-                        }
-                    }
-                } else {
-                    VStack(spacing: 8) {
-                        ForEach(displayedReps) { rep in
-                            repRow(rep, cadenceFloor: cadenceFloor)
-                        }
+                VStack(spacing: 8) {
+                    ForEach(displayedReps) { rep in
+                        repRow(rep, cadenceFloor: cadenceFloor)
                     }
                 }
             }
@@ -224,12 +216,14 @@ struct IntervalPerformanceCard: View {
                         Text("Rep \(rep.repIndex)")
                             .font(.subheadline.bold())
                             .foregroundColor(.primary)
+                            .lineLimit(1)
 
                         let durMin = Int(rep.durationSeconds) / 60
                         let durSec = Int(rep.durationSeconds) % 60
                         Text(durMin > 0 ? "\(durMin)m \(durSec)s" : "\(durSec)s")
                             .font(.system(size: 11, weight: .medium))
                             .foregroundColor(.secondary)
+                            .lineLimit(1)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
                             .background(Color(UIColor.tertiarySystemFill))
@@ -239,6 +233,7 @@ struct IntervalPerformanceCard: View {
                             Text("Fastest")
                                 .font(.system(size: 9, weight: .bold))
                                 .foregroundColor(.orange)
+                                .lineLimit(1)
                                 .padding(.horizontal, 5)
                                 .padding(.vertical, 1.5)
                                 .background(Color.orange.opacity(0.12))
@@ -251,6 +246,8 @@ struct IntervalPerformanceCard: View {
                             .font(.subheadline.bold())
                             .monospacedDigit()
                             .foregroundColor(.primary)
+                            .lineLimit(1)
+                            .layoutPriority(1)
 
                         Text(rep.letterGrade)
                             .font(.caption2.bold())
@@ -273,6 +270,7 @@ struct IntervalPerformanceCard: View {
                             Text("\(rep.workCadence) SPM")
                                 .font(.caption)
                                 .foregroundColor(rep.workCadence < cadenceFloor ? .orange : .secondary)
+                                .lineLimit(1)
 
                             Text("·")
                                 .font(.caption.bold())
@@ -281,6 +279,7 @@ struct IntervalPerformanceCard: View {
                             Text("\(rep.workHeartRate) BPM")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
+                                .lineLimit(1)
                         }
 
                         Spacer()
@@ -290,6 +289,7 @@ struct IntervalPerformanceCard: View {
                                 Text("Rec \(recPace)")
                                     .font(.caption2)
                                     .foregroundColor(.secondary)
+                                    .lineLimit(1)
 
                                 recoveryHeartRateBadge(drop: rep.recoveryHeartRateDrop)
                             }

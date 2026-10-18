@@ -803,12 +803,23 @@ struct RunDetailView: View {
                 // MARK: Metrics Grid
                 let columns: [GridItem] = {
                     if horizontalSizeClass == .regular {
-                        return [
-                            GridItem(.flexible(), spacing: 16),
-                            GridItem(.flexible(), spacing: 16),
-                            GridItem(.flexible(), spacing: 16),
-                            GridItem(.flexible(), spacing: 16)
-                        ]
+                        let currentStride = showRawMetrics ? (runRecord.rawAvgStrideLength ?? runRecord.workingAvgStrideLength) : (runRecord.workingAvgStrideLength ?? runRecord.rawAvgStrideLength)
+                        let currentOscillation = showRawMetrics ? (runRecord.rawAvgVerticalOscillation ?? runRecord.workingAvgVerticalOscillation) : (runRecord.workingAvgVerticalOscillation ?? runRecord.rawAvgVerticalOscillation)
+                        let currentVR = runRecord.verticalRatio
+                        let totalItems = 5 + (currentStride != nil ? 1 : 0) + (currentOscillation != nil ? 1 : 0) + (currentVR != nil ? 1 : 0)
+
+                        if totalItems == 5 {
+                            return Array(repeating: GridItem(.flexible(), spacing: 16), count: 5)
+                        } else if totalItems == 6 {
+                            return Array(repeating: GridItem(.flexible(), spacing: 16), count: 3)
+                        } else {
+                            return [
+                                GridItem(.flexible(), spacing: 16),
+                                GridItem(.flexible(), spacing: 16),
+                                GridItem(.flexible(), spacing: 16),
+                                GridItem(.flexible(), spacing: 16)
+                            ]
+                        }
                     } else if verticalSizeClass == .regular {
                         return [GridItem(.flexible(), spacing: 16), GridItem(.flexible(), spacing: 16)]
                     } else {
