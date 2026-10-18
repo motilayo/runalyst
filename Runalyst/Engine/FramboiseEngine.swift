@@ -380,7 +380,7 @@ actor FramboiseEngine {
     static func consolidatePhaseSegments(_ segments: [PhaseSegment]) -> [PhaseSegment] {
         guard !segments.isEmpty else { return [] }
 
-        // Step 1: Gap bridging: merge work segments separated by brief momentary flutter (<= 15s any) or steady compound transitions (<= 75s steady without recovery drop)
+        // Step 1: Gap bridging: merge work segments separated by brief momentary flutter (<= 15s any) or steady compound transitions (<= 65s steady, pace < 400 s/km, cadence >= 156 SPM)
         var bridged: [PhaseSegment] = []
         for seg in segments {
             if let last = bridged.last, last.kind == "work" && seg.kind == "work" {
@@ -389,7 +389,7 @@ actor FramboiseEngine {
                       seg.kind == "work",
                       let gap = bridged.last,
                       gap.kind != "work",
-                      gap.durationSeconds <= 15.0 || (gap.kind == "steady" && gap.durationSeconds <= 75.0),
+                      gap.durationSeconds <= 15.0 || (gap.kind == "steady" && gap.durationSeconds <= 65.0 && gap.avgPace < 400.0 && gap.avgCadence >= 156.0),
                       bridged[bridged.count - 2].kind == "work" {
                 _ = bridged.removeLast()
                 let prev = bridged.removeLast()
