@@ -369,11 +369,13 @@ enum SessionSynthesisEngine {
         let primerWork = wasHardSession ? "2 x 30 sec work • 45 sec walk • Gentle" : "3 x 30 sec work • 45 sec jog"
         let primerDuration = wasHardSession ? "7m 30s drill (Trimmed from 10 min)" : "10 min drill"
 
+        let tomorrowDate = Calendar.current.date(byAdding: .day, value: 1, to: context.now) ?? context.now
         let microcycle = generateMicrocycle(
             activeGoal: context.activeGoal,
-            now: context.now,
+            now: tomorrowDate,
             useMetric: context.useMetric,
-            isRecoveryWindow: wasHardSession
+            isRecoveryWindow: wasHardSession,
+            startsAfterTomorrow: true
         )
 
         return PrescribedDailySession(
@@ -453,7 +455,8 @@ enum SessionSynthesisEngine {
         activeGoal: String,
         now: Date,
         useMetric: Bool = true,
-        isRecoveryWindow: Bool = false
+        isRecoveryWindow: Bool = false,
+        startsAfterTomorrow: Bool = false
     ) -> [MicrocycleDay] {
         let calendar = Calendar.current
         var days: [MicrocycleDay] = []
@@ -462,7 +465,7 @@ enum SessionSynthesisEngine {
         for offset in 1...5 {
             guard let targetDate = calendar.date(byAdding: .day, value: offset, to: now) else { continue }
             let weekday = calendar.component(.weekday, from: targetDate)
-            let dayLabel = (offset == 1) ? "Tomorrow" : dayNames[weekday - 1]
+            let dayLabel = (offset == 1 && !startsAfterTomorrow) ? "Tomorrow" : dayNames[weekday - 1]
 
             let sessionTitle: String
             let iconName: String
