@@ -186,54 +186,55 @@ struct WorkoutsView: View {
                                 .font(.subheadline.weight(.semibold))
                                 .foregroundColor(.primary)
                                 .lineLimit(2)
-                                .minimumScaleFactor(0.85)
-                                .fixedSize(horizontal: false, vertical: true)
+                                .minimumScaleFactor(0.8)
                             Text("\(snap.durationFormatted) • \(snap.distanceFormatted)")
                                 .font(.caption)
                                 .monospacedDigit()
                                 .foregroundColor(.secondary)
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .layoutPriority(1)
 
-                        Spacer()
-
-                        if allRunsToday.count > 1 {
-                            if snap.isPrimerDrill {
-                                HStack(spacing: 3) {
-                                    Image(systemName: "checkmark")
-                                        .font(.system(size: 9, weight: .bold))
-                                    Text("Target Met")
-                                        .font(.caption2.bold())
-                                }
-                                .padding(.horizontal, 7)
-                                .padding(.vertical, 3)
-                                .background(Color.green.opacity(0.15))
-                                .foregroundColor(.green)
-                                .clipShape(Capsule())
-                            } else {
-                                Text("Grade \(snap.letterGrade)")
-                                    .font(.caption2.bold())
+                        HStack(spacing: 6) {
+                            if allRunsToday.count > 1 {
+                                if snap.isPrimerDrill {
+                                    HStack(spacing: 3) {
+                                        Image(systemName: "checkmark")
+                                            .font(.system(size: 9, weight: .bold))
+                                        Text("Target Met")
+                                            .font(.caption2.bold())
+                                    }
                                     .padding(.horizontal, 7)
                                     .padding(.vertical, 3)
                                     .background(Color.green.opacity(0.15))
                                     .foregroundColor(.green)
                                     .clipShape(Capsule())
-                            }
-                        }
-
-                        if let targetRun = runRecords.first(where: { $0.id == snap.id }) {
-                            Button {
-                                selectedRunForDetail = targetRun
-                            } label: {
-                                HStack(spacing: 3) {
-                                    Text(allRunsToday.count > 1 ? "Details" : "View Run Details")
-                                        .font(.caption.bold())
-                                    Image(systemName: "chevron.right")
+                                } else {
+                                    Text("Grade \(snap.letterGrade)")
                                         .font(.caption2.bold())
+                                        .padding(.horizontal, 7)
+                                        .padding(.vertical, 3)
+                                        .background(Color.green.opacity(0.15))
+                                        .foregroundColor(.green)
+                                        .clipShape(Capsule())
                                 }
-                                .foregroundColor(.green)
-                                .padding(.vertical, 6)
-                                .padding(.horizontal, 8)
-                                .contentShape(Rectangle())
+                            }
+
+                            if let targetRun = runRecords.first(where: { $0.id == snap.id }) {
+                                Button {
+                                    selectedRunForDetail = targetRun
+                                } label: {
+                                    HStack(spacing: 3) {
+                                        Text(allRunsToday.count > 1 ? "Details" : "View Run Details")
+                                            .font(.caption.bold())
+                                        Image(systemName: "chevron.right")
+                                            .font(.caption2.bold())
+                                    }
+                                    .foregroundColor(.green)
+                                    .padding(.vertical, 6)
+                                    .padding(.horizontal, 8)
+                                    .contentShape(Rectangle())
+                                }
                             }
                         }
                     }
