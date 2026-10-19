@@ -217,11 +217,9 @@ struct OnboardingView: View {
                 // Spotlight on the ⓘ Explainer
                 infoExplainerSpotlightCard
                     .padding(.horizontal, 16)
-
-                Spacer().frame(height: 40)
             }
             .padding(.vertical, 12)
-            .padding(.bottom, 90)
+            .padding(.bottom, 16)
         }
     }
 
@@ -422,11 +420,9 @@ struct OnboardingView: View {
                     }
                 }
                 .padding(.horizontal, 16)
-
-                Spacer().frame(height: 40)
             }
             .padding(.vertical, 12)
-            .padding(.bottom, 90)
+            .padding(.bottom, 16)
         }
     }
 
@@ -625,10 +621,8 @@ struct OnboardingView: View {
                 // Embedded About Runalyst content from Settings
                 AboutRunalystView(isEmbedded: true)
                     .padding(.horizontal, 16)
-
-                Spacer().frame(height: 40)
             }
-            .padding(.bottom, 90)
+            .padding(.bottom, 16)
         }
     }
 
