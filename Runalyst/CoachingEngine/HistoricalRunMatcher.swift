@@ -1,6 +1,193 @@
 import Foundation
 import SwiftData
 
+enum HistoricalSortMetric: Sendable, Equatable {
+    case date
+    case distance
+    case duration
+    case pace
+    case cadence
+    case heartRate
+    case efficiencyFactor
+}
+
+enum HistoricalSortDirection: Sendable, Equatable {
+    case ascending
+    case descending
+}
+
+enum HistoricalEnvironmentFilter: Sendable, Equatable {
+    case all
+    case outdoor
+    case indoor
+}
+
+struct HistoricalQueryCriteria: Sendable, Equatable {
+    typealias SortMetric = HistoricalSortMetric
+    typealias Direction = HistoricalSortDirection
+    typealias Environment = HistoricalEnvironmentFilter
+
+    var metric: SortMetric = .date
+    var direction: Direction = .descending
+    var environment: Environment = .all
+    var modality: String?
+    var targetYear: Int?
+    var targetMonth: Int?
+    var targetDay: Int?
+    var limit: Int = 1
+    var requiresPriorToCurrentRun: Bool = false
+
+    init(
+        metric: SortMetric = .date,
+        direction: Direction = .descending,
+        environment: Environment = .all,
+        modality: String? = nil,
+        targetYear: Int? = nil,
+        targetMonth: Int? = nil,
+        targetDay: Int? = nil,
+        limit: Int = 1,
+        requiresPriorToCurrentRun: Bool = false
+    ) {
+        self.metric = metric
+        self.direction = direction
+        self.environment = environment
+        self.modality = modality
+        self.targetYear = targetYear
+        self.targetMonth = targetMonth
+        self.targetDay = targetDay
+        self.limit = limit
+        self.requiresPriorToCurrentRun = requiresPriorToCurrentRun
+    }
+
+    static func parse(from query: String, relativeTo currentRun: RunRecord? = nil) -> HistoricalQueryCriteria {
+        let lower = query.lowercased()
+        var criteria = HistoricalQueryCriteria()
+
+        // 1. Environment extraction
+        let mentionsOutdoor = lower.contains("outdoor") || lower.contains("outside") || lower.contains("road") || lower.contains("trail")
+        let mentionsIndoor = lower.contains("indoor") || lower.contains("treadmill")
+
+        if mentionsOutdoor && !mentionsIndoor {
+            criteria.environment = .outdoor
+        } else if mentionsIndoor && !mentionsOutdoor {
+            criteria.environment = .indoor
+        } else if mentionsOutdoor && mentionsIndoor {
+            if let current = currentRun {
+                criteria.environment = (current.isIndoor ?? false) ? .outdoor : .indoor
+            } else {
+                criteria.environment = .outdoor
+            }
+        }
+
+        // 2. Metric & Direction (Superlatives and Chronological Extremes)
+        let isChronologicalOldest = lower.contains("oldest") || lower.contains("first") || lower.contains("earliest") || lower.contains("initial") || lower.contains("beginning")
+        let isFastestOrBest = lower.contains("fastest") || lower.contains("best") || lower.contains("peak efficiency") || lower.contains("highest efficiency")
+        let isSlowestOrWorst = lower.contains("slowest") || lower.contains("worst") || lower.contains("toughest") || lower.contains("lowest efficiency")
+
+        if isChronologicalOldest {
+            criteria.metric = .date
+            criteria.direction = .ascending
+        } else if lower.contains("longest") {
+            criteria.metric = .distance
+            criteria.direction = .descending
+        } else if lower.contains("shortest") {
+            criteria.metric = .distance
+            criteria.direction = .ascending
+        } else if isFastestOrBest {
+            criteria.metric = .efficiencyFactor
+            criteria.direction = .descending
+        } else if isSlowestOrWorst {
+            criteria.metric = .efficiencyFactor
+            criteria.direction = .ascending
+        } else if lower.contains("highest hr") || lower.contains("highest heart rate") || lower.contains("max hr") {
+            criteria.metric = .heartRate
+            criteria.direction = .descending
+        } else if lower.contains("lowest hr") || lower.contains("lowest heart rate") {
+            criteria.metric = .heartRate
+            criteria.direction = .ascending
+        } else {
+            criteria.metric = .date
+            criteria.direction = .descending
+        }
+
+        let mentionsPriorExplicitly = lower.contains("previous") || lower.contains("prior") || lower.contains("before this") || (lower.contains("last run") && !lower.contains("first"))
+        criteria.requiresPriorToCurrentRun = mentionsPriorExplicitly
+
+        // 3. Date Components (Year, Month, Day)
+        if let yearRegex = try? NSRegularExpression(pattern: #"\b(20\d{2})\b"#) {
+            let nsRange = NSRange(lower.startIndex..<lower.endIndex, in: lower)
+            if let match = yearRegex.firstMatch(in: lower, range: nsRange),
+               let r = Range(match.range(at: 1), in: lower),
+               let y = Int(lower[r]) {
+                criteria.targetYear = y
+            }
+        }
+
+        let months: [(name: String, number: Int)] = [
+            ("january", 1), ("jan", 1),
+            ("february", 2), ("feb", 2),
+            ("march", 3), ("mar", 3),
+            ("april", 4), ("apr", 4),
+            ("may", 5),
+            ("june", 6), ("jun", 6),
+            ("july", 7), ("jul", 7),
+            ("august", 8), ("aug", 8),
+            ("september", 9), ("sept", 9), ("sep", 9),
+            ("october", 10), ("oct", 10),
+            ("november", 11), ("nov", 11),
+            ("december", 12), ("dec", 12)
+        ]
+        for m in months where lower.contains(m.name) {
+            criteria.targetMonth = m.number
+            break
+        }
+
+        if let dayRegex = try? NSRegularExpression(pattern: #"\b(\d{1,2})(?:st|nd|rd|th)?\b"#) {
+            let nsRange = NSRange(lower.startIndex..<lower.endIndex, in: lower)
+            let matches = dayRegex.matches(in: lower, range: nsRange)
+            for match in matches {
+                if let dayRange = Range(match.range(at: 1), in: lower),
+                   let dayVal = Int(lower[dayRange]), dayVal >= 1 && dayVal <= 31,
+                   dayVal != criteria.targetYear {
+                    criteria.targetDay = dayVal
+                    break
+                }
+            }
+        }
+
+        if criteria.targetMonth == nil || criteria.targetDay == nil {
+            if let slashRegex = try? NSRegularExpression(pattern: #"\b(\d{1,2})/(\d{1,2})\b"#) {
+                let nsRange = NSRange(lower.startIndex..<lower.endIndex, in: lower)
+                if let match = slashRegex.firstMatch(in: lower, range: nsRange),
+                   let mRange = Range(match.range(at: 1), in: lower),
+                   let dRange = Range(match.range(at: 2), in: lower),
+                   let mVal = Int(lower[mRange]), let dVal = Int(lower[dRange]),
+                   mVal >= 1 && mVal <= 12, dVal >= 1 && dVal <= 31 {
+                    criteria.targetMonth = mVal
+                    criteria.targetDay = dVal
+                }
+            }
+        }
+
+        if lower.contains("yesterday") {
+            let yesterday = Date().addingTimeInterval(-86400)
+            let comps = Calendar.current.dateComponents([.year, .month, .day], from: yesterday)
+            criteria.targetYear = comps.year
+            criteria.targetMonth = comps.month
+            criteria.targetDay = comps.day
+        }
+
+        // 4. Modality
+        let modalities = ["intervals", "tempo", "steady", "progression", "recovery", "fartlek", "long run", "pyramids", "hill repeats"]
+        for mod in modalities where lower.contains(mod) {
+            criteria.modality = mod
+            break
+        }
+
+        return criteria
+    }
+}
+
 /// Deterministic matching and mathematical comparison between the active workout and a historical workout.
 /// Adheres strictly to the "Thick Client, Thin AI" architectural doctrine:
 /// Swift performs the data extraction, date parsing, and delta math;
@@ -356,11 +543,11 @@ struct HistoricalRunMatcher {
         guard let allRuns = try? context.fetch(descriptor), !allRuns.isEmpty else { return nil }
 
         // Find runA
-        guard let runA = findRun(matching: queryA, in: allRuns, relativeTo: currentRun) else { return nil }
+        guard let runA = findRun(matching: queryA, in: allRuns, relativeTo: nil) else { return nil }
 
         // Find runB from the remaining runs
         let remainingRuns = allRuns.filter { $0.id != runA.id }
-        guard let runB = findRun(matching: queryB, in: remainingRuns, relativeTo: currentRun) else { return nil }
+        guard let runB = findRun(matching: queryB, in: remainingRuns, relativeTo: nil) else { return nil }
 
         // Order chronologically so the newer run is evaluated against the older run as baseline
         let newer: RunRecord
@@ -392,42 +579,61 @@ struct HistoricalRunMatcher {
         return findRun(matching: query, in: otherRuns, relativeTo: currentRun)
     }
 
-    /// Finds a matching run within an explicit pool of runs.
+    typealias HistoricalQueryCriteria = Runalyst.HistoricalQueryCriteria
+
+    /// Finds a matching run within an explicit pool of runs using deterministic composable query criteria.
     static func findRun(
-        matching query: String,
+        matching criteria: HistoricalQueryCriteria,
         in pool: [RunRecord],
         relativeTo currentRun: RunRecord? = nil
     ) -> RunRecord? {
         guard !pool.isEmpty else { return nil }
-        let lower = query.lowercased()
-        let calendar = Calendar.current
+        var candidates = pool
 
-        // 0. Environment matching: "outdoor", "outside", "road", "trail", "indoor", "treadmill"
-        let mentionsOutdoor = lower.contains("outdoor") || lower.contains("outside") || lower.contains("road") || lower.contains("trail")
-        let mentionsIndoor = lower.contains("indoor") || lower.contains("treadmill")
-
-        if mentionsOutdoor && !mentionsIndoor {
-            if let match = pool.first(where: { !($0.isIndoor ?? false) }) {
-                return match
-            }
-        } else if mentionsIndoor && !mentionsOutdoor {
-            if let match = pool.first(where: { $0.isIndoor == true }) {
-                return match
-            }
-        } else if mentionsOutdoor && mentionsIndoor {
-            if let current = currentRun {
-                let wantOutdoor = (current.isIndoor ?? false)
-                if let match = pool.first(where: { wantOutdoor ? !($0.isIndoor ?? false) : ($0.isIndoor == true) }) {
-                    return match
-                }
-            } else {
-                if let match = pool.first(where: { !($0.isIndoor ?? false) }) {
-                    return match
-                }
+        // If filtering relative to current run when query explicitly demands a prior run:
+        if criteria.requiresPriorToCurrentRun, let current = currentRun {
+            let priorOnly = candidates.filter { $0.date < current.date }
+            if !priorOnly.isEmpty {
+                candidates = priorOnly
             }
         }
 
-        // 0.5. Superlatives: "best", "fastest", "worst", "slowest", "toughest"
+        // 1. Filter by environment
+        switch criteria.environment {
+        case .outdoor:
+            candidates = candidates.filter { !($0.isIndoor ?? false) }
+        case .indoor:
+            candidates = candidates.filter { $0.isIndoor == true }
+        case .all:
+            break
+        }
+
+        // 2. Filter by date components
+        if criteria.targetYear != nil || criteria.targetMonth != nil || criteria.targetDay != nil {
+            let calendar = Calendar.current
+            candidates = candidates.filter { run in
+                let comps = calendar.dateComponents([.year, .month, .day], from: run.date)
+                if let y = criteria.targetYear, comps.year != y { return false }
+                if let m = criteria.targetMonth, comps.month != m { return false }
+                if let d = criteria.targetDay, comps.day != d { return false }
+                return true
+            }
+        }
+
+        // 3. Filter by modality
+        if let mod = criteria.modality {
+            let filteredByMod = candidates.filter {
+                $0.detectedTypeRaw.localizedCaseInsensitiveContains(mod) ||
+                $0.normalizedClassification.localizedCaseInsensitiveContains(mod)
+            }
+            if !filteredByMod.isEmpty {
+                candidates = filteredByMod
+            }
+        }
+
+        guard !candidates.isEmpty else { return nil }
+
+        // Helper for efficiency factor
         func efficiencyScore(for run: RunRecord) -> Double {
             if let ef = run.efficiencyFactor, ef > 0 { return ef }
             let pace = run.workingAvgPace > 0 ? run.workingAvgPace : run.rawAvgPace
@@ -436,126 +642,65 @@ struct HistoricalRunMatcher {
             return (60_000.0 / pace) / hr
         }
 
-        if lower.contains("best") || lower.contains("fastest") || lower.contains("highest efficiency") {
-            let candidates = pool.filter { $0.totalDistanceMeters >= 500 && $0.duration >= 180 }
-            let poolToUse = candidates.isEmpty ? pool : candidates
-            if let best = poolToUse.max(by: { efficiencyScore(for: $0) < efficiencyScore(for: $1) }) {
-                return best
-            }
-        }
-        if lower.contains("worst") || lower.contains("slowest") || lower.contains("toughest") || lower.contains("lowest efficiency") {
-            let candidates = pool.filter { $0.totalDistanceMeters >= 500 && $0.duration >= 180 }
-            let poolToUse = candidates.isEmpty ? pool : candidates
-            if let worst = poolToUse.min(by: { efficiencyScore(for: $0) < efficiencyScore(for: $1) }) {
-                return worst
+        // Meaningful runs filter for pace / efficiency superlatives
+        if criteria.metric == .efficiencyFactor || criteria.metric == .pace {
+            let meaningful = candidates.filter { $0.totalDistanceMeters >= 500 && $0.duration >= 180 }
+            if !meaningful.isEmpty {
+                candidates = meaningful
             }
         }
 
-        // 1. Month + Day parsing (e.g., "September 30", "Sep 30", "9/30")
-        let months: [(name: String, number: Int)] = [
-            ("january", 1), ("jan", 1),
-            ("february", 2), ("feb", 2),
-            ("march", 3), ("mar", 3),
-            ("april", 4), ("apr", 4),
-            ("may", 5),
-            ("june", 6), ("jun", 6),
-            ("july", 7), ("jul", 7),
-            ("august", 8), ("aug", 8),
-            ("september", 9), ("sept", 9), ("sep", 9),
-            ("october", 10), ("oct", 10),
-            ("november", 11), ("nov", 11),
-            ("december", 12), ("dec", 12)
-        ]
-
-        var targetMonth: Int?
-        for m in months where lower.contains(m.name) {
-            targetMonth = m.number
-            break
-        }
-
-        var targetDay: Int?
-        if let regex = try? NSRegularExpression(pattern: #"\b(\d{1,2})(?:st|nd|rd|th)?\b"#) {
-            let nsRange = NSRange(lower.startIndex..<lower.endIndex, in: lower)
-            let matches = regex.matches(in: lower, range: nsRange)
-            for match in matches {
-                if let dayRange = Range(match.range(at: 1), in: lower),
-                   let dayVal = Int(lower[dayRange]), dayVal >= 1 && dayVal <= 31 {
-                    targetDay = dayVal
-                    break
+        // 4. Sort by criteria metric & direction
+        let sorted = candidates.sorted { r1, r2 in
+            switch criteria.metric {
+            case .date:
+                return criteria.direction == .ascending ? r1.date < r2.date : r1.date > r2.date
+            case .distance:
+                return criteria.direction == .ascending ? r1.totalDistanceMeters < r2.totalDistanceMeters : r1.totalDistanceMeters > r2.totalDistanceMeters
+            case .duration:
+                return criteria.direction == .ascending ? r1.duration < r2.duration : r1.duration > r2.duration
+            case .pace:
+                let p1 = r1.workingAvgPace > 0 ? r1.workingAvgPace : r1.rawAvgPace
+                let p2 = r2.workingAvgPace > 0 ? r2.workingAvgPace : r2.rawAvgPace
+                return criteria.direction == .ascending ? p1 < p2 : p1 > p2
+            case .cadence:
+                let c1 = r1.workingAvgCadence > 0 ? r1.workingAvgCadence : r1.rawAvgCadence
+                let c2 = r2.workingAvgCadence > 0 ? r2.workingAvgCadence : r2.rawAvgCadence
+                return criteria.direction == .ascending ? c1 < c2 : c1 > c2
+            case .heartRate:
+                let h1 = r1.workingAvgHeartRate > 0 ? r1.workingAvgHeartRate : r1.rawAvgHeartRate
+                let h2 = r2.workingAvgHeartRate > 0 ? r2.workingAvgHeartRate : r2.rawAvgHeartRate
+                return criteria.direction == .ascending ? h1 < h2 : h1 > h2
+            case .efficiencyFactor:
+                let ef1 = efficiencyScore(for: r1)
+                let ef2 = efficiencyScore(for: r2)
+                if abs(ef1 - ef2) > 0.001 {
+                    return criteria.direction == .ascending ? ef1 < ef2 : ef1 > ef2
                 }
+                let p1 = r1.workingAvgPace > 0 ? r1.workingAvgPace : r1.rawAvgPace
+                let p2 = r2.workingAvgPace > 0 ? r2.workingAvgPace : r2.rawAvgPace
+                return criteria.direction == .ascending ? p1 > p2 : p1 < p2
             }
         }
 
-        // Handle numeric "M/D" or "MM/DD" (e.g., "9/14")
-        if targetMonth == nil || targetDay == nil {
-            if let slashRegex = try? NSRegularExpression(pattern: #"\b(\d{1,2})/(\d{1,2})\b"#) {
-                let nsRange = NSRange(lower.startIndex..<lower.endIndex, in: lower)
-                if let match = slashRegex.firstMatch(in: lower, range: nsRange),
-                   let mRange = Range(match.range(at: 1), in: lower),
-                   let dRange = Range(match.range(at: 2), in: lower),
-                   let mVal = Int(lower[mRange]), let dVal = Int(lower[dRange]),
-                   mVal >= 1 && mVal <= 12, dVal >= 1 && dVal <= 31 {
-                    targetMonth = mVal
-                    targetDay = dVal
-                }
-            }
-        }
+        return sorted.first
+    }
 
-        if let targetMonth = targetMonth, let targetDay = targetDay {
-            let matches = pool.filter { run in
-                let comps = calendar.dateComponents([.month, .day], from: run.date)
-                return comps.month == targetMonth && comps.day == targetDay
-            }
-            if let bestMatch = matches.first {
-                return bestMatch
-            }
-        }
-
-        // 2. Relative references: "yesterday", "last run", "previous run", "prior run"
-        if lower.contains("yesterday") {
-            let yesterdayComps = calendar.dateComponents([.year, .month, .day], from: Date().addingTimeInterval(-86400))
-            if let match = pool.first(where: {
-                let comps = calendar.dateComponents([.year, .month, .day], from: $0.date)
-                return comps.year == yesterdayComps.year && comps.month == yesterdayComps.month && comps.day == yesterdayComps.day
-            }) {
-                return match
-            }
-        }
-
-        if lower.contains("last run") || lower.contains("previous run") || lower.contains("prior run") || lower.contains("last workout") {
-            if let current = currentRun {
-                let priorRuns = pool.filter { $0.date < current.date }
-                if let prior = priorRuns.first {
-                    return prior
-                }
-            }
-            return pool.first
-        }
-
-        // 3. Modality references: "previous intervals", "last tempo", "last long run"
-        let modalities = ["intervals", "tempo", "steady", "progression", "recovery", "long"]
-        for mod in modalities where lower.contains(mod) {
-            let priorWithModality = pool.filter {
-                $0.detectedTypeRaw.localizedCaseInsensitiveContains(mod) || $0.normalizedClassification.localizedCaseInsensitiveContains(mod)
-            }
-            if let match = priorWithModality.first {
-                return match
-            }
-        }
-
-        // 4. Generic history query
-        if lower.contains("run") || lower.contains("workout") || lower.contains("activity") || lower.contains("history") {
-            return pool.first
-        }
-
-        return nil
+    /// Finds a matching run within an explicit pool of runs.
+    static func findRun(
+        matching query: String,
+        in pool: [RunRecord],
+        relativeTo currentRun: RunRecord? = nil
+    ) -> RunRecord? {
+        let criteria = HistoricalQueryCriteria.parse(from: query, relativeTo: currentRun)
+        return findRun(matching: criteria, in: pool, relativeTo: currentRun)
     }
 
     /// Extracts standardized telemetry data from a RunRecord.
     static func extractTelemetry(from run: RunRecord) -> TelemetryData {
         let dateFormatter = DateFormatter()
         dateFormatter.locale = Locale(identifier: "en_US_POSIX")
-        dateFormatter.dateFormat = "MMMM d"
+        dateFormatter.dateFormat = "MMMM d, yyyy"
 
         let weekdayFormatter = DateFormatter()
         weekdayFormatter.locale = Locale(identifier: "en_US_POSIX")
@@ -709,9 +854,16 @@ struct HistoricalRunMatcher {
         }
         let dateFormatter = DateFormatter()
         dateFormatter.locale = Locale(identifier: "en_US_POSIX")
-        dateFormatter.dateFormat = "EEEE, MMMM d"
+        dateFormatter.dateFormat = "EEEE, MMMM d, yyyy"
 
-        var lines = ["ATHLETE WORKOUT DATABASE (\(allRuns.count) total workouts recorded):"]
+        let totalCount = allRuns.count
+        let newestDateStr = allRuns.first.map { dateFormatter.string(from: $0.date) } ?? "N/A"
+        let oldestDateStr = allRuns.last.map { dateFormatter.string(from: $0.date) } ?? "N/A"
+
+        var lines = [
+            "ATHLETE WORKOUT DATABASE (\(totalCount) total workouts recorded, spanning from \(oldestDateStr) to \(newestDateStr)):",
+            "Showing \(min(limit, totalCount)) most recent workouts (newest to oldest):"
+        ]
         for run in allRuns.prefix(limit) {
             let isCurrent = run.id == currentRun.id
             let marker = isCurrent ? " [CURRENT WORKOUT]" : ""
@@ -725,7 +877,67 @@ struct HistoricalRunMatcher {
             let dateStr = dateFormatter.string(from: run.date)
             lines.append("• \(dateStr) - \(type) (\(env))\(marker): \(distKm) in \(durMin) @ \(pace), \(cad) SPM, \(hr) BPM")
         }
+        if totalCount > limit {
+            let olderCount = totalCount - limit
+            lines.append("(\(olderCount) older workouts recorded in athlete database down to first logged run on \(oldestDateStr))")
+        }
         return lines.joined(separator: "\n")
+    }
+
+    /// Formats a standalone telemetry card for a historical workout without requiring comparison math.
+    static func formatSingleRun(
+        _ run: RunRecord,
+        totalWorkoutsCount: Int? = nil,
+        rankInHistory: Int? = nil
+    ) -> String {
+        let telemetry = extractTelemetry(from: run)
+        let env = telemetry.isIndoor ? "Indoor Treadmill" : "Outdoor"
+        let distKm = String(format: "%.2f km", telemetry.distanceMeters / 1000.0)
+        let durMin = "\(Int(telemetry.durationSeconds / 60)) min"
+        let rankNote: String
+        if let rank = rankInHistory, let total = totalWorkoutsCount {
+            if rank == 1 {
+                rankNote = "\n- Database Context: Oldest recorded workout (#1 of \(total) total workouts)"
+            } else if rank == total {
+                rankNote = "\n- Database Context: Most recent workout (#\(total) of \(total) total workouts)"
+            } else {
+                rankNote = "\n- Database Context: Workout #\(rank) of \(total) total workouts in chronological order"
+            }
+        } else {
+            rankNote = ""
+        }
+
+        return """
+        HISTORICAL WORKOUT TELEMETRY:
+        - Date: \(telemetry.weekday), \(telemetry.formattedDate)
+        - Classification: \(telemetry.classification)
+        - Environment: \(env)
+        - Distance: \(distKm) (\(durMin))
+        - Working Pace: \(telemetry.paceFormatted)
+        - Working Cadence: \(telemetry.cadenceSPM) SPM
+        - Working Heart Rate: \(telemetry.heartRateBPM) BPM\(rankNote)
+        """
+    }
+
+    /// Looks up a specific historical run by query criteria and returns its deterministic telemetry.
+    static func lookupRun(
+        matching query: String,
+        relativeTo currentRun: RunRecord?,
+        in context: ModelContext?
+    ) -> String {
+        guard let context = context else {
+            return "No workouts found in stored records."
+        }
+        let descriptor = FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)])
+        guard let allRuns = try? context.fetch(descriptor), !allRuns.isEmpty else {
+            return "No workouts found in stored records."
+        }
+        guard let match = findRun(matching: query, in: allRuns, relativeTo: currentRun) else {
+            return "{\"status\":\"no_matching_run\",\"query\":\"\(query)\"}"
+        }
+        let ascending = allRuns.sorted(by: { $0.date < $1.date })
+        let rank = ascending.firstIndex(where: { $0.id == match.id }).map { $0 + 1 }
+        return formatSingleRun(match, totalWorkoutsCount: allRuns.count, rankInHistory: rank)
     }
 }
 

@@ -272,11 +272,7 @@ struct DrillCardView: View {
                 let targetCadenceValue = currentDrill.computedCadence ?? drill.targetCadence ?? ""
                 if !targetCadenceValue.isEmpty {
                     let formattedTarget = targetCadenceValue.contains("SPM") ? targetCadenceValue : "\(targetCadenceValue) SPM"
-                    if let prev = drill.previousCadence {
-                        return isAdapted ? "Target: \(formattedTarget) (Adapted)" : "Target: \(formattedTarget) (Previous: \(prev) SPM)"
-                    } else {
-                        return "Target: \(formattedTarget)"
-                    }
+                    return "Target: \(formattedTarget)"
                 }
                 return nil
             }()
