@@ -465,7 +465,7 @@ struct WorkoutsView: View {
             id: session.mainRunDrillId,
             previousCadence: session.cadenceFloor,
             targetCadence: session.mainRunDrillId.isHeartRateTargeted ? nil : "\(session.cadenceFloor)-\(session.cadenceFloor + 6)",
-            durationMinutes: session.mainRunDurationMinutes,
+            duration: DrillDuration(rawValue: session.mainRunDurationMinutes) ?? .thirtyMinutes,
             readinessState: session.isTrimmed ? .acuteFatigue : .productive,
             isIndoor: preferredWorkoutIsIndoor
         )
