@@ -118,7 +118,7 @@ struct WorkoutsView: View {
     @ViewBuilder
     private func preRunContent(session: PrescribedDailySession) -> some View {
         // Concept A: Unified Daily Session Card (Pre-Run Primer on top, Main Run below)
-        unifiedSessionCard(session: session, isTomorrow: false)
+        unifiedSessionCard(session: session)
 
         // Microcycle Progression Horizon
         microcycleSection(microcycle: session.microcycle)
@@ -259,7 +259,7 @@ struct WorkoutsView: View {
                 .foregroundColor(.primary)
                 .padding(.horizontal, 4)
 
-            unifiedSessionCard(session: tomorrowSession, isTomorrow: true)
+            tomorrowPreviewCard(session: tomorrowSession)
 
             microcycleSection(microcycle: tomorrowSession.microcycle)
 
@@ -267,15 +267,293 @@ struct WorkoutsView: View {
         }
     }
 
-    // MARK: - Unified Daily Session Card (Concept A)
+    // MARK: - Tomorrow's Preview Card (Refined Apple-Grade Architecture)
 
-    private func unifiedSessionCard(session: PrescribedDailySession, isTomorrow: Bool) -> some View {
+    private func tomorrowPreviewCard(session: PrescribedDailySession) -> some View {
+        let mainRunDrill = PreRunDrill(
+            id: session.mainRunDrillId,
+            previousCadence: session.cadenceFloor,
+            targetCadence: session.mainRunDrillId.isHeartRateTargeted ? nil : "\(session.cadenceFloor)-\(session.cadenceFloor + 6)",
+            duration: DrillDuration(rawValue: session.mainRunDurationMinutes) ?? .thirtyMinutes,
+            readinessState: session.isTrimmed ? .acuteFatigue : .productive,
+            isIndoor: preferredWorkoutIsIndoor
+        )
+        let mainPhases = mainRunDrill.generatePhases()
+        let totalMainDuration = max(1, mainPhases.reduce(0) { $0 + $1.durationSeconds })
+
+        return VStack(alignment: .leading, spacing: 14) {
+            // 1. Header Bar: Scheduled Day/Environment on left, Preview Action on right
+            HStack(alignment: .center, spacing: 8) {
+                HStack(spacing: 6) {
+                    Image(systemName: "calendar.badge.clock")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(.blue)
+
+                    Text(tomorrowDayName())
+                        .font(.subheadline.weight(.bold))
+                        .foregroundColor(.primary)
+
+                    // Indoor / Outdoor Quick Toggle
+                    Button {
+                        preferredWorkoutIsIndoor.toggle()
+                        UISelectionFeedbackGenerator().selectionChanged()
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: preferredWorkoutIsIndoor ? "figure.run.square.stack" : "sun.max.fill")
+                                .font(.system(size: 9, weight: .bold))
+                            Text(preferredWorkoutIsIndoor ? "Indoor" : "Outdoor")
+                                .font(.system(size: 10, weight: .bold))
+                        }
+                        .foregroundColor(preferredWorkoutIsIndoor ? .purple : .blue)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background((preferredWorkoutIsIndoor ? Color.purple : Color.blue).opacity(0.12))
+                        .clipShape(Capsule())
+                    }
+
+                    Text(session.targetGoal)
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(Color(UIColor.tertiarySystemGroupedBackground))
+                        .clipShape(Capsule())
+                }
+
+                Spacer(minLength: 4)
+
+                // De-emphasized Preview Button
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    openMainRunReadout(for: session)
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "applewatch")
+                            .font(.system(size: 9, weight: .bold))
+                        Text("Preview")
+                            .font(.caption.bold())
+                    }
+                    .padding(.horizontal, 10)
+                    .frame(height: 28)
+                    .background(Color(UIColor.secondarySystemFill))
+                    .foregroundColor(.primary)
+                    .clipShape(Capsule())
+                }
+            }
+
+            // 2. Main Title & Empathetic Coaching Directive
+            VStack(alignment: .leading, spacing: 4) {
+                Text(session.sessionTitle)
+                    .font(.title3.weight(.bold))
+                    .foregroundColor(.primary)
+
+                Text(session.groundedRationale)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            // 3. Integrated 2-Part Session Sequence (Pre-Run Primer ➔ Main Run)
+            VStack(spacing: 6) {
+                // Step 1: Pre-Run Primer Row
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    openPrimerReadout(for: session)
+                } label: {
+                    HStack(alignment: .center, spacing: 10) {
+                        ZStack {
+                            Circle()
+                                .fill(Color(red: 0.0, green: 0.8, blue: 0.65).opacity(0.14))
+                                .frame(width: 24, height: 24)
+                            Image(systemName: "metronome.fill")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(Color(red: 0.0, green: 0.8, blue: 0.65))
+                        }
+
+                        VStack(alignment: .leading, spacing: 1) {
+                            HStack(spacing: 4) {
+                                Text("STEP 1: PRE-RUN PRIMER")
+                                    .font(.system(size: 9, weight: .bold))
+                                    .foregroundColor(Color(red: 0.0, green: 0.8, blue: 0.65))
+                                Text("•")
+                                    .font(.system(size: 9))
+                                    .foregroundColor(.secondary)
+                                Text(cleanPrimerDuration(session: session))
+                                    .font(.system(size: 9, weight: .semibold))
+                                    .foregroundColor(.secondary)
+                            }
+
+                            Text("\(session.primerDrillTitle) • Target \(cleanPrimerTarget(session: session))")
+                                .font(.caption.weight(.semibold))
+                                .foregroundColor(.primary)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.85)
+                        }
+
+                        Spacer()
+
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(10)
+                    .background(Color(UIColor.tertiarySystemGroupedBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+                .buttonStyle(.plain)
+
+                // Step 2: Main Run Row
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    openMainRunReadout(for: session)
+                } label: {
+                    HStack(alignment: .center, spacing: 10) {
+                        ZStack {
+                            Circle()
+                                .fill(Color(red: 0.0, green: 0.55, blue: 1.0).opacity(0.14))
+                                .frame(width: 24, height: 24)
+                            Image(systemName: "figure.run")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(Color(red: 0.0, green: 0.55, blue: 1.0))
+                        }
+
+                        VStack(alignment: .leading, spacing: 1) {
+                            HStack(spacing: 4) {
+                                Text("STEP 2: MAIN WORKOUT")
+                                    .font(.system(size: 9, weight: .bold))
+                                    .foregroundColor(Color(red: 0.0, green: 0.55, blue: 1.0))
+                                Text("•")
+                                    .font(.system(size: 9))
+                                    .foregroundColor(.secondary)
+                                Text(session.durationBand)
+                                    .font(.system(size: 9, weight: .semibold))
+                                    .foregroundColor(.secondary)
+                            }
+
+                            Text("\(session.sessionTitle) • \(session.paceBand)")
+                                .font(.caption.weight(.semibold))
+                                .foregroundColor(.primary)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.85)
+                        }
+
+                        Spacer()
+
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(10)
+                    .background(Color(UIColor.tertiarySystemGroupedBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+                .buttonStyle(.plain)
+            }
+
+            // 4. Compact Streamlined Metrics Strip (Replaces the heavy 4-box grid!)
+            HStack(spacing: 8) {
+                previewMetricChip(icon: "stopwatch.fill", label: "Duration", value: session.durationBand, color: .secondary)
+                previewMetricChip(icon: preferredWorkoutIsIndoor ? "figure.run.square.stack" : "figure.run", label: preferredWorkoutIsIndoor ? "Belt Pace" : "Pace", value: session.paceBand, color: Color(red: 0.0, green: 0.55, blue: 1.0))
+                previewMetricChip(icon: "heart.fill", label: "Max HR", value: session.hrCap.replacingOccurrences(of: "HR: ", with: ""), color: Color(red: 1.0, green: 0.22, blue: 0.55))
+                previewMetricChip(icon: "metronome.fill", label: "Cadence", value: "≥ \(session.cadenceFloor)", color: Color(red: 0.0, green: 0.8, blue: 0.65))
+            }
+
+            // 5. Treadmill note (if Indoor)
+            if preferredWorkoutIsIndoor {
+                HStack(spacing: 5) {
+                    Image(systemName: "info.circle.fill")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(.purple)
+                    Text(
+                        session.mainRunDrillId == .hillBounds
+                        ? "Treadmill: Set 4–6% incline on surges • Launches as Indoor Run on Watch"
+                        : "Treadmill: Set 0.5–1.0% incline • Focus on HR & Cadence over wrist pace"
+                    )
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.top, 1)
+            }
+
+            // 6. Phase Timeline Breakdown
+            VStack(alignment: .leading, spacing: 4) {
+                GeometryReader { geo in
+                    HStack(spacing: 2) {
+                        ForEach(mainPhases) { phase in
+                            let ratio = CGFloat(phase.durationSeconds) / CGFloat(totalMainDuration)
+                            let w = max(4, (geo.size.width - CGFloat(mainPhases.count - 1) * 2) * ratio)
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(phaseColor(phase.kind))
+                                .frame(width: w, height: 4)
+                        }
+                    }
+                }
+                .frame(height: 4)
+
+                Text(drillStructureSummary(drill: mainRunDrill))
+                    .font(.system(size: 10, weight: .medium))
+                    .monospacedDigit()
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            .padding(.top, 2)
+        }
+        .padding(16)
+        .background(Color(UIColor.secondarySystemGroupedBackground).opacity(0.88))
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(Color(UIColor.separator).opacity(0.12), lineWidth: 0.5)
+        )
+        .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
+    }
+
+    private func previewMetricChip(icon: String, label: String, value: String, color: Color) -> some View {
+        VStack(alignment: .center, spacing: 2) {
+            HStack(spacing: 3) {
+                Image(systemName: icon)
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundColor(color)
+                Text(label)
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundColor(.secondary)
+                    .textCase(.uppercase)
+            }
+            Text(value)
+                .font(.system(size: 11, weight: .bold))
+                .monospacedDigit()
+                .foregroundColor(.primary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 6)
+        .padding(.horizontal, 4)
+        .background(Color(UIColor.tertiarySystemGroupedBackground).opacity(0.6))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private func tomorrowDayName() -> String {
+        let calendar = Calendar.current
+        let tomorrow = calendar.date(byAdding: .day, value: 1, to: Date()) ?? Date()
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "EEEE"
+        return formatter.string(from: tomorrow)
+    }
+
+    // MARK: - Unified Daily Session Card (Today's Active Session)
+
+    private func unifiedSessionCard(session: PrescribedDailySession) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             // 1. Session Overline, Environment Toggle & Target Goal Badge
             HStack(spacing: 8) {
-                Label(isTomorrow ? "TOMORROW'S TARGET" : "TODAY'S WORKOUT", systemImage: isTomorrow ? "arrow.forward.circle.fill" : "sparkles")
+                Label("TODAY'S WORKOUT", systemImage: "sparkles")
                     .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(isTomorrow ? .blue : Color(red: 0.0, green: 0.75, blue: 0.65))
+                    .foregroundColor(Color(red: 0.0, green: 0.75, blue: 0.65))
 
                 Spacer()
 
@@ -315,10 +593,10 @@ struct WorkoutsView: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             // 3. Pre-Run Primer Card (Stage 1)
-            preRunPrimerSection(session: session, isTomorrow: isTomorrow)
+            preRunPrimerSection(session: session)
 
             // 4. Main Run Card (Stage 2 — matching visual structure)
-            mainRunSection(session: session, isTomorrow: isTomorrow)
+            mainRunSection(session: session)
         }
         .padding(16)
         .background(Color(UIColor.secondarySystemGroupedBackground))
@@ -332,7 +610,7 @@ struct WorkoutsView: View {
 
     // MARK: - Pre-Run Primer Subcard (Stage 1)
 
-    private func preRunPrimerSection(session: PrescribedDailySession, isTomorrow: Bool) -> some View {
+    private func preRunPrimerSection(session: PrescribedDailySession) -> some View {
         let preRunDrill = PreRunDrill(
             id: session.primerDrillId,
             previousCadence: session.cadenceFloor,
@@ -342,7 +620,7 @@ struct WorkoutsView: View {
         )
         let phases = preRunDrill.generatePhases()
         let completedPrimer = session.completedPrimerRun
-        let effectiveCompleted = !isTomorrow && ((completedPrimer != nil) || isDrillCompleted)
+        let effectiveCompleted = (completedPrimer != nil) || isDrillCompleted
 
         return VStack(alignment: .leading, spacing: 10) {
             // Overline: Badge & Duration on left, Action on right
@@ -390,23 +668,6 @@ struct WorkoutsView: View {
                         .frame(height: 28)
                         .background(Color.green.opacity(0.15))
                         .foregroundColor(.green)
-                        .clipShape(Capsule())
-                    }
-                } else if isTomorrow {
-                    Button {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        openPrimerReadout(for: session)
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "applewatch")
-                                .font(.system(size: 9, weight: .bold))
-                            Text("Preview")
-                                .font(.caption.bold())
-                        }
-                        .padding(.horizontal, 10)
-                        .frame(height: 28)
-                        .background(Color(UIColor.secondarySystemFill))
-                        .foregroundColor(.primary)
                         .clipShape(Capsule())
                     }
                 } else {
@@ -481,7 +742,7 @@ struct WorkoutsView: View {
 
     // MARK: - Main Run Subcard (Stage 2 — Symmetrical Structure)
 
-    private func mainRunSection(session: PrescribedDailySession, isTomorrow: Bool) -> some View {
+    private func mainRunSection(session: PrescribedDailySession) -> some View {
         let mainRunDrill = PreRunDrill(
             id: session.mainRunDrillId,
             previousCadence: session.cadenceFloor,
@@ -504,40 +765,21 @@ struct WorkoutsView: View {
 
                 Spacer()
 
-                if isTomorrow {
-                    Button {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        openMainRunReadout(for: session)
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "applewatch")
-                                .font(.system(size: 9, weight: .bold))
-                            Text("Preview")
-                                .font(.caption.bold())
-                        }
-                        .padding(.horizontal, 10)
-                        .frame(height: 28)
-                        .background(Color(UIColor.secondarySystemFill))
-                        .foregroundColor(.primary)
-                        .clipShape(Capsule())
+                Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    openMainRunReadout(for: session)
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "play.fill")
+                            .font(.system(size: 9, weight: .bold))
+                        Text("Start")
+                            .font(.caption.bold())
                     }
-                } else {
-                    Button {
-                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                        openMainRunReadout(for: session)
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "play.fill")
-                                .font(.system(size: 9, weight: .bold))
-                            Text("Start")
-                                .font(.caption.bold())
-                        }
-                        .padding(.horizontal, 12)
-                        .frame(height: 28)
-                        .background(Color.primary)
-                        .foregroundColor(Color(UIColor.systemBackground))
-                        .clipShape(Capsule())
-                    }
+                    .padding(.horizontal, 12)
+                    .frame(height: 28)
+                    .background(Color.primary)
+                    .foregroundColor(Color(UIColor.systemBackground))
+                    .clipShape(Capsule())
                 }
             }
 
