@@ -81,6 +81,7 @@ struct DrillExecutionScorecard: View {
     let baselineCadence: Double?
     let baselineOscillation: Double?
     var customTitle: String?
+    var customSubtitle: String?
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var isSetsExpanded: Bool = false
@@ -378,14 +379,24 @@ struct DrillExecutionScorecard: View {
         }
 
         return VStack(spacing: 14) {
-            // Header: Icon + Title + Capsule Badge (Single line)
+            // Header: Icon + Title/Subtitle + Capsule Badge
             HStack(spacing: 8) {
                 Image(systemName: drillId.iconName)
                     .foregroundColor(drillId.iconColor)
                     .font(.title3)
-                Text(customTitle ?? (runRecord.prescribedDrillName != nil ? "Drill Performance" : "Workout Performance"))
-                    .font(.headline.weight(.semibold))
-                    .foregroundColor(.primary)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(customTitle ?? (runRecord.prescribedDrillName != nil ? drillId.title : "Workout Performance"))
+                        .font(.headline.weight(.semibold))
+                        .foregroundColor(.primary)
+
+                    if let subtitle = customSubtitle {
+                        Text(subtitle)
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                }
+
                 Spacer()
                 HStack(spacing: 4) {
                     Image(systemName: tier.badgeIcon(for: drillId))

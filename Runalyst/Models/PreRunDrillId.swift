@@ -96,6 +96,12 @@ enum PreRunDrillId: String, CaseIterable, Codable, Sendable {
         }
     }
 
+    /// Pre-run technique primers suitable for manual linking to runs.
+    /// Excludes continuous aerobic workouts (Aerobic Flush, Recovery Jog, Zone 2 Run).
+    static var techniqueDrills: [PreRunDrillId] {
+        allCases.filter { !$0.isAerobicContinuous }
+    }
+
     /// Resolves a drill identifier from natural language or snake_case query string.
     static func resolve(from string: String) -> PreRunDrillId? {
         let clean = string.trimmingCharacters(in: .whitespacesAndNewlines)

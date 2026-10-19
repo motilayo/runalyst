@@ -237,7 +237,22 @@ struct RunDetailView: View {
         // 1. Cadence & Biomechanics
         let isRecovery = runRecord.detectedTypeRaw == "Recovery Run" || (runRecord.percentZone4 <= 0.02 && runRecord.workingAvgHeartRate > 0 && runRecord.workingAvgHeartRate <= 135)
         let effectiveFloor = isRecovery ? max(138, floor - 10) : floor
-        if cad > 0 {
+        if let drillId = effectiveScorecardDrillId, prescribedDrillName != nil {
+            let thirtyDayCadence = Int(baselineCadence ?? (runRecord.computeHistoricalBaselineCadence() ?? (runRecord.workingAvgCadence > 0 ? runRecord.workingAvgCadence : 155)))
+            let template = DrillTemplate.template(for: drillId)
+            let targetCadence = runRecord.effectivePrescribedTargetCadence(drillId: drillId, baselineCadence: thirtyDayCadence)
+                ?? template.calculateTargetCadence(thirtyDayCadence)
+            let intervalSummary = DrillIntervalSummary.from(tags: runRecord.framboiseTags, drillId: drillId)
+            let metCount = intervalSummary?.intervalsMet ?? 0
+            let totalCount = intervalSummary?.totalIntervals ?? 0
+            if totalCount > 0 && metCount == totalCount {
+                components.append("Target turnover of \(targetCadence) SPM was held flawlessly across all \(totalCount) work intervals, reinforcing efficient running economy.")
+            } else if totalCount > 0 && metCount > 0 {
+                components.append("Target turnover reached \(targetCadence) SPM on \(metCount) of \(totalCount) work intervals, building consistent neuromuscular turnover.")
+            } else {
+                components.append("Turnover averaged \(cad) SPM against your \(targetCadence) SPM drill target.")
+            }
+        } else if cad > 0 {
             if isRecovery {
                 components.append("Turnover averaged \(cad) SPM with relaxed, low-impact stride mechanics, ideal for active recovery and flushing fatigue.")
             } else if cad >= effectiveFloor {
@@ -259,7 +274,14 @@ struct RunDetailView: View {
         }
 
         // 3. Modality Execution & Grade
-        if runRecord.evaluationModality == .intervals && hasIntervalWorkReps {
+        if let drillName = prescribedDrillName {
+            let intervalSummary = DrillIntervalSummary.from(tags: runRecord.framboiseTags, drillId: effectiveScorecardDrillId ?? .cadencePyramids)
+            if let summary = intervalSummary, summary.totalIntervals > 0 && summary.intervalsMet == summary.totalIntervals {
+                components.append("\(drillName) technique target was fully completed.")
+            } else {
+                components.append("\(drillName) technique session completed.")
+            }
+        } else if runRecord.evaluationModality == .intervals && hasIntervalWorkReps {
             let workSegments = runRecord.signature?.phaseSegments.filter { $0.kind == "work" && $0.avgPace > 0 } ?? []
             if !workSegments.isEmpty {
                 let meanWorkPace = workSegments.reduce(0.0) { $0 + $1.avgPace } / Double(workSegments.count)
@@ -300,11 +322,19 @@ struct RunDetailView: View {
                 .padding(.vertical, 2)
             } else {
                 VStack(alignment: .leading, spacing: 8) {
-                    if let insight = runRecord.insight, !insight.headline.isEmpty {
-                        Text(insight.headline)
-                            .font(.headline)
-                            .foregroundColor(.primary)
-                    }
+                    let analysisHeadline: String = {
+                        if let drillName = prescribedDrillName {
+                            return "\(drillName) Technique Analysis"
+                        }
+                        if let insight = runRecord.insight, !insight.headline.isEmpty {
+                            return insight.headline
+                        }
+                        return "\(runRecord.detectedTypeRaw) Biomechanical Analysis"
+                    }()
+
+                    Text(analysisHeadline)
+                        .font(.headline)
+                        .foregroundColor(.primary)
 
                     if let groundedSummary = deterministicRunAnalysisSummary {
                         Text(groundedSummary)
@@ -397,9 +427,17 @@ struct RunDetailView: View {
     private var workoutRhythmTimeline: some View {
         if !showRawMetrics, let segments = runRecord.signature?.phaseSegments, !segments.isEmpty {
             let isIntervalOrDrill: Bool = {
-                if effectiveScorecardDrillId != nil { return true }
-                if runRecord.evaluationModality == .intervals { return true }
                 let type = runRecord.detectedTypeRaw
+                let isContinuous = type == "Recovery Run" || type == "Easy Run" || type == "Steady Effort" || type == "Long Run"
+                if let drillId = effectiveScorecardDrillId {
+                    return !drillId.isAerobicContinuous
+                }
+                if isContinuous {
+                    return false
+                }
+                if runRecord.evaluationModality == .intervals {
+                    return true
+                }
                 return type == "Intervals" || type == "Fartlek" || type == "Pyramids" || type == "Hill Repeats"
             }()
             let isRecovery = runRecord.detectedTypeRaw == "Recovery Run" || (runRecord.percentZone4 <= 0.02 && runRecord.workingAvgHeartRate > 0 && runRecord.workingAvgHeartRate <= 135)
@@ -420,19 +458,53 @@ struct RunDetailView: View {
     @ViewBuilder
     private var performanceAndAnalysisSection: some View {
         let isRecovery = runRecord.detectedTypeRaw == "Recovery Run" || (runRecord.percentZone4 <= 0.02 && runRecord.workingAvgHeartRate > 0 && runRecord.workingAvgHeartRate <= 135 && runRecord.duration >= 600)
+        let isEasyOrSteady = runRecord.detectedTypeRaw == "Easy Run" || runRecord.detectedTypeRaw == "Steady Effort" || runRecord.detectedTypeRaw == "Zone 2" || runRecord.detectedTypeRaw == "Long Run"
+
         let resolvedDrillId: PreRunDrillId? = {
             if let drillId = effectiveScorecardDrillId { return drillId }
             if isRecovery { return .aerobicFlush }
+            if isEasyOrSteady { return .zone2Run }
             return nil
         }()
 
         if let drillId = resolvedDrillId {
+            let isLinkedTechniqueDrill = (prescribedDrillName != nil)
+
+            let title: String = {
+                if isLinkedTechniqueDrill {
+                    return drillId.title
+                }
+                let prefix = (runRecord.isIndoor == true) ? "Indoor " : ""
+                if isRecovery {
+                    return "\(prefix)Zone 1 Recovery Run"
+                } else if runRecord.detectedTypeRaw == "Steady Effort" {
+                    return "\(prefix)Zone 2 Steady Base"
+                } else if runRecord.detectedTypeRaw == "Easy Run" {
+                    return "\(prefix)Zone 2 Easy Base"
+                } else {
+                    return "\(prefix)\(runRecord.detectedTypeRaw)"
+                }
+            }()
+
+            let subtitle: String? = {
+                if isLinkedTechniqueDrill {
+                    if let summary = DrillIntervalSummary.from(tags: runRecord.framboiseTags, drillId: drillId) {
+                        return "Pre-Run Primer • \(summary.intervalsMet) of \(summary.totalIntervals) on Target"
+                    } else {
+                        return "Pre-Run Primer • Target Met"
+                    }
+                } else {
+                    return "Aerobic Base • Zero Cardiac Strain"
+                }
+            }()
+
             let scorecard = DrillExecutionScorecard(
                 runRecord: runRecord,
                 drillId: drillId,
                 baselineCadence: baselineCadence,
                 baselineOscillation: baselineOscillation,
-                customTitle: isRecovery && prescribedDrillName == nil ? "Recovery Performance" : "Drill Performance"
+                customTitle: title,
+                customSubtitle: subtitle
             )
             if horizontalSizeClass == .regular {
                 HStack(alignment: .top, spacing: 16) {
@@ -454,9 +526,13 @@ struct RunDetailView: View {
                     .padding(.horizontal)
             }
         } else if runRecord.evaluationModality == .intervals && hasIntervalWorkReps {
+            let prefix = (runRecord.isIndoor == true) ? "Indoor " : ""
+            let rawType = runRecord.detectedTypeRaw.isEmpty ? "Intervals" : runRecord.detectedTypeRaw
+            let title = "\(prefix)\(rawType)"
             let scorecard = IntervalPerformanceCard(
                 runRecord: runRecord,
-                baselineCadence: baselineCadence
+                baselineCadence: baselineCadence,
+                customTitle: title
             )
             if horizontalSizeClass == .regular {
                 HStack(alignment: .top, spacing: 16) {

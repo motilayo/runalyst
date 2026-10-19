@@ -7,6 +7,7 @@ import SwiftUI
 struct IntervalPerformanceCard: View {
     let runRecord: RunRecord
     var baselineCadence: Double?
+    var customTitle: String?
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var isExpanded: Bool = false
@@ -46,7 +47,8 @@ struct IntervalPerformanceCard: View {
                     .font(.title3)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Interval Performance")
+                    let fallbackTitle = (runRecord.isIndoor == true ? "Indoor " : "") + (runRecord.detectedTypeRaw.isEmpty ? "Intervals" : runRecord.detectedTypeRaw)
+                    Text(customTitle ?? fallbackTitle)
                         .font(.headline.weight(.semibold))
                         .foregroundColor(.primary)
 

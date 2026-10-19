@@ -13,7 +13,7 @@ struct DrillLinkControlView: View {
         if let drillName = prescribedDrillName {
             Menu {
                 Menu {
-                    ForEach(PreRunDrillId.allCases, id: \.self) { drill in
+                    ForEach(PreRunDrillId.techniqueDrills, id: \.self) { drill in
                         Button {
                             WorkoutBridge.linkDrill(to: runRecord, drillId: drill, baselineCadence: baselineCadence)
                             try? modelContext.save()
@@ -59,7 +59,7 @@ struct DrillLinkControlView: View {
             }
         } else {
             Menu {
-                ForEach(PreRunDrillId.allCases, id: \.self) { drill in
+                ForEach(PreRunDrillId.techniqueDrills, id: \.self) { drill in
                     Button {
                         WorkoutBridge.linkDrill(to: runRecord, drillId: drill, baselineCadence: baselineCadence)
                         try? modelContext.save()
