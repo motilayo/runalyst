@@ -268,12 +268,18 @@ extension RunRecord {
         let isUnlinkedLongRun = duration > 1500 && totalDistanceMeters > 4000 && !framboiseTags.contains("userLinkedDrill")
 
         func validatedDrillTitle(_ title: String) -> String? {
-            if isUnlinkedLongRun,
-               let resolved = PreRunDrillId.resolve(from: title),
-               !resolved.isAerobicContinuous {
+            guard let resolved = PreRunDrillId.resolve(from: title) else {
                 return nil
             }
-            return title
+            // Continuous aerobic workouts (Zone 2 Run, Aerobic Flush, Recovery Jog) are main workouts,
+            // not technique primer drills. Drill must remain blank unless a technique drill is explicitly linked.
+            if resolved.isAerobicContinuous {
+                return nil
+            }
+            if isUnlinkedLongRun {
+                return nil
+            }
+            return resolved.title
         }
 
         // 1. Explicit tag "drill:<title>"
@@ -285,11 +291,11 @@ extension RunRecord {
             return validatedDrillTitle(candidate.replacingOccurrences(of: "_", with: " ").capitalized)
         }
         // 2. PreRunDrillId rawValue in framboiseTags
-        if let drill = PreRunDrillId.allCases.first(where: { framboiseTags.contains($0.rawValue) }) {
+        if let drill = PreRunDrillId.techniqueDrills.first(where: { framboiseTags.contains($0.rawValue) }) {
             return validatedDrillTitle(drill.title)
         }
         // 3. PreRunDrillId title in framboiseTags
-        if let drill = PreRunDrillId.allCases.first(where: { framboiseTags.contains($0.title) }) {
+        if let drill = PreRunDrillId.techniqueDrills.first(where: { framboiseTags.contains($0.title) }) {
             return validatedDrillTitle(drill.title)
         }
         // 4. If detectedTypeRaw is itself a specific drill title (e.g. "Rhythm Intervals")

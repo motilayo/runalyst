@@ -384,7 +384,7 @@ final class SessionSynthesisEngineTests: XCTestCase {
             XCTAssertTrue(allRuns[0].workoutType.contains("Cadence Pyramids"))
             XCTAssertEqual(allRuns[0].distanceFormatted, "1.46 km")
             XCTAssertEqual(allRuns[1].id, mainRun.id)
-            XCTAssertTrue(allRuns[1].workoutType.contains("Zone 2 Run"))
+            XCTAssertTrue(allRuns[1].workoutType.contains("Easy Run") || allRuns[1].workoutType.contains("Zone 2 Run"))
             XCTAssertEqual(allRuns[1].distanceFormatted, "4.48 km")
         }
     }

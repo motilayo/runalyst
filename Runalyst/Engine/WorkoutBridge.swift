@@ -169,7 +169,7 @@ final class WorkoutBridge {
 
         // 1. Direct Metadata Check (highest priority: authentic HealthKit/WorkoutKit workout title)
         for text in allMetadataStrings {
-            if let resolved = PreRunDrillId.resolve(from: text) {
+            if let resolved = PreRunDrillId.resolve(from: text), !resolved.isAerobicContinuous {
                 return ScheduledDrillIntent(
                     drillTitle: resolved.title,
                     preRunDrillId: resolved.rawValue,
@@ -177,7 +177,7 @@ final class WorkoutBridge {
                     durationMinutes: max(1, Int(round(durationSeconds / 60.0)))
                 )
             }
-            for candidate in PreRunDrillId.allCases {
+            for candidate in PreRunDrillId.techniqueDrills {
                 let singularTitle = candidate.title.hasSuffix("s") ? String(candidate.title.dropLast()) : candidate.title
                 if text.localizedCaseInsensitiveContains(candidate.title) ||
                    text.localizedCaseInsensitiveContains(singularTitle) ||
@@ -194,7 +194,7 @@ final class WorkoutBridge {
 
         // 2. WorkoutKit CustomWorkout Check (iOS 17+)
         if let custom = customWorkout, let name = custom.displayName {
-            if let resolved = PreRunDrillId.resolve(from: name) {
+            if let resolved = PreRunDrillId.resolve(from: name), !resolved.isAerobicContinuous {
                 return ScheduledDrillIntent(
                     drillTitle: resolved.title,
                     preRunDrillId: resolved.rawValue,
@@ -202,7 +202,7 @@ final class WorkoutBridge {
                     durationMinutes: max(1, Int(round(durationSeconds / 60.0)))
                 )
             }
-            for candidate in PreRunDrillId.allCases {
+            for candidate in PreRunDrillId.techniqueDrills {
                 let singularTitle = candidate.title.hasSuffix("s") ? String(candidate.title.dropLast()) : candidate.title
                 if name.localizedCaseInsensitiveContains(candidate.title) ||
                    name.localizedCaseInsensitiveContains(singularTitle) ||
@@ -280,7 +280,7 @@ final class WorkoutBridge {
                 zone4Threshold: zone4Threshold,
                 zone2Threshold: zone2Threshold,
                 zone1Threshold: zone1Threshold
-            ), durationSeconds <= 1320 || patternMatch.drillId.isAerobicContinuous {
+            ), durationSeconds <= 1320 && !patternMatch.drillId.isAerobicContinuous {
                 return ScheduledDrillIntent(
                     drillTitle: patternMatch.drillId.title,
                     preRunDrillId: patternMatch.drillId.rawValue,
@@ -311,7 +311,7 @@ final class WorkoutBridge {
 
         // 1. Direct Metadata Check
         for text in allMetadataStrings {
-            if let resolved = PreRunDrillId.resolve(from: text) {
+            if let resolved = PreRunDrillId.resolve(from: text), !resolved.isAerobicContinuous {
                 return ScheduledDrillIntent(
                     drillTitle: resolved.title,
                     preRunDrillId: resolved.rawValue,
@@ -319,7 +319,7 @@ final class WorkoutBridge {
                     durationMinutes: max(1, Int(round(durationSeconds / 60.0)))
                 )
             }
-            for candidate in PreRunDrillId.allCases {
+            for candidate in PreRunDrillId.techniqueDrills {
                 let singularTitle = candidate.title.hasSuffix("s") ? String(candidate.title.dropLast()) : candidate.title
                 if text.localizedCaseInsensitiveContains(candidate.title) ||
                    text.localizedCaseInsensitiveContains(singularTitle) ||
@@ -366,7 +366,7 @@ final class WorkoutBridge {
                 zone4Threshold: zone4Threshold,
                 zone2Threshold: zone2Threshold,
                 zone1Threshold: zone1Threshold
-            ), durationSeconds <= 1320 || patternMatch.drillId.isAerobicContinuous {
+            ), durationSeconds <= 1320 && !patternMatch.drillId.isAerobicContinuous {
                 return ScheduledDrillIntent(
                     drillTitle: patternMatch.drillId.title,
                     preRunDrillId: patternMatch.drillId.rawValue,

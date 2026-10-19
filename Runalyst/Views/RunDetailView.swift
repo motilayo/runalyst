@@ -238,13 +238,14 @@ struct RunDetailView: View {
         let isRecovery = runRecord.detectedTypeRaw == "Recovery Run" || (runRecord.percentZone4 <= 0.02 && runRecord.workingAvgHeartRate > 0 && runRecord.workingAvgHeartRate <= 135)
         let effectiveFloor = isRecovery ? max(138, floor - 10) : floor
         if let drillId = effectiveScorecardDrillId, prescribedDrillName != nil {
-            let thirtyDayCadence = Int(baselineCadence ?? (runRecord.computeHistoricalBaselineCadence() ?? (runRecord.workingAvgCadence > 0 ? runRecord.workingAvgCadence : 155)))
-            let template = DrillTemplate.template(for: drillId)
-            let targetCadence = runRecord.effectivePrescribedTargetCadence(drillId: drillId, baselineCadence: thirtyDayCadence)
-                ?? template.calculateTargetCadence(thirtyDayCadence)
-            let intervalSummary = DrillIntervalSummary.from(tags: runRecord.framboiseTags, drillId: drillId)
-            let metCount = intervalSummary?.intervalsMet ?? 0
-            let totalCount = intervalSummary?.totalIntervals ?? 0
+            let adherence = DrillExecutionScorecard.evaluateDrillAdherence(
+                runRecord: runRecord,
+                drillId: drillId,
+                baselineCadence: baselineCadence
+            )
+            let metCount = adherence.metCount
+            let totalCount = adherence.totalCount
+            let targetCadence = adherence.targetCadence
             if totalCount > 0 && metCount == totalCount {
                 components.append("Target turnover of \(targetCadence) SPM was held flawlessly across all \(totalCount) work intervals, reinforcing efficient running economy.")
             } else if totalCount > 0 && metCount > 0 {
@@ -274,9 +275,13 @@ struct RunDetailView: View {
         }
 
         // 3. Modality Execution & Grade
-        if let drillName = prescribedDrillName {
-            let intervalSummary = DrillIntervalSummary.from(tags: runRecord.framboiseTags, drillId: effectiveScorecardDrillId ?? .cadencePyramids)
-            if let summary = intervalSummary, summary.totalIntervals > 0 && summary.intervalsMet == summary.totalIntervals {
+        if let drillName = prescribedDrillName, let drillId = effectiveScorecardDrillId {
+            let adherence = DrillExecutionScorecard.evaluateDrillAdherence(
+                runRecord: runRecord,
+                drillId: drillId,
+                baselineCadence: baselineCadence
+            )
+            if adherence.totalCount > 0 && adherence.metCount == adherence.totalCount {
                 components.append("\(drillName) technique target was fully completed.")
             } else {
                 components.append("\(drillName) technique session completed.")
@@ -488,8 +493,13 @@ struct RunDetailView: View {
 
             let subtitle: String? = {
                 if isLinkedTechniqueDrill {
-                    if let summary = DrillIntervalSummary.from(tags: runRecord.framboiseTags, drillId: drillId) {
-                        return "Pre-Run Primer • \(summary.intervalsMet) of \(summary.totalIntervals) on Target"
+                    let adherence = DrillExecutionScorecard.evaluateDrillAdherence(
+                        runRecord: runRecord,
+                        drillId: drillId,
+                        baselineCadence: baselineCadence
+                    )
+                    if adherence.totalCount > 0 {
+                        return "Pre-Run Primer • \(adherence.metCount) of \(adherence.totalCount) on Target"
                     } else {
                         return "Pre-Run Primer • Target Met"
                     }

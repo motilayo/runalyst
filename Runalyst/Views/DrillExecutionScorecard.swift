@@ -984,3 +984,93 @@ struct DrillExecutionScorecard: View {
         .cornerRadius(8)
     }
 }
+
+extension DrillExecutionScorecard {
+    /// Deterministically computes the adherence score (met count, total intervals, and target cadence)
+    /// across the scorecard, ensuring perfect mathematical parity between scorecard meters, hero subtitles,
+    /// and AI coaching narrative text.
+    @MainActor
+    static func evaluateDrillAdherence(
+        runRecord: RunRecord,
+        drillId: PreRunDrillId,
+        baselineCadence: Double?
+    ) -> (metCount: Int, totalCount: Int, targetCadence: String) {
+        let template = DrillTemplate.template(for: drillId)
+        let thirtyDayCadence = Int(baselineCadence ?? (runRecord.computeHistoricalBaselineCadence() ?? (runRecord.workingAvgCadence > 0 ? runRecord.workingAvgCadence : 155)))
+        let targetCadence = runRecord.effectivePrescribedTargetCadence(drillId: drillId, baselineCadence: thirtyDayCadence)
+            ?? template.calculateTargetCadence(thirtyDayCadence)
+        let drillObj = PreRunDrill(id: drillId, previousCadence: thirtyDayCadence, targetCadence: targetCadence)
+        let actualCadence = Int(runRecord.workingAvgCadence)
+        let isHRTarget = drillId.isHeartRateTargeted
+
+        let currentOsc = runRecord.workingAvgVerticalOscillation ?? runRecord.rawAvgVerticalOscillation ?? 9.5
+        let baseOsc = 9.5
+        let oscDelta = currentOsc - baseOsc
+
+        let intervalSummary: DrillIntervalSummary? = {
+            if let parsed = DrillIntervalSummary.from(tags: runRecord.framboiseTags, drillId: drillId) {
+                return parsed
+            }
+            if !isHRTarget && !drillId.isAerobicContinuous {
+                return DrillIntervalEvaluator.evaluate(
+                    buckets: [],
+                    drillId: drillId,
+                    baselineCadence: thirtyDayCadence,
+                    workoutDuration: runRecord.duration,
+                    oscDelta: oscDelta,
+                    targetCadenceOverride: targetCadence
+                )
+            }
+            return nil
+        }()
+
+        let analysisContext = WorkoutAnalysisContext(
+            runRecord: runRecord,
+            runSignature: runRecord.signature,
+            macroProfile: nil,
+            recoveryTimeline: RecoveryTimeline(
+                now: Date(),
+                lastHard: nil,
+                hardSessionsLast72h: 0,
+                requiredHours: 48,
+                state: .productive
+            ),
+            baselineStats: baselineCadence.map { (avgPace: runRecord.workingAvgPace, avgCadence: $0, avgHR: runRecord.workingAvgHeartRate) }
+        )
+        let intervalEvals = analysisContext.intervalEvaluations
+
+        if let summary = intervalSummary, summary.totalIntervals > 1, !summary.reps.isEmpty {
+            let metCount = summary.reps.filter { rep in
+                let matchedEval = intervalEvals.first(where: { $0.repIndex == rep.repIndex })
+                    ?? (rep.repIndex - 1 >= 0 && rep.repIndex - 1 < intervalEvals.count ? intervalEvals[rep.repIndex - 1] : nil)
+
+                let evalWorkCad = matchedEval?.workCadence ?? 0
+                let workCadence = evalWorkCad > 0
+                    ? evalWorkCad
+                    : (rep.workCadence > 0 ? rep.workCadence : actualCadence)
+
+                if let range = drillObj.effectiveTargetCadence, workCadence > 0 {
+                    let upperLimit = (drillId == .strides || drillId == .tempoSurges) ? 195 : (range.upperBound + 8)
+                    return rep.isMet || (workCadence >= (range.lowerBound - 2) && workCadence <= upperLimit)
+                }
+                return rep.isMet
+            }.count
+
+            let effectiveMet = max(summary.intervalsMet, metCount)
+            let effectiveTotal = summary.reps.count
+            return (metCount: effectiveMet, totalCount: effectiveTotal, targetCadence: targetCadence)
+        } else if intervalEvals.count > 1 && !drillId.isAerobicContinuous {
+            let metCount = intervalEvals.filter { eval in
+                if let range = drillObj.effectiveTargetCadence {
+                    return eval.workCadence >= (range.lowerBound - 2) && eval.workCadence <= (range.upperBound + 8)
+                }
+                return eval.workCadence >= thirtyDayCadence
+            }.count
+            return (metCount: metCount, totalCount: intervalEvals.count, targetCadence: targetCadence)
+        } else {
+            let metCount = intervalSummary?.intervalsMet ?? 0
+            let totalCount = intervalSummary?.totalIntervals ?? 0
+            return (metCount: metCount, totalCount: totalCount, targetCadence: targetCadence)
+        }
+    }
+}
