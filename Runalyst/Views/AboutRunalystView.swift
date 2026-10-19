@@ -11,9 +11,6 @@ struct AboutRunalystView: View {
                 aboutContent
                     .padding()
             }
-            .safeAreaInset(edge: .bottom) {
-                Color.clear.frame(height: 90)
-            }
             .background(Color(UIColor.systemGroupedBackground).ignoresSafeArea())
             .navigationTitle("About Runalyst")
             .navigationBarTitleDisplayMode(.inline)

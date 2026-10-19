@@ -82,9 +82,6 @@ struct SettingsView: View {
                 }
             }
         }
-        .safeAreaInset(edge: .bottom) {
-            Color.clear.frame(height: 90)
-        }
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showWalkthroughSheet) {

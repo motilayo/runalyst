@@ -198,7 +198,7 @@ enum SessionSynthesisEngine {
                 : "Active Recovery Window (Acute Fatigue)"
 
             sessionTitle = "Easy Aerobic Base Run"
-            durationBand = "25–30 Min"
+            durationBand = "25 Min"
             let lowPace = basePace + 40.0
             let highPace = basePace + 65.0
             paceBand = formatPaceRange(lowSec: lowPace, highSec: highPace, useMetric: useMetric)
@@ -229,7 +229,7 @@ enum SessionSynthesisEngine {
         } else if readiness.state == .deload {
             readinessStatus = "Deload Week (Consolidation)"
             sessionTitle = "Zone 2 Easy Aerobic Maintenance"
-            durationBand = "30–35 Min"
+            durationBand = "30 Min"
             let lowPace = basePace + 30.0
             let highPace = basePace + 50.0
             paceBand = formatPaceRange(lowSec: lowPace, highSec: highPace, useMetric: useMetric)
@@ -248,7 +248,7 @@ enum SessionSynthesisEngine {
             readinessStatus = "Productive Training (Ready for Quality)"
             if activeGoal.localizedCaseInsensitiveContains("5K") {
                 sessionTitle = "5K Rhythm Intervals"
-                durationBand = "30–35 Min"
+                durationBand = "30 Min"
                 let lowPace = basePace - 15.0
                 let highPace = basePace + 5.0
                 paceBand = formatPaceRange(lowSec: lowPace, highSec: highPace, useMetric: useMetric)
@@ -265,7 +265,7 @@ enum SessionSynthesisEngine {
                 isTrimmed = false
             } else {
                 sessionTitle = "Zone 2 Easy Aerobic Base"
-                durationBand = "35–45 Min"
+                durationBand = "30 Min"
                 let lowPace = basePace + 20.0
                 let highPace = basePace + 45.0
                 paceBand = formatPaceRange(lowSec: lowPace, highSec: highPace, useMetric: useMetric)
@@ -356,7 +356,7 @@ enum SessionSynthesisEngine {
         let wasHardSession = todayRun.percentZone4 >= 0.20 || todayRun.detectedTypeRaw == "Intervals" || todayRun.detectedTypeRaw == "Fartlek" || todayRun.detectedTypeRaw == "Tempo Run"
 
         let tomorrowTitle = wasHardSession ? "Zone 1 Active Recovery Flush" : "Zone 2 Easy Aerobic Base"
-        let durationBand = wasHardSession ? "25–30 Min" : "30–40 Min"
+        let durationBand = wasHardSession ? "25 Min" : "30 Min"
 
         let isTodayEasyOrRecovery = todayRun.detectedTypeRaw == "Easy Run" || todayRun.detectedTypeRaw == "Recovery Run" || todayRun.detectedTypeRaw == "Zone 2" || todayRun.detectedTypeRaw == "Steady Effort"
 
@@ -414,7 +414,7 @@ enum SessionSynthesisEngine {
             isTrimmed: wasHardSession,
             microcycle: microcycle,
             mainRunDrillId: wasHardSession ? .aerobicFlush : .zone2Run,
-            mainRunDurationMinutes: 30,
+            mainRunDurationMinutes: wasHardSession ? 25 : 30,
             completedPrimerRun: nil
         )
     }

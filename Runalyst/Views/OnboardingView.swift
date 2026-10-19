@@ -537,13 +537,13 @@ struct OnboardingView: View {
                     .background(Color(UIColor.secondarySystemGroupedBackground))
                     .clipShape(RoundedRectangle(cornerRadius: 16))
 
-                    // Card 3: Biomechanical Height
+                    // Card 3: Height
                     VStack(alignment: .leading, spacing: 10) {
                         HStack(spacing: 8) {
                             Image(systemName: "ruler.fill")
                                 .font(.headline)
                                 .foregroundColor(.orange)
-                            Text("Biomechanical Height")
+                            Text("Height")
                                 .font(.headline)
                                 .foregroundColor(.primary)
                             Spacer()
@@ -587,11 +587,9 @@ struct OnboardingView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 16))
                 }
                 .padding(.horizontal, 16)
-
-                Spacer().frame(height: 40)
             }
             .padding(.vertical, 12)
-            .padding(.bottom, 90)
+            .padding(.bottom, 16)
         }
     }
 
