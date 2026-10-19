@@ -618,10 +618,10 @@ struct InlineChatNextSessionCard: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            // Step 1: Pre-Run Primer Box
+            // Pre-Run Primer Box
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 6) {
-                    Text("1. PRE-RUN PRIMER")
+                    Text("PRE-RUN PRIMER")
                         .font(.system(size: 10, weight: .bold))
                         .foregroundColor(session.primerDrillId.iconColor)
 
@@ -670,10 +670,10 @@ struct InlineChatNextSessionCard: View {
             .background(Color(UIColor.tertiarySystemGroupedBackground))
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
-            // Step 2: Main Run Prescription Metrics
+            // Main Run Prescription Metrics
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    Text("2. MAIN RUN TARGETS")
+                    Text("MAIN RUN TARGETS")
                         .font(.system(size: 10, weight: .bold))
                         .foregroundColor(Color(red: 0.0, green: 0.55, blue: 1.0))
                     Spacer()

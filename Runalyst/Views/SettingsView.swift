@@ -54,7 +54,7 @@ struct SettingsView: View {
             DataManagementSectionView(runRecords: runRecords, onForceSync: onForceSync)
 
             // MARK: - About
-            Section {
+            Section(header: Text("About")) {
                 Button {
                     showWalkthroughSheet = true
                 } label: {

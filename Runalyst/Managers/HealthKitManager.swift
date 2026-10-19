@@ -56,7 +56,8 @@ class HealthKitManager: ObservableObject {
             .vo2Max,
             .runningGroundContactTime,
             .runningStrideLength,
-            .runningPower
+            .runningPower,
+            .height
         ]
         var types: Set<HKObjectType> = [HKObjectType.workoutType()]
         for identifier in quantityIdentifiers {
@@ -211,6 +212,35 @@ class HealthKitManager: ObservableObject {
                 }
                 let vo2s = samples.map { $0.quantity.doubleValue(for: HKUnit(from: "ml/kg*min")) }
                 continuation.resume(returning: vo2s)
+            }
+            healthStore?.execute(query)
+        }
+    }
+
+    func fetchUserHeight() async throws -> Double? {
+        guard let quantityType = HKObjectType.quantityType(forIdentifier: .height) else {
+            return nil
+        }
+
+        let sortDescriptor = NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: false)
+
+        return try await withCheckedThrowingContinuation { continuation in
+            let query = HKSampleQuery(
+                sampleType: quantityType,
+                predicate: nil,
+                limit: 1,
+                sortDescriptors: [sortDescriptor]
+            ) { _, samples, error in
+                if let error = error {
+                    continuation.resume(throwing: error)
+                    return
+                }
+                guard let samples = samples as? [HKQuantitySample], let latest = samples.first else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                let heightCm = latest.quantity.doubleValue(for: HKUnit.meterUnit(with: .centi))
+                continuation.resume(returning: heightCm)
             }
             healthStore?.execute(query)
         }

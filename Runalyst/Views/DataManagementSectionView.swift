@@ -13,9 +13,9 @@ struct DataManagementSectionView: View {
 
     var body: some View {
         Group {
-            // MARK: - Data Management
+            // MARK: - Troubleshooting & Diagnostics
             Section(
-                header: Text("Data Management"),
+                header: Text("Troubleshooting & Diagnostics"),
                 footer: Text("Re-fetches recent workouts from Apple Health, wipes local records and cache, and regenerates fresh AI insights.")
             ) {
                 Button(action: { showSyncAlert = true }) {
@@ -90,10 +90,10 @@ struct DataManagementSectionView: View {
                 #endif
             }
 
-            // MARK: - Smart Coach (CoreML & AI)
+            // MARK: - Smart Coach Diagnostics (CoreML & AI)
             Section(
-                header: Text("Smart Coach (CoreML & AI)"),
-                footer: Text("Resetting the model deletes your local training queue and resets to baseline.")
+                header: Text("Smart Coach Diagnostics (CoreML & AI)"),
+                footer: Text("Resets on-device runner classification corrections back to baseline without affecting your recorded workouts or training goal.")
             ) {
                 Button(action: { showResetModelAlert = true }) {
                     HStack(spacing: 12) {

@@ -17,7 +17,21 @@ struct OnboardingView: View {
 
     @Environment(\.dismiss) private var dismiss
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding: Bool = false
+    @AppStorage("useMetricSystem") private var useMetricSystem: Bool = Locale.current.measurementSystem == .metric
+    @AppStorage("trainingGoal") private var trainingGoal: String = "Base Building"
+    @AppStorage("userExperienceLevel") private var userExperienceLevel: String = "Auto"
+    @AppStorage("userHeightCm") private var userHeightCm: Double = 175.0
     @StateObject private var healthKitManager = HealthKitManager.shared
+
+    private let goalOptions = [
+        "Base Building",
+        "Injury Recovery",
+        "5K Race",
+        "10K Race",
+        "Half Marathon",
+        "Marathon",
+        "Just for Fun"
+    ]
 
     @State private var currentPage: Int = 0
     @State private var isRequestingAuth: Bool = false
@@ -41,8 +55,11 @@ struct OnboardingView: View {
                         healthConnectionStepView
                             .tag(1)
 
-                        aboutRunalystStepView
+                        profileSetupStepView
                             .tag(2)
+
+                        aboutRunalystStepView
+                            .tag(3)
                     }
                     .tabViewStyle(.page(indexDisplayMode: .never))
                     .animation(.easeInOut(duration: 0.3), value: currentPage)
@@ -50,22 +67,17 @@ struct OnboardingView: View {
                     bottomControls
                 }
             }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                if isReplay {
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        Button("Close") {
-                            dismiss()
-                        }
-                        .font(.body.weight(.semibold))
-                    }
-                }
-            }
+            .toolbar(.hidden, for: .navigationBar)
             .sheet(item: $previewExplainer) { info in
                 MetricExplainerSheet(info: info)
             }
             .task {
                 checkInitialAuthStatus()
+                if let healthHeight = try? await HealthKitManager.shared.fetchUserHeight(), healthHeight > 0 {
+                    if UserDefaults.standard.object(forKey: "userHeightCm") == nil || userHeightCm == 175.0 {
+                        userHeightCm = healthHeight
+                    }
+                }
             }
         }
     }
@@ -89,14 +101,14 @@ struct OnboardingView: View {
                     .foregroundColor(.secondary)
                 }
             } else {
-                Spacer().frame(width: 60)
+                Spacer().frame(width: 50)
             }
 
             Spacer()
 
-            // Page Indicator Dots
+            // Page Indicator Dots (4 Pages)
             HStack(spacing: 6) {
-                ForEach(0..<3) { index in
+                ForEach(0..<4) { index in
                     Capsule()
                         .fill(currentPage == index ? Color.accentColor : Color.secondary.opacity(0.3))
                         .frame(width: currentPage == index ? 20 : 6, height: 6)
@@ -106,23 +118,34 @@ struct OnboardingView: View {
 
             Spacer()
 
-            if isReplay {
+            if currentPage < 3 {
+                if isReplay {
+                    Button("Close") {
+                        dismiss()
+                    }
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                } else {
+                    Button("Skip") {
+                        withAnimation {
+                            currentPage = 3
+                        }
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    }
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                }
+            } else {
                 Button("Done") {
-                    dismiss()
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    if isReplay {
+                        dismiss()
+                    } else {
+                        onComplete?()
+                    }
                 }
                 .font(.subheadline.bold())
                 .foregroundColor(.accentColor)
-            } else if currentPage < 2 {
-                Button("Skip") {
-                    withAnimation {
-                        currentPage = 2
-                    }
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                }
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-            } else {
-                Spacer().frame(width: 44)
             }
         }
         .padding(.horizontal, 20)
@@ -195,9 +218,10 @@ struct OnboardingView: View {
                 infoExplainerSpotlightCard
                     .padding(.horizontal, 16)
 
-                Spacer().frame(height: 20)
+                Spacer().frame(height: 40)
             }
             .padding(.vertical, 12)
+            .padding(.bottom, 90)
         }
     }
 
@@ -399,13 +423,196 @@ struct OnboardingView: View {
                 }
                 .padding(.horizontal, 16)
 
-                Spacer().frame(height: 20)
+                Spacer().frame(height: 40)
             }
             .padding(.vertical, 12)
+            .padding(.bottom, 90)
         }
     }
 
-    // MARK: - Step 2: About Runalyst & Live Background Sync
+    // MARK: - Step 2: Athlete Profile Setup
+
+    private var profileSetupStepView: some View {
+        ScrollView {
+            VStack(spacing: 24) {
+                // Hero
+                VStack(spacing: 12) {
+                    ZStack {
+                        Circle()
+                            .fill(
+                                LinearGradient(
+                                    colors: [Color.teal, Color.purple],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .frame(width: 80, height: 80)
+                            .shadow(color: Color.teal.opacity(0.35), radius: 12, x: 0, y: 6)
+
+                        Image(systemName: "person.crop.circle.badge.checkmark")
+                            .font(.system(size: 38))
+                            .foregroundColor(.white)
+                    }
+                    .padding(.top, 8)
+
+                    Text("Your Runner Profile")
+                        .font(.system(size: 32, weight: .bold, design: .rounded))
+                        .multilineTextAlignment(.center)
+
+                    Text("Tune your primary training intent and biomechanics so AI coaching directives and cadence floors match your biology.")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 16)
+                }
+
+                // Profile Configuration Cards
+                VStack(spacing: 16) {
+                    // Card 1: Primary Training Goal
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "target")
+                                .font(.headline)
+                                .foregroundColor(.teal)
+                            Text("Primary Training Goal")
+                                .font(.headline)
+                                .foregroundColor(.primary)
+                        }
+
+                        Picker("Training Goal", selection: $trainingGoal) {
+                            ForEach(goalOptions, id: \.self) { goal in
+                                Text(goal).tag(goal)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .tint(.teal)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color(UIColor.tertiarySystemGroupedBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+
+                        Text(goalDescription(for: trainingGoal))
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .lineSpacing(2)
+                    }
+                    .padding(16)
+                    .background(Color(UIColor.secondarySystemGroupedBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+
+                    // Card 2: Experience Level
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "sparkles")
+                                .font(.headline)
+                                .foregroundColor(.purple)
+                            Text("Experience Level")
+                                .font(.headline)
+                                .foregroundColor(.primary)
+                        }
+
+                        Picker("Experience Level", selection: $userExperienceLevel) {
+                            Text("Auto (Calibrated from Health)").tag("Auto")
+                            ForEach(RunnerProfile.experienceLevelOptions, id: \.self) { level in
+                                Text(level).tag(level)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .tint(.purple)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color(UIColor.tertiarySystemGroupedBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+
+                        Text(userExperienceLevel == "Auto"
+                            ? "Auto dynamically classifies your athletic maturity tier from 30-day running volume and frequency."
+                            : "Manual override active: \(userExperienceLevel). Runalyst will tailor interval pacing to this level.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .lineSpacing(2)
+                    }
+                    .padding(16)
+                    .background(Color(UIColor.secondarySystemGroupedBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+
+                    // Card 3: Height
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "ruler.fill")
+                                .font(.headline)
+                                .foregroundColor(.orange)
+                            Text("Height")
+                                .font(.headline)
+                                .foregroundColor(.primary)
+                            Spacer()
+                            if useMetricSystem {
+                                Text("\(Int(userHeightCm)) cm")
+                                    .font(.headline.bold())
+                                    .monospacedDigit()
+                                    .foregroundColor(.orange)
+                            } else {
+                                let totalInches = Int((userHeightCm / 2.54).rounded())
+                                let feet = totalInches / 12
+                                let inches = totalInches % 12
+                                Text("\(feet)'\(inches)\" (\(Int(userHeightCm)) cm)")
+                                    .font(.headline.bold())
+                                    .monospacedDigit()
+                                    .foregroundColor(.orange)
+                            }
+                        }
+
+                        Stepper(
+                            value: $userHeightCm,
+                            in: 130...220,
+                            step: 1
+                        ) {
+                            Text("Adjust Height")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 4)
+                        .background(Color(UIColor.tertiarySystemGroupedBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+
+                        Text("Used by the physics engine to calculate your height-adjusted cadence floor and vertical oscillation limit.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .lineSpacing(2)
+                    }
+                    .padding(16)
+                    .background(Color(UIColor.secondarySystemGroupedBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                }
+                .padding(.horizontal, 16)
+            }
+            .padding(.vertical, 12)
+            .padding(.bottom, 16)
+        }
+    }
+
+    private func goalDescription(for goal: String) -> String {
+        switch goal {
+        case "Base Building":
+            return "Prioritizes easy aerobic base mileage and conversational heart rate caps."
+        case "Injury Recovery":
+            return "Conservative volume caps with proactive recovery directives overriding hard workouts."
+        case "5K Race":
+            return "Develops rapid turnover, cadence stability, and sharp neuromuscular surge speed."
+        case "10K Race":
+            return "Balances sustained threshold endurance with structured aerobic rhythm intervals."
+        case "Half Marathon":
+            return "Builds progressive aerobic stamina and stride efficiency over sustained distances."
+        case "Marathon":
+            return "Focuses on deep aerobic adaptation, cadence stability, and fatigue resistance."
+        default:
+            return "Balanced aerobic coaching for consistent fitness and injury-free running."
+        }
+    }
+
+    // MARK: - Step 3: About Runalyst & Live Background Sync
 
     private var aboutRunalystStepView: some View {
         ScrollView {
@@ -419,8 +626,9 @@ struct OnboardingView: View {
                 AboutRunalystView(isEmbedded: true)
                     .padding(.horizontal, 16)
 
-                Spacer().frame(height: 30)
+                Spacer().frame(height: 40)
             }
+            .padding(.bottom, 90)
         }
     }
 
@@ -534,7 +742,7 @@ struct OnboardingView: View {
                         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     } label: {
                         HStack {
-                            Text(isHealthAuthorized ? "Next: About Runalyst" : "Continue to About Runalyst")
+                            Text(isHealthAuthorized ? "Next: Runner Profile" : "Continue to Runner Profile")
                                 .font(.headline)
                             Image(systemName: "arrow.right")
                         }
@@ -543,6 +751,25 @@ struct OnboardingView: View {
                         .background(isHealthAuthorized ? Color.accentColor : Color.primary)
                         .foregroundColor(Color(UIColor.systemBackground))
                         .cornerRadius(16)
+                    }
+                } else if currentPage == 2 {
+                    Button {
+                        withAnimation {
+                            currentPage = 3
+                        }
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    } label: {
+                        HStack {
+                            Text("Next: App Philosophy")
+                                .font(.headline)
+                            Image(systemName: "arrow.right")
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.accentColor)
+                        .foregroundColor(.white)
+                        .cornerRadius(16)
+                        .shadow(color: Color.accentColor.opacity(0.3), radius: 8, x: 0, y: 4)
                     }
                 } else {
                     Button {
