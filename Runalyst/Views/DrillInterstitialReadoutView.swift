@@ -11,6 +11,7 @@ struct DrillInterstitialReadoutView: View {
     var onCommitToWatch: ((WorkoutPlan, DrillPrescriptionDTO) -> Void)?
 
     @Environment(\.dismiss) private var dismiss
+    @AppStorage("preferredWorkoutIsIndoor") private var preferredWorkoutIsIndoor: Bool = false
     @State private var showingReadinessInfo = false
     @State private var isScheduling = false
     @State private var scheduleSuccess = false
@@ -71,6 +72,45 @@ struct DrillInterstitialReadoutView: View {
                         }
                     }
                     .padding(.bottom, 2)
+
+                    // Run Environment Selector (Outdoor vs Indoor Treadmill)
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(spacing: 8) {
+                            Label("Run Environment", systemImage: preferredWorkoutIsIndoor ? "figure.run.square.stack" : "sun.max.fill")
+                                .font(.caption.bold())
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            Picker("Run Environment", selection: $preferredWorkoutIsIndoor) {
+                                Text("Outdoor").tag(false)
+                                Text("Indoor (Treadmill)").tag(true)
+                            }
+                            .pickerStyle(.segmented)
+                            .frame(maxWidth: 220)
+                            .onChange(of: preferredWorkoutIsIndoor) { _, _ in
+                                UISelectionFeedbackGenerator().selectionChanged()
+                            }
+                        }
+
+                        if preferredWorkoutIsIndoor {
+                            HStack(spacing: 6) {
+                                Image(systemName: "info.circle.fill")
+                                    .font(.caption2)
+                                    .foregroundColor(.purple)
+                                Text(
+                                    readout.drillId == .hillBounds
+                                    ? "Schedules as an Indoor Run on Apple Watch. Set treadmill incline to 4–6% for hill bounds."
+                                    : "Schedules as an Indoor Run on Apple Watch (GPS off, wrist cadence & treadmill calibration active). Set 0.5–1.0% incline to match outdoor road effort."
+                                )
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Color(UIColor.secondarySystemGroupedBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
                     // 0. Readiness Modifier (ACWR) — only when today's prescription was adapted
                     if readout.isReadinessAdjusted {
@@ -353,14 +393,16 @@ struct DrillInterstitialReadoutView: View {
         Task {
             if #available(iOS 17.0, *) {
                 do {
+                    var dtoToSchedule = prescriptionDTO
+                    dtoToSchedule.isIndoor = preferredWorkoutIsIndoor
                     let bridge = WorkoutBridge()
-                    try await bridge.scheduleDrill(dto: prescriptionDTO)
+                    try await bridge.scheduleDrill(dto: dtoToSchedule)
                     await MainActor.run {
                         self.isScheduling = false
                         self.scheduleSuccess = true
                         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                         UINotificationFeedbackGenerator().notificationOccurred(.success)
-                        self.onCommitToWatch?(self.workoutPlan, self.prescriptionDTO)
+                        self.onCommitToWatch?(self.workoutPlan, dtoToSchedule)
                     }
                     try? await Task.sleep(nanoseconds: 750_000_000)
                     await MainActor.run {

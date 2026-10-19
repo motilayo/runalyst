@@ -676,6 +676,13 @@ class HealthKitManager: ObservableObject {
             if !tags.contains(titleTag) {
                 tags.append(titleTag)
             }
+            if let rawTarget = matchedDrill.targetCadence {
+                let cleanTarget = PreRunDrill.normalizeCadenceTargetString(rawTarget)
+                if !cleanTarget.isEmpty {
+                    tags.removeAll { $0.hasPrefix("drillTarget:") }
+                    tags.append("drillTarget:\(cleanTarget)")
+                }
+            }
 
             // Interval-by-interval drill evaluation
             let drillId = PreRunDrillId(rawValue: matchedDrill.preRunDrillId ?? "")
@@ -689,7 +696,8 @@ class HealthKitManager: ObservableObject {
                     drillId: drillId,
                     baselineCadence: thirtyDayCadence,
                     workoutDuration: duration,
-                    oscDelta: oscDelta
+                    oscDelta: oscDelta,
+                    targetCadenceOverride: matchedDrill.targetCadence
                 )
                 tags.removeAll {
                     $0.hasPrefix("drillIntervals:") ||
@@ -702,6 +710,8 @@ class HealthKitManager: ObservableObject {
                 }
             }
         }
+
+        let effectiveIsIndoor = (matchedDrillIntent?.isIndoor == true) ? true : isIndoor
 
         // Build and persist RunSignature for Workout Rhythm and RAG Analyst Chat
         let phaseSegments: [PhaseSegment]
@@ -720,7 +730,7 @@ class HealthKitManager: ObservableObject {
             cadenceFloor: 150.0,
             phaseSegments: phaseSegments,
             dataSource: dataSource,
-            isIndoor: isIndoor,
+            isIndoor: effectiveIsIndoor,
             needsInclineReview: classificationResult?.needsInclineReview ?? false,
             splits: splits
         )
@@ -745,7 +755,7 @@ class HealthKitManager: ObservableObject {
             workingAvgStrideLength: validWorkingStride,
             workingDistanceMeters: workingDistance,
             workingDurationSeconds: workingDuration,
-            isIndoor: isIndoor,
+            isIndoor: effectiveIsIndoor,
             paceCV: cv,
             paceSlope: slope,
             percentZone4: zone4,
@@ -883,7 +893,13 @@ class HealthKitManager: ObservableObject {
         record.workingAvgHeartRate = dto.workingAvgHeartRate
         record.workingDistanceMeters = dto.workingDistanceMeters
         record.workingDurationSeconds = dto.workingDurationSeconds
-        record.isIndoor = dto.isIndoor
+        if record.framboiseTags.contains("userSetIndoor") {
+            record.isIndoor = true
+        } else if record.framboiseTags.contains("userSetOutdoor") {
+            record.isIndoor = false
+        } else {
+            record.isIndoor = dto.isIndoor
+        }
         record.dataSourceRaw = dto.dataSourceRaw
         record.classificationConfidence = dto.classificationConfidence
         record.classificationProbabilitiesData = dto.classificationProbabilitiesData
@@ -901,13 +917,16 @@ class HealthKitManager: ObservableObject {
         record.ambientTemperatureCelsius = dto.ambientTemperatureCelsius
         record.ambientHumidity = dto.ambientHumidity
 
-        // Preserve user drill intent tags
+        // Preserve user drill & environment intent tags
         var mergedTags = dto.framboiseTags
-        if record.framboiseTags.contains("userLinkedDrill") && !mergedTags.contains("userLinkedDrill") {
-            mergedTags.append("userLinkedDrill")
+        for preservedTag in ["userLinkedDrill", "userUnlinkedDrill", "userSetIndoor", "userSetOutdoor"] {
+            if record.framboiseTags.contains(preservedTag) && !mergedTags.contains(preservedTag) {
+                mergedTags.append(preservedTag)
+            }
         }
-        if record.framboiseTags.contains("userUnlinkedDrill") && !mergedTags.contains("userUnlinkedDrill") {
-            mergedTags.append("userUnlinkedDrill")
+        if let existingTargetTag = record.framboiseTags.first(where: { $0.hasPrefix("drillTarget:") }),
+           !mergedTags.contains(where: { $0.hasPrefix("drillTarget:") }) {
+            mergedTags.append(existingTargetTag)
         }
         record.framboiseTags = mergedTags
 

@@ -261,37 +261,140 @@ extension RunRecord {
     /// Canonical user-facing drill title associated with this run, if any (e.g. "Tempo Surges", "Cadence Pyramids").
     var prescribedDrillName: String? {
         guard !isDeleted else { return nil }
+        guard !framboiseTags.contains("userUnlinkedDrill") else { return nil }
+
+        // Long full-distance runs (> 25 min and > 4 km) that were not explicitly linked by the user
+        // should never be relabeled as short pre-run primer drills.
+        let isUnlinkedLongRun = duration > 1500 && totalDistanceMeters > 4000 && !framboiseTags.contains("userLinkedDrill")
+
+        func validatedDrillTitle(_ title: String) -> String? {
+            if isUnlinkedLongRun,
+               let resolved = PreRunDrillId.resolve(from: title),
+               !resolved.isAerobicContinuous {
+                return nil
+            }
+            return title
+        }
+
         // 1. Explicit tag "drill:<title>"
         if let tag = framboiseTags.first(where: { $0.hasPrefix("drill:") }) {
             let candidate = String(tag.dropFirst(6))
             if let canonical = PreRunDrillId.canonicalDrillTitle(for: candidate) {
-                return canonical
+                return validatedDrillTitle(canonical)
             }
-            return candidate.replacingOccurrences(of: "_", with: " ").capitalized
+            return validatedDrillTitle(candidate.replacingOccurrences(of: "_", with: " ").capitalized)
         }
         // 2. PreRunDrillId rawValue in framboiseTags
         if let drill = PreRunDrillId.allCases.first(where: { framboiseTags.contains($0.rawValue) }) {
-            return drill.title
+            return validatedDrillTitle(drill.title)
         }
         // 3. PreRunDrillId title in framboiseTags
         if let drill = PreRunDrillId.allCases.first(where: { framboiseTags.contains($0.title) }) {
-            return drill.title
+            return validatedDrillTitle(drill.title)
         }
         // 4. If detectedTypeRaw is itself a specific drill title (e.g. "Rhythm Intervals")
         if let canonical = PreRunDrillId.canonicalDrillTitle(for: detectedTypeRaw) {
-            return canonical
-        }
-        // 5. Associated completed drill recommendation from insight
-        if let rec = insight?.drillRecommendations?.first(where: { $0.isCompleted }),
-           let canonical = PreRunDrillId.canonicalDrillTitle(for: rec.drillTitle) {
-            return canonical
+            return validatedDrillTitle(canonical)
         }
         return nil
+    }
+
+    /// Resolves the prescribed target cadence band for this run, accounting for explicit drillTarget tags,
+    /// scheduled drill intents, and readiness/cardiac-drift adaptations active at the time of the workout.
+    @MainActor
+    func effectivePrescribedTargetCadence(drillId: PreRunDrillId, baselineCadence: Int) -> String? {
+        guard !drillId.isHeartRateTargeted && !drillId.isAerobicContinuous else { return nil }
+
+        // 1. Explicit persisted target tag on the run
+        if let tag = framboiseTags.first(where: { $0.hasPrefix("drillTarget:") }) {
+            let raw = String(tag.dropFirst("drillTarget:".count))
+            let clean = PreRunDrill.normalizeCadenceTargetString(raw)
+            if !clean.isEmpty {
+                return clean
+            }
+        }
+
+        // 2. Recent scheduled drill intent matching this workout
+        let intents = WorkoutBridge.recentIntents()
+        if let matchedIntent = intents.first(where: { intent in
+            if intent.matchedWorkoutID == self.hkWorkoutID { return true }
+            let diff = abs(self.date.timeIntervalSince(intent.scheduledDate))
+            let sameDrill = intent.preRunDrillId == drillId.rawValue || intent.drillTitle == drillId.title
+            return sameDrill && diff <= 12 * 3600
+        }), let intentTarget = matchedIntent.targetCadence {
+            let clean = PreRunDrill.normalizeCadenceTargetString(intentTarget)
+            if !clean.isEmpty,
+               intentTarget.localizedCaseInsensitiveContains("adapted") ||
+               clean != DrillTemplate.template(for: drillId).calculateTargetCadence(baselineCadence) {
+                return clean
+            }
+        }
+
+        // 3. Evaluate readiness and prior-run cardiac drift at the time of this workout
+        if let context = self.modelContext {
+            let runDate = self.date
+            let descriptor = FetchDescriptor<RunRecord>(
+                predicate: #Predicate<RunRecord> { $0.date < runDate },
+                sortBy: [SortDescriptor(\.date, order: .reverse)]
+            )
+            if let priorRuns = try? context.fetch(descriptor), !priorRuns.isEmpty {
+                let readiness = ReadinessEvaluator.assess(runRecords: priorRuns, now: runDate)
+                let validPrior = priorRuns.filter { !$0.isDeleted && $0.workingAvgPace > 0 }
+                let sessionBaseCadence = validPrior.isEmpty
+                    ? baselineCadence
+                    : Int(validPrior.prefix(10).map(\.workingAvgCadence).reduce(0, +) / Double(min(10, validPrior.count)))
+
+                var hadCardiacDrift = readiness.triggers.contains(.cardiacDrift)
+                if let recent = priorRuns.first(where: { !$0.isDeleted }) {
+                    if recent.framboiseTags.contains("cardiacDrift") || recent.framboiseTags.contains("fatigueDrift") {
+                        hadCardiacDrift = true
+                    } else {
+                        let analysisContext = WorkoutAnalysisContext(
+                            runRecord: recent,
+                            runSignature: recent.signature,
+                            macroProfile: nil,
+                            recoveryTimeline: RecoveryTimeline(now: runDate, lastHard: nil, hardSessionsLast72h: 0, requiredHours: 24, state: .productive)
+                        )
+                        if analysisContext.hasCardiacDrift {
+                            hadCardiacDrift = true
+                        }
+                    }
+                }
+
+                if readiness.state == .acuteFatigue || hadCardiacDrift {
+                    if drillId == .cadencePyramids {
+                        return "\(sessionBaseCadence - 1)-\(sessionBaseCadence + 5)"
+                    }
+                    let standard = DrillTemplate.template(for: drillId).calculateTargetCadence(baselineCadence)
+                    return ReadinessModifier.adaptTarget(
+                        standard,
+                        baselineCadence: baselineCadence,
+                        drillId: drillId,
+                        state: .acuteFatigue
+                    ).targetCadence
+                } else if readiness.state == .deload && drillId == .strides {
+                    return "\(sessionBaseCadence + 10)-\(sessionBaseCadence + 18)"
+                }
+            }
+        }
+
+        return DrillTemplate.template(for: drillId).calculateTargetCadence(baselineCadence)
     }
 
     /// Canonical user-facing run classification (e.g. "Steady Effort", "Easy Run", "Intervals").
     var normalizedClassification: String {
         guard !isDeleted else { return "Steady Effort" }
+        // If an unlinked long run (> 25 min and > 4 km) previously had a false-positive primer tag
+        // that overwrote detectedTypeRaw to "Intervals", restore its native signature classification (e.g. "Fartlek").
+        let hasDrillTag = framboiseTags.contains("prescribedDrill") || framboiseTags.contains(where: { $0.hasPrefix("drill:") })
+        if duration > 1500 && totalDistanceMeters > 4000 && !framboiseTags.contains("userLinkedDrill"),
+           prescribedDrillName == nil,
+           hasDrillTag,
+           let sigClass = signature?.classification.trimmingCharacters(in: .whitespacesAndNewlines),
+           !sigClass.isEmpty {
+            return sigClass
+        }
+
         let trimmed = detectedTypeRaw.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty || trimmed.localizedCaseInsensitiveCompare("steady") == .orderedSame {
             return "Steady Effort"

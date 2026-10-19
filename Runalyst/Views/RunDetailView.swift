@@ -185,10 +185,27 @@ struct RunDetailView: View {
 
     private func cleanUpInvalidDrillTagsIfNeeded() {
         guard !runRecord.isDeleted, runRecord.modelContext != nil else { return }
+        let allIds = Set(PreRunDrillId.allCases.map(\.rawValue))
+        let allTitles = Set(PreRunDrillId.allCases.map(\.title))
+        let hasAnyDrillTag = runRecord.framboiseTags.contains {
+            $0 == "prescribedDrill" || $0.hasPrefix("drill:") || allIds.contains($0) || allTitles.contains($0)
+        }
         // A run is only a prescribed drill if it has a confirmed authentic drill name
-        if runRecord.framboiseTags.contains("prescribedDrill") && prescribedDrillName == nil {
+        if hasAnyDrillTag && prescribedDrillName == nil {
             runRecord.framboiseTags.removeAll { tag in
-                tag == "prescribedDrill" || tag.hasPrefix("drill:")
+                tag == "prescribedDrill" ||
+                tag.hasPrefix("drill:") ||
+                tag.hasPrefix("drillIntervals:") ||
+                tag.hasPrefix("drillWorkCadence:") ||
+                tag.hasPrefix("drillRecCadence:") ||
+                tag.hasPrefix("drillReps:") ||
+                allIds.contains(tag) ||
+                allTitles.contains(tag)
+            }
+            if let sigClass = runRecord.signature?.classification.trimmingCharacters(in: .whitespacesAndNewlines),
+               !sigClass.isEmpty,
+               runRecord.detectedTypeRaw != sigClass {
+                runRecord.detectedTypeRaw = sigClass
             }
             try? modelContext.save()
         }
@@ -507,6 +524,15 @@ struct RunDetailView: View {
                     .onTapGesture { showingEnvironmentInfo = true }
                     .accessibilityAddTraits(.isButton)
                     .alert(isIndoor ? "Indoor Session" : "Outdoor Session", isPresented: $showingEnvironmentInfo) {
+                        Button(isIndoor ? "Switch to Outdoor" : "Switch to Indoor (Treadmill)") {
+                            let newIndoor = !isIndoor
+                            runRecord.isIndoor = newIndoor
+                            runRecord.framboiseTags.removeAll { $0 == "userSetIndoor" || $0 == "userSetOutdoor" }
+                            runRecord.framboiseTags.append(newIndoor ? "userSetIndoor" : "userSetOutdoor")
+                            UserDefaults.standard.set(newIndoor, forKey: "preferredWorkoutIsIndoor")
+                            try? modelContext.save()
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        }
                         Button("OK", role: .cancel) {}
                     } message: {
                         Text(environmentInfoMessage)
@@ -1010,13 +1036,16 @@ struct RunDetailView: View {
                                 ?? PreRunDrillId.allCases.first(where: { $0.title == matched.drillTitle }) {
                                 let thirtyDayCadence = baseline ?? Int(runRecord.workingAvgCadence > 0 ? runRecord.workingAvgCadence : 155)
                                 let oscDelta = (runRecord.workingAvgVerticalOscillation ?? 9.5) - 9.5
+                                let targetOverride = runRecord.effectivePrescribedTargetCadence(drillId: drillId, baselineCadence: thirtyDayCadence)
+                                    ?? matched.targetCadence
                                 let intervalSummary = DrillIntervalEvaluator.evaluate(
                                     workout: workout,
                                     buckets: buckets,
                                     drillId: drillId,
                                     baselineCadence: thirtyDayCadence,
                                     workoutDuration: runRecord.duration,
-                                    oscDelta: oscDelta
+                                    oscDelta: oscDelta,
+                                    targetCadenceOverride: targetOverride
                                 )
                                 runRecord.framboiseTags.removeAll {
                                     $0.hasPrefix("drillIntervals:") ||

@@ -106,7 +106,8 @@ enum DrillIntervalEvaluator {
         drillId: PreRunDrillId,
         baselineCadence: Int,
         workoutDuration: Double,
-        oscDelta: Double = 0.0
+        oscDelta: Double = 0.0,
+        targetCadenceOverride: String? = nil
     ) -> DrillIntervalSummary {
         let durationCategory: DrillDuration
         if workoutDuration <= 720 { // <= 12 min
@@ -118,7 +119,7 @@ enum DrillIntervalEvaluator {
         }
 
         let template = DrillTemplate.template(for: drillId)
-        let targetCadenceStr = template.calculateTargetCadence(baselineCadence)
+        let targetCadenceStr = targetCadenceOverride ?? template.calculateTargetCadence(baselineCadence)
         let preRunDrill = PreRunDrill(
             id: drillId,
             previousCadence: baselineCadence,

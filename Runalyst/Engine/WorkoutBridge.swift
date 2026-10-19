@@ -218,8 +218,9 @@ final class WorkoutBridge {
         }
 
         // 3. Structural Entities: HKWorkoutActivity & HKWorkoutEvent (Apple Watch intervals / laps)
+        // Only classify via structural/autonomous pattern recognition if the run is within pre-run drill duration bounds (<= 22 min)
         let thirtyDayCadence = baselineCadence ?? 155
-        if workout.workoutActivities.count >= 4 {
+        if durationSeconds <= 1320, workout.workoutActivities.count >= 4 {
             if let activityMatch = DrillPatternRecognizer.recognizeFromActivities(
                 activities: workout.workoutActivities,
                 buckets: buckets,
@@ -234,7 +235,7 @@ final class WorkoutBridge {
             }
         }
 
-        if let events = workout.workoutEvents, events.filter({ $0.type == .lap || $0.type == .segment }).count >= 4 {
+        if durationSeconds <= 1320, let events = workout.workoutEvents, events.filter({ $0.type == .lap || $0.type == .segment }).count >= 4 {
             if let eventMatch = DrillPatternRecognizer.recognizeFromEvents(
                 events: events,
                 buckets: buckets,
@@ -279,7 +280,7 @@ final class WorkoutBridge {
                 zone4Threshold: zone4Threshold,
                 zone2Threshold: zone2Threshold,
                 zone1Threshold: zone1Threshold
-            ) {
+            ), durationSeconds <= 1320 || patternMatch.drillId.isAerobicContinuous {
                 return ScheduledDrillIntent(
                     drillTitle: patternMatch.drillId.title,
                     preRunDrillId: patternMatch.drillId.rawValue,
@@ -365,7 +366,7 @@ final class WorkoutBridge {
                 zone4Threshold: zone4Threshold,
                 zone2Threshold: zone2Threshold,
                 zone1Threshold: zone1Threshold
-            ) {
+            ), durationSeconds <= 1320 || patternMatch.drillId.isAerobicContinuous {
                 return ScheduledDrillIntent(
                     drillTitle: patternMatch.drillId.title,
                     preRunDrillId: patternMatch.drillId.rawValue,
@@ -388,29 +389,44 @@ final class WorkoutBridge {
         }
 
         let preRunId = PreRunDrillId(rawValue: dto.preRunDrillId ?? "") ?? .strides
-        let duration = DrillDuration(rawValue: dto.durationMinutes ?? 15) ?? .fifteenMinutes
+        let duration: DrillDuration = {
+            if let raw = dto.durationMinutes {
+                if let exact = DrillDuration(rawValue: raw) { return exact }
+                if raw <= 6 { return .fiveMinutes }
+                if raw <= 12 { return .tenMinutes }
+                if raw <= 20 { return .fifteenMinutes }
+                return .thirtyMinutes
+            }
+            return preRunId.defaultDuration
+        }()
         let haptic = HapticFeedbackMode(rawValue: dto.hapticMode ?? "") ?? .on
         let readiness = ReadinessState(rawValue: dto.readinessState ?? "") ?? .productive
+        let isIndoor = dto.isIndoor ?? UserDefaults.standard.bool(forKey: "preferredWorkoutIsIndoor")
+        let customTitle = dto.title.isEmpty ? nil : dto.title
         let drill = PreRunDrill(
             id: preRunId,
             previousCadence: dto.previousCadence,
             targetCadence: dto.targetCadence,
             duration: duration,
             hapticMode: haptic,
-            readinessState: readiness
+            readinessState: readiness,
+            isIndoor: isIndoor,
+            customDisplayName: customTitle
         )
         let plan = drill.buildWorkoutPlan()
 
         let now = Calendar.current.dateComponents([.calendar, .timeZone, .year, .month, .day, .hour, .minute], from: Date())
         await WorkoutScheduler.shared.schedule(plan, at: now)
 
+        let effectiveMinutes = max(1, Int(round(Double(drill.totalPhasesDurationSeconds) / 60.0)))
         let intent = ScheduledDrillIntent(
             drillTitle: drill.id.title,
             preRunDrillId: drill.id.rawValue,
             scheduledDate: Date(),
-            durationMinutes: duration.rawValue,
-            targetCadence: dto.targetCadence,
-            matchedWorkoutID: nil
+            durationMinutes: effectiveMinutes,
+            targetCadence: drill.computedCadence ?? dto.targetCadence,
+            matchedWorkoutID: nil,
+            isIndoor: isIndoor
         )
         Self.saveDrillIntent(intent)
     }

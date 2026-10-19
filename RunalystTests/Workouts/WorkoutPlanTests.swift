@@ -5,9 +5,25 @@ import WorkoutKit
 final class WorkoutPlanTests: XCTestCase {
     func testDrillWorkoutPlans() {
         for id in PreRunDrillId.allCases {
-            let drill = PreRunDrill(id: id, previousCadence: 160)
-            _ = drill.buildWorkoutPlan()
-            print("Successfully built plan for \(id.rawValue)")
+            let outdoorDrill = PreRunDrill(id: id, previousCadence: 160, isIndoor: false)
+            let outdoorPlan = outdoorDrill.buildWorkoutPlan()
+            if case .custom(let customOutdoor) = outdoorPlan.workout {
+                XCTAssertEqual(customOutdoor.location, .outdoor)
+            } else {
+                XCTFail("Expected custom workout for outdoor \(id.rawValue)")
+            }
+
+            let indoorDrill = PreRunDrill(id: id, previousCadence: 160, targetCadence: "155-161", isIndoor: true)
+            let indoorPlan = indoorDrill.buildWorkoutPlan()
+            if case .custom(let customIndoor) = indoorPlan.workout {
+                XCTAssertEqual(customIndoor.location, .indoor)
+                if !id.isHeartRateTargeted && !id.isAerobicContinuous {
+                    XCTAssertTrue(customIndoor.displayName?.contains("155-161 SPM") == true)
+                }
+            } else {
+                XCTFail("Expected custom workout for indoor \(id.rawValue)")
+            }
+            print("Successfully built outdoor & indoor plans for \(id.rawValue)")
         }
 
         let alertThreshold = CadenceThresholdAlert.cadence(160.0)
@@ -16,7 +32,8 @@ final class WorkoutPlanTests: XCTestCase {
         XCTAssertTrue(CustomWorkout.supportsGoal(.time(2, .minutes), activity: .running, location: .outdoor))
         XCTAssertTrue(CustomWorkout.supportsGoal(.time(1, .minutes), activity: .running, location: .outdoor))
         let hrZoneAlert = HeartRateZoneAlert(zone: 2)
-        print("HR ZONE 2 SUPPORTS: \(CustomWorkout.supportsAlert(hrZoneAlert, activity: .running, location: .outdoor))")
+        XCTAssertTrue(CustomWorkout.supportsAlert(hrZoneAlert, activity: .running, location: .outdoor))
+        XCTAssertTrue(CustomWorkout.supportsAlert(hrZoneAlert, activity: .running, location: .indoor))
     }
 
     func testZone2RunWorkoutPlanAndTarget() {
