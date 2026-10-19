@@ -52,21 +52,6 @@ struct WorkoutsView: View {
             .navigationTitle("Workouts")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button {
-                        showingDrillsLibrary = true
-                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "figure.run.square.stack")
-                            Text("Drills")
-                                .font(.subheadline.weight(.semibold))
-                        }
-                        .foregroundColor(Color(red: 0.0, green: 0.55, blue: 1.0))
-                    }
-                    .accessibilityLabel("Runs & Drills Library")
-                }
-
                 ToolbarItem(placement: .navigationBarTrailing) {
                     if !runRecords.isEmpty {
                         Button {
@@ -159,13 +144,27 @@ struct WorkoutsView: View {
                 .foregroundColor(.green)
                 Spacer()
                 if allRunsToday.count == 1 {
-                    Text("Grade \(completedRun.letterGrade)")
-                        .font(.caption.bold())
+                    if completedRun.isPrimerDrill {
+                        HStack(spacing: 3) {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 10, weight: .bold))
+                            Text("Target Met")
+                                .font(.caption.bold())
+                        }
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                         .background(Color.green.opacity(0.18))
                         .foregroundColor(.green)
                         .clipShape(Capsule())
+                    } else {
+                        Text("Grade \(completedRun.letterGrade)")
+                            .font(.caption.bold())
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.green.opacity(0.18))
+                            .foregroundColor(.green)
+                            .clipShape(Capsule())
+                    }
                 }
             }
 
@@ -186,6 +185,8 @@ struct WorkoutsView: View {
                             Text(snap.workoutType)
                                 .font(.subheadline.weight(.semibold))
                                 .foregroundColor(.primary)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.85)
                             Text("\(snap.durationFormatted) • \(snap.distanceFormatted)")
                                 .font(.caption)
                                 .monospacedDigit()
@@ -195,13 +196,27 @@ struct WorkoutsView: View {
                         Spacer()
 
                         if allRunsToday.count > 1 {
-                            Text("Grade \(snap.letterGrade)")
-                                .font(.caption2.bold())
+                            if snap.isPrimerDrill {
+                                HStack(spacing: 3) {
+                                    Image(systemName: "checkmark")
+                                        .font(.system(size: 9, weight: .bold))
+                                    Text("Target Met")
+                                        .font(.caption2.bold())
+                                }
                                 .padding(.horizontal, 7)
                                 .padding(.vertical, 3)
                                 .background(Color.green.opacity(0.15))
                                 .foregroundColor(.green)
                                 .clipShape(Capsule())
+                            } else {
+                                Text("Grade \(snap.letterGrade)")
+                                    .font(.caption2.bold())
+                                    .padding(.horizontal, 7)
+                                    .padding(.vertical, 3)
+                                    .background(Color.green.opacity(0.15))
+                                    .foregroundColor(.green)
+                                    .clipShape(Capsule())
+                            }
                         }
 
                         if let targetRun = runRecords.first(where: { $0.id == snap.id }) {
@@ -299,10 +314,10 @@ struct WorkoutsView: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             // 3. Pre-Run Primer Card (Stage 1)
-            preRunPrimerSection(session: session)
+            preRunPrimerSection(session: session, isTomorrow: isTomorrow)
 
             // 4. Main Run Card (Stage 2 — matching visual structure)
-            mainRunSection(session: session)
+            mainRunSection(session: session, isTomorrow: isTomorrow)
         }
         .padding(16)
         .background(Color(UIColor.secondarySystemGroupedBackground))
@@ -316,7 +331,7 @@ struct WorkoutsView: View {
 
     // MARK: - Pre-Run Primer Subcard (Stage 1)
 
-    private func preRunPrimerSection(session: PrescribedDailySession) -> some View {
+    private func preRunPrimerSection(session: PrescribedDailySession, isTomorrow: Bool) -> some View {
         let preRunDrill = PreRunDrill(
             id: session.primerDrillId,
             previousCadence: session.cadenceFloor,
@@ -326,7 +341,7 @@ struct WorkoutsView: View {
         )
         let phases = preRunDrill.generatePhases()
         let completedPrimer = session.completedPrimerRun
-        let effectiveCompleted = (completedPrimer != nil) || isDrillCompleted
+        let effectiveCompleted = !isTomorrow && ((completedPrimer != nil) || isDrillCompleted)
 
         return VStack(alignment: .leading, spacing: 10) {
             // Overline: Badge & Duration on left, Action on right
@@ -339,7 +354,7 @@ struct WorkoutsView: View {
                 .foregroundColor(effectiveCompleted ? .green : Color(red: 0.0, green: 0.8, blue: 0.65))
 
                 if let completedPrimer {
-                    Text("Grade \(completedPrimer.letterGrade)")
+                    Text("Target Met")
                         .font(.system(size: 10, weight: .bold))
                         .foregroundColor(.green)
                         .padding(.horizontal, 6)
@@ -374,6 +389,23 @@ struct WorkoutsView: View {
                         .frame(height: 28)
                         .background(Color.green.opacity(0.15))
                         .foregroundColor(.green)
+                        .clipShape(Capsule())
+                    }
+                } else if isTomorrow {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        openPrimerReadout(for: session)
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "applewatch")
+                                .font(.system(size: 9, weight: .bold))
+                            Text("Preview")
+                                .font(.caption.bold())
+                        }
+                        .padding(.horizontal, 10)
+                        .frame(height: 28)
+                        .background(Color(UIColor.secondarySystemFill))
+                        .foregroundColor(.primary)
                         .clipShape(Capsule())
                     }
                 } else {
@@ -411,23 +443,34 @@ struct WorkoutsView: View {
                     Text("Target \(cleanPrimerTarget(session: session))")
                         .font(.caption)
                         .foregroundColor(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
                 }
             }
 
             // Continuous segmented rhythm bar
             let totalDuration = max(1, phases.reduce(0) { $0 + $1.durationSeconds })
-            GeometryReader { geo in
-                HStack(spacing: 2) {
-                    ForEach(phases) { phase in
-                        let ratio = CGFloat(phase.durationSeconds) / CGFloat(totalDuration)
-                        let w = max(4, (geo.size.width - CGFloat(phases.count - 1) * 2) * ratio)
-                        RoundedRectangle(cornerRadius: 2)
-                            .fill(phaseColor(phase.kind))
-                            .frame(width: w, height: 4)
+            VStack(alignment: .leading, spacing: 4) {
+                GeometryReader { geo in
+                    HStack(spacing: 2) {
+                        ForEach(phases) { phase in
+                            let ratio = CGFloat(phase.durationSeconds) / CGFloat(totalDuration)
+                            let w = max(4, (geo.size.width - CGFloat(phases.count - 1) * 2) * ratio)
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(phaseColor(phase.kind))
+                                .frame(width: w, height: 4)
+                        }
                     }
                 }
+                .frame(height: 4)
+
+                Text(drillStructureSummary(drill: preRunDrill))
+                    .font(.system(size: 10, weight: .medium))
+                    .monospacedDigit()
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
             }
-            .frame(height: 4)
             .padding(.top, 2)
         }
         .padding(12)
@@ -437,7 +480,7 @@ struct WorkoutsView: View {
 
     // MARK: - Main Run Subcard (Stage 2 — Symmetrical Structure)
 
-    private func mainRunSection(session: PrescribedDailySession) -> some View {
+    private func mainRunSection(session: PrescribedDailySession, isTomorrow: Bool) -> some View {
         let mainRunDrill = PreRunDrill(
             id: session.mainRunDrillId,
             previousCadence: session.cadenceFloor,
@@ -449,7 +492,7 @@ struct WorkoutsView: View {
         let phases = mainRunDrill.generatePhases()
 
         return VStack(alignment: .leading, spacing: 10) {
-            // Overline: Badge & Duration on left, Action on right
+            // Overline: Badge on left, Action on right
             HStack(alignment: .center, spacing: 8) {
                 Label(
                     session.completedPrimerRun != nil ? "NEXT UP: MAIN RUN" : "MAIN RUN",
@@ -458,31 +501,42 @@ struct WorkoutsView: View {
                 .font(.system(size: 10, weight: .bold))
                 .foregroundColor(Color(red: 0.0, green: 0.55, blue: 1.0))
 
-                Text(session.durationBand)
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(Color(red: 0.0, green: 0.55, blue: 1.0))
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 2)
-                    .background(Color(red: 0.0, green: 0.55, blue: 1.0).opacity(0.12))
-                    .clipShape(Capsule())
-
                 Spacer()
 
-                Button {
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    openMainRunReadout(for: session)
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "play.fill")
-                            .font(.system(size: 9, weight: .bold))
-                        Text("Start")
-                            .font(.caption.bold())
+                if isTomorrow {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        openMainRunReadout(for: session)
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "applewatch")
+                                .font(.system(size: 9, weight: .bold))
+                            Text("Preview")
+                                .font(.caption.bold())
+                        }
+                        .padding(.horizontal, 10)
+                        .frame(height: 28)
+                        .background(Color(UIColor.secondarySystemFill))
+                        .foregroundColor(.primary)
+                        .clipShape(Capsule())
                     }
-                    .padding(.horizontal, 12)
-                    .frame(height: 28)
-                    .background(Color.primary)
-                    .foregroundColor(Color(UIColor.systemBackground))
-                    .clipShape(Capsule())
+                } else {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        openMainRunReadout(for: session)
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "play.fill")
+                                .font(.system(size: 9, weight: .bold))
+                            Text("Start")
+                                .font(.caption.bold())
+                        }
+                        .padding(.horizontal, 12)
+                        .frame(height: 28)
+                        .background(Color.primary)
+                        .foregroundColor(Color(UIColor.systemBackground))
+                        .clipShape(Capsule())
+                    }
                 }
             }
 
@@ -544,18 +598,27 @@ struct WorkoutsView: View {
 
             // Continuous segmented phase bar
             let totalDuration = max(1, phases.reduce(0) { $0 + $1.durationSeconds })
-            GeometryReader { geo in
-                HStack(spacing: 2) {
-                    ForEach(phases) { phase in
-                        let ratio = CGFloat(phase.durationSeconds) / CGFloat(totalDuration)
-                        let w = max(4, (geo.size.width - CGFloat(phases.count - 1) * 2) * ratio)
-                        RoundedRectangle(cornerRadius: 2)
-                            .fill(phaseColor(phase.kind))
-                            .frame(width: w, height: 4)
+            VStack(alignment: .leading, spacing: 4) {
+                GeometryReader { geo in
+                    HStack(spacing: 2) {
+                        ForEach(phases) { phase in
+                            let ratio = CGFloat(phase.durationSeconds) / CGFloat(totalDuration)
+                            let w = max(4, (geo.size.width - CGFloat(phases.count - 1) * 2) * ratio)
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(phaseColor(phase.kind))
+                                .frame(width: w, height: 4)
+                        }
                     }
                 }
+                .frame(height: 4)
+
+                Text(drillStructureSummary(drill: mainRunDrill))
+                    .font(.system(size: 10, weight: .medium))
+                    .monospacedDigit()
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
             }
-            .frame(height: 4)
             .padding(.top, 2)
         }
         .padding(12)
@@ -563,12 +626,33 @@ struct WorkoutsView: View {
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
+    private func drillStructureSummary(drill: PreRunDrill) -> String {
+        var parts: [String] = []
+        let warmUp = Int(drill.warmUpDurationMinutes.rounded())
+        if warmUp > 0 {
+            parts.append("\(warmUp)m Warm-up")
+        }
+        let spec = drill.intervalSpec
+        if let rec = spec.recoverySeconds, spec.iterations > 1 {
+            let recLabel = spec.isWalk ? "walk" : "jog"
+            parts.append("\(spec.iterations)x (\(spec.workSeconds)s work / \(rec)s \(recLabel))")
+        } else if drill.id == .zone2Run || spec.iterations == 1 {
+            let workMins = max(1, Int((Double(spec.workSeconds) / 60.0).rounded()))
+            parts.append("\(workMins)m Steady")
+        }
+        let coolDown = Int(drill.coolDownDurationMinutes.rounded())
+        if coolDown > 0 {
+            parts.append("\(coolDown)m Cool-down")
+        }
+        return parts.joined(separator: " • ")
+    }
+
     private func metricCell(icon: String, title: String, value: String, color: Color) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 6) {
             Image(systemName: icon)
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundColor(color)
-                .frame(width: 18)
+                .frame(width: 16)
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(title)
@@ -585,7 +669,7 @@ struct WorkoutsView: View {
             }
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 10)
+        .padding(.horizontal, 8)
         .padding(.vertical, 8)
         .background(Color(UIColor.secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -651,7 +735,7 @@ struct WorkoutsView: View {
                         .font(.subheadline.weight(.bold))
                         .foregroundColor(.primary)
 
-                    Text("Explore primers, cadence pyramids & interval formats")
+                    Text("Primers, cadence pyramids & intervals")
                         .font(.caption)
                         .foregroundColor(.secondary)
                         .lineLimit(1)

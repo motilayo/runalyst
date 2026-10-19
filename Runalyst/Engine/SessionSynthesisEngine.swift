@@ -203,7 +203,7 @@ enum SessionSynthesisEngine {
             let highPace = basePace + 65.0
             paceBand = formatPaceRange(lowSec: lowPace, highSec: highPace, useMetric: useMetric)
             hrCap = "HR: < 145 BPM"
-            cadenceFloor = max(148, baseCadence - 4)
+            cadenceFloor = max(150, baseCadence - 4)
 
             let recentName = recentRun?.detectedTypeRaw ?? "workout"
             let recentRef = relativeWorkoutReference(for: recentRun?.date, relativeTo: now, workoutType: recentName)
@@ -347,17 +347,35 @@ enum SessionSynthesisEngine {
         runRecords: [RunRecord],
         context: SynthesisContext
     ) -> PrescribedDailySession {
-        let basePace = todayRun.workingAvgPace > 0 ? todayRun.workingAvgPace : 340.0
-        let baseCadence = todayRun.workingAvgCadence > 0 ? Int(todayRun.workingAvgCadence) : 155
+        let baselineRuns = runRecords.filter { $0.workingAvgPace > 0 && $0.date <= todayRun.date }
+        let rollingBasePace = baselineRuns.isEmpty ? 340.0 : (baselineRuns.prefix(10).map(\.workingAvgPace).reduce(0, +) / Double(min(10, baselineRuns.count)))
+        let rollingBaseCadence = baselineRuns.isEmpty ? 155 : Int(baselineRuns.prefix(10).map(\.workingAvgCadence).reduce(0, +) / Double(min(10, baselineRuns.count)))
+
+        let basePace = todayRun.workingAvgPace > 0 ? todayRun.workingAvgPace : rollingBasePace
+        let baseCadence = todayRun.workingAvgCadence > 0 ? Int(todayRun.workingAvgCadence) : rollingBaseCadence
         let wasHardSession = todayRun.percentZone4 >= 0.20 || todayRun.detectedTypeRaw == "Intervals" || todayRun.detectedTypeRaw == "Fartlek" || todayRun.detectedTypeRaw == "Tempo Run"
 
         let tomorrowTitle = wasHardSession ? "Zone 1 Active Recovery Flush" : "Zone 2 Easy Aerobic Base"
         let durationBand = wasHardSession ? "25–30 Min" : "30–40 Min"
-        let lowPace = basePace + (wasHardSession ? 60.0 : 30.0)
-        let highPace = basePace + (wasHardSession ? 90.0 : 50.0)
+
+        let isTodayEasyOrRecovery = todayRun.detectedTypeRaw == "Easy Run" || todayRun.detectedTypeRaw == "Recovery Run" || todayRun.detectedTypeRaw == "Zone 2" || todayRun.detectedTypeRaw == "Steady Effort"
+
+        let lowPace: Double
+        let highPace: Double
+        if wasHardSession {
+            lowPace = basePace + 40.0
+            highPace = basePace + 70.0
+        } else if isTodayEasyOrRecovery {
+            lowPace = max(240.0, basePace - 15.0)
+            highPace = basePace + 15.0
+        } else {
+            lowPace = basePace + 20.0
+            highPace = basePace + 40.0
+        }
+
         let paceBand = formatPaceRange(lowSec: lowPace, highSec: highPace, useMetric: context.useMetric)
         let hrCap = wasHardSession ? "HR: < 135 BPM" : "HR: < 150 BPM"
-        let cadenceFloor = max(144, baseCadence - 6)
+        let cadenceFloor = max(150, baseCadence - 6)
 
         let rationale = wasHardSession
             ? "Today's \(todayRun.detectedTypeRaw) workout banked heavy neuromuscular stimuli. Tomorrow automatically shifts to an active recovery flush to clear metabolic waste and protect your legs."
