@@ -70,9 +70,9 @@ struct DrillSchedule: Sendable, Equatable {
         case .fifteenMinutes:
             minDuration = 600.0  // 10 min
             maxDuration = drillId == .tempoSurges ? 1800.0 : 1680.0 // 28 min (up to 30 min for tempo surges)
-        case .thirtyMinutes:
+        case .thirtyMinutes, .fortyMinutes, .fiftyMinutes:
             minDuration = 1200.0 // 20 min
-            maxDuration = drillId == .tempoSurges ? 2700.0 : 2520.0 // 42 min (up to 45 min for tempo surges)
+            maxDuration = drillId == .tempoSurges ? Double(durationCategory.rawValue * 60) * 1.5 : Double(durationCategory.rawValue * 60) * 1.4
         }
         guard workoutDuration >= minDuration && workoutDuration <= maxDuration else {
             return false
@@ -115,7 +115,7 @@ struct DrillSchedule: Sendable, Equatable {
                 return DrillSchedule(drillId: drillId, durationCategory: duration, warmupSeconds: 120, cooldownSeconds: 60, iterations: 4, workSeconds: 30, recoverySeconds: 45)
             case .fifteenMinutes:
                 return DrillSchedule(drillId: drillId, durationCategory: duration, warmupSeconds: 180, cooldownSeconds: 120, iterations: 4, workSeconds: 60, recoverySeconds: 90)
-            case .thirtyMinutes:
+            case .thirtyMinutes, .fortyMinutes, .fiftyMinutes:
                 return DrillSchedule(drillId: drillId, durationCategory: duration, warmupSeconds: 240, cooldownSeconds: 180, iterations: 6, workSeconds: 90, recoverySeconds: 120)
             }
 
@@ -127,7 +127,7 @@ struct DrillSchedule: Sendable, Equatable {
                 return DrillSchedule(drillId: drillId, durationCategory: duration, warmupSeconds: 120, cooldownSeconds: 60, iterations: 4, workSeconds: 30, recoverySeconds: 45)
             case .fifteenMinutes:
                 return DrillSchedule(drillId: drillId, durationCategory: duration, warmupSeconds: 180, cooldownSeconds: 120, iterations: 5, workSeconds: 45, recoverySeconds: 75)
-            case .thirtyMinutes:
+            case .thirtyMinutes, .fortyMinutes, .fiftyMinutes:
                 return DrillSchedule(drillId: drillId, durationCategory: duration, warmupSeconds: 240, cooldownSeconds: 180, iterations: 6, workSeconds: 90, recoverySeconds: 120)
             }
 
@@ -139,7 +139,7 @@ struct DrillSchedule: Sendable, Equatable {
                 return DrillSchedule(drillId: drillId, durationCategory: duration, warmupSeconds: 120, cooldownSeconds: 60, iterations: 3, workSeconds: 60, recoverySeconds: 90)
             case .fifteenMinutes:
                 return DrillSchedule(drillId: drillId, durationCategory: duration, warmupSeconds: 180, cooldownSeconds: 120, iterations: 3, workSeconds: 120, recoverySeconds: 120)
-            case .thirtyMinutes:
+            case .thirtyMinutes, .fortyMinutes, .fiftyMinutes:
                 return DrillSchedule(drillId: drillId, durationCategory: duration, warmupSeconds: 240, cooldownSeconds: 180, iterations: 4, workSeconds: 180, recoverySeconds: 180)
             }
 
@@ -151,7 +151,7 @@ struct DrillSchedule: Sendable, Equatable {
                 return DrillSchedule(drillId: drillId, durationCategory: duration, warmupSeconds: 120, cooldownSeconds: 60, iterations: 4, workSeconds: 15, recoverySeconds: 45)
             case .fifteenMinutes:
                 return DrillSchedule(drillId: drillId, durationCategory: duration, warmupSeconds: 180, cooldownSeconds: 120, iterations: 6, workSeconds: 20, recoverySeconds: 60)
-            case .thirtyMinutes:
+            case .thirtyMinutes, .fortyMinutes, .fiftyMinutes:
                 return DrillSchedule(drillId: drillId, durationCategory: duration, warmupSeconds: 240, cooldownSeconds: 180, iterations: 8, workSeconds: 30, recoverySeconds: 90)
             }
 
@@ -163,7 +163,7 @@ struct DrillSchedule: Sendable, Equatable {
                 return DrillSchedule(drillId: drillId, durationCategory: duration, warmupSeconds: 120, cooldownSeconds: 60, iterations: 4, workSeconds: 20, recoverySeconds: 40)
             case .fifteenMinutes:
                 return DrillSchedule(drillId: drillId, durationCategory: duration, warmupSeconds: 180, cooldownSeconds: 120, iterations: 5, workSeconds: 30, recoverySeconds: 60)
-            case .thirtyMinutes:
+            case .thirtyMinutes, .fortyMinutes, .fiftyMinutes:
                 return DrillSchedule(drillId: drillId, durationCategory: duration, warmupSeconds: 240, cooldownSeconds: 180, iterations: 6, workSeconds: 45, recoverySeconds: 90)
             }
 
@@ -175,7 +175,7 @@ struct DrillSchedule: Sendable, Equatable {
                 return DrillSchedule(drillId: drillId, durationCategory: duration, warmupSeconds: 120, cooldownSeconds: 60, iterations: 4, workSeconds: 45, recoverySeconds: 45)
             case .fifteenMinutes:
                 return DrillSchedule(drillId: drillId, durationCategory: duration, warmupSeconds: 180, cooldownSeconds: 120, iterations: 5, workSeconds: 60, recoverySeconds: 60)
-            case .thirtyMinutes:
+            case .thirtyMinutes, .fortyMinutes, .fiftyMinutes:
                 return DrillSchedule(drillId: drillId, durationCategory: duration, warmupSeconds: 240, cooldownSeconds: 180, iterations: 6, workSeconds: 120, recoverySeconds: 120)
             }
 
@@ -187,7 +187,7 @@ struct DrillSchedule: Sendable, Equatable {
                 return DrillSchedule(drillId: drillId, durationCategory: duration, warmupSeconds: 120, cooldownSeconds: 60, iterations: 4, workSeconds: 20, recoverySeconds: 40)
             case .fifteenMinutes:
                 return DrillSchedule(drillId: drillId, durationCategory: duration, warmupSeconds: 180, cooldownSeconds: 120, iterations: 5, workSeconds: 30, recoverySeconds: 60)
-            case .thirtyMinutes:
+            case .thirtyMinutes, .fortyMinutes, .fiftyMinutes:
                 return DrillSchedule(drillId: drillId, durationCategory: duration, warmupSeconds: 240, cooldownSeconds: 180, iterations: 6, workSeconds: 45, recoverySeconds: 90)
             }
 

@@ -27,7 +27,8 @@ struct WorkoutsView: View {
             runRecords: runRecords,
             activeGoal: trainingGoal,
             experienceLevel: profile.experienceLevel,
-            useMetric: useMetricSystem
+            useMetric: useMetricSystem,
+            userHeightCm: profile.userHeightCm
         )
     }
 
@@ -272,9 +273,9 @@ struct WorkoutsView: View {
 
     private func tomorrowPreviewCard(session: PrescribedDailySession) -> some View {
         let mainRunDrill = PreRunDrill(
-            id: session.mainRunDrillId,
+            id: session.mainSessionTemplateId,
             previousCadence: session.cadenceFloor,
-            targetCadence: session.mainRunDrillId.isHeartRateTargeted ? nil : "\(session.cadenceFloor)-\(session.cadenceFloor + 6)",
+            targetCadence: session.mainSessionTemplateId.isHeartRateTargeted ? nil : "\(session.cadenceFloor)-\(session.cadenceFloor + 6)",
             duration: DrillDuration(rawValue: session.mainRunDurationMinutes) ?? .thirtyMinutes,
             readinessState: session.isTrimmed ? .acuteFatigue : .productive,
             isIndoor: preferredWorkoutIsIndoor
@@ -533,7 +534,7 @@ struct WorkoutsView: View {
                                 .font(.system(size: 10, weight: .semibold))
                                 .foregroundColor(.purple)
                             Text(
-                                session.mainRunDrillId == .hillBounds
+                                session.mainSessionTemplateId == .hillBounds
                                 ? "Treadmill: Set 4–6% incline on surges • Launches as Indoor Run on Watch"
                                 : "Treadmill: Set 0.5–1.0% incline • Focus on HR & Cadence over wrist pace"
                             )
@@ -791,9 +792,9 @@ struct WorkoutsView: View {
 
     private func mainRunSection(session: PrescribedDailySession) -> some View {
         let mainRunDrill = PreRunDrill(
-            id: session.mainRunDrillId,
+            id: session.mainSessionTemplateId,
             previousCadence: session.cadenceFloor,
-            targetCadence: session.mainRunDrillId.isHeartRateTargeted ? nil : "\(session.cadenceFloor)-\(session.cadenceFloor + 6)",
+            targetCadence: session.mainSessionTemplateId.isHeartRateTargeted ? nil : "\(session.cadenceFloor)-\(session.cadenceFloor + 6)",
             duration: DrillDuration(rawValue: session.mainRunDurationMinutes) ?? .thirtyMinutes,
             readinessState: session.isTrimmed ? .acuteFatigue : .productive,
             isIndoor: preferredWorkoutIsIndoor
@@ -883,7 +884,7 @@ struct WorkoutsView: View {
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundColor(.purple)
                     Text(
-                        session.mainRunDrillId == .hillBounds
+                        session.mainSessionTemplateId == .hillBounds
                         ? "Treadmill: Set 4–6% incline on surges • Launches as Indoor Run on Watch"
                         : "Treadmill: Set 0.5–1.0% incline • Focus on HR & Cadence over wrist pace"
                     )
@@ -976,7 +977,7 @@ struct WorkoutsView: View {
     private func sendMainRunToWatch(session: PrescribedDailySession) {
         Task {
             let bridge = WorkoutBridge()
-            let mainDrillId = session.mainRunDrillId
+            let mainDrillId = session.mainSessionTemplateId
             let dto = DrillPrescriptionDTO(
                 title: session.sessionTitle,
                 preRunDrillId: mainDrillId.rawValue,
@@ -1015,9 +1016,9 @@ struct WorkoutsView: View {
 
     private func cleanMainRunDurationFormatted(session: PrescribedDailySession) -> String {
         let mainRunDrill = PreRunDrill(
-            id: session.mainRunDrillId,
+            id: session.mainSessionTemplateId,
             previousCadence: session.cadenceFloor,
-            targetCadence: session.mainRunDrillId.isHeartRateTargeted ? nil : "\(session.cadenceFloor)-\(session.cadenceFloor + 6)",
+            targetCadence: session.mainSessionTemplateId.isHeartRateTargeted ? nil : "\(session.cadenceFloor)-\(session.cadenceFloor + 6)",
             duration: DrillDuration(rawValue: session.mainRunDurationMinutes) ?? .thirtyMinutes,
             readinessState: session.isTrimmed ? .acuteFatigue : .productive,
             isIndoor: preferredWorkoutIsIndoor
@@ -1102,7 +1103,7 @@ struct WorkoutsView: View {
     }
 
     private func openMainRunReadout(for session: PrescribedDailySession) {
-        let mainDrillId = session.mainRunDrillId
+        let mainDrillId = session.mainSessionTemplateId
         let dto = DrillPrescriptionDTO(
             title: session.sessionTitle,
             preRunDrillId: mainDrillId.rawValue,
