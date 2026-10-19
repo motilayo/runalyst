@@ -435,7 +435,6 @@ final class SessionSynthesisEngineTests: XCTestCase {
 
     @MainActor
     func testWeightedBaseline_IntervalsDoNotDistortAerobicPace() {
-        let calendar = Calendar.current
         let now = Date()
 
         // 3 steady runs of 45 mins at 360 s/km (6:00/km)
@@ -525,7 +524,6 @@ final class SessionSynthesisEngineTests: XCTestCase {
 
     @MainActor
     func testPolarized8020_QualityShiftsToZone2_WhenTwoHardRunsBanked() {
-        let calendar = Calendar.current
         let now = Date()
 
         let hardRun1 = makeRun(

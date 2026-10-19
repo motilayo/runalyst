@@ -171,32 +171,39 @@ struct WorkoutsView: View {
 
             VStack(alignment: .leading, spacing: 8) {
                 ForEach(allRunsToday) { snap in
-                    HStack(alignment: .center, spacing: 10) {
-                        Image(systemName: snap.isPrimerDrill ? "metronome.fill" : "figure.run")
-                            .font(.caption.bold())
-                            .foregroundColor(snap.isPrimerDrill ? Color(red: 0.0, green: 0.8, blue: 0.65) : Color(red: 0.0, green: 0.55, blue: 1.0))
-                            .frame(width: 24, height: 24)
-                            .background(
-                                (snap.isPrimerDrill ? Color(red: 0.0, green: 0.8, blue: 0.65) : Color(red: 0.0, green: 0.55, blue: 1.0))
-                                    .opacity(0.12)
-                            )
-                            .clipShape(Circle())
+                    let targetRun = runRecords.first(where: { $0.id == snap.id })
 
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(snap.workoutType)
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundColor(.primary)
-                                .lineLimit(2)
-                                .minimumScaleFactor(0.8)
-                            Text("\(snap.durationFormatted) • \(snap.distanceFormatted)")
-                                .font(.caption)
-                                .monospacedDigit()
-                                .foregroundColor(.secondary)
+                    Button {
+                        if let targetRun {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            selectedRunForDetail = targetRun
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .layoutPriority(1)
+                    } label: {
+                        HStack(alignment: .center, spacing: 10) {
+                            Image(systemName: snap.isPrimerDrill ? "metronome.fill" : "figure.run")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundColor(snap.isPrimerDrill ? Color(red: 0.0, green: 0.8, blue: 0.65) : Color(red: 0.0, green: 0.55, blue: 1.0))
+                                .frame(width: 28, height: 28)
+                                .background(
+                                    (snap.isPrimerDrill ? Color(red: 0.0, green: 0.8, blue: 0.65) : Color(red: 0.0, green: 0.55, blue: 1.0))
+                                        .opacity(0.12)
+                                )
+                                .clipShape(Circle())
 
-                        HStack(spacing: 6) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(snap.workoutType)
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundColor(.primary)
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
+                                Text("\(snap.durationFormatted) • \(snap.distanceFormatted)")
+                                    .font(.caption)
+                                    .monospacedDigit()
+                                    .foregroundColor(.secondary)
+                            }
+
+                            Spacer(minLength: 8)
+
                             if allRunsToday.count > 1 {
                                 if snap.isPrimerDrill {
                                     HStack(spacing: 3) {
@@ -205,43 +212,37 @@ struct WorkoutsView: View {
                                         Text("Target Met")
                                             .font(.caption2.bold())
                                     }
-                                    .padding(.horizontal, 7)
-                                    .padding(.vertical, 3)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
                                     .background(Color.green.opacity(0.15))
                                     .foregroundColor(.green)
                                     .clipShape(Capsule())
+                                    .fixedSize()
                                 } else {
                                     Text("Grade \(snap.letterGrade)")
                                         .font(.caption2.bold())
-                                        .padding(.horizontal, 7)
-                                        .padding(.vertical, 3)
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
                                         .background(Color.green.opacity(0.15))
                                         .foregroundColor(.green)
                                         .clipShape(Capsule())
+                                        .fixedSize()
                                 }
                             }
 
-                            if let targetRun = runRecords.first(where: { $0.id == snap.id }) {
-                                Button {
-                                    selectedRunForDetail = targetRun
-                                } label: {
-                                    HStack(spacing: 3) {
-                                        Text(allRunsToday.count > 1 ? "Details" : "View Run Details")
-                                            .font(.caption.bold())
-                                        Image(systemName: "chevron.right")
-                                            .font(.caption2.bold())
-                                    }
-                                    .foregroundColor(.green)
-                                    .padding(.vertical, 6)
-                                    .padding(.horizontal, 8)
-                                    .contentShape(Rectangle())
-                                }
-                            }
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(.secondary)
                         }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color(UIColor.tertiarySystemGroupedBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     }
-                    .padding(10)
-                    .background(Color(UIColor.tertiarySystemGroupedBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .buttonStyle(.plain)
+                    .disabled(targetRun == nil)
                 }
             }
         }
@@ -680,7 +681,7 @@ struct WorkoutsView: View {
                 .font(.system(size: 10, weight: .bold))
                 .foregroundColor(effectiveCompleted ? .green : Color(red: 0.0, green: 0.8, blue: 0.65))
 
-                if let completedPrimer {
+                if completedPrimer != nil {
                     Text("Target Met")
                         .font(.system(size: 10, weight: .bold))
                         .foregroundColor(.green)
@@ -744,7 +745,7 @@ struct WorkoutsView: View {
                     .font(.subheadline.weight(.bold))
                     .foregroundColor(.primary)
 
-                if let completedPrimer {
+                if completedPrimer != nil {
                     Text("Completed • \(completedPrimer.durationFormatted) • \(completedPrimer.distanceFormatted)")
                         .font(.caption)
                         .monospacedDigit()
