@@ -88,295 +88,25 @@ struct DrillExecutionScorecard: View {
     @State private var expandedRepIndices: Set<Int> = []
 
     var body: some View {
-        let template = DrillTemplate.template(for: drillId)
-        let thirtyDayCadence = Int(baselineCadence ?? (runRecord.computeHistoricalBaselineCadence() ?? (runRecord.workingAvgCadence > 0 ? runRecord.workingAvgCadence : 155)))
-        let targetCadence = runRecord.effectivePrescribedTargetCadence(drillId: drillId, baselineCadence: thirtyDayCadence)
-            ?? template.calculateTargetCadence(thirtyDayCadence)
-        let drillObj = PreRunDrill(id: drillId, previousCadence: thirtyDayCadence, targetCadence: targetCadence)
-        let actualCadence = Int(runRecord.workingAvgCadence)
-        let actualHR = Int(runRecord.workingAvgHeartRate)
-
-        let isHRTarget = drillId.isHeartRateTargeted
-        let isDualTarget = (drillId == .tempoSurges)
-        let targetCadenceStr = drillObj.computedCadence ?? "Steady"
-
-        let currentOsc = runRecord.workingAvgVerticalOscillation ?? runRecord.rawAvgVerticalOscillation ?? 9.5
-        let baseOsc = baselineOscillation ?? 9.5
-        let oscDelta = currentOsc - baseOsc
-
-        // Attempt to parse stored interval-by-interval results from framboiseTags
-        let intervalSummary: DrillIntervalSummary? = {
-            if let parsed = DrillIntervalSummary.from(tags: runRecord.framboiseTags, drillId: drillId) {
-                return parsed
-            }
-            if !isHRTarget && !drillId.isAerobicContinuous {
-                // Synthesize baseline interval evaluation if not yet tagged
-                return DrillIntervalEvaluator.evaluate(
-                    buckets: [],
-                    drillId: drillId,
-                    baselineCadence: thirtyDayCadence,
-                    workoutDuration: runRecord.duration,
-                    oscDelta: oscDelta,
-                    targetCadenceOverride: targetCadence
-                )
-            }
-            return nil
-        }()
-
-        let analysisContext = WorkoutAnalysisContext(
+        let calc = DrillExecutionScorecard.calculateAdherence(
             runRecord: runRecord,
-            runSignature: runRecord.signature,
-            macroProfile: nil,
-            recoveryTimeline: RecoveryTimeline(
-                now: Date(),
-                lastHard: nil,
-                hardSessionsLast72h: 0,
-                requiredHours: 48,
-                state: .productive
-            ),
-            baselineStats: baselineCadence.map { (avgPace: runRecord.workingAvgPace, avgCadence: $0, avgHR: runRecord.workingAvgHeartRate) }
+            drillId: drillId,
+            baselineCadence: baselineCadence,
+            baselineOscillation: baselineOscillation
         )
-        let intervalEvals = analysisContext.intervalEvaluations
-
-        let displayReps: [DrillDisplayRep] = {
-            if let summary = intervalSummary, summary.totalIntervals > 1, !summary.reps.isEmpty {
-                let durationCategory: DrillDuration = {
-                    if runRecord.duration <= 720 { return .tenMinutes }
-                    if runRecord.duration >= 1500 { return .thirtyMinutes }
-                    return .fifteenMinutes
-                }()
-                let sched = DrillSchedule.schedule(for: drillId, duration: durationCategory)
-
-                return summary.reps.map { rep in
-                    let matchedEval = intervalEvals.first(where: { $0.repIndex == rep.repIndex })
-                        ?? (rep.repIndex - 1 >= 0 && rep.repIndex - 1 < intervalEvals.count ? intervalEvals[rep.repIndex - 1] : nil)
-
-                    let evalWorkCad = matchedEval?.workCadence ?? 0
-                    let workCadence = evalWorkCad > 0
-                        ? evalWorkCad
-                        : (rep.workCadence > 0 ? rep.workCadence : actualCadence)
-                    let workHR = rep.workHeartRate > 0 ? rep.workHeartRate : (matchedEval?.workHeartRate ?? actualHR)
-                    let evalRecCad = matchedEval?.recoveryCadence ?? 0
-                    let recCadence = evalRecCad > 0
-                        ? evalRecCad
-                        : (rep.recoveryCadence > 0 ? rep.recoveryCadence : 0)
-                    let recHR = rep.recoveryHeartRate > 0 ? rep.recoveryHeartRate : (matchedEval?.recoveryHeartRate ?? 0)
-                    let hrDrop: Int? = {
-                        if let drop = matchedEval?.recoveryHeartRateDrop { return drop }
-                        if workHR > 0 && recHR > 0 { return workHR - recHR }
-                        return nil
-                    }()
-
-                    let fallbackDuration = sched.workSeconds > 0 ? sched.workSeconds : nil
-                    let fallbackWorkPace: String? = {
-                        if runRecord.workingAvgPace > 0 {
-                            return PaceFormatter.formatPace(secondsPerKilometer: runRecord.workingAvgPace)
-                        }
-                        return nil
-                    }()
-
-                    let evaluatedIsMet: Bool = {
-                        if let range = drillObj.effectiveTargetCadence, workCadence > 0 {
-                            let upperLimit = (drillId == .strides || drillId == .tempoSurges) ? 195 : (range.upperBound + 8)
-                            return rep.isMet || (workCadence >= (range.lowerBound - 2) && workCadence <= upperLimit)
-                        }
-                        return rep.isMet
-                    }()
-
-                    return DrillDisplayRep(
-                        repIndex: rep.repIndex,
-                        durationSeconds: matchedEval?.durationSeconds ?? fallbackDuration,
-                        isFastest: matchedEval?.observation.starts(with: "Fastest") ?? false,
-                        workPaceFormatted: matchedEval?.workPaceFormatted ?? fallbackWorkPace,
-                        workCadence: workCadence,
-                        workHeartRate: workHR,
-                        recoveryPaceFormatted: matchedEval?.recoveryPaceFormatted,
-                        recoveryCadence: recCadence,
-                        recoveryHeartRate: recHR,
-                        recoveryHeartRateDrop: hrDrop,
-                        paceDeltaVsAverageWorkSec: matchedEval?.paceDeltaVsAverageWorkSec,
-                        isMet: evaluatedIsMet,
-                        observation: matchedEval?.observation
-                    )
-                }
-            } else if intervalEvals.count > 1 && !drillId.isAerobicContinuous {
-                return intervalEvals.map { eval in
-                    let isMet: Bool = {
-                        if let range = drillObj.effectiveTargetCadence {
-                            return eval.workCadence >= (range.lowerBound - 2) && eval.workCadence <= (range.upperBound + 8)
-                        }
-                        return eval.workCadence >= thirtyDayCadence
-                    }()
-                    return DrillDisplayRep(
-                        repIndex: eval.repIndex,
-                        durationSeconds: eval.durationSeconds,
-                        isFastest: eval.observation.starts(with: "Fastest"),
-                        workPaceFormatted: eval.workPaceFormatted,
-                        workCadence: eval.workCadence,
-                        workHeartRate: eval.workHeartRate,
-                        recoveryPaceFormatted: eval.recoveryPaceFormatted,
-                        recoveryCadence: eval.recoveryCadence ?? 0,
-                        recoveryHeartRate: eval.recoveryHeartRate ?? 0,
-                        recoveryHeartRateDrop: eval.recoveryHeartRateDrop,
-                        paceDeltaVsAverageWorkSec: eval.paceDeltaVsAverageWorkSec,
-                        isMet: isMet,
-                        observation: eval.observation
-                    )
-                }
-            }
-            return []
-        }()
-
-        let isIntervalDrill = (intervalSummary?.totalIntervals ?? 0) > 1 || displayReps.count > 1
-
-        let tier: DrillAdherenceTier
-        let tierDescription: String
-
-        if let summary = intervalSummary, summary.totalIntervals > 1 {
-            let effectiveMetCount = displayReps.isEmpty
-                ? summary.intervalsMet
-                : max(summary.intervalsMet, displayReps.filter(\.isMet).count)
-            let effectiveTotalCount = displayReps.isEmpty ? summary.totalIntervals : displayReps.count
-
-            if isDualTarget {
-                let intervalsOk = effectiveMetCount >= (effectiveTotalCount + 1) / 2
-                let zone4Ok = runRecord.percentZone4 >= 0.20
-                if effectiveMetCount == effectiveTotalCount && runRecord.percentZone4 >= 0.35 {
-                    tier = .exceeded
-                    tierDescription = "Nailed all \(effectiveTotalCount) surges with high threshold capacity (≥35% Zone 4)."
-                } else if (summary.tier == .met || summary.tier == .exceeded) || (intervalsOk && zone4Ok) {
-                    tier = .met
-                    tierDescription = "Landed target surges with sustained threshold effort."
-                } else if intervalsOk || runRecord.percentZone4 >= 0.15 {
-                    tier = .partiallyMet
-                    tierDescription = intervalsOk ? "Hit turnover surges, but overall time in threshold was limited." : "Reached threshold intensity, but surge turnover discipline was developing."
-                } else {
-                    tier = .notMet
-                    tierDescription = summary.verdict
-                }
-            } else if effectiveMetCount > summary.intervalsMet {
-                if effectiveMetCount == effectiveTotalCount && effectiveTotalCount > 0 {
-                    tier = .met
-                    tierDescription = "Flawless turnover discipline: hit all \(effectiveTotalCount) work intervals on target."
-                } else if effectiveMetCount >= (effectiveTotalCount + 1) / 2 {
-                    tier = .partiallyMet
-                    tierDescription = "Strong turnover adherence: hit \(effectiveMetCount) of \(effectiveTotalCount) target intervals."
-                } else {
-                    tier = .notMet
-                    tierDescription = "Developing turnover: hit \(effectiveMetCount) of \(effectiveTotalCount) intervals in target band."
-                }
-            } else {
-                tier = summary.tier
-                tierDescription = summary.verdict
-            }
-        } else if isIntervalDrill, !displayReps.isEmpty {
-            let metCount = displayReps.filter(\.isMet).count
-            let total = displayReps.count
-            if metCount == total {
-                tier = .met
-                tierDescription = "Flawless turnover discipline: hit all \(total) work intervals on target."
-            } else if metCount >= (total + 1) / 2 {
-                tier = .partiallyMet
-                tierDescription = "Strong turnover adherence: hit \(metCount) of \(total) target intervals."
-            } else {
-                tier = .notMet
-                tierDescription = "Developing turnover: hit \(metCount) of \(total) intervals in target band."
-            }
-        } else if isDualTarget {
-            // Tempo Surges: Cadence + Zone 4 Threshold
-            let cadenceExact: Bool = {
-                if let range = drillObj.effectiveTargetCadence {
-                    return range.contains(actualCadence)
-                }
-                return true
-            }()
-            let cadenceClose: Bool = {
-                if let range = drillObj.effectiveTargetCadence {
-                    return actualCadence >= range.lowerBound - 2 && actualCadence <= range.upperBound + 2
-                }
-                return true
-            }()
-            let zone4Percent = runRecord.percentZone4
-
-            if cadenceExact && zone4Percent >= 0.35 {
-                tier = .exceeded
-                tierDescription = "Held target turnover with high threshold capacity (≥35% Zone 4)."
-            } else if (cadenceExact || cadenceClose) && zone4Percent >= 0.20 {
-                tier = .met
-                tierDescription = "Landed in target cadence band with sustained threshold effort."
-            } else if cadenceExact || zone4Percent >= 0.15 {
-                tier = .partiallyMet
-                tierDescription = cadenceExact ? "Hit turnover target, but effort remained sub-threshold." : "Reached threshold intensity, but cadence was off target."
-            } else {
-                tier = .notMet
-                tierDescription = "Missed both target cadence and threshold intensity goals."
-            }
-
-        } else if isHRTarget {
-            if let zone = drillId.targetHeartRateZone {
-                if zone == 2 {
-                    if actualHR > 0 {
-                        if runRecord.percentZone4 <= 0.04 && actualCadence >= 155 {
-                            tier = .exceeded
-                            tierDescription = "Preserved Zone 2 ceiling with crisp turnover (≥155 SPM)."
-                        } else if runRecord.percentZone4 <= 0.08 {
-                            tier = .met
-                            tierDescription = "Successfully maintained steady Zone 2 aerobic intensity."
-                        } else if runRecord.percentZone4 <= 0.20 {
-                            tier = .partiallyMet
-                            tierDescription = "Moderate intensity drift; spent partial duration above Zone 2."
-                        } else {
-                            tier = .notMet
-                            tierDescription = "Cardiac drift exceeded aerobic threshold into Zones 3 and 4."
-                        }
-                    } else {
-                        tier = .met
-                        tierDescription = "Completed steady aerobic effort."
-                    }
-                } else { // zone 1
-                    if actualHR > 0 {
-                        if runRecord.percentZone4 == 0 && actualHR <= 125 {
-                            tier = .exceeded
-                            tierDescription = "Flawless active recovery with zero cardiac strain."
-                        } else if runRecord.percentZone4 <= 0.03 && actualHR <= 135 {
-                            tier = .met
-                            tierDescription = "Controlled intensity within the Zone 1 recovery envelope."
-                        } else if runRecord.percentZone4 <= 0.10 {
-                            tier = .partiallyMet
-                            tierDescription = "Effort drifted slightly higher than target recovery ceiling."
-                        } else {
-                            tier = .notMet
-                            tierDescription = "Intensity was too elevated for an active recovery run."
-                        }
-                    } else {
-                        tier = .met
-                        tierDescription = "Completed gentle recovery effort."
-                    }
-                }
-            } else {
-                tier = .met
-                tierDescription = "Completed aerobic session."
-            }
-        } else if let range = drillObj.effectiveTargetCadence {
-            let zeroSpike = runRecord.percentZone4 <= 0.05
-            let formImproved = oscDelta <= 0
-            if range.contains(actualCadence) && zeroSpike && formImproved {
-                tier = .exceeded
-                tierDescription = "Target turnover held with effortless aerobic stability and form control."
-            } else if range.contains(actualCadence) {
-                tier = .met
-                tierDescription = "Cadence landed precisely within the target \(targetCadenceStr) SPM band."
-            } else if actualCadence >= range.lowerBound - 2 && actualCadence <= range.upperBound + 2 {
-                tier = .partiallyMet
-                tierDescription = "Turnover was close to target (within 2 SPM of target band)."
-            } else {
-                tier = .notMet
-                tierDescription = "Turnover missed the target cadence band by more than 2 SPM."
-            }
-        } else {
-            tier = .met
-            tierDescription = "Completed steady effort drill."
-        }
+        let tier = calc.tier
+        let tierDescription = calc.tierDescription
+        let displayReps = calc.displayReps
+        let isIntervalDrill = calc.isIntervalDrill
+        let targetCadenceStr = calc.targetCadenceStr
+        let actualCadence = calc.actualCadence
+        let actualHR = calc.actualHR
+        let thirtyDayCadence = calc.thirtyDayCadence
+        let oscDelta = calc.oscDelta
+        let isHRTarget = calc.isHRTarget
+        let isDualTarget = calc.isDualTarget
+        let drillObj = calc.drillObj
+        let intervalSummary = calc.intervalSummary
 
         return VStack(spacing: 14) {
             // Header: Icon + Title/Subtitle + Capsule Badge
@@ -413,8 +143,8 @@ struct DrillExecutionScorecard: View {
 
             // Interval Adherence Meter (Pips + Fraction)
             if isIntervalDrill, !displayReps.isEmpty {
-                let metCount = displayReps.filter(\.isMet).count
-                let totalCount = displayReps.count
+                let metCount = calc.metCount
+                let totalCount = calc.totalCount
                 let percent = totalCount > 0 ? Int(round(Double(metCount) / Double(totalCount) * 100.0)) : 0
 
                 VStack(alignment: .leading, spacing: 8) {
@@ -985,26 +715,50 @@ struct DrillExecutionScorecard: View {
     }
 }
 
+struct DrillAdherenceCalculation {
+    let metCount: Int
+    let totalCount: Int
+    let targetCadence: String
+    let targetCadenceStr: String
+    let displayReps: [DrillDisplayRep]
+    let isIntervalDrill: Bool
+    let tier: DrillAdherenceTier
+    let tierDescription: String
+    let actualCadence: Int
+    let actualHR: Int
+    let thirtyDayCadence: Int
+    let oscDelta: Double
+    let isHRTarget: Bool
+    let isDualTarget: Bool
+    let drillObj: PreRunDrill
+    let intervalSummary: DrillIntervalSummary?
+}
+
 extension DrillExecutionScorecard {
     /// Deterministically computes the adherence score (met count, total intervals, and target cadence)
     /// across the scorecard, ensuring perfect mathematical parity between scorecard meters, hero subtitles,
     /// and AI coaching narrative text.
     @MainActor
-    static func evaluateDrillAdherence(
+    static func calculateAdherence(
         runRecord: RunRecord,
         drillId: PreRunDrillId,
-        baselineCadence: Double?
-    ) -> (metCount: Int, totalCount: Int, targetCadence: String) {
+        baselineCadence: Double?,
+        baselineOscillation: Double? = nil
+    ) -> DrillAdherenceCalculation {
         let template = DrillTemplate.template(for: drillId)
         let thirtyDayCadence = Int(baselineCadence ?? (runRecord.computeHistoricalBaselineCadence() ?? (runRecord.workingAvgCadence > 0 ? runRecord.workingAvgCadence : 155)))
         let targetCadence = runRecord.effectivePrescribedTargetCadence(drillId: drillId, baselineCadence: thirtyDayCadence)
             ?? template.calculateTargetCadence(thirtyDayCadence)
         let drillObj = PreRunDrill(id: drillId, previousCadence: thirtyDayCadence, targetCadence: targetCadence)
         let actualCadence = Int(runRecord.workingAvgCadence)
+        let actualHR = Int(runRecord.workingAvgHeartRate)
+
         let isHRTarget = drillId.isHeartRateTargeted
+        let isDualTarget = (drillId == .tempoSurges)
+        let targetCadenceStr = drillObj.computedCadence ?? "Steady"
 
         let currentOsc = runRecord.workingAvgVerticalOscillation ?? runRecord.rawAvgVerticalOscillation ?? 9.5
-        let baseOsc = 9.5
+        let baseOsc = baselineOscillation ?? 9.5
         let oscDelta = currentOsc - baseOsc
 
         let intervalSummary: DrillIntervalSummary? = {
@@ -1039,38 +793,287 @@ extension DrillExecutionScorecard {
         )
         let intervalEvals = analysisContext.intervalEvaluations
 
-        if let summary = intervalSummary, summary.totalIntervals > 1, !summary.reps.isEmpty {
-            let metCount = summary.reps.filter { rep in
-                let matchedEval = intervalEvals.first(where: { $0.repIndex == rep.repIndex })
-                    ?? (rep.repIndex - 1 >= 0 && rep.repIndex - 1 < intervalEvals.count ? intervalEvals[rep.repIndex - 1] : nil)
+        let displayReps: [DrillDisplayRep] = {
+            if let summary = intervalSummary, summary.totalIntervals > 1, !summary.reps.isEmpty {
+                let durationCategory: DrillDuration = {
+                    if runRecord.duration <= 720 { return .tenMinutes }
+                    if runRecord.duration >= 1500 { return .thirtyMinutes }
+                    return .fifteenMinutes
+                }()
+                let sched = DrillSchedule.schedule(for: drillId, duration: durationCategory)
 
-                let evalWorkCad = matchedEval?.workCadence ?? 0
-                let workCadence = evalWorkCad > 0
-                    ? evalWorkCad
-                    : (rep.workCadence > 0 ? rep.workCadence : actualCadence)
+                return summary.reps.map { rep in
+                    let matchedEval = intervalEvals.first(where: { $0.repIndex == rep.repIndex })
+                        ?? (rep.repIndex - 1 >= 0 && rep.repIndex - 1 < intervalEvals.count ? intervalEvals[rep.repIndex - 1] : nil)
 
-                if let range = drillObj.effectiveTargetCadence, workCadence > 0 {
-                    let upperLimit = (drillId == .strides || drillId == .tempoSurges) ? 195 : (range.upperBound + 8)
-                    return rep.isMet || (workCadence >= (range.lowerBound - 2) && workCadence <= upperLimit)
+                    let evalWorkCad = matchedEval?.workCadence ?? 0
+                    let workCadence = evalWorkCad > 0
+                        ? evalWorkCad
+                        : (rep.workCadence > 0 ? rep.workCadence : actualCadence)
+                    let workHR = rep.workHeartRate > 0 ? rep.workHeartRate : (matchedEval?.workHeartRate ?? actualHR)
+                    let evalRecCad = matchedEval?.recoveryCadence ?? 0
+                    let recCadence = evalRecCad > 0
+                        ? evalRecCad
+                        : (rep.recoveryCadence > 0 ? rep.recoveryCadence : 0)
+                    let recHR = rep.recoveryHeartRate > 0 ? rep.recoveryHeartRate : (matchedEval?.recoveryHeartRate ?? 0)
+                    let hrDrop: Int? = {
+                        if let drop = matchedEval?.recoveryHeartRateDrop { return drop }
+                        if workHR > 0 && recHR > 0 { return workHR - recHR }
+                        return nil
+                    }()
+
+                    let fallbackDuration = sched.workSeconds > 0 ? sched.workSeconds : nil
+                    let fallbackWorkPace: String? = {
+                        if runRecord.workingAvgPace > 0 {
+                            return PaceFormatter.formatPace(secondsPerKilometer: runRecord.workingAvgPace)
+                        }
+                        return nil
+                    }()
+
+                    let evaluatedIsMet: Bool = {
+                        if let range = drillObj.effectiveTargetCadence, workCadence > 0 {
+                            let upperLimit = (drillId == .strides || drillId == .tempoSurges) ? 195 : (range.upperBound + 8)
+                            return rep.isMet || (workCadence >= (range.lowerBound - 2) && workCadence <= upperLimit)
+                        }
+                        return rep.isMet
+                    }()
+
+                    return DrillDisplayRep(
+                        repIndex: rep.repIndex,
+                        durationSeconds: matchedEval?.durationSeconds ?? fallbackDuration,
+                        isFastest: matchedEval?.observation.starts(with: "Fastest") ?? false,
+                        workPaceFormatted: matchedEval?.workPaceFormatted ?? fallbackWorkPace,
+                        workCadence: workCadence,
+                        workHeartRate: workHR,
+                        recoveryPaceFormatted: matchedEval?.recoveryPaceFormatted,
+                        recoveryCadence: recCadence,
+                        recoveryHeartRate: recHR,
+                        recoveryHeartRateDrop: hrDrop,
+                        paceDeltaVsAverageWorkSec: matchedEval?.paceDeltaVsAverageWorkSec,
+                        isMet: evaluatedIsMet,
+                        observation: matchedEval?.observation
+                    )
                 }
-                return rep.isMet
-            }.count
-
-            let effectiveMet = max(summary.intervalsMet, metCount)
-            let effectiveTotal = summary.reps.count
-            return (metCount: effectiveMet, totalCount: effectiveTotal, targetCadence: targetCadence)
-        } else if intervalEvals.count > 1 && !drillId.isAerobicContinuous {
-            let metCount = intervalEvals.filter { eval in
-                if let range = drillObj.effectiveTargetCadence {
-                    return eval.workCadence >= (range.lowerBound - 2) && eval.workCadence <= (range.upperBound + 8)
+            } else if intervalEvals.count > 1 && !drillId.isAerobicContinuous {
+                return intervalEvals.map { eval in
+                    let isMet: Bool = {
+                        if let range = drillObj.effectiveTargetCadence {
+                            return eval.workCadence >= (range.lowerBound - 2) && eval.workCadence <= (range.upperBound + 8)
+                        }
+                        return eval.workCadence >= thirtyDayCadence
+                    }()
+                    return DrillDisplayRep(
+                        repIndex: eval.repIndex,
+                        durationSeconds: eval.durationSeconds,
+                        isFastest: eval.observation.starts(with: "Fastest"),
+                        workPaceFormatted: eval.workPaceFormatted,
+                        workCadence: eval.workCadence,
+                        workHeartRate: eval.workHeartRate,
+                        recoveryPaceFormatted: eval.recoveryPaceFormatted,
+                        recoveryCadence: eval.recoveryCadence ?? 0,
+                        recoveryHeartRate: eval.recoveryHeartRate ?? 0,
+                        recoveryHeartRateDrop: eval.recoveryHeartRateDrop,
+                        paceDeltaVsAverageWorkSec: eval.paceDeltaVsAverageWorkSec,
+                        isMet: isMet,
+                        observation: eval.observation
+                    )
                 }
-                return eval.workCadence >= thirtyDayCadence
-            }.count
-            return (metCount: metCount, totalCount: intervalEvals.count, targetCadence: targetCadence)
+            }
+            return []
+        }()
+
+        let isIntervalDrill = (intervalSummary?.totalIntervals ?? 0) > 1 || displayReps.count > 1
+
+        let effectiveMetCount: Int
+        let effectiveTotalCount: Int
+        if let summary = intervalSummary, summary.totalIntervals > 1 {
+            effectiveMetCount = displayReps.isEmpty
+                ? summary.intervalsMet
+                : max(summary.intervalsMet, displayReps.filter(\.isMet).count)
+            effectiveTotalCount = displayReps.isEmpty ? summary.totalIntervals : displayReps.count
+        } else if isIntervalDrill, !displayReps.isEmpty {
+            effectiveMetCount = displayReps.filter(\.isMet).count
+            effectiveTotalCount = displayReps.count
         } else {
-            let metCount = intervalSummary?.intervalsMet ?? 0
-            let totalCount = intervalSummary?.totalIntervals ?? 0
-            return (metCount: metCount, totalCount: totalCount, targetCadence: targetCadence)
+            effectiveMetCount = intervalSummary?.intervalsMet ?? 0
+            effectiveTotalCount = intervalSummary?.totalIntervals ?? 0
         }
+
+        let tier: DrillAdherenceTier
+        let tierDescription: String
+
+        if let summary = intervalSummary, summary.totalIntervals > 1 {
+            if isDualTarget {
+                let intervalsOk = effectiveMetCount >= (effectiveTotalCount + 1) / 2
+                let zone4Ok = runRecord.percentZone4 >= 0.20
+                if effectiveMetCount == effectiveTotalCount && runRecord.percentZone4 >= 0.35 {
+                    tier = .exceeded
+                    tierDescription = "Nailed all \(effectiveTotalCount) surges with high threshold capacity (≥35% Zone 4)."
+                } else if (summary.tier == .met || summary.tier == .exceeded) || (intervalsOk && zone4Ok) {
+                    tier = .met
+                    tierDescription = "Landed target surges with sustained threshold effort."
+                } else if intervalsOk || runRecord.percentZone4 >= 0.15 {
+                    tier = .partiallyMet
+                    tierDescription = intervalsOk ? "Hit turnover surges, but overall time in threshold was limited." : "Reached threshold intensity, but surge turnover discipline was developing."
+                } else {
+                    tier = .notMet
+                    tierDescription = summary.verdict
+                }
+            } else if effectiveMetCount > summary.intervalsMet {
+                if effectiveMetCount == effectiveTotalCount && effectiveTotalCount > 0 {
+                    tier = .met
+                    tierDescription = "Flawless turnover discipline: hit all \(effectiveTotalCount) work intervals on target."
+                } else if effectiveMetCount >= (effectiveTotalCount + 1) / 2 {
+                    tier = .partiallyMet
+                    tierDescription = "Strong turnover adherence: hit \(effectiveMetCount) of \(effectiveTotalCount) target intervals."
+                } else {
+                    tier = .notMet
+                    tierDescription = "Developing turnover: hit \(effectiveMetCount) of \(effectiveTotalCount) intervals in target band."
+                }
+            } else {
+                tier = summary.tier
+                tierDescription = summary.verdict
+            }
+        } else if isIntervalDrill, !displayReps.isEmpty {
+            let metCount = displayReps.filter(\.isMet).count
+            let total = displayReps.count
+            if metCount == total {
+                tier = .met
+                tierDescription = "Flawless turnover discipline: hit all \(total) work intervals on target."
+            } else if metCount >= (total + 1) / 2 {
+                tier = .partiallyMet
+                tierDescription = "Strong turnover adherence: hit \(metCount) of \(total) target intervals."
+            } else {
+                tier = .notMet
+                tierDescription = "Developing turnover: hit \(metCount) of \(total) intervals in target band."
+            }
+        } else if isDualTarget {
+            let cadenceExact: Bool = {
+                if let range = drillObj.effectiveTargetCadence {
+                    return range.contains(actualCadence)
+                }
+                return true
+            }()
+            let cadenceClose: Bool = {
+                if let range = drillObj.effectiveTargetCadence {
+                    return actualCadence >= range.lowerBound - 2 && actualCadence <= range.upperBound + 2
+                }
+                return true
+            }()
+            let zone4Percent = runRecord.percentZone4
+
+            if cadenceExact && zone4Percent >= 0.35 {
+                tier = .exceeded
+                tierDescription = "Held target turnover with high threshold capacity (≥35% Zone 4)."
+            } else if (cadenceExact || cadenceClose) && zone4Percent >= 0.20 {
+                tier = .met
+                tierDescription = "Landed in target cadence band with sustained threshold effort."
+            } else if cadenceExact || zone4Percent >= 0.15 {
+                tier = .partiallyMet
+                tierDescription = cadenceExact ? "Hit turnover target, but effort remained sub-threshold." : "Reached threshold intensity, but cadence was off target."
+            } else {
+                tier = .notMet
+                tierDescription = "Missed both target cadence and threshold intensity goals."
+            }
+
+        } else if isHRTarget {
+            if let zone = drillId.targetHeartRateZone {
+                if zone == 2 {
+                    if actualHR > 0 {
+                        if runRecord.percentZone4 <= 0.04 && actualCadence >= 155 {
+                            tier = .exceeded
+                            tierDescription = "Preserved Zone 2 ceiling with crisp turnover (≥155 SPM)."
+                        } else if runRecord.percentZone4 <= 0.08 {
+                            tier = .met
+                            tierDescription = "Successfully maintained steady Zone 2 aerobic intensity."
+                        } else if runRecord.percentZone4 <= 0.20 {
+                            tier = .partiallyMet
+                            tierDescription = "Moderate intensity drift; spent partial duration above Zone 2."
+                        } else {
+                            tier = .notMet
+                            tierDescription = "Cardiac drift exceeded aerobic threshold into Zones 3 and 4."
+                        }
+                    } else {
+                        tier = .met
+                        tierDescription = "Completed steady aerobic effort."
+                    }
+                } else { // zone 1
+                    if actualHR > 0 {
+                        if runRecord.percentZone4 == 0 && actualHR <= 125 {
+                            tier = .exceeded
+                            tierDescription = "Flawless active recovery with zero cardiac strain."
+                        } else if runRecord.percentZone4 <= 0.03 && actualHR <= 135 {
+                            tier = .met
+                            tierDescription = "Controlled intensity within the Zone 1 recovery envelope."
+                        } else if runRecord.percentZone4 <= 0.10 {
+                            tier = .partiallyMet
+                            tierDescription = "Effort drifted slightly higher than target recovery ceiling."
+                        } else {
+                            tier = .notMet
+                            tierDescription = "Intensity was too elevated for an active recovery run."
+                        }
+                    } else {
+                        tier = .met
+                        tierDescription = "Completed gentle recovery effort."
+                    }
+                }
+            } else {
+                tier = .met
+                tierDescription = "Completed aerobic session."
+            }
+        } else if let range = drillObj.effectiveTargetCadence {
+            let zeroSpike = runRecord.percentZone4 <= 0.05
+            let formImproved = oscDelta <= 0
+            if range.contains(actualCadence) && zeroSpike && formImproved {
+                tier = .exceeded
+                tierDescription = "Target turnover held with effortless aerobic stability and form control."
+            } else if range.contains(actualCadence) {
+                tier = .met
+                tierDescription = "Cadence landed precisely within the target \(targetCadenceStr) SPM band."
+            } else if actualCadence >= range.lowerBound - 2 && actualCadence <= range.upperBound + 2 {
+                tier = .partiallyMet
+                tierDescription = "Turnover was close to target (within 2 SPM of target band)."
+            } else {
+                tier = .notMet
+                tierDescription = "Turnover missed the target cadence band by more than 2 SPM."
+            }
+        } else {
+            tier = .met
+            tierDescription = "Completed steady effort drill."
+        }
+
+        return DrillAdherenceCalculation(
+            metCount: effectiveMetCount,
+            totalCount: effectiveTotalCount,
+            targetCadence: targetCadence,
+            targetCadenceStr: targetCadenceStr,
+            displayReps: displayReps,
+            isIntervalDrill: isIntervalDrill,
+            tier: tier,
+            tierDescription: tierDescription,
+            actualCadence: actualCadence,
+            actualHR: actualHR,
+            thirtyDayCadence: thirtyDayCadence,
+            oscDelta: oscDelta,
+            isHRTarget: isHRTarget,
+            isDualTarget: isDualTarget,
+            drillObj: drillObj,
+            intervalSummary: intervalSummary
+        )
+    }
+
+    @MainActor
+    static func evaluateDrillAdherence(
+        runRecord: RunRecord,
+        drillId: PreRunDrillId,
+        baselineCadence: Double?
+    ) -> (metCount: Int, totalCount: Int, targetCadence: String) {
+        let calc = calculateAdherence(
+            runRecord: runRecord,
+            drillId: drillId,
+            baselineCadence: baselineCadence,
+            baselineOscillation: nil
+        )
+        return (metCount: calc.metCount, totalCount: calc.totalCount, targetCadence: calc.targetCadence)
     }
 }

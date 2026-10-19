@@ -369,6 +369,9 @@ class AnalystChatEngine: ObservableObject {
                     return HistoricalRunMatcher.analyzePerformanceArc(relativeTo: self.runRecord, in: context).structuredTelemetryFacts
                 case .recentRuns:
                     return HistoricalRunMatcher.listRecentRuns(relativeTo: self.runRecord, in: context)
+                case .lookup:
+                    let target = query.historyTarget.flatMap { $0.isEmpty ? nil : $0 } ?? "oldest"
+                    return HistoricalRunMatcher.lookupRun(matching: target, relativeTo: self.runRecord, in: context)
                 case .compare:
                     let target = query.historyTarget.flatMap { $0.isEmpty ? nil : $0 } ?? "previous"
                     if let other = query.historyCompareWith, !other.isEmpty,

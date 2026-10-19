@@ -90,10 +90,10 @@ struct DrillReadout: Sendable, Identifiable {
                 overviewText = "In this drill, you will complete a mechanical reset before your main run."
                 breakdownText = "You’ll start with a 2.5-minute easy warm-up jog. This is followed by 5 sets of intervals where you will run at a high, brisk cadence for 30 seconds, followed by a strict 60-second walk to catch your breath."
             case .fifteenMinutes:
-                overviewText = "In this drill, you will complete a tempo surge workout to build speed endurance."
+                overviewText = "In this session, you will complete a tempo surge workout to build speed endurance."
                 breakdownText = "You’ll start with a 3-minute easy warm-up jog. This is followed by 3 sets of 2-minute tempo surges, paired with 2 minutes of walk recovery."
             case .thirtyMinutes:
-                overviewText = "In this drill, you will complete a tempo surge workout to build sustained speed and aerobic power."
+                overviewText = "In this session, you will complete a tempo surge workout to build sustained speed and aerobic power."
                 breakdownText = "You’ll start with a 4-minute easy warm-up jog. This is followed by 4 sets of 3-minute tempo surges, paired with 3 minutes of walk recovery, finishing with a 2-minute cool-down."
             }
 
@@ -139,7 +139,7 @@ struct DrillReadout: Sendable, Identifiable {
                 overviewText = "In this drill, you will wake up your leg turnover and find a quick, springy rhythm before your run."
                 breakdownText = "You’ll start with a 5-minute easy jog to warm up the joints, followed by 6 short interval sets. In each interval, you’ll accelerate into a 20-second sprint, followed immediately by a 60-second walk to let your heart rate drop completely."
             case .thirtyMinutes:
-                overviewText = "In this drill, you will build leg speed with relaxed accelerations to prime your turnover."
+                overviewText = "In this session, you will build leg speed with relaxed accelerations to prime your turnover."
                 breakdownText = "You’ll start with a 5-minute easy jog, followed by 8 sets of 30-second strides and 90-second walks, finishing with a 5-minute cool-down."
             }
 
@@ -159,8 +159,9 @@ struct DrillReadout: Sendable, Identifiable {
             )
 
         case .zone2Run:
-            let resolvedTitle = customTitle ?? "Dynamic Activation"
             let duration = customDuration ?? .fiveMinutes
+            let isPreRunWarmup = duration.rawValue <= 10
+            let resolvedTitle = customTitle ?? (isPreRunWarmup ? "Dynamic Activation" : "Zone 2 Run")
 
             let drill = PreRunDrill(
                 id: .zone2Run,
@@ -172,12 +173,22 @@ struct DrillReadout: Sendable, Identifiable {
 
             let coachingTip = customCoachingTip ?? DrillTemplate.template(for: .zone2Run).generateInstructionalCue(nil)
 
+            let subtitle = isPreRunWarmup
+                ? (customTitle.map { "\($0) • \(duration.rawValue) min" } ?? "Long Run / Zone 2 Pre-Run • \(duration.rawValue) min")
+                : (customTitle.map { "\($0) • \(duration.rawValue) min" } ?? "Zone 2 Aerobic Base • \(duration.rawValue) min")
+            let overview = isPreRunWarmup
+                ? "In this drill, you will complete a continuous warm-up to lubricate your joints without burning vital glycogen."
+                : "In this session, you will build aerobic base and cardiovascular efficiency through continuous, conversational running."
+            let breakdown = isPreRunWarmup
+                ? "You’ll execute a single, continuous \(duration.rawValue)-minute block of low-intensity movement. There are no sprints or intervals—just a steady, progressive effort to elevate your core temperature before your long miles."
+                : "You’ll maintain a continuous, conversational pace in Zone 2 for \(duration.rawValue) minutes. Keep effort strictly aerobic with relaxed turnover and controlled breathing."
+
             return DrillReadout(
                 drillId: .zone2Run,
                 title: resolvedTitle,
-                subtitle: "Long Run / Zone 2 Pre-Run • \(duration.rawValue) min",
-                overview: "In this drill, you will complete a continuous warm-up to lubricate your joints without burning vital glycogen.",
-                breakdown: "You’ll execute a single, continuous \(duration.rawValue)-minute block of low-intensity movement. There are no sprints or intervals—just a steady, progressive effort to elevate your core temperature before your long miles.",
+                subtitle: subtitle,
+                overview: overview,
+                breakdown: breakdown,
                 coachingTip: coachingTip,
                 phases: phases,
                 durationMinutes: duration.rawValue,
@@ -362,11 +373,19 @@ struct DrillReadout: Sendable, Identifiable {
 
             let coachingTip = customCoachingTip ?? DrillTemplate.template(for: .recoveryJog).generateInstructionalCue(nil)
 
+            let isShortShakeout = duration.rawValue <= 10
+            let subtitle = isShortShakeout
+                ? "Zone 1 Shakeout • \(duration.rawValue) min"
+                : "Zone 1 Active Recovery • \(duration.rawValue) min"
+            let overview = isShortShakeout
+                ? "In this warm-up, you will complete a gentle flush to stimulate blood flow and release muscular tension."
+                : "In this session, you will clear metabolic waste and restore muscle tissue through effortless, low-heart-rate running."
+
             return DrillReadout(
                 drillId: .recoveryJog,
                 title: resolvedTitle,
-                subtitle: "Zone 1 Recovery Pre-Run • \(duration.rawValue) min",
-                overview: "In this drill, you will complete a gentle flush to stimulate blood flow and release muscular tension.",
+                subtitle: subtitle,
+                overview: overview,
                 breakdown: "You’ll execute a continuous \(duration.rawValue)-minute easy shakeout in Zone 1. No intervals or surges—just effortless, smooth steps to release stiffness.",
                 coachingTip: coachingTip,
                 phases: phases,
@@ -389,11 +408,19 @@ struct DrillReadout: Sendable, Identifiable {
 
             let coachingTip = customCoachingTip ?? DrillTemplate.template(for: .aerobicFlush).generateInstructionalCue(nil)
 
+            let isShortShakeout = duration.rawValue <= 10
+            let subtitle = isShortShakeout
+                ? "Active Recovery Shakeout • \(duration.rawValue) min"
+                : "Active Recovery Flush • \(duration.rawValue) min"
+            let overview = isShortShakeout
+                ? "In this warm-up, you will complete a recovery flush to clear metabolic fatigue."
+                : "In this session, you will clear residual fatigue and promote muscle recovery with easy, conversational running."
+
             return DrillReadout(
                 drillId: .aerobicFlush,
                 title: resolvedTitle,
-                subtitle: "Active Recovery Pre-Run • \(duration.rawValue) min",
-                overview: "In this drill, you will complete a recovery flush to clear metabolic fatigue.",
+                subtitle: subtitle,
+                overview: overview,
                 breakdown: "You’ll execute a continuous \(duration.rawValue)-minute low-intensity aerobic block. There are no high-intensity spikes—just a steady, relaxed shakeout.",
                 coachingTip: coachingTip,
                 phases: phases,
@@ -429,11 +456,19 @@ struct DrillReadout: Sendable, Identifiable {
 
             let coachingTip = customCoachingTip ?? DrillTemplate.template(for: .fartlekPrimer).generateInstructionalCue(targetStr)
 
+            let isLongWorkout = duration == .thirtyMinutes
+            let overview = isLongWorkout
+                ? "In this session, you will practice shifting gears with continuous aerobic pickups to build versatility."
+                : "In this drill, you will practice shifting gears with quick surges to dial in your rhythm."
+            let subtitle = isLongWorkout
+                ? "Fartlek Continuous Run • \(duration.rawValue) min"
+                : "Gear-Shifting Pre-Run • \(duration.rawValue) min"
+
             return DrillReadout(
                 drillId: .fartlekPrimer,
                 title: resolvedTitle,
-                subtitle: "Gear-Shifting Pre-Run • \(duration.rawValue) min",
-                overview: "In this drill, you will practice shifting gears with quick surges to dial in your rhythm.",
+                subtitle: subtitle,
+                overview: overview,
                 breakdown: breakdownText,
                 coachingTip: coachingTip,
                 phases: phases,

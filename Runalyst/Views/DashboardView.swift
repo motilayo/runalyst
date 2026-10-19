@@ -1060,7 +1060,7 @@ struct DashboardView: View {
             }
             .background(Color(UIColor.systemGroupedBackground).ignoresSafeArea())
             .navigationTitle("Dashboard")
-            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarTitleDisplayMode(.large)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     if !runRecords.isEmpty {

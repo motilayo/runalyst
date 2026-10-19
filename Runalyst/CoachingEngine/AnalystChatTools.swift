@@ -361,6 +361,7 @@ public enum HistoryScope: String, Sendable {
     case compare = "compare"
     case performanceArc = "performance_arc"
     case recentRuns = "recent_runs"
+    case lookup = "lookup"
 }
 
 @available(iOS 26.0, *)
@@ -383,16 +384,16 @@ public struct InspectWorkoutQuery: Sendable {
 @available(iOS 26.0, *)
 @Generable
 public struct ManageTrainingStateQuery: Sendable {
-    @Guide(description: "Focus: 'readiness' for recovery and tomorrow's prescription; 'history' for mathematical comparisons with past runs; 'athlete_profile' for load and cadence floor.")
+    @Guide(description: "Focus: 'readiness' for recovery and tomorrow's prescription; 'history' for mathematical comparisons or historical lookups with past runs; 'athlete_profile' for load and cadence floor.")
     public var focus: TrainingFocus
 
     @Guide(description: "Set to true if the runner mentions illness, pain, exhaustion, injury, or severe distress.")
     public var userReportedDistress: Bool?
 
-    @Guide(description: "History scope: 'compare' diffs the current run against historyTarget; 'performance_arc' ranks the past 30 days best to worst; 'recent_runs' lists recent workouts.")
+    @Guide(description: "History scope: 'lookup' retrieves specific historical runs by criteria (e.g. oldest run, longest run, March 2025); 'compare' diffs the current run against historyTarget; 'performance_arc' ranks the past 30 days best to worst; 'recent_runs' lists recent workouts.")
     public var historyScope: HistoryScope?
 
-    @Guide(description: "Past run to compare when historyScope is 'compare': 'previous', 'last outdoor', 'last indoor', a modality like 'tempo', or a date like 'September 30'.")
+    @Guide(description: "Past run to lookup or compare: 'oldest', 'first', 'previous', 'longest', 'fastest', 'last outdoor', 'last indoor', a modality like 'tempo', or a date like 'March 21, 2025'.")
     public var historyTarget: String?
 
     @Guide(description: "Optional second past run; when set, historyTarget is compared against this run instead of the current one.")
