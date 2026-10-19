@@ -27,7 +27,7 @@ struct AnalysisDashboardView: View {
             }
             .background(Color(UIColor.systemGroupedBackground).ignoresSafeArea())
             .navigationTitle("Analysis")
-            .navigationBarTitleDisplayMode(.large)
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     if !existingRuns.isEmpty {

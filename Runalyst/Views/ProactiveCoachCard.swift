@@ -104,12 +104,8 @@ struct ProactiveCoachCard: View {
                 if isZone2 {
                     return "Target: Zone 2 HR"
                 }
-                if let target = adaptedTarget.targetCadence, let base = baseCadence {
-                    if adaptedTarget.isCadenceRelaxed {
-                        return "Target: \(target) SPM (Adapted)"
-                    } else {
-                        return "Target: \(target) SPM (\(timeRange) Baseline: \(base) SPM)"
-                    }
+                if let target = adaptedTarget.targetCadence {
+                    return "Target: \(target) SPM"
                 } else {
                     return "Target: Dynamic cadence"
                 }

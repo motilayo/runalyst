@@ -1840,4 +1840,127 @@ final class IndoorIntelligenceTests: XCTestCase {
         }
         #endif
     }
+
+    @MainActor
+    func testOldestAndFirstHistoricalWorkoutQueryResolution() throws {
+        let schema = Schema([RunRecord.self])
+        let config = ModelConfiguration(isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        let context = ModelContext(container)
+
+        let cal = Calendar.current
+        var comps2025 = DateComponents()
+        comps2025.year = 2025
+        comps2025.month = 3
+        comps2025.day = 21
+        comps2025.hour = 7
+        comps2025.minute = 25
+        let dateMarch2025 = try XCTUnwrap(cal.date(from: comps2025))
+
+        var compsSep2026 = DateComponents()
+        compsSep2026.year = 2026
+        compsSep2026.month = 9
+        compsSep2026.day = 30
+        compsSep2026.hour = 7
+        compsSep2026.minute = 54
+        let dateSep2026 = try XCTUnwrap(cal.date(from: compsSep2026))
+
+        var compsOct2026 = DateComponents()
+        compsOct2026.year = 2026
+        compsOct2026.month = 10
+        compsOct2026.day = 19
+        compsOct2026.hour = 8
+        compsOct2026.minute = 12
+        let dateOct2026 = try XCTUnwrap(cal.date(from: compsOct2026))
+
+        // 1. First run logged in Apple Health (March 21, 2025)
+        let oldestRun = RunRecord(
+            hkWorkoutID: UUID(),
+            date: dateMarch2025,
+            totalDistanceMeters: 5300,
+            duration: 2820,
+            rawAvgPace: 532,
+            rawAvgHeartRate: 0,
+            rawAvgCadence: 0,
+            workingAvgPace: 532,
+            workingAvgCadence: 0,
+            workingAvgHeartRate: 0,
+            isIndoor: false,
+            paceCV: 0.04,
+            paceSlope: 0.0,
+            percentZone4: 0.0,
+            detectedTypeRaw: "Easy Run"
+        )
+        context.insert(oldestRun)
+
+        // 2. Fartlek run on September 30, 2026
+        let sepRun = RunRecord(
+            hkWorkoutID: UUID(),
+            date: dateSep2026,
+            totalDistanceMeters: 5094,
+            duration: 2072,
+            rawAvgPace: 406,
+            rawAvgHeartRate: 157,
+            rawAvgCadence: 152,
+            workingAvgPace: 374,
+            workingAvgCadence: 152,
+            workingAvgHeartRate: 157,
+            isIndoor: false,
+            paceCV: 0.12,
+            paceSlope: -0.01,
+            percentZone4: 0.25,
+            detectedTypeRaw: "Fartlek"
+        )
+        context.insert(sepRun)
+
+        // 3. Current active run on October 19, 2026
+        let currentRun = RunRecord(
+            hkWorkoutID: UUID(),
+            date: dateOct2026,
+            totalDistanceMeters: 4480,
+            duration: 2400,
+            rawAvgPace: 536,
+            rawAvgHeartRate: 145,
+            rawAvgCadence: 154,
+            workingAvgPace: 479,
+            workingAvgCadence: 154,
+            workingAvgHeartRate: 145,
+            isIndoor: true,
+            paceCV: 0.05,
+            paceSlope: 0.0,
+            percentZone4: 0.0,
+            detectedTypeRaw: "Easy Run"
+        )
+        context.insert(currentRun)
+        try context.save()
+
+        // Test 1: Criteria parsing for chronological superlatives
+        let criteriaOldest = HistoricalRunMatcher.HistoricalQueryCriteria.parse(from: "Whats the oldest run I logged on here?")
+        XCTAssertEqual(criteriaOldest.metric, .date)
+        XCTAssertEqual(criteriaOldest.direction, .ascending)
+
+        let criteriaFirstOutdoor = HistoricalRunMatcher.HistoricalQueryCriteria.parse(from: "What was my first outdoor run?")
+        XCTAssertEqual(criteriaFirstOutdoor.environment, .outdoor)
+        XCTAssertEqual(criteriaFirstOutdoor.metric, .date)
+        XCTAssertEqual(criteriaFirstOutdoor.direction, .ascending)
+
+        // Test 2: findRun returns March 21, 2025 as oldest run
+        let matchedOldest = try XCTUnwrap(HistoricalRunMatcher.findRun(matching: "Whats the oldest run I logged on here?", relativeTo: currentRun, in: context))
+        XCTAssertEqual(matchedOldest.id, oldestRun.id, "Querying oldest run must resolve to March 21, 2025, not September 30")
+
+        let matchedFirstOutdoor = try XCTUnwrap(HistoricalRunMatcher.findRun(matching: "What was my first outdoor run?", relativeTo: currentRun, in: context))
+        XCTAssertEqual(matchedFirstOutdoor.id, oldestRun.id)
+
+        // Test 3: Standalone lookupRun returns full telemetry with year and chronological position
+        let lookupResult = HistoricalRunMatcher.lookupRun(matching: "Whats the oldest run I logged on here?", relativeTo: currentRun, in: context)
+        XCTAssertTrue(lookupResult.contains("March 21, 2025"), "Lookup telemetry must ground the full year 2025")
+        XCTAssertTrue(lookupResult.contains("5.30 km"))
+        XCTAssertTrue(lookupResult.contains("8:52/km"))
+        XCTAssertTrue(lookupResult.contains("Oldest recorded workout (#1 of 3 total workouts)"))
+
+        // Test 4: listRecentRuns summary contains true lifetime span
+        let recentRunsCatalog = HistoricalRunMatcher.listRecentRuns(relativeTo: currentRun, in: context, limit: 2)
+        XCTAssertTrue(recentRunsCatalog.contains("March 21, 2025 to"), "Catalog header must display lifetime range")
+        XCTAssertTrue(recentRunsCatalog.contains("1 older workouts recorded in athlete database down to first logged run on Friday, March 21, 2025"))
+    }
 }
