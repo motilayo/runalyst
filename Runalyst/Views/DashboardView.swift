@@ -859,9 +859,9 @@ struct DashboardView: View {
                         // 3. Fitness Baseline Quadrant Card
                         fitnessBaselineCard
 
-                    if !availableFilters.isEmpty {
-                        filterChips
-                    }
+                        if !availableFilters.isEmpty {
+                            filterChips
+                        }
 
                     if filteredRunRecords.isEmpty {
                         if isSyncing && runRecords.isEmpty {
