@@ -223,6 +223,16 @@ final class RunRecordModelAndSchemaTests: XCTestCase {
         XCTAssertNil(run.prescribedDrillName)
         run.framboiseTags.append("userLinkedDrill")
         XCTAssertEqual(run.prescribedDrillName, "Cadence Pyramids")
+
+        // Continuous aerobic workouts (Zone 2 Run, Aerobic Flush, Recovery Jog) are workouts, not technique primers -> must return nil
+        run.framboiseTags = ["drill:Zone 2 Run", "prescribedDrill"]
+        XCTAssertNil(run.prescribedDrillName)
+        run.framboiseTags = ["zone_2_run"]
+        XCTAssertNil(run.prescribedDrillName)
+        run.framboiseTags = ["drill:Aerobic Flush"]
+        XCTAssertNil(run.prescribedDrillName)
+        run.framboiseTags = ["recovery_jog"]
+        XCTAssertNil(run.prescribedDrillName)
     }
 
     func testRunRecordMatchesFilter() {

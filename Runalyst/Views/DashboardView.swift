@@ -20,7 +20,6 @@ struct DashboardView: View {
     @AppStorage("lastBaselineChangeTimestamp") private var lastBaselineChangeTimestamp: Double = 0
     @AppStorage("lastWatchExportTimestamp") private var lastWatchExportTimestamp: Double = 0
     @AppStorage("lastExportedDrillId") private var lastExportedDrillId: String = ""
-    @AppStorage("primerCompletedDate") private var primerCompletedDate: String = ""
 
     @AppStorage("cachedHeadline_7Day") private var cachedHeadline7Day: String = ""
     @AppStorage("cachedBody_7Day") private var cachedBody7Day: String = ""
@@ -189,26 +188,6 @@ struct DashboardView: View {
             if count <= 18 { return "Optimal" }
             return "High"
         }
-    }
-
-    private var isPrimerCompletedToday: Bool {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        return primerCompletedDate == formatter.string(from: Date())
-    }
-
-    private func togglePrimerCompletedToday() {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        let today = formatter.string(from: Date())
-        if primerCompletedDate == today {
-            primerCompletedDate = ""
-        } else {
-            primerCompletedDate = today
-        }
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
     }
 
     // Extract unique classifications and drill names for filter chips
@@ -731,36 +710,12 @@ struct DashboardView: View {
         }
     }
 
-    private var activePrimerId: PreRunDrillId {
-        if timeRange == "7 Days" && (!dashboardRecoveryTimeline.readyForHard || currentHeadline().localizedCaseInsensitiveContains("fatigue")) {
-            return .aerobicFlush
-        } else if let cadence = canonicalAthleteBaselineCadence, cadence < 150 {
-            return .cadencePyramids
-        } else if let cadence = canonicalAthleteBaselineCadence, cadence < 160 {
-            return .rhythmIntervals
-        } else {
-            return .neuromuscularPrimer
-        }
-    }
-
-    @ViewBuilder
-    private var proactiveCoachCard: some View {
-        ProactiveCoachCard(
-            activePrimerId: activePrimerId,
-            baselineCadence: canonicalAthleteBaselineCadence,
-            timeRange: timeRange,
-            runRecords: runRecords,
-            isPrimerCompletedToday: isPrimerCompletedToday,
-            onTogglePrimerCompleted: { togglePrimerCompletedToday() }
-        )
-    }
-
     private func autoSyncStaleWatchDrillIfNeeded() {
         guard !lastExportedDrillId.isEmpty else { return }
         guard #available(iOS 17.0, *) else { return }
         guard let baseCadence = canonicalAthleteBaselineCadence else { return }
 
-        let preRunId = PreRunDrillId(rawValue: lastExportedDrillId) ?? activePrimerId
+        let preRunId = PreRunDrillId(rawValue: lastExportedDrillId) ?? .rhythmIntervals
         let template = DrillTemplate.template(for: preRunId)
         let computedTarget = template.calculateTargetCadence(baseCadence)
 
@@ -878,7 +833,7 @@ struct DashboardView: View {
                 }
                 .padding(.horizontal)
             }
-            .padding(.vertical, 4)
+            .padding(.vertical, 2)
             .onChange(of: availableFilters) { _, newFilters in
                 if let selected = selectedFilter, !newFilters.contains(selected) {
                     selectedFilter = nil
@@ -891,36 +846,22 @@ struct DashboardView: View {
         NavigationStack {
             ScrollViewReader { scrollProxy in
                 ScrollView {
-                    LazyVStack(spacing: 20) {
+                    LazyVStack(spacing: 14) {
                         // 1. Pinned Filter Controls (Locked to top beneath header)
                         filterControlsSection
 
                         // 2. AI Coach Directive / 30-Day Trends Card
                         if !timeRangeRuns.isEmpty {
-                            if horizontalSizeClass == .regular {
-                                HStack(alignment: .top, spacing: 16) {
-                                    aiInsightCard
-                                    proactiveCoachCard
-                                }
+                            aiInsightCard
                                 .padding(.horizontal)
-                            } else {
-                                aiInsightCard
-                                    .padding(.horizontal)
-                            }
                         }
 
                         // 3. Fitness Baseline Quadrant Card
                         fitnessBaselineCard
 
-                        // 4. Proactive Coach Card (Phone portrait layout)
-                        if !timeRangeRuns.isEmpty && horizontalSizeClass != .regular {
-                            proactiveCoachCard
-                                .padding(.horizontal)
+                        if !availableFilters.isEmpty {
+                            filterChips
                         }
-
-                    if !availableFilters.isEmpty {
-                        filterChips
-                    }
 
                     if filteredRunRecords.isEmpty {
                         if isSyncing && runRecords.isEmpty {
@@ -963,6 +904,7 @@ struct DashboardView: View {
                         if !filteredRunRecords.isEmpty {
                             Section(header: Text(selectedFilter == nil ? "Past Runs" : "Filtered Runs")
                                                 .font(.title3.bold())
+                                                .foregroundColor(.primary)
                                                 .padding(.horizontal)
                                                 .frame(maxWidth: .infinity, alignment: .leading)) {
                                 if horizontalSizeClass == .regular {
@@ -991,7 +933,7 @@ struct DashboardView: View {
                 .padding(.vertical)
             }
             .safeAreaInset(edge: .bottom) {
-                Color.clear.frame(height: 100)
+                Color.clear.frame(height: 24)
             }
             .navigationDestination(for: RunRecord.self) { runRecord in
                 RunDetailView(runRecord: runRecord)

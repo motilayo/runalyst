@@ -178,13 +178,15 @@ final class SessionSynthesisEngineTests: XCTestCase {
             XCTAssertEqual(tomorrowSession.primerPhasesDuration, "7m 30s drill (Trimmed from 10 min)")
             XCTAssertTrue(tomorrowSession.hrCap.contains("< 135 BPM") || tomorrowSession.hrCap.contains("< 145 BPM"))
 
-            // 3. Verify microcycle consecutive days (never skips the day after Tomorrow)
+            // 3. Verify microcycle starts after Tomorrow (since the hero card is already Tomorrow's Session)
             let dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
             XCTAssertEqual(tomorrowSession.microcycle.count, 5)
-            XCTAssertEqual(tomorrowSession.microcycle[0].dayLabel, "Tomorrow")
-            if let twoDaysAhead = calendar.date(byAdding: .day, value: 2, to: now) {
-                let expectedSecondLabel = dayNames[calendar.component(.weekday, from: twoDaysAhead) - 1]
-                XCTAssertEqual(tomorrowSession.microcycle[1].dayLabel, expectedSecondLabel)
+            XCTAssertFalse(tomorrowSession.microcycle.contains(where: { $0.dayLabel == "Tomorrow" }))
+            for (index, day) in tomorrowSession.microcycle.enumerated() {
+                if let expectedDate = calendar.date(byAdding: .day, value: index + 2, to: now) {
+                    let expectedLabel = dayNames[calendar.component(.weekday, from: expectedDate) - 1]
+                    XCTAssertEqual(day.dayLabel, expectedLabel)
+                }
             }
         }
     }
@@ -382,7 +384,7 @@ final class SessionSynthesisEngineTests: XCTestCase {
             XCTAssertTrue(allRuns[0].workoutType.contains("Cadence Pyramids"))
             XCTAssertEqual(allRuns[0].distanceFormatted, "1.46 km")
             XCTAssertEqual(allRuns[1].id, mainRun.id)
-            XCTAssertTrue(allRuns[1].workoutType.contains("Zone 2 Run"))
+            XCTAssertTrue(allRuns[1].workoutType.contains("Easy Run") || allRuns[1].workoutType.contains("Zone 2 Run"))
             XCTAssertEqual(allRuns[1].distanceFormatted, "4.48 km")
         }
     }

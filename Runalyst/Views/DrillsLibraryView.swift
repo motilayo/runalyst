@@ -471,8 +471,8 @@ struct DrillPrimerCardView: View {
                 return "Target: Zone 2 HR"
             }
             if hasCadenceTarget {
-                if let target = targetCadence, let baseline = baselineCadence {
-                    return "Target: \(target) SPM (Baseline: \(baseline) SPM)"
+                if let target = targetCadence {
+                    return "Target: \(target) SPM"
                 } else {
                     return "Target: Dynamic cadence"
                 }

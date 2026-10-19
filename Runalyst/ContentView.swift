@@ -82,12 +82,15 @@ struct ContentView: View {
                 } message: {
                     Text(syncError ?? "An unknown error occurred while syncing.")
                 }
-                .safeAreaInset(edge: VerticalEdge.bottom, spacing: 80) {
-                    SyncProgressBannerView(
-                        isSyncing: isSyncing,
-                        syncProgress: syncProgress,
-                        syncStatusMessage: syncStatusMessage
-                    )
+                .safeAreaInset(edge: VerticalEdge.bottom) {
+                    if isSyncing {
+                        SyncProgressBannerView(
+                            isSyncing: isSyncing,
+                            syncProgress: syncProgress,
+                            syncStatusMessage: syncStatusMessage
+                        )
+                        .padding(.bottom, 8)
+                    }
                 }
                 .animation(.spring(response: 0.35, dampingFraction: 0.85), value: isSyncing)
                 .animation(.spring(response: 0.35, dampingFraction: 0.85), value: syncProgress?.current)
