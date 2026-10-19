@@ -54,7 +54,7 @@ struct SettingsView: View {
             DataManagementSectionView(runRecords: runRecords, onForceSync: onForceSync)
 
             // MARK: - About
-            Section {
+            Section(header: Text("About")) {
                 Button {
                     showWalkthroughSheet = true
                 } label: {
@@ -81,6 +81,9 @@ struct SettingsView: View {
                     }
                 }
             }
+        }
+        .safeAreaInset(edge: .bottom) {
+            Color.clear.frame(height: 90)
         }
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)

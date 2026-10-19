@@ -11,6 +11,9 @@ struct AboutRunalystView: View {
                 aboutContent
                     .padding()
             }
+            .safeAreaInset(edge: .bottom) {
+                Color.clear.frame(height: 90)
+            }
             .background(Color(UIColor.systemGroupedBackground).ignoresSafeArea())
             .navigationTitle("About Runalyst")
             .navigationBarTitleDisplayMode(.inline)
@@ -68,7 +71,7 @@ struct AboutRunalystView: View {
                     icon: "waveform.path.ecg",
                     color: .red,
                     title: "Framboise Engine",
-                    description: "Analyzes your runs minute-by-minute, filters out stops and pauses, and shows your true running pace, cadence, and heart rate."
+                    description: "Analyzes workouts minute-by-minute, trims dead stops and pauses, and isolates your true working pace, cadence, and cardiovascular telemetry."
                 )
                 AboutFeatureRow(
                     icon: "brain.head.profile",
@@ -80,19 +83,19 @@ struct AboutRunalystView: View {
                     icon: "chart.xyaxis.line",
                     color: .teal,
                     title: "Rolling Baselines",
-                    description: "Every metric is compared against your own rolling baseline — not generic textbook averages. Drills and targets adapt as you improve."
+                    description: "Every workout and drill is evaluated against your personalized 30-day rolling baseline — never against arbitrary, one-size-fits-all averages."
                 )
                 AboutFeatureRow(
                     icon: "figure.run",
                     color: .orange,
                     title: "Pre-Run Primers",
-                    description: "Warm-up drills designed to help your form, sent straight to your Apple Watch."
+                    description: "Targeted neuromuscular drills (Cadence Pyramids, Rhythm Intervals, Strides) designed to optimize turnover and ground contact mechanics before your workout."
                 )
                 AboutFeatureRow(
                     icon: "cpu",
                     color: .indigo,
-                    title: "Smart Run Classification",
-                    description: "A smart on-device model labels each run (Easy, Tempo, Intervals, etc.) and learns from your adjustments over time."
+                    title: "Smart Workout Classification",
+                    description: "An on-device machine learning model classifies each workout's aerobic load (Recovery, Steady Effort, Tempo, Intervals) and refines classification accuracy from your feedback over time."
                 )
             }
 

@@ -106,5 +106,15 @@ struct UserProfileView: View {
             }
         }
         .navigationTitle("User Profile")
+        .safeAreaInset(edge: .bottom) {
+            Color.clear.frame(height: 90)
+        }
+        .task {
+            if let healthHeight = try? await HealthKitManager.shared.fetchUserHeight(), healthHeight > 0 {
+                if UserDefaults.standard.object(forKey: "userHeightCm") == nil || userHeightCm == 175.0 {
+                    userHeightCm = healthHeight
+                }
+            }
+        }
     }
 }
