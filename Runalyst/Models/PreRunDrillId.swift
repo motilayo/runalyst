@@ -31,6 +31,8 @@ struct DrillPrescriptionDTO: Sendable, Codable {
     var hapticMode: String? = "On"
     /// `ReadinessState.rawValue` when the prescription was modulated by acute readiness (nil = productive).
     var readinessState: String?
+    /// Whether the workout should be configured for Indoor (Treadmill) or Outdoor execution.
+    var isIndoor: Bool?
 }
 
 /// Represents an active or recent intent to execute a prescribed drill on Apple Watch.
@@ -41,6 +43,7 @@ public struct ScheduledDrillIntent: Codable, Sendable, Equatable {
     public let durationMinutes: Int
     public let targetCadence: String?
     public var matchedWorkoutID: UUID?
+    public var isIndoor: Bool?
 
     public init(
         drillTitle: String,
@@ -48,7 +51,8 @@ public struct ScheduledDrillIntent: Codable, Sendable, Equatable {
         scheduledDate: Date = Date(),
         durationMinutes: Int = 15,
         targetCadence: String? = nil,
-        matchedWorkoutID: UUID? = nil
+        matchedWorkoutID: UUID? = nil,
+        isIndoor: Bool? = nil
     ) {
         let cleanTitle = PreRunDrillId.canonicalDrillTitle(for: drillTitle)
             ?? preRunDrillId.flatMap { PreRunDrillId(rawValue: $0)?.title }
@@ -59,6 +63,7 @@ public struct ScheduledDrillIntent: Codable, Sendable, Equatable {
         self.durationMinutes = durationMinutes
         self.targetCadence = targetCadence
         self.matchedWorkoutID = matchedWorkoutID
+        self.isIndoor = isIndoor
     }
 }
 

@@ -1,42 +1,57 @@
 import Foundation
+import HealthKit
 #if canImport(WorkoutKit)
 @preconcurrency import WorkoutKit
 
 @available(iOS 17.0, *)
 extension PreRunDrill {
     func buildWorkoutPlan() -> WorkoutPlan {
-        var workout = CustomWorkout(activity: .running, location: .outdoor, displayName: id.title)
+        let location: HKWorkoutSessionLocationType = isIndoor ? .indoor : .outdoor
+        let baseDisplayName = customDisplayName ?? id.title
+        let resolvedDisplayName: String = {
+            guard isIndoor, let target = effectiveTargetCadence else { return baseDisplayName }
+            let band = target.lowerBound == target.upperBound
+                ? "\(target.lowerBound) SPM"
+                : "\(target.lowerBound)-\(target.upperBound) SPM"
+            if baseDisplayName.localizedCaseInsensitiveContains("spm") {
+                return baseDisplayName
+            }
+            return "\(baseDisplayName) (\(band))"
+        }()
 
-        let warmUpDuration: Double
-        let coolDownDuration: Double
+        var workout = CustomWorkout(
+            activity: .running,
+            location: location,
+            displayName: resolvedDisplayName
+        )
 
-        if id == .zone2Run {
-            warmUpDuration = duration == .fiveMinutes ? 0.0 : (duration == .tenMinutes ? 2.0 : (duration == .thirtyMinutes ? 5.0 : 3.0))
-            coolDownDuration = duration == .fiveMinutes ? 0.0 : (duration == .tenMinutes ? 2.0 : (duration == .thirtyMinutes ? 5.0 : 2.0))
-        } else if id == .tempoSurges && duration == .tenMinutes {
-            warmUpDuration = 2.5
-            coolDownDuration = 0.0
-        } else if id == .strides && duration == .fifteenMinutes {
-            warmUpDuration = 5.0
-            coolDownDuration = 2.0
-        } else if id == .aerobicFlush || id == .recoveryJog {
-            warmUpDuration = 0.0
-            coolDownDuration = 0.0
-        } else {
-            warmUpDuration = duration == .fiveMinutes ? 1.0 : (duration == .tenMinutes ? 2.0 : (duration == .thirtyMinutes ? 4.0 : 3.0))
-            coolDownDuration = duration == .fiveMinutes ? 0.5 : (duration == .tenMinutes ? 1.0 : (duration == .thirtyMinutes ? 3.0 : 2.0))
-        }
+        let warmUpDuration: Double = (id == .zone2Run && duration == .fiveMinutes) ? 0.0 : self.warmUpDurationMinutes
+        let coolDownDuration: Double = self.coolDownDurationMinutes
 
         let warmUp = warmUpDuration > 0 ? WorkoutStep(goal: .time(warmUpDuration, .minutes)) : nil
         let coolDown = coolDownDuration > 0 ? WorkoutStep(goal: .time(coolDownDuration, .minutes)) : nil
 
         var alert: (any WorkoutAlert)?
         if let target = effectiveTargetCadence {
-            alert = CadenceRangeAlert.cadence(Double(target.lowerBound)...Double(target.upperBound))
+            let rangeAlert = CadenceRangeAlert.cadence(Double(target.lowerBound)...Double(target.upperBound))
+            if CustomWorkout.supportsAlert(rangeAlert, activity: .running, location: location) {
+                alert = rangeAlert
+            } else {
+                let thresholdAlert = CadenceThresholdAlert.cadence(Double(target.lowerBound))
+                if CustomWorkout.supportsAlert(thresholdAlert, activity: .running, location: location) {
+                    alert = thresholdAlert
+                }
+            }
         } else if id == .aerobicFlush || id == .recoveryJog {
-            alert = HeartRateZoneAlert(zone: 1)
+            let zone1Alert = HeartRateZoneAlert(zone: 1)
+            if CustomWorkout.supportsAlert(zone1Alert, activity: .running, location: location) {
+                alert = zone1Alert
+            }
         } else if id == .zone2Run {
-            alert = HeartRateZoneAlert(zone: 2)
+            let zone2Alert = HeartRateZoneAlert(zone: 2)
+            if CustomWorkout.supportsAlert(zone2Alert, activity: .running, location: location) {
+                alert = zone2Alert
+            }
         }
 
         var iterations = 1

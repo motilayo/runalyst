@@ -9,6 +9,7 @@ struct WorkoutsView: View {
     @Query(sort: \RunRecord.date, order: .reverse) private var runRecords: [RunRecord]
     @AppStorage("trainingGoal") private var trainingGoal: String = "Base Building"
     @AppStorage("useMetricSystem") private var useMetricSystem: Bool = Locale.current.measurementSystem == .metric
+    @AppStorage("preferredWorkoutIsIndoor") private var preferredWorkoutIsIndoor: Bool = false
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     @State private var showingUserProfile = false
@@ -111,7 +112,8 @@ struct WorkoutsView: View {
                     workoutPlan: item.plan,
                     prescriptionDTO: item.dto,
                     onCommitToWatch: { _, dto in
-                        watchExportSuccessMessage = "\(dto.title) scheduled to Apple Watch."
+                        let envLabel = (dto.isIndoor ?? preferredWorkoutIsIndoor) ? "Indoor" : "Outdoor"
+                        watchExportSuccessMessage = "\(dto.title) (\(envLabel)) scheduled to Apple Watch."
                         showingExportAlert = true
                     }
                 )
@@ -144,39 +146,85 @@ struct WorkoutsView: View {
 
     @ViewBuilder
     private func completedTodayContent(completedRun: RunRecordSnapshot, tomorrowSession: PrescribedDailySession) -> some View {
+        let allRunsToday = completedRun.allCompletedRunsToday
+
         // Today's Session Complete Banner
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Label("Today's Session Complete", systemImage: "checkmark.circle.fill")
-                    .font(.headline.weight(.bold))
-                    .foregroundColor(.green)
+                Label(
+                    allRunsToday.count > 1 ? "Today's Sessions Complete (\(allRunsToday.count))" : "Today's Session Complete",
+                    systemImage: "checkmark.circle.fill"
+                )
+                .font(.headline.weight(.bold))
+                .foregroundColor(.green)
                 Spacer()
-                Text("Grade \(completedRun.letterGrade)")
-                    .font(.caption.bold())
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Color.green.opacity(0.18))
-                    .foregroundColor(.green)
-                    .clipShape(Capsule())
+                if allRunsToday.count == 1 {
+                    Text("Grade \(completedRun.letterGrade)")
+                        .font(.caption.bold())
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.green.opacity(0.18))
+                        .foregroundColor(.green)
+                        .clipShape(Capsule())
+                }
             }
 
-            Text("\(completedRun.workoutType) • \(completedRun.durationFormatted) • \(completedRun.distanceFormatted)")
-                .font(.subheadline.weight(.medium))
-                .foregroundColor(.primary)
-
-            if let targetRun = runRecords.first(where: { $0.id == completedRun.id }) {
-                Button {
-                    selectedRunForDetail = targetRun
-                } label: {
-                    HStack(spacing: 4) {
-                        Text("View Run Details")
-                            .font(.subheadline.bold())
-                        Image(systemName: "chevron.right")
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(allRunsToday) { snap in
+                    HStack(alignment: .center, spacing: 10) {
+                        Image(systemName: snap.isPrimerDrill ? "metronome.fill" : "figure.run")
                             .font(.caption.bold())
+                            .foregroundColor(snap.isPrimerDrill ? Color(red: 0.0, green: 0.8, blue: 0.65) : Color(red: 0.0, green: 0.55, blue: 1.0))
+                            .frame(width: 24, height: 24)
+                            .background(
+                                (snap.isPrimerDrill ? Color(red: 0.0, green: 0.8, blue: 0.65) : Color(red: 0.0, green: 0.55, blue: 1.0))
+                                    .opacity(0.12)
+                            )
+                            .clipShape(Circle())
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(snap.workoutType)
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundColor(.primary)
+                            Text("\(snap.durationFormatted) • \(snap.distanceFormatted)")
+                                .font(.caption)
+                                .monospacedDigit()
+                                .foregroundColor(.secondary)
+                        }
+
+                        Spacer()
+
+                        if allRunsToday.count > 1 {
+                            Text("Grade \(snap.letterGrade)")
+                                .font(.caption2.bold())
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 3)
+                                .background(Color.green.opacity(0.15))
+                                .foregroundColor(.green)
+                                .clipShape(Capsule())
+                        }
+
+                        if let targetRun = runRecords.first(where: { $0.id == snap.id }) {
+                            Button {
+                                selectedRunForDetail = targetRun
+                            } label: {
+                                HStack(spacing: 3) {
+                                    Text(allRunsToday.count > 1 ? "Details" : "View Run Details")
+                                        .font(.caption.bold())
+                                    Image(systemName: "chevron.right")
+                                        .font(.caption2.bold())
+                                }
+                                .foregroundColor(.green)
+                                .padding(.vertical, 6)
+                                .padding(.horizontal, 8)
+                                .contentShape(Rectangle())
+                            }
+                        }
                     }
-                    .foregroundColor(.green)
+                    .padding(10)
+                    .background(Color(UIColor.tertiarySystemGroupedBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
-                .padding(.top, 4)
             }
         }
         .padding(18)
@@ -188,9 +236,9 @@ struct WorkoutsView: View {
         )
         .shadow(color: Color.black.opacity(0.08), radius: 6, x: 0, y: 2)
 
-        // Tomorrow's Promoted & Adapted Prescription
+        // Tomorrow's Session
         VStack(alignment: .leading, spacing: 8) {
-            Text("Tomorrow's Updated Prescription")
+            Text("Tomorrow's Session")
                 .font(.headline.weight(.bold))
                 .foregroundColor(.primary)
                 .padding(.horizontal, 4)
@@ -206,14 +254,35 @@ struct WorkoutsView: View {
     // MARK: - Unified Daily Session Card (Concept A)
 
     private func unifiedSessionCard(session: PrescribedDailySession, isTomorrow: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
-            // 1. Session Overline & Target Goal Badge
-            HStack {
+        let isPrimerDone = (session.completedPrimerRun != nil) || isDrillCompleted
+
+        return VStack(alignment: .leading, spacing: 14) {
+            // 1. Session Overline, Environment Toggle & Target Goal Badge
+            HStack(spacing: 8) {
                 Label(isTomorrow ? "TOMORROW'S TARGET" : "TODAY'S WORKOUT", systemImage: isTomorrow ? "arrow.forward.circle.fill" : "sparkles")
                     .font(.system(size: 11, weight: .bold))
                     .foregroundColor(isTomorrow ? .blue : Color(red: 0.0, green: 0.75, blue: 0.65))
 
                 Spacer()
+
+                // Outdoor / Indoor (Treadmill) Quick Toggle
+                Button {
+                    preferredWorkoutIsIndoor.toggle()
+                    UISelectionFeedbackGenerator().selectionChanged()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: preferredWorkoutIsIndoor ? "figure.run.square.stack" : "sun.max.fill")
+                            .font(.system(size: 10, weight: .bold))
+                        Text(preferredWorkoutIsIndoor ? "Indoor" : "Outdoor")
+                            .font(.system(size: 11, weight: .semibold))
+                    }
+                    .foregroundColor(preferredWorkoutIsIndoor ? .purple : .blue)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 4)
+                    .background((preferredWorkoutIsIndoor ? Color.purple : Color.blue).opacity(0.12))
+                    .clipShape(Capsule())
+                }
+                .accessibilityLabel(preferredWorkoutIsIndoor ? "Indoor Treadmill Mode, tap to switch to Outdoor" : "Outdoor Mode, tap to switch to Indoor Treadmill")
 
                 Text(session.targetGoal)
                     .font(.system(size: 11, weight: .semibold))
@@ -243,16 +312,16 @@ struct WorkoutsView: View {
             // 4. Main Run Targets (Done Second)
             mainRunSection(session: session)
 
-            // 5. Unified Action Buttons
+            // 5. Unified Action Buttons (Starts / Sends Main Run, or Primer if tapped in Primer subcard)
             HStack(spacing: 10) {
                 Button {
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    openReadout(for: session)
+                    openMainRunReadout(for: session)
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "play.fill")
                             .font(.caption.bold())
-                        Text("Start Workout")
+                        Text(isPrimerDone ? "Start Main Run" : "Start Workout")
                             .font(.subheadline.bold())
                     }
                     .frame(maxWidth: .infinity)
@@ -264,7 +333,7 @@ struct WorkoutsView: View {
 
                 Button {
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    sendSessionToWatch(session: session)
+                    sendMainRunToWatch(session: session)
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "applewatch")
@@ -298,67 +367,114 @@ struct WorkoutsView: View {
             id: session.primerDrillId,
             previousCadence: session.cadenceFloor,
             targetCadence: session.primerTargetCadence,
-            readinessState: session.isTrimmed ? .acuteFatigue : .productive
+            readinessState: session.isTrimmed ? .acuteFatigue : .productive,
+            isIndoor: preferredWorkoutIsIndoor
         )
         let phases = preRunDrill.generatePhases()
+        let completedPrimer = session.completedPrimerRun
+        let effectiveCompleted = (completedPrimer != nil) || isDrillCompleted
 
         return VStack(alignment: .leading, spacing: 8) {
             // Overline inside primer section
             HStack {
-                Label("PRE-RUN PRIMER", systemImage: "figure.run")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(Color(red: 0.0, green: 0.8, blue: 0.65))
+                Label(
+                    effectiveCompleted ? "PRE-RUN PRIMER COMPLETE" : "PRE-RUN PRIMER",
+                    systemImage: effectiveCompleted ? "checkmark.circle.fill" : "figure.run"
+                )
+                .font(.system(size: 10, weight: .bold))
+                .foregroundColor(effectiveCompleted ? .green : Color(red: 0.0, green: 0.8, blue: 0.65))
 
                 Spacer()
+
+                if let completedPrimer {
+                    Text("Grade \(completedPrimer.letterGrade)")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(.green)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.green.opacity(0.14))
+                        .clipShape(Capsule())
+                }
             }
 
             // Sub-row: Title & subtitle on left, actions on right
             HStack(alignment: .center, spacing: 10) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(session.primerDrillTitle)
+                    Text(completedPrimer?.workoutType ?? session.primerDrillTitle)
                         .font(.subheadline.weight(.bold))
                         .foregroundColor(.primary)
 
-                    Text(cleanPrimerSubtitle(session: session))
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.85)
+                    if let completedPrimer {
+                        Text("Completed • \(completedPrimer.durationFormatted) • \(completedPrimer.distanceFormatted)")
+                            .font(.caption)
+                            .monospacedDigit()
+                            .foregroundColor(.green)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.85)
+                    } else {
+                        Text(cleanPrimerSubtitle(session: session))
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.85)
+                    }
                 }
 
                 Spacer(minLength: 6)
 
-                // Inline quick Start / Review button
+                if let completedPrimer,
+                   let matchedRun = runRecords.first(where: { $0.id == completedPrimer.id }) {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        selectedRunForDetail = matchedRun
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text("Details")
+                                .font(.caption.bold())
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 9, weight: .bold))
+                        }
+                        .padding(.horizontal, 12)
+                        .frame(height: 32)
+                        .background(Color.green.opacity(0.15))
+                        .foregroundColor(.green)
+                        .clipShape(Capsule())
+                    }
+                }
+
+                // Inline quick Start / Review button for the Primer Drill
                 Button {
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    openReadout(for: session)
+                    openPrimerReadout(for: session)
                 } label: {
                     HStack(spacing: 4) {
-                        Image(systemName: isDrillCompleted ? "arrow.counterclockwise" : "play.fill")
+                        Image(systemName: effectiveCompleted ? "arrow.counterclockwise" : "play.fill")
                             .font(.system(size: 9, weight: .bold))
-                        Text(isDrillCompleted ? "Review" : "Start")
+                        Text(effectiveCompleted ? "Review" : "Start")
                             .font(.caption.bold())
                     }
                     .padding(.horizontal, 12)
                     .frame(height: 32)
-                    .background(isDrillCompleted ? Color(UIColor.secondarySystemFill) : Color.primary)
-                    .foregroundColor(isDrillCompleted ? .primary : Color(UIColor.systemBackground))
+                    .background(effectiveCompleted ? Color(UIColor.secondarySystemFill) : Color.primary)
+                    .foregroundColor(effectiveCompleted ? .primary : Color(UIColor.systemBackground))
                     .clipShape(Capsule())
                 }
 
-                // Completion toggle
-                Button {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        isDrillCompleted.toggle()
+                if completedPrimer == nil {
+                    // Completion toggle
+                    Button {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                            isDrillCompleted.toggle()
+                        }
+                        UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    } label: {
+                        Image(systemName: isDrillCompleted ? "checkmark.circle.fill" : "circle")
+                            .font(.title3)
+                            .foregroundColor(isDrillCompleted ? .green : .secondary)
+                            .frame(width: 32, height: 32)
                     }
-                    UINotificationFeedbackGenerator().notificationOccurred(.success)
-                } label: {
-                    Image(systemName: isDrillCompleted ? "checkmark.circle.fill" : "circle")
-                        .font(.title3)
-                        .foregroundColor(isDrillCompleted ? .green : .secondary)
-                        .frame(width: 32, height: 32)
+                    .accessibilityLabel(isDrillCompleted ? "Primer completed" : "Mark primer completed")
                 }
-                .accessibilityLabel(isDrillCompleted ? "Primer completed" : "Mark primer completed")
             }
 
             // Continuous 4pt segmented rhythm bar
@@ -388,9 +504,12 @@ struct WorkoutsView: View {
         VStack(alignment: .leading, spacing: 10) {
             // Overline inside main run card
             HStack {
-                Label("MAIN RUN", systemImage: "figure.run")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(Color(red: 0.0, green: 0.55, blue: 1.0))
+                Label(
+                    session.completedPrimerRun != nil ? "NEXT UP: MAIN RUN" : "MAIN RUN",
+                    systemImage: "figure.run"
+                )
+                .font(.system(size: 10, weight: .bold))
+                .foregroundColor(Color(red: 0.0, green: 0.55, blue: 1.0))
 
                 Spacer()
 
@@ -412,8 +531,8 @@ struct WorkoutsView: View {
                     color: .secondary
                 )
                 metricCell(
-                    icon: "figure.run",
-                    title: "Pace",
+                    icon: preferredWorkoutIsIndoor ? "figure.run.square.stack" : "figure.run",
+                    title: preferredWorkoutIsIndoor ? "Belt Pace" : "Pace",
                     value: session.paceBand,
                     color: Color(red: 0.0, green: 0.55, blue: 1.0)
                 )
@@ -429,6 +548,23 @@ struct WorkoutsView: View {
                     value: "≥ \(session.cadenceFloor) SPM",
                     color: Color(red: 0.0, green: 0.8, blue: 0.65)
                 )
+            }
+
+            if preferredWorkoutIsIndoor {
+                HStack(spacing: 6) {
+                    Image(systemName: "info.circle.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.purple)
+                    Text(
+                        session.mainRunDrillId == .hillBounds
+                        ? "Treadmill Mode: Set 4–6% incline on surges • Launches as Indoor Run on Watch"
+                        : "Treadmill Mode: Set 0.5–1.0% incline • Prioritize Max HR & Cadence over wrist pace"
+                    )
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.top, 2)
             }
         }
         .padding(12)
@@ -464,25 +600,28 @@ struct WorkoutsView: View {
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
-    private func sendSessionToWatch(session: PrescribedDailySession) {
+    private func sendMainRunToWatch(session: PrescribedDailySession) {
         Task {
             let bridge = WorkoutBridge()
+            let mainDrillId = session.mainRunDrillId
             let dto = DrillPrescriptionDTO(
                 title: session.sessionTitle,
-                preRunDrillId: session.primerDrillId.rawValue,
+                preRunDrillId: mainDrillId.rawValue,
                 purpose: session.groundedRationale,
-                targetCadence: "\(session.cadenceFloor) SPM",
+                targetCadence: mainDrillId.isHeartRateTargeted ? nil : "\(session.cadenceFloor)-\(session.cadenceFloor + 6)",
                 previousCadence: session.cadenceFloor,
-                durationMinutes: 30,
-                hapticMode: "on",
-                readinessState: session.isTrimmed ? "acuteFatigue" : "productive"
+                durationMinutes: session.mainRunDurationMinutes,
+                hapticMode: "On",
+                readinessState: session.isTrimmed ? ReadinessState.acuteFatigue.rawValue : nil,
+                isIndoor: preferredWorkoutIsIndoor
             )
+            let envLabel = preferredWorkoutIsIndoor ? "Indoor" : "Outdoor"
             do {
                 try await bridge.scheduleDrill(dto: dto)
-                watchExportSuccessMessage = "Prescription successfully sent to Apple Watch via WorkoutKit."
+                watchExportSuccessMessage = "\(session.sessionTitle) (\(envLabel)) sent to Apple Watch via WorkoutKit."
                 showingExportAlert = true
             } catch {
-                watchExportSuccessMessage = "Scheduled locally. Open Workout app on your Apple Watch to start."
+                watchExportSuccessMessage = "Scheduled locally (\(envLabel)). Open Workout app on your Apple Watch to start."
                 showingExportAlert = true
             }
         }
@@ -494,7 +633,7 @@ struct WorkoutsView: View {
         if let parenRange = duration.range(of: " (Trimmed") {
             duration = String(duration[..<parenRange.lowerBound])
         }
-        var target = session.primerTargetCadence
+        let target = session.primerTargetCadence
             .replacingOccurrences(of: " (Adapted)", with: "")
         return "\(duration) • Target \(target)"
     }
@@ -553,19 +692,43 @@ struct WorkoutsView: View {
         }
     }
 
-    private func openReadout(for session: PrescribedDailySession) {
+    private func openPrimerReadout(for session: PrescribedDailySession) {
         let dto = DrillPrescriptionDTO(
             title: session.primerDrillTitle,
             preRunDrillId: session.primerDrillId.rawValue,
             purpose: session.groundedRationale,
             targetCadence: session.primerTargetCadence,
             previousCadence: session.cadenceFloor,
-            durationMinutes: session.isTrimmed ? 7 : 10
+            durationMinutes: session.primerDrillId.defaultDuration.rawValue,
+            hapticMode: "On",
+            readinessState: session.isTrimmed ? ReadinessState.acuteFatigue.rawValue : nil,
+            isIndoor: preferredWorkoutIsIndoor
         )
         let readiness = ReadinessEvaluator.assess(runRecords: runRecords)
         activeReadoutItem = ActiveDrillReadoutItem.adaptive(
             dto: dto,
             readiness: readiness
+        )
+    }
+
+    private func openMainRunReadout(for session: PrescribedDailySession) {
+        let mainDrillId = session.mainRunDrillId
+        let dto = DrillPrescriptionDTO(
+            title: session.sessionTitle,
+            preRunDrillId: mainDrillId.rawValue,
+            purpose: session.groundedRationale,
+            targetCadence: mainDrillId.isHeartRateTargeted ? nil : "\(session.cadenceFloor)-\(session.cadenceFloor + 6)",
+            previousCadence: session.cadenceFloor,
+            durationMinutes: session.mainRunDurationMinutes,
+            hapticMode: "On",
+            readinessState: session.isTrimmed ? ReadinessState.acuteFatigue.rawValue : nil,
+            isIndoor: preferredWorkoutIsIndoor
+        )
+        let readiness = ReadinessEvaluator.assess(runRecords: runRecords)
+        activeReadoutItem = ActiveDrillReadoutItem.adaptive(
+            dto: dto,
+            readiness: readiness,
+            customCoachingTip: session.groundedRationale
         )
     }
 

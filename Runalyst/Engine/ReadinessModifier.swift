@@ -341,19 +341,32 @@ enum ReadinessModifier {
         drillId: PreRunDrillId,
         state: ReadinessState
     ) -> AdaptiveDrillTarget {
+        guard let rawTarget = target else {
+            return AdaptiveDrillTarget(standardTargetCadence: nil, targetCadence: nil)
+        }
+        let normalizedTarget = PreRunDrill.normalizeCadenceTargetString(rawTarget)
+        // If the caller already supplied an explicitly adapted target (e.g. "155–161 SPM (Adapted)"
+        // from SessionSynthesisEngine), preserve that exact adapted range and derive the unadapted
+        // standard target from the drill template.
+        if rawTarget.localizedCaseInsensitiveContains("adapted") {
+            let standard = DrillTemplate.template(for: drillId).calculateTargetCadence(baselineCadence ?? 155) ?? normalizedTarget
+            return AdaptiveDrillTarget(standardTargetCadence: standard, targetCadence: normalizedTarget)
+        }
+
         guard state.relaxesCadenceTarget, state.applies(to: drillId),
               let baseline = baselineCadence, baseline > 0,
-              let target, let midpoint = cadenceMidpoint(of: target),
+              let midpoint = cadenceMidpoint(of: normalizedTarget),
               midpoint > Double(baseline) + 1 else {
-            return AdaptiveDrillTarget(standardTargetCadence: target, targetCadence: target)
+            let passthrough = (rawTarget.contains("–") || rawTarget.contains("—")) ? normalizedTarget : rawTarget
+            return AdaptiveDrillTarget(standardTargetCadence: passthrough, targetCadence: passthrough)
         }
         let neutral = "\(max(140, baseline - 3))-\(min(185, baseline + 3))"
-        return AdaptiveDrillTarget(standardTargetCadence: target, targetCadence: neutral)
+        return AdaptiveDrillTarget(standardTargetCadence: normalizedTarget, targetCadence: neutral)
     }
 
-    /// Parses "159-165", "162", or "162 SPM" into a midpoint cadence.
+    /// Parses "159-165", "155–161 SPM (Adapted)", "162", or "162 SPM" into a midpoint cadence.
     static func cadenceMidpoint(of target: String) -> Double? {
-        let clean = target.replacingOccurrences(of: "SPM", with: "").trimmingCharacters(in: .whitespaces)
+        let clean = PreRunDrill.normalizeCadenceTargetString(target)
         let parts = clean.components(separatedBy: "-").map { $0.trimmingCharacters(in: .whitespaces) }
         if parts.count == 2, let lower = Double(parts[0]), let upper = Double(parts[1]) {
             return (lower + upper) / 2.0
@@ -365,7 +378,16 @@ enum ReadinessModifier {
     /// Apple Watch `WorkoutPlan` compiled by `WorkoutBridge` matches the readout exactly.
     static func adaptedDTO(_ dto: DrillPrescriptionDTO, readiness: ReadinessAssessment) -> DrillPrescriptionDTO {
         let drillId = dto.preRunDrillId.flatMap(PreRunDrillId.init(rawValue:)) ?? .strides
-        let state = readiness.state.applies(to: drillId) ? readiness.state : .productive
+        let effectiveState: ReadinessState = {
+            if readiness.state != .productive {
+                return readiness.state
+            }
+            if let explicit = dto.readinessState.flatMap(ReadinessState.init(rawValue:)) {
+                return explicit
+            }
+            return .productive
+        }()
+        let state = effectiveState.applies(to: drillId) ? effectiveState : .productive
         let target = adaptTarget(dto.targetCadence, baselineCadence: dto.previousCadence, drillId: drillId, state: state)
         return DrillPrescriptionDTO(
             title: dto.title,
@@ -375,7 +397,8 @@ enum ReadinessModifier {
             previousCadence: dto.previousCadence,
             durationMinutes: dto.durationMinutes,
             hapticMode: dto.hapticMode,
-            readinessState: state == .productive ? nil : state.rawValue
+            readinessState: state == .productive ? nil : state.rawValue,
+            isIndoor: dto.isIndoor
         )
     }
 

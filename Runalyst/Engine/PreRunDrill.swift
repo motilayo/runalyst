@@ -12,6 +12,10 @@ struct PreRunDrill: Sendable {
     let hapticMode: HapticFeedbackMode
     /// Acute readiness modulation (ACWR). `.productive` leaves the standard prescription untouched.
     let readinessState: ReadinessState
+    /// Whether the custom workout is configured for Indoor (Treadmill) or Outdoor execution.
+    let isIndoor: Bool
+    /// Optional custom display name for the WorkoutKit plan (e.g. "Easy Aerobic Base Run").
+    let customDisplayName: String?
 
     init(
         id: PreRunDrillId,
@@ -19,7 +23,9 @@ struct PreRunDrill: Sendable {
         targetCadence: String? = nil,
         duration: DrillDuration? = nil,
         hapticMode: HapticFeedbackMode = .on,
-        readinessState: ReadinessState = .productive
+        readinessState: ReadinessState = .productive,
+        isIndoor: Bool = false,
+        customDisplayName: String? = nil
     ) {
         self.id = id
         self.previousCadence = previousCadence
@@ -27,11 +33,26 @@ struct PreRunDrill: Sendable {
         self.duration = duration ?? id.defaultDuration
         self.hapticMode = hapticMode
         self.readinessState = readinessState
+        self.isIndoor = isIndoor
+        self.customDisplayName = customDisplayName
     }
 
     // Mathematical variables for constraints
     private let safeMaxCadence = 185
     private let safeMinCadence = 140
+
+    /// Normalizes cadence target strings such as "155–161 SPM (Adapted)" into a clean "155-161" format.
+    static func normalizeCadenceTargetString(_ raw: String) -> String {
+        raw
+            .replacingOccurrences(of: "–", with: "-")
+            .replacingOccurrences(of: "—", with: "-")
+            .replacingOccurrences(of: "(Adapted)", with: "", options: .caseInsensitive)
+            .replacingOccurrences(of: "Adapted", with: "", options: .caseInsensitive)
+            .replacingOccurrences(of: "SPM", with: "", options: .caseInsensitive)
+            .replacingOccurrences(of: "(", with: "")
+            .replacingOccurrences(of: ")", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 
     var effectiveTargetCadence: ClosedRange<Int>? {
         // Recovery / flush / base builder drills do not use cadence turnover alerts
@@ -42,19 +63,21 @@ struct PreRunDrill: Sendable {
             break
         }
 
-        if let target = targetCadence, target.contains("-") {
-            let parts = target.components(separatedBy: "-")
-            if parts.count == 2,
-               let lower = Int(parts[0].trimmingCharacters(in: .whitespaces)),
-               let upper = Int(parts[1].trimmingCharacters(in: .whitespaces)) {
-                let safeLower = min(safeMaxCadence, max(safeMinCadence, lower))
-                let safeUpper = min(safeMaxCadence, max(safeMinCadence, upper))
-                return min(safeLower, safeUpper)...max(safeLower, safeUpper)
+        if let rawTarget = targetCadence {
+            let cleanTarget = Self.normalizeCadenceTargetString(rawTarget)
+            if cleanTarget.contains("-") {
+                let parts = cleanTarget.components(separatedBy: "-")
+                if parts.count == 2,
+                   let lower = Int(parts[0].trimmingCharacters(in: .whitespaces)),
+                   let upper = Int(parts[1].trimmingCharacters(in: .whitespaces)) {
+                    let safeLower = min(safeMaxCadence, max(safeMinCadence, lower))
+                    let safeUpper = min(safeMaxCadence, max(safeMinCadence, upper))
+                    return min(safeLower, safeUpper)...max(safeLower, safeUpper)
+                }
+            } else if let targetInt = Int(cleanTarget) {
+                let safeTarget = min(safeMaxCadence, max(safeMinCadence, targetInt))
+                return max(safeMinCadence, safeTarget - 3)...min(safeMaxCadence, safeTarget + 3)
             }
-        } else if let target = targetCadence,
-                  let targetInt = Int(target.replacingOccurrences(of: " SPM", with: "").trimmingCharacters(in: .whitespaces)) {
-            let safeTarget = min(safeMaxCadence, max(safeMinCadence, targetInt))
-            return max(safeMinCadence, safeTarget - 3)...min(safeMaxCadence, safeTarget + 3)
         }
 
         if let prev = previousCadence, prev > 0 {
@@ -173,6 +196,23 @@ struct PreRunDrill: Sendable {
         return adapted == standard ? nil : adapted
     }
 
+    /// Cool-down length in minutes, shared between the visual timeline and the Apple Watch WorkoutPlan.
+    var coolDownDurationMinutes: Double {
+        if id == .aerobicFlush || id == .recoveryJog {
+            return 0.0
+        } else if id == .zone2Run {
+            return duration == .fiveMinutes ? 0.0 : (duration == .tenMinutes ? 2.0 : (duration == .thirtyMinutes ? 5.0 : 2.0))
+        } else {
+            // Cool-down is anchored to the standard geometry so a readiness-reduced session
+            // becomes shorter instead of padding an oversized cool-down.
+            let standard = standardIntervalSpec
+            let intervalSeconds = standard.iterations * (standard.workSeconds + (standard.recoverySeconds ?? 0))
+            let targetTotalSeconds = duration.rawValue * 60
+            let remainingSeconds = targetTotalSeconds - Int(warmUpDurationMinutes * 60) - intervalSeconds
+            return max(0.0, Double(remainingSeconds) / 60.0)
+        }
+    }
+
     /// Generates structured workout phases for timeline visualization.
     func generatePhases() -> [WorkoutPhase] {
         var phases: [WorkoutPhase] = []
@@ -226,21 +266,7 @@ struct PreRunDrill: Sendable {
             )
         }
 
-        let coolDownDurationMinutes: Double
-        if id == .aerobicFlush || id == .recoveryJog {
-            coolDownDurationMinutes = 0.0
-        } else if id == .zone2Run {
-            coolDownDurationMinutes = duration == .fiveMinutes ? 0.0 : (duration == .tenMinutes ? 2.0 : (duration == .thirtyMinutes ? 5.0 : 2.0))
-        } else {
-            // Cool-down is anchored to the standard geometry so a readiness-reduced session
-            // becomes shorter instead of padding an oversized cool-down.
-            let standard = standardIntervalSpec
-            let intervalSeconds = standard.iterations * (standard.workSeconds + (standard.recoverySeconds ?? 0))
-            let targetTotalSeconds = duration.rawValue * 60
-            let remainingSeconds = targetTotalSeconds - Int(warmUpDurationMinutes * 60) - intervalSeconds
-            coolDownDurationMinutes = max(0.0, Double(remainingSeconds) / 60.0)
-        }
-
+        let coolDownDurationMinutes = self.coolDownDurationMinutes
         if coolDownDurationMinutes > 0 {
             phases.append(
                 WorkoutPhase(

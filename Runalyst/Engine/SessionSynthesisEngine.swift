@@ -28,6 +28,9 @@ struct PrescribedDailySession: Sendable, Equatable {
     let primerPhasesDuration: String
     let isTrimmed: Bool
     let microcycle: [MicrocycleDay]
+    var mainRunDrillId: PreRunDrillId = .zone2Run
+    var mainRunDurationMinutes: Int = 30
+    var completedPrimerRun: RunRecordSnapshot?
 }
 
 /// Lightweight snapshot of today's completed run for thread safety and fast rendering.
@@ -39,6 +42,18 @@ struct RunRecordSnapshot: Identifiable, Sendable, Equatable {
     let distanceFormatted: String
     let letterGrade: String
     let isIndoor: Bool
+    var isPrimerDrill: Bool = false
+    var additionalCompletedRuns: [RunRecordSnapshot] = []
+
+    /// All workouts completed today in chronological order (e.g. Pre-Run Primer followed by Main Run).
+    var allCompletedRunsToday: [RunRecordSnapshot] {
+        guard !additionalCompletedRuns.isEmpty else { return [self] }
+        var combined = [self]
+        combined.removeAll()
+        var strippedSelf = self
+        strippedSelf.additionalCompletedRuns = []
+        return ([strippedSelf] + additionalCompletedRuns).sorted { $0.date < $1.date }
+    }
 }
 
 /// The runner's daily session state machine.
@@ -54,6 +69,19 @@ enum DailyTrainingState: Sendable, Equatable {
 /// Single source of truth powering the dedicated Workouts tab, Dashboard Directive card, and AI Coach state.
 enum SessionSynthesisEngine {
 
+    /// Determines whether a workout recorded today is strictly a short pre-run primer drill
+    /// rather than the day's main aerobic or quality run.
+    @MainActor
+    static func isShortPrimerWorkout(_ run: RunRecord) -> Bool {
+        guard run.duration <= 1200 else { return false } // <= 20 min
+        if let drillName = run.prescribedDrillName,
+           let drillId = PreRunDrillId.resolve(from: drillName),
+           !drillId.isAerobicContinuous {
+            return true
+        }
+        return run.duration <= 960 && run.totalDistanceMeters < 2500
+    }
+
     /// Synthesizes the athlete's daily state machine deterministically.
     @MainActor
     static func evaluateDailyState(
@@ -64,10 +92,33 @@ enum SessionSynthesisEngine {
         now: Date = Date()
     ) -> DailyTrainingState {
         let calendar = Calendar.current
+        let todayRuns = runRecords
+            .filter { calendar.isDate($0.date, inSameDayAs: now) && !$0.isDeleted }
+            .sorted { $0.date < $1.date }
 
-        // 1. Check if the runner already logged a workout today
-        if let todayRun = runRecords.first(where: { calendar.isDate($0.date, inSameDayAs: now) && !$0.isDeleted }) {
-            let snapshot = buildSnapshot(from: todayRun, useMetric: useMetric)
+        // 1. If the runner ONLY completed the short Pre-Run Primer today (and not the Main Run yet),
+        // keep Today's Session in .preRun with completedPrimerRun attached so they can start the Main Run!
+        if todayRuns.count == 1, let onlyRun = todayRuns.first, isShortPrimerWorkout(onlyRun) {
+            let priorRuns = runRecords.filter { !calendar.isDate($0.date, inSameDayAs: now) && !$0.isDeleted }
+            var todaySession = synthesizePreRunPrescription(
+                runRecords: priorRuns,
+                activeGoal: activeGoal,
+                experienceLevel: experienceLevel,
+                useMetric: useMetric,
+                now: now
+            )
+            todaySession.completedPrimerRun = buildSnapshot(from: onlyRun, useMetric: useMetric)
+            return .preRun(session: todaySession)
+        }
+
+        // 2. If the runner completed their Main Run (or both Primer + Main Run) today, transition to .completedToday
+        if let primaryRun = todayRuns.max(by: { $0.duration < $1.duration }) ?? todayRuns.last {
+            var primarySnapshot = buildSnapshot(from: primaryRun, useMetric: useMetric)
+            let otherSnapshots = todayRuns
+                .filter { $0.id != primaryRun.id }
+                .map { buildSnapshot(from: $0, useMetric: useMetric) }
+            primarySnapshot.additionalCompletedRuns = otherSnapshots
+
             let context = SynthesisContext(
                 activeGoal: activeGoal,
                 experienceLevel: experienceLevel,
@@ -75,14 +126,14 @@ enum SessionSynthesisEngine {
                 now: now
             )
             let tomorrowSession = synthesizeTomorrowPrescription(
-                todayRun: todayRun,
+                todayRun: primaryRun,
                 runRecords: runRecords,
                 context: context
             )
-            return .completedToday(completedRun: snapshot, tomorrowSession: tomorrowSession)
+            return .completedToday(completedRun: primarySnapshot, tomorrowSession: tomorrowSession)
         }
 
-        // 2. Pre-Run State: Synthesize today's primary prescription
+        // 3. Pre-Run State: Synthesize today's primary prescription
         let todaySession = synthesizePreRunPrescription(
             runRecords: runRecords,
             activeGoal: activeGoal,
@@ -233,6 +284,15 @@ enum SessionSynthesisEngine {
         }
 
         let isRecovery = (readiness.state == .acuteFatigue || hadCardiacDrift)
+        let mainRunDrillId: PreRunDrillId = {
+            if isRecovery || readiness.state == .deload {
+                return .zone2Run
+            }
+            if activeGoal.localizedCaseInsensitiveContains("5K") {
+                return .rhythmIntervals
+            }
+            return .zone2Run
+        }()
         let microcycle = generateMicrocycle(
             activeGoal: activeGoal,
             now: now,
@@ -258,7 +318,10 @@ enum SessionSynthesisEngine {
             primerWorkDescription: primerWork,
             primerPhasesDuration: primerDuration,
             isTrimmed: isTrimmed,
-            microcycle: microcycle
+            microcycle: microcycle,
+            mainRunDrillId: mainRunDrillId,
+            mainRunDurationMinutes: 30,
+            completedPrimerRun: nil
         )
     }
 
@@ -306,10 +369,9 @@ enum SessionSynthesisEngine {
         let primerWork = wasHardSession ? "2 x 30 sec work • 45 sec walk • Gentle" : "3 x 30 sec work • 45 sec jog"
         let primerDuration = wasHardSession ? "7m 30s drill (Trimmed from 10 min)" : "10 min drill"
 
-        let tomorrowDate = Calendar.current.date(byAdding: .day, value: 1, to: context.now) ?? context.now
         let microcycle = generateMicrocycle(
             activeGoal: context.activeGoal,
-            now: tomorrowDate,
+            now: context.now,
             useMetric: context.useMetric,
             isRecoveryWindow: wasHardSession
         )
@@ -330,7 +392,10 @@ enum SessionSynthesisEngine {
             primerWorkDescription: primerWork,
             primerPhasesDuration: primerDuration,
             isTrimmed: wasHardSession,
-            microcycle: microcycle
+            microcycle: microcycle,
+            mainRunDrillId: wasHardSession ? .aerobicFlush : .zone2Run,
+            mainRunDurationMinutes: 30,
+            completedPrimerRun: nil
         )
     }
 
@@ -342,12 +407,12 @@ enum SessionSynthesisEngine {
         let durSec = Int(run.duration) % 60
         let durStr = String(format: "%d:%02d", durMin, durSec)
 
-        let distMeters = run.effectiveWorkingDistanceMeters
+        let distMeters = run.totalDistanceMeters > 0 ? run.totalDistanceMeters : run.effectiveWorkingDistanceMeters
         let distStr: String
         if useMetric {
-            distStr = String(format: "%.1f km", distMeters / 1000.0)
+            distStr = String(format: "%.2f km", distMeters / 1000.0)
         } else {
-            distStr = String(format: "%.1f mi", distMeters / 1609.344)
+            distStr = String(format: "%.2f mi", distMeters / 1609.344)
         }
 
         let context = WorkoutAnalysisContext(
@@ -359,7 +424,17 @@ enum SessionSynthesisEngine {
         let grade = context.overallGradeReport.grade
 
         let prefix = (run.isIndoor == true) ? "Indoor " : ""
-        let displayType = "\(prefix)\(run.detectedTypeRaw)"
+        let isPrimer = isShortPrimerWorkout(run)
+        let displayType: String = {
+            if let drillName = run.prescribedDrillName {
+                if isPrimer || drillName.localizedCaseInsensitiveCompare(run.normalizedClassification) == .orderedSame {
+                    return "\(prefix)\(drillName)"
+                } else {
+                    return "\(prefix)\(drillName) (\(run.normalizedClassification))"
+                }
+            }
+            return "\(prefix)\(run.normalizedClassification)"
+        }()
 
         return RunRecordSnapshot(
             id: run.id,
@@ -368,7 +443,9 @@ enum SessionSynthesisEngine {
             durationFormatted: durStr,
             distanceFormatted: distStr,
             letterGrade: grade,
-            isIndoor: run.isIndoor ?? false
+            isIndoor: run.isIndoor ?? false,
+            isPrimerDrill: isPrimer,
+            additionalCompletedRuns: []
         )
     }
 

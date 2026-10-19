@@ -193,24 +193,36 @@ final class RunRecordModelAndSchemaTests: XCTestCase {
         ]
         XCTAssertNil(run.prescribedDrillName)
 
-        // PreRunDrillId rawValue
+        // PreRunDrillId rawValue on a short drill workout
+        run.duration = 900
+        run.totalDistanceMeters = 1500
         run.framboiseTags = ["cadence_pyramids"]
         XCTAssertEqual(run.prescribedDrillName, "Cadence Pyramids")
 
-        // Completed drill recommendation
+        // Completed post-run drill recommendation on a historical run must NOT relabel the historical run
+        run.duration = 2500
+        run.totalDistanceMeters = 6640
+        run.detectedTypeRaw = "Fartlek"
         run.framboiseTags = []
         let insight = CoachingInsight(headline: "Test", longitudinalObservation: "Test")
         let rec = DrillRecommendation(
-            drillTitle: "Strides",
+            drillTitle: "Cadence Pyramids",
             drillPurpose: "Neuromuscular",
-            drillWork: "4 x 20s",
+            drillWork: "4 x 30s",
             drillCues: "Fast",
             orderIndex: 0
         )
         rec.isCompleted = true
         insight.drillRecommendations = [rec]
         run.insight = insight
-        XCTAssertEqual(run.prescribedDrillName, "Strides")
+        XCTAssertNil(run.prescribedDrillName, "Completing a recommended drill later must never relabel the historical run that generated the recommendation")
+        XCTAssertEqual(run.normalizedClassification, "Fartlek")
+
+        // Unlinked long run (> 25m, > 4km) with false-positive short primer tag must also return nil unless userLinkedDrill is set
+        run.framboiseTags = ["drill:Cadence Pyramids", "prescribedDrill"]
+        XCTAssertNil(run.prescribedDrillName)
+        run.framboiseTags.append("userLinkedDrill")
+        XCTAssertEqual(run.prescribedDrillName, "Cadence Pyramids")
     }
 
     func testRunRecordMatchesFilter() {

@@ -89,7 +89,8 @@ struct DrillExecutionScorecard: View {
     var body: some View {
         let template = DrillTemplate.template(for: drillId)
         let thirtyDayCadence = Int(baselineCadence ?? (runRecord.computeHistoricalBaselineCadence() ?? (runRecord.workingAvgCadence > 0 ? runRecord.workingAvgCadence : 155)))
-        let targetCadence = template.calculateTargetCadence(thirtyDayCadence)
+        let targetCadence = runRecord.effectivePrescribedTargetCadence(drillId: drillId, baselineCadence: thirtyDayCadence)
+            ?? template.calculateTargetCadence(thirtyDayCadence)
         let drillObj = PreRunDrill(id: drillId, previousCadence: thirtyDayCadence, targetCadence: targetCadence)
         let actualCadence = Int(runRecord.workingAvgCadence)
         let actualHR = Int(runRecord.workingAvgHeartRate)
@@ -114,7 +115,8 @@ struct DrillExecutionScorecard: View {
                     drillId: drillId,
                     baselineCadence: thirtyDayCadence,
                     workoutDuration: runRecord.duration,
-                    oscDelta: oscDelta
+                    oscDelta: oscDelta,
+                    targetCadenceOverride: targetCadence
                 )
             }
             return nil
@@ -148,9 +150,15 @@ struct DrillExecutionScorecard: View {
                     let matchedEval = intervalEvals.first(where: { $0.repIndex == rep.repIndex })
                         ?? (rep.repIndex - 1 >= 0 && rep.repIndex - 1 < intervalEvals.count ? intervalEvals[rep.repIndex - 1] : nil)
 
-                    let workCadence = rep.workCadence > 0 ? rep.workCadence : (matchedEval?.workCadence ?? actualCadence)
+                    let evalWorkCad = matchedEval?.workCadence ?? 0
+                    let workCadence = evalWorkCad > 0
+                        ? evalWorkCad
+                        : (rep.workCadence > 0 ? rep.workCadence : actualCadence)
                     let workHR = rep.workHeartRate > 0 ? rep.workHeartRate : (matchedEval?.workHeartRate ?? actualHR)
-                    let recCadence = rep.recoveryCadence > 0 ? rep.recoveryCadence : (matchedEval?.recoveryCadence ?? 0)
+                    let evalRecCad = matchedEval?.recoveryCadence ?? 0
+                    let recCadence = evalRecCad > 0
+                        ? evalRecCad
+                        : (rep.recoveryCadence > 0 ? rep.recoveryCadence : 0)
                     let recHR = rep.recoveryHeartRate > 0 ? rep.recoveryHeartRate : (matchedEval?.recoveryHeartRate ?? 0)
                     let hrDrop: Int? = {
                         if let drop = matchedEval?.recoveryHeartRateDrop { return drop }
@@ -166,6 +174,14 @@ struct DrillExecutionScorecard: View {
                         return nil
                     }()
 
+                    let evaluatedIsMet: Bool = {
+                        if let range = drillObj.effectiveTargetCadence, workCadence > 0 {
+                            let upperLimit = (drillId == .strides || drillId == .tempoSurges) ? 195 : (range.upperBound + 8)
+                            return rep.isMet || (workCadence >= (range.lowerBound - 2) && workCadence <= upperLimit)
+                        }
+                        return rep.isMet
+                    }()
+
                     return DrillDisplayRep(
                         repIndex: rep.repIndex,
                         durationSeconds: matchedEval?.durationSeconds ?? fallbackDuration,
@@ -178,7 +194,7 @@ struct DrillExecutionScorecard: View {
                         recoveryHeartRate: recHR,
                         recoveryHeartRateDrop: hrDrop,
                         paceDeltaVsAverageWorkSec: matchedEval?.paceDeltaVsAverageWorkSec,
-                        isMet: rep.isMet,
+                        isMet: evaluatedIsMet,
                         observation: matchedEval?.observation
                     )
                 }
@@ -216,12 +232,17 @@ struct DrillExecutionScorecard: View {
         let tierDescription: String
 
         if let summary = intervalSummary, summary.totalIntervals > 1 {
+            let effectiveMetCount = displayReps.isEmpty
+                ? summary.intervalsMet
+                : max(summary.intervalsMet, displayReps.filter(\.isMet).count)
+            let effectiveTotalCount = displayReps.isEmpty ? summary.totalIntervals : displayReps.count
+
             if isDualTarget {
-                let intervalsOk = summary.intervalsMet >= (summary.totalIntervals + 1) / 2
+                let intervalsOk = effectiveMetCount >= (effectiveTotalCount + 1) / 2
                 let zone4Ok = runRecord.percentZone4 >= 0.20
-                if summary.intervalsMet == summary.totalIntervals && runRecord.percentZone4 >= 0.35 {
+                if effectiveMetCount == effectiveTotalCount && runRecord.percentZone4 >= 0.35 {
                     tier = .exceeded
-                    tierDescription = "Nailed all \(summary.totalIntervals) surges with high threshold capacity (≥35% Zone 4)."
+                    tierDescription = "Nailed all \(effectiveTotalCount) surges with high threshold capacity (≥35% Zone 4)."
                 } else if (summary.tier == .met || summary.tier == .exceeded) || (intervalsOk && zone4Ok) {
                     tier = .met
                     tierDescription = "Landed target surges with sustained threshold effort."
@@ -231,6 +252,17 @@ struct DrillExecutionScorecard: View {
                 } else {
                     tier = .notMet
                     tierDescription = summary.verdict
+                }
+            } else if effectiveMetCount > summary.intervalsMet {
+                if effectiveMetCount == effectiveTotalCount && effectiveTotalCount > 0 {
+                    tier = .met
+                    tierDescription = "Flawless turnover discipline: hit all \(effectiveTotalCount) work intervals on target."
+                } else if effectiveMetCount >= (effectiveTotalCount + 1) / 2 {
+                    tier = .partiallyMet
+                    tierDescription = "Strong turnover adherence: hit \(effectiveMetCount) of \(effectiveTotalCount) target intervals."
+                } else {
+                    tier = .notMet
+                    tierDescription = "Developing turnover: hit \(effectiveMetCount) of \(effectiveTotalCount) intervals in target band."
                 }
             } else {
                 tier = summary.tier

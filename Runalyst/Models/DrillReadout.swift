@@ -464,18 +464,36 @@ extension ActiveDrillReadoutItem {
         customCoachingTip: String? = nil
     ) -> ActiveDrillReadoutItem {
         let drillId = standardDTO.preRunDrillId.flatMap(PreRunDrillId.init(rawValue:)) ?? .strides
-        let duration = standardDTO.durationMinutes.flatMap(DrillDuration.init(rawValue:)) ?? drillId.defaultDuration
+        let duration: DrillDuration = {
+            if let raw = standardDTO.durationMinutes {
+                if let exact = DrillDuration(rawValue: raw) { return exact }
+                if raw <= 6 { return .fiveMinutes }
+                if raw <= 12 { return .tenMinutes }
+                if raw <= 20 { return .fifteenMinutes }
+                return .thirtyMinutes
+            }
+            return drillId.defaultDuration
+        }()
         let haptic = HapticFeedbackMode(rawValue: standardDTO.hapticMode ?? "") ?? .on
 
         let adaptedDTO = ReadinessModifier.adaptedDTO(standardDTO, readiness: readiness)
         let state = ReadinessState(rawValue: adaptedDTO.readinessState ?? "") ?? .productive
+        let isIndoor = adaptedDTO.isIndoor ?? UserDefaults.standard.bool(forKey: "preferredWorkoutIsIndoor")
+        let target = ReadinessModifier.adaptTarget(
+            standardDTO.targetCadence,
+            baselineCadence: standardDTO.previousCadence,
+            drillId: drillId,
+            state: state
+        )
 
         let standardDrill = PreRunDrill(
             id: drillId,
             previousCadence: standardDTO.previousCadence,
-            targetCadence: standardDTO.targetCadence,
+            targetCadence: target.standardTargetCadence ?? standardDTO.targetCadence,
             duration: duration,
-            hapticMode: haptic
+            hapticMode: haptic,
+            isIndoor: isIndoor,
+            customDisplayName: standardDTO.title
         )
         let adaptedDrill = PreRunDrill(
             id: drillId,
@@ -483,7 +501,9 @@ extension ActiveDrillReadoutItem {
             targetCadence: adaptedDTO.targetCadence,
             duration: duration,
             hapticMode: haptic,
-            readinessState: state
+            readinessState: state,
+            isIndoor: isIndoor,
+            customDisplayName: standardDTO.title
         )
 
         var readout = DrillReadout.readout(
@@ -496,12 +516,21 @@ extension ActiveDrillReadoutItem {
         )
 
         if state != .productive {
-            let target = AdaptiveDrillTarget(
-                standardTargetCadence: standardDTO.targetCadence,
-                targetCadence: adaptedDTO.targetCadence
-            )
+            let effectiveAssessment: ReadinessAssessment = {
+                if readiness.state == state {
+                    return readiness
+                }
+                return ReadinessAssessment(
+                    state: state,
+                    triggers: readiness.triggers.isEmpty ? [.cardiacDrift] : readiness.triggers,
+                    acuteLoad: readiness.acuteLoad,
+                    chronicWeeklyLoad: readiness.chronicWeeklyLoad,
+                    acwr: readiness.acwr,
+                    mileageDropFraction: readiness.mileageDropFraction
+                )
+            }()
             readout = readout.applyingReadiness(
-                assessment: readiness,
+                assessment: effectiveAssessment,
                 target: target,
                 standardDrill: standardDrill,
                 adaptedDrill: adaptedDrill

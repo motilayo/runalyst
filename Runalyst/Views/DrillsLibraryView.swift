@@ -13,6 +13,7 @@ struct DrillsLibraryView: View {
     @AppStorage("lastBaselineChangeTimestamp") private var lastBaselineChangeTimestamp: Double = 0
     @AppStorage("lastWatchExportTimestamp") private var lastWatchExportTimestamp: Double = 0
     @AppStorage("lastExportedDrillId") private var lastExportedDrillId: String = ""
+    @AppStorage("preferredWorkoutIsIndoor") private var preferredWorkoutIsIndoor: Bool = false
 
     @State private var activeReadoutItem: ActiveDrillReadoutItem?
     @State private var isAutoSyncing: Bool = false
@@ -103,6 +104,33 @@ struct DrillsLibraryView: View {
                     .padding(.horizontal)
                 }
 
+                // Run Environment Selector (Outdoor vs Indoor Treadmill)
+                HStack(spacing: 10) {
+                    Label(
+                        preferredWorkoutIsIndoor ? "Indoor (Treadmill)" : "Outdoor (GPS)",
+                        systemImage: preferredWorkoutIsIndoor ? "figure.run.square.stack" : "sun.max.fill"
+                    )
+                    .font(.caption.bold())
+                    .foregroundColor(preferredWorkoutIsIndoor ? .purple : .blue)
+
+                    Spacer()
+
+                    Picker("Run Environment", selection: $preferredWorkoutIsIndoor) {
+                        Text("Outdoor").tag(false)
+                        Text("Indoor (Treadmill)").tag(true)
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(maxWidth: 220)
+                    .onChange(of: preferredWorkoutIsIndoor) { _, _ in
+                        UISelectionFeedbackGenerator().selectionChanged()
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(Color(UIColor.secondarySystemGroupedBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .padding(.horizontal)
+
                 // Category Picker
                 Picker("Category", selection: $selectedCategory) {
                     ForEach(categories, id: \.self) { category in
@@ -111,7 +139,7 @@ struct DrillsLibraryView: View {
                 }
                 .pickerStyle(.segmented)
                 .padding(.horizontal)
-                .padding(.top, 4)
+                .padding(.top, 2)
 
                 // Section 1: Foundation & Recovery Primers
                 if selectedCategory == "All" || selectedCategory == "Foundation" {
@@ -356,7 +384,8 @@ struct DrillsLibraryView: View {
             preRunDrillId: preRunId.rawValue,
             purpose: template.defaultPurpose,
             targetCadence: newTarget,
-            previousCadence: baseline
+            previousCadence: baseline,
+            isIndoor: preferredWorkoutIsIndoor
         )
 
         do {
@@ -386,6 +415,7 @@ struct DrillPrimerCardView: View {
     @Query(sort: \RunRecord.date, order: .reverse) private var runRecords: [RunRecord]
     @State private var selectedDuration: DrillDuration
     @AppStorage("drillHapticFeedbackMode") private var selectedHapticModeRaw: String = HapticFeedbackMode.on.rawValue
+    @AppStorage("preferredWorkoutIsIndoor") private var preferredWorkoutIsIndoor: Bool = false
 
     init(
         drillId: PreRunDrillId,
@@ -417,7 +447,14 @@ struct DrillPrimerCardView: View {
         let recovery = template.recoveryString(for: selectedDuration)
         let effort = template.defaultEffort
         let targetCadence: String? = baselineCadence.map { template.calculateTargetCadence($0) }
-        let cue = template.generateInstructionalCue(targetCadence)
+        let rawCue = template.generateInstructionalCue(targetCadence)
+        let cue: String = {
+            guard preferredWorkoutIsIndoor else { return rawCue }
+            if drillId == .hillBounds {
+                return "Set treadmill incline to 4–6%. Focus on driving knees high, quick ground contact, and tall posture."
+            }
+            return rawCue
+        }()
         let icon = drillId.iconName
         let iconColor = drillId.iconColor
 
@@ -453,9 +490,26 @@ struct DrillPrimerCardView: View {
                     Text(displayTitle)
                         .font(.headline)
                         .foregroundColor(.primary)
-                    Text("\(selectedDuration.rawValue) min drill")
+                    Text("\(selectedDuration.rawValue) min • \(preferredWorkoutIsIndoor ? "Indoor (Treadmill)" : "Outdoor")")
                         .font(.caption)
                         .foregroundColor(.secondary)
+                }
+                Spacer()
+                Button {
+                    preferredWorkoutIsIndoor.toggle()
+                    UISelectionFeedbackGenerator().selectionChanged()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: preferredWorkoutIsIndoor ? "figure.run.square.stack" : "sun.max.fill")
+                            .font(.system(size: 10, weight: .bold))
+                        Text(preferredWorkoutIsIndoor ? "Indoor" : "Outdoor")
+                            .font(.system(size: 11, weight: .semibold))
+                    }
+                    .foregroundColor(preferredWorkoutIsIndoor ? .purple : .blue)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background((preferredWorkoutIsIndoor ? Color.purple : Color.blue).opacity(0.12))
+                    .clipShape(Capsule())
                 }
             }
 
@@ -555,7 +609,8 @@ struct DrillPrimerCardView: View {
                 previousCadence: baselineCadence,
                 targetCadence: targetCadence,
                 duration: selectedDuration,
-                hapticMode: selectedHapticMode
+                hapticMode: selectedHapticMode,
+                isIndoor: preferredWorkoutIsIndoor
             )
             WorkoutPhaseTimelineView(phases: previewDrill.generatePhases())
 
@@ -594,7 +649,8 @@ struct DrillPrimerCardView: View {
             previousCadence: baselineCadence,
             targetCadence: targetCadence,
             duration: selectedDuration,
-            hapticMode: selectedHapticMode
+            hapticMode: selectedHapticMode,
+            isIndoor: preferredWorkoutIsIndoor
         )
         let plan = drill.buildWorkoutPlan()
         let dto = DrillPrescriptionDTO(
@@ -604,7 +660,8 @@ struct DrillPrimerCardView: View {
             targetCadence: targetCadence,
             previousCadence: baselineCadence,
             durationMinutes: selectedDuration.rawValue,
-            hapticMode: selectedHapticMode.rawValue
+            hapticMode: selectedHapticMode.rawValue,
+            isIndoor: preferredWorkoutIsIndoor
         )
         onStart?(plan, dto)
     }

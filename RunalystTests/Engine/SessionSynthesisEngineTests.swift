@@ -177,6 +177,15 @@ final class SessionSynthesisEngineTests: XCTestCase {
             XCTAssertTrue(tomorrowSession.isTrimmed, "Tomorrow's drill must be trimmed to protect legs")
             XCTAssertEqual(tomorrowSession.primerPhasesDuration, "7m 30s drill (Trimmed from 10 min)")
             XCTAssertTrue(tomorrowSession.hrCap.contains("< 135 BPM") || tomorrowSession.hrCap.contains("< 145 BPM"))
+
+            // 3. Verify microcycle consecutive days (never skips the day after Tomorrow)
+            let dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+            XCTAssertEqual(tomorrowSession.microcycle.count, 5)
+            XCTAssertEqual(tomorrowSession.microcycle[0].dayLabel, "Tomorrow")
+            if let twoDaysAhead = calendar.date(byAdding: .day, value: 2, to: now) {
+                let expectedSecondLabel = dayNames[calendar.component(.weekday, from: twoDaysAhead) - 1]
+                XCTAssertEqual(tomorrowSession.microcycle[1].dayLabel, expectedSecondLabel)
+            }
         }
     }
 
@@ -303,5 +312,111 @@ final class SessionSynthesisEngineTests: XCTestCase {
         case .completedToday:
             XCTFail("Expected .preRun state")
         }
+    }
+
+    @MainActor
+    func testPrimerCompletedToday_KeepsMainRunAvailableInPreRunState_ThenShowsBothWhenMainRunCompleted() throws {
+        let calendar = Calendar.current
+        let now = calendar.date(bySettingHour: 10, minute: 0, second: 0, of: Date()) ?? Date()
+        let primerDate = calendar.date(bySettingHour: 7, minute: 55, second: 0, of: now) ?? now.addingTimeInterval(-7200)
+        let mainRunDate = calendar.date(bySettingHour: 8, minute: 12, second: 0, of: now) ?? now.addingTimeInterval(-5400)
+
+        let primerRun = makeRun(
+            date: primerDate,
+            duration: 900.0, // 15:00
+            distanceMeters: 1460.0,
+            workingAvgCadence: 155.0,
+            workingAvgHeartRate: 138.0,
+            detectedTypeRaw: "Intervals",
+            framboiseTags: ["prescribedDrill", "cadence_pyramids", "drill:Cadence Pyramids"],
+            isIndoor: true
+        )
+
+        // 1. Only primer completed today -> must remain in .preRun so user can start the Main Run!
+        let stateAfterPrimer = SessionSynthesisEngine.evaluateDailyState(
+            runRecords: [primerRun],
+            activeGoal: "Base Building",
+            experienceLevel: "Intermediate",
+            useMetric: true,
+            now: now
+        )
+
+        switch stateAfterPrimer {
+        case .preRun(let session):
+            XCTAssertNotNil(session.completedPrimerRun, "Completed primer must be attached to today's session")
+            XCTAssertEqual(session.completedPrimerRun?.id, primerRun.id)
+            XCTAssertTrue(session.completedPrimerRun?.workoutType.contains("Cadence Pyramids") == true)
+            XCTAssertEqual(session.completedPrimerRun?.distanceFormatted, "1.46 km")
+            XCTAssertEqual(session.mainRunDrillId, .zone2Run)
+        case .completedToday:
+            XCTFail("Completing only the short Pre-Run Primer must NOT hide today's Main Run")
+        }
+
+        // 2. Now user also completes the 40-min Zone 2 Main Run today -> transitions to .completedToday with BOTH runs
+        let mainRun = makeRun(
+            date: mainRunDate,
+            duration: 2401.0, // 40:01
+            distanceMeters: 4480.0,
+            workingAvgCadence: 153.0,
+            workingAvgHeartRate: 138.0,
+            detectedTypeRaw: "Easy Run",
+            framboiseTags: ["prescribedDrill", "zone_2_run", "drill:Zone 2 Run"],
+            isIndoor: true
+        )
+
+        let stateAfterMainRun = SessionSynthesisEngine.evaluateDailyState(
+            runRecords: [mainRun, primerRun],
+            activeGoal: "Base Building",
+            experienceLevel: "Intermediate",
+            useMetric: true,
+            now: now
+        )
+
+        switch stateAfterMainRun {
+        case .preRun:
+            XCTFail("Expected .completedToday after both Primer and Main Run are completed")
+        case .completedToday(let completedRun, _):
+            let allRuns = completedRun.allCompletedRunsToday
+            XCTAssertEqual(allRuns.count, 2, "Workouts page must reflect both the Cadence Pyramids drill and Zone 2 Run completed today")
+            XCTAssertEqual(allRuns[0].id, primerRun.id)
+            XCTAssertTrue(allRuns[0].workoutType.contains("Cadence Pyramids"))
+            XCTAssertEqual(allRuns[0].distanceFormatted, "1.46 km")
+            XCTAssertEqual(allRuns[1].id, mainRun.id)
+            XCTAssertTrue(allRuns[1].workoutType.contains("Zone 2 Run"))
+            XCTAssertEqual(allRuns[1].distanceFormatted, "4.48 km")
+        }
+    }
+
+    @MainActor
+    func testAdaptedPrimerTargetAndDuration_Preserves7m30sAnd155To161SPMAndIndoorFlag() {
+        let dto = DrillPrescriptionDTO(
+            title: "Cadence Pyramids",
+            preRunDrillId: PreRunDrillId.cadencePyramids.rawValue,
+            purpose: "Active recovery turnover",
+            targetCadence: "155–161 SPM (Adapted)",
+            previousCadence: 156,
+            durationMinutes: 10,
+            hapticMode: "On",
+            readinessState: ReadinessState.acuteFatigue.rawValue,
+            isIndoor: true
+        )
+
+        let item = ActiveDrillReadoutItem.adaptive(dto: dto, readiness: .productive)
+        XCTAssertEqual(item.readout.totalDurationSeconds, 450, "Trimmed 10-min Cadence Pyramids must be 7m 30s (450s), never 15m")
+        XCTAssertEqual(item.readout.formattedDuration, "7m 30s")
+        XCTAssertEqual(item.dto.targetCadence, "155-161")
+        XCTAssertEqual(item.dto.isIndoor, true)
+
+        let drill = PreRunDrill(
+            id: .cadencePyramids,
+            previousCadence: 156,
+            targetCadence: "155–161 SPM (Adapted)",
+            duration: .tenMinutes,
+            readinessState: .acuteFatigue,
+            isIndoor: true
+        )
+        XCTAssertEqual(drill.effectiveTargetCadence, 155...161)
+        XCTAssertEqual(drill.totalPhasesDurationSeconds, 450)
+        XCTAssertEqual(drill.coolDownDurationMinutes, 3.0)
     }
 }

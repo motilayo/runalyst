@@ -253,6 +253,10 @@ struct ContentView: View {
                             )
                             if let openDrills = try? modelContext.fetch(openDrillsDescriptor) {
                                 for drill in openDrills {
+                                    if let parentRunDate = drill.insight?.runRecord?.date,
+                                       parentRunDate >= dto.date {
+                                        continue
+                                    }
                                     let resolvedDrillId = drill.preRunDrillId.flatMap(PreRunDrillId.init(rawValue:))
                                         ?? PreRunDrillId.resolve(from: drill.drillTitle)
                                     let matchesId = drill.preRunDrillId.map { dto.framboiseTags.contains($0) } ?? false
@@ -263,8 +267,7 @@ struct ContentView: View {
                                         return dto.framboiseTags.contains(rId.rawValue) ||
                                                dto.framboiseTags.contains("drill:\(rId.title)") ||
                                                dto.framboiseTags.contains("drill:\(rId.rawValue)") ||
-                                               dto.detectedTypeRaw.localizedCaseInsensitiveCompare(rId.title) == .orderedSame ||
-                                               dto.detectedTypeRaw.localizedCaseInsensitiveCompare(rId.correspondingClassification) == .orderedSame
+                                               dto.detectedTypeRaw.localizedCaseInsensitiveCompare(rId.title) == .orderedSame
                                     }()
                                     if matchesTitle || matchesId || matchesTag || matchesResolved {
                                         drill.isCompleted = true
