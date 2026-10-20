@@ -272,4 +272,150 @@ final class ReadinessModifierTests: XCTestCase {
         let tags = await engine.generateFramboiseTags(cv: 0.02, slope: 0.0, deadStopsCount: 0, buckets: buckets)
         XCTAssertTrue(tags.contains("cardiacDrift"))
     }
+
+    // MARK: - Streak & Volume Compression Tests
+
+    @MainActor
+    private func makeTestRunRecord(
+        date: Date,
+        durationMinutes: Double,
+        distanceMeters: Double = 7000,
+        workingAvgCadence: Double = 160,
+        workingAvgHeartRate: Double = 145,
+        percentZone4: Double = 0.05,
+        detectedTypeRaw: String = "Easy Run"
+    ) -> RunRecord {
+        RunRecord(
+            hkWorkoutID: UUID(),
+            date: date,
+            totalDistanceMeters: distanceMeters,
+            duration: durationMinutes * 60,
+            rawAvgPace: 400,
+            rawAvgHeartRate: workingAvgHeartRate,
+            rawAvgCadence: workingAvgCadence,
+            workingAvgPace: 400,
+            workingAvgCadence: workingAvgCadence,
+            workingAvgHeartRate: workingAvgHeartRate,
+            paceCV: 0.04,
+            paceSlope: 0.0,
+            percentZone4: percentZone4,
+            detectedTypeRaw: detectedTypeRaw
+        )
+    }
+
+    @MainActor
+    func testStreakAndVolumeSummary_TwoConsecutiveDays_TriggersRestDayForIntermediate() {
+        let calendar = Calendar.current
+        let now = Date()
+        let today = calendar.startOfDay(for: now)
+        guard let yesterday = calendar.date(byAdding: .day, value: -1, to: today) else { return }
+
+        // 4-week historical volume: 3 runs/week of 50 min = 150 min/wk baseline
+        var history: [RunRecord] = []
+        for d in [4, 7, 10, 14, 17, 21, 24] {
+            if let pastDate = calendar.date(byAdding: .day, value: -d, to: today) {
+                history.append(makeTestRunRecord(
+                    date: pastDate,
+                    durationMinutes: 50,
+                    distanceMeters: 7000,
+                    workingAvgCadence: 160,
+                    workingAvgHeartRate: 145
+                ))
+            }
+        }
+
+        // Mon: 55m, Tue: 60m = 115m total in 48h
+        let monRun = makeTestRunRecord(
+            date: yesterday,
+            durationMinutes: 55,
+            distanceMeters: 8000,
+            workingAvgCadence: 155,
+            workingAvgHeartRate: 138,
+            detectedTypeRaw: "Steady Effort"
+        )
+        let tueRun = makeTestRunRecord(
+            date: today,
+            durationMinutes: 60,
+            distanceMeters: 9000,
+            workingAvgCadence: 155,
+            workingAvgHeartRate: 150,
+            detectedTypeRaw: "Easy Run"
+        )
+
+        let allRuns = [tueRun, monRun] + history
+        let summary = StreakAndVolumeSummary.evaluate(
+            runs: allRuns,
+            experienceLevel: "Intermediate",
+            trainingGoal: "General Fitness",
+            now: now
+        )
+
+        XCTAssertTrue(summary.shouldRecommendRestDay, "115m in 48h against ~150m/wk baseline must trigger rest for Intermediate")
+        XCTAssertEqual(summary.consecutiveRunDays, 2)
+        XCTAssertGreaterThan(summary.volumeRatio48h, summary.volumeCompressionThreshold)
+        XCTAssertNotNil(summary.restDayReason)
+        XCTAssertTrue(summary.restDayReason?.contains("48-Hour Volume Compression") ?? false)
+    }
+
+    @MainActor
+    func testStreakAndVolumeSummary_AdvancedRunnerWithHighVolume_DoesNotPrematurelyTriggerRest() {
+        let calendar = Calendar.current
+        let now = Date()
+        let today = calendar.startOfDay(for: now)
+        guard let yesterday = calendar.date(byAdding: .day, value: -1, to: today) else { return }
+
+        // Advanced marathoner: 300 min/week baseline
+        var history: [RunRecord] = []
+        for d in [3, 5, 8, 11, 14, 18, 22, 25] {
+            if let pastDate = calendar.date(byAdding: .day, value: -d, to: today) {
+                history.append(makeTestRunRecord(
+                    date: pastDate,
+                    durationMinutes: 75,
+                    distanceMeters: 12000,
+                    workingAvgCadence: 168,
+                    workingAvgHeartRate: 145
+                ))
+            }
+        }
+
+        // 2 days of modest volume: 45m + 45m = 90m (30% of baseline)
+        let run1 = makeTestRunRecord(
+            date: yesterday,
+            durationMinutes: 45,
+            distanceMeters: 8000,
+            workingAvgCadence: 168,
+            workingAvgHeartRate: 140
+        )
+        let run2 = makeTestRunRecord(
+            date: today,
+            durationMinutes: 45,
+            distanceMeters: 8000,
+            workingAvgCadence: 168,
+            workingAvgHeartRate: 142
+        )
+
+        let allRuns = [run2, run1] + history
+        let summary = StreakAndVolumeSummary.evaluate(
+            runs: allRuns,
+            experienceLevel: "Advanced",
+            trainingGoal: "Marathon",
+            now: now
+        )
+
+        XCTAssertFalse(summary.shouldRecommendRestDay, "Advanced marathoner running 2 moderate days should not be forced into rest")
+        XCTAssertEqual(summary.consecutiveRunDays, 2)
+    }
+
+    func testShortPrimers_DoNotTriggerConsecutiveHardDays() {
+        let now = Date()
+        // Two consecutive days with short 10-minute Pre-Run Primers (0% Zone 4)
+        let primer1 = makeRun(daysAgo: 1, distanceKm: 1.5, durationMinutes: 10.0, percentZone4: 0.0, type: "Strides", tags: ["prescribedDrill"], now: now)
+        let primer2 = makeRun(daysAgo: 0.1, distanceKm: 1.5, durationMinutes: 10.0, percentZone4: 0.0, type: "Cadence Pyramids", tags: ["prescribedDrill"], now: now)
+
+        XCTAssertFalse(primer1.isHardSession, "Short primer drill must not count as hard session")
+        XCTAssertFalse(primer2.isHardSession, "Short primer drill must not count as hard session")
+
+        let assessment = ReadinessEvaluator.assess(runs: [primer2, primer1], now: now)
+        XCTAssertFalse(assessment.triggers.contains(.consecutiveHardDays), "Primers must not trigger consecutive hard days")
+    }
 }

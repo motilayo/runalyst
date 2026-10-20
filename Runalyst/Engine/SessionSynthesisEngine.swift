@@ -10,6 +10,48 @@ struct MicrocycleDay: Identifiable, Sendable, Equatable {
     let isRestDay: Bool
 }
 
+/// Pure, date-addressable planned training session.
+public struct PlannedSession: Sendable, Equatable, Codable {
+    public enum Kind: String, Sendable, Codable {
+        case run
+        case rest
+    }
+    public let kind: Kind
+    public let title: String
+    public let minutesLow: Int
+    public let minutesHigh: Int
+    public let paceBand: String?
+    public let hrCap: String?
+    public let cadenceFloor: Int?
+    public let primerTitle: String?
+    public let adjustmentTriggers: [String]
+    public let provisional: Bool
+
+    public init(
+        kind: Kind,
+        title: String,
+        minutesLow: Int,
+        minutesHigh: Int,
+        paceBand: String? = nil,
+        hrCap: String? = nil,
+        cadenceFloor: Int? = nil,
+        primerTitle: String? = nil,
+        adjustmentTriggers: [String] = [],
+        provisional: Bool = false
+    ) {
+        self.kind = kind
+        self.title = title
+        self.minutesLow = minutesLow
+        self.minutesHigh = minutesHigh
+        self.paceBand = paceBand
+        self.hrCap = hrCap
+        self.cadenceFloor = cadenceFloor
+        self.primerTitle = primerTitle
+        self.adjustmentTriggers = adjustmentTriggers
+        self.provisional = provisional
+    }
+}
+
 /// Structured multi-part prescribed session synthesized deterministically.
 struct PrescribedDailySession: Sendable, Equatable {
     let targetGoal: String
@@ -31,6 +73,7 @@ struct PrescribedDailySession: Sendable, Equatable {
     var mainSessionTemplateId: PreRunDrillId = .zone2Run
     var mainRunDurationMinutes: Int = 30
     var completedPrimerRun: RunRecordSnapshot?
+    var isRestDay: Bool = false
 
     /// Backwards compatibility alias for code expecting `mainRunDrillId`.
     var mainRunDrillId: PreRunDrillId {
@@ -197,9 +240,13 @@ enum SessionSynthesisEngine {
         let recoveryTimeline = RecoveryTimeline.build(runs: snapshots, readiness: readiness, now: now)
         let cal = Calendar.current
         let sevenDaysAgo = cal.date(byAdding: .day, value: -7, to: now) ?? now.addingTimeInterval(-7 * 24 * 3600)
-        let hardSessionsLast7d = runRecords.filter {
-            !$0.isDeleted && $0.date <= now && $0.date >= sevenDaysAgo &&
-            ($0.percentZone4 >= 0.35 || $0.detectedTypeRaw == "Intervals" || $0.detectedTypeRaw == "Fartlek" || $0.detectedTypeRaw == "Tempo Run" || $0.detectedTypeRaw == "Pyramids" || $0.detectedTypeRaw == "Hill Repeats" || $0.detectedTypeRaw == "Progression Run" || $0.detectedTypeRaw == "Progression")
+        let hardSessionsLast7d = runRecords.filter { run in
+            guard !run.isDeleted && run.date <= now && run.date >= sevenDaysAgo else { return false }
+            let hasDrillTag = run.framboiseTags.contains("prescribedDrill") || run.prescribedDrillName != nil
+            if (hasDrillTag || run.duration <= 1200) && run.percentZone4 < 0.25 {
+                return false
+            }
+            return (run.percentZone4 >= 0.35 || run.detectedTypeRaw == "Intervals" || run.detectedTypeRaw == "Fartlek" || run.detectedTypeRaw == "Tempo Run" || run.detectedTypeRaw == "Pyramids" || run.detectedTypeRaw == "Hill Repeats" || run.detectedTypeRaw == "Progression Run" || run.detectedTypeRaw == "Progression")
         }.count
         let readyForQuality = (readiness.state == .productive) && !hadCardiacDrift && recoveryTimeline.readyForHard && (hardSessionsLast7d < 2)
 
@@ -231,6 +278,67 @@ enum SessionSynthesisEngine {
             guard let recent = recentRun else { return false }
             return recent.framboiseTags.contains(FramboiseReadinessTag.cadenceFade)
         }()
+
+        // Evaluate Streak & 48-Hour Volume Compression
+        let streakSummary = StreakAndVolumeSummary.evaluate(
+            runs: runRecords,
+            experienceLevel: experienceLevel,
+            trainingGoal: activeGoal,
+            now: now
+        )
+
+        if streakSummary.shouldRecommendRestDay {
+            let sessionTitle = "Rest & Structural Recovery Day"
+            let durationBand = "Rest Day (or 20m Walk/Mobility)"
+            let paceBand = "No Pacing Target"
+            let hrCap = "HR: Rest / < 125 BPM"
+            let cadenceFloor = 0
+            let rationale = streakSummary.restDayReason ?? "Scheduled rest day to consolidate aerobic adaptations and protect tendons."
+            let readinessStatus = "Scheduled Structural Recovery"
+            let primerDrillId: PreRunDrillId = .aerobicFlush
+            let primerTitle = "Optional 20m Zone 1 Flush"
+            let primerTarget = "\(baseCadence - 4)–\(baseCadence + 2) SPM"
+            let primerWork = "20 min active recovery jog • Keep HR in Zone 1"
+            let primerDuration = "20 min (Optional)"
+
+            let remainingHours = recoveryTimeline.readyForHard ? 0.0 : max(0.0, recoveryTimeline.requiredHours - (recoveryTimeline.hoursSinceLastHard ?? 0.0))
+            let microcycle = generateMicrocycle(
+                activeGoal: activeGoal,
+                now: now,
+                useMetric: useMetric,
+                isRecoveryWindow: true,
+                startsAfterTomorrow: false,
+                recoveryHoursRemaining: remainingHours,
+                hasRecentLongRun: false,
+                consecutiveRunDays: streakSummary.consecutiveRunDays,
+                isTomorrowRest: true
+            )
+
+            return PrescribedDailySession(
+                targetGoal: activeGoal,
+                sessionTitle: sessionTitle,
+                durationBand: durationBand,
+                paceBand: paceBand,
+                hrCap: hrCap,
+                cadenceFloor: cadenceFloor,
+                groundedRationale: rationale,
+                readinessStateText: readinessStatus,
+                readinessTriggerLead: streakSummary.volumeRatio48h >= streakSummary.volumeCompressionThreshold
+                    ? "48-Hour Volume Compression (\(Int(round(streakSummary.volumeRatio48h * 100)))% of weekly baseline)"
+                    : "Consecutive Day Streak Cap Reached (\(streakSummary.consecutiveRunDays) Days)",
+                primerDrillId: primerDrillId,
+                primerDrillTitle: primerTitle,
+                primerTargetCadence: primerTarget,
+                primerWorkDescription: primerWork,
+                primerPhasesDuration: primerDuration,
+                isTrimmed: true,
+                microcycle: microcycle,
+                mainSessionTemplateId: .aerobicFlush,
+                mainRunDurationMinutes: 20,
+                completedPrimerRun: nil,
+                isRestDay: true
+            )
+        }
 
         if readiness.state == .acuteFatigue || hadCardiacDrift {
             readinessStatus = hadCardiacDrift
@@ -428,7 +536,9 @@ enum SessionSynthesisEngine {
             useMetric: useMetric,
             isRecoveryWindow: isRecovery,
             recoveryHoursRemaining: recoveryTimeline.readyForHard ? 0 : (recoveryTimeline.requiredHours - (recoveryTimeline.hoursSinceLastHard ?? 0)),
-            hasRecentLongRun: runRecords.contains(where: { !$0.isDeleted && $0.date <= now && $0.date >= threeDaysAgo && ($0.detectedTypeRaw == "Long Run" || $0.totalDistanceMeters >= 12000.0) })
+            hasRecentLongRun: runRecords.contains(where: { !$0.isDeleted && $0.date <= now && $0.date >= threeDaysAgo && ($0.detectedTypeRaw == "Long Run" || $0.totalDistanceMeters >= 12000.0) }),
+            consecutiveRunDays: streakSummary.consecutiveRunDays,
+            isTomorrowRest: false
         )
 
         return PrescribedDailySession(
@@ -456,7 +566,7 @@ enum SessionSynthesisEngine {
         )
     }
 
-    private static func aerobicDurationForExperience(_ level: String) -> (band: String, minutes: Int) {
+    static func aerobicDurationForExperience(_ level: String) -> (band: String, minutes: Int) {
         if level.contains("Novice") {
             return ("25–35 Min", 30)
         } else if level.contains("Advanced") || level.contains("Competitive") || level.contains("Elite") {
@@ -499,6 +609,70 @@ enum SessionSynthesisEngine {
 
         let basePace = todayRun.workingAvgPace > 0 ? todayRun.workingAvgPace : rollingBasePace
         let baseCadence = todayRun.workingAvgCadence > 0 ? Int(todayRun.workingAvgCadence) : rollingBaseCadence
+
+        // Evaluate Streak & 48-Hour Volume Compression
+        let streakSummary = StreakAndVolumeSummary.evaluate(
+            runs: runRecords,
+            experienceLevel: context.experienceLevel,
+            trainingGoal: context.activeGoal,
+            now: context.now
+        )
+
+        if streakSummary.shouldRecommendRestDay {
+            let tomorrowTitle = "Rest & Structural Recovery Day"
+            let durationBand = "Rest Day (or 20m Walk/Mobility)"
+            let paceBand = "No Pacing Target"
+            let hrCap = "HR: Rest / < 125 BPM"
+            let cadenceFloor = 0
+            let rationale = streakSummary.restDayReason ?? "Scheduled rest day to consolidate aerobic adaptations and protect tendons."
+            let readinessState = "Scheduled Structural Recovery"
+            let triggerLead = streakSummary.volumeRatio48h >= streakSummary.volumeCompressionThreshold
+                ? "48-Hour Volume Compression (\(Int(round(streakSummary.volumeRatio48h * 100)))% of weekly baseline)"
+                : "Consecutive Day Streak Cap Reached (\(streakSummary.consecutiveRunDays) Days)"
+
+            let primerDrillId: PreRunDrillId = .aerobicFlush
+            let primerTitle = "Optional 20m Zone 1 Flush"
+            let primerTarget = "\(baseCadence - 4)–\(baseCadence + 2) SPM"
+            let primerWork = "20 min active recovery jog • Keep HR in Zone 1"
+            let primerDuration = "20 min (Optional)"
+
+            let tomorrowDate = Calendar.current.date(byAdding: .day, value: 1, to: context.now) ?? context.now
+            let microcycle = generateMicrocycle(
+                activeGoal: context.activeGoal,
+                now: tomorrowDate,
+                useMetric: context.useMetric,
+                isRecoveryWindow: true,
+                startsAfterTomorrow: true,
+                recoveryHoursRemaining: 24.0,
+                hasRecentLongRun: false,
+                consecutiveRunDays: streakSummary.consecutiveRunDays,
+                isTomorrowRest: true
+            )
+
+            return PrescribedDailySession(
+                targetGoal: context.activeGoal,
+                sessionTitle: tomorrowTitle,
+                durationBand: durationBand,
+                paceBand: paceBand,
+                hrCap: hrCap,
+                cadenceFloor: cadenceFloor,
+                groundedRationale: rationale,
+                readinessStateText: readinessState,
+                readinessTriggerLead: triggerLead,
+                primerDrillId: primerDrillId,
+                primerDrillTitle: primerTitle,
+                primerTargetCadence: primerTarget,
+                primerWorkDescription: primerWork,
+                primerPhasesDuration: primerDuration,
+                isTrimmed: true,
+                microcycle: microcycle,
+                mainSessionTemplateId: .aerobicFlush,
+                mainRunDurationMinutes: 20,
+                completedPrimerRun: nil,
+                isRestDay: true
+            )
+        }
+
         let wasHardSession = todayRun.percentZone4 >= 0.20 || todayRun.detectedTypeRaw == "Intervals" || todayRun.detectedTypeRaw == "Fartlek" || todayRun.detectedTypeRaw == "Tempo Run"
 
         let tomorrowTitle = wasHardSession ? "Zone 1 Active Recovery Flush" : "Zone 2 Easy Aerobic Base"
@@ -542,7 +716,10 @@ enum SessionSynthesisEngine {
             useMetric: context.useMetric,
             isRecoveryWindow: wasHardSession,
             startsAfterTomorrow: true,
-            recoveryHoursRemaining: wasHardSession ? 48.0 : 0.0
+            recoveryHoursRemaining: wasHardSession ? 48.0 : 0.0,
+            hasRecentLongRun: false,
+            consecutiveRunDays: streakSummary.consecutiveRunDays,
+            isTomorrowRest: false
         )
 
         return PrescribedDailySession(
@@ -564,7 +741,8 @@ enum SessionSynthesisEngine {
             microcycle: microcycle,
             mainSessionTemplateId: wasHardSession ? .aerobicFlush : .zone2Run,
             mainRunDurationMinutes: mainRunDurationMinutes,
-            completedPrimerRun: nil
+            completedPrimerRun: nil,
+            isRestDay: false
         )
     }
 
@@ -618,6 +796,238 @@ enum SessionSynthesisEngine {
         )
     }
 
+    // MARK: - Date-Addressable Planner (Pure OOP Timeline)
+
+    /// Deterministically computes the planned session for any target date.
+    /// Invariant: Target date session is pure and stable regardless of query window.
+    @MainActor
+    public static func plannedSession(
+        on targetDate: Date,
+        runRecords: [RunRecord],
+        activeGoal: String,
+        profile: RunnerProfile,
+        useMetric: Bool,
+        now: Date = Date(),
+        calendar: Calendar = Calendar(identifier: .gregorian)
+    ) -> PlannedSession {
+        let targetDay = calendar.startOfDay(for: targetDate)
+        let today = calendar.startOfDay(for: now)
+        let tomorrow = calendar.date(byAdding: .day, value: 1, to: today) ?? today
+
+        let dailyState = evaluateDailyState(
+            runRecords: runRecords,
+            activeGoal: activeGoal,
+            experienceLevel: profile.experienceLevel,
+            useMetric: useMetric,
+            userHeightCm: profile.userHeightCm,
+            now: now
+        )
+
+        // 1. Target day is Today: Return today's exact synthesized prescription
+        if targetDay == today {
+            switch dailyState {
+            case .preRun(let session):
+                return PlannedSession(
+                    kind: session.isRestDay ? .rest : .run,
+                    title: session.sessionTitle,
+                    minutesLow: session.isRestDay ? 0 : max(15, session.mainRunDurationMinutes - 5),
+                    minutesHigh: session.isRestDay ? 0 : session.mainRunDurationMinutes,
+                    paceBand: session.isRestDay ? nil : session.paceBand,
+                    hrCap: session.hrCap,
+                    cadenceFloor: session.cadenceFloor > 0 ? session.cadenceFloor : nil,
+                    primerTitle: session.isRestDay ? nil : session.primerDrillTitle,
+                    adjustmentTriggers: session.isTrimmed ? ["readiness_adjusted"] : [],
+                    provisional: false
+                )
+            case .completedToday:
+                let (band, targetMins) = aerobicDurationForExperience(profile.experienceLevel)
+                _ = band
+                return PlannedSession(
+                    kind: .run,
+                    title: "Zone 2 Easy Aerobic Base",
+                    minutesLow: targetMins > 10 ? (targetMins - 10) : targetMins,
+                    minutesHigh: targetMins,
+                    paceBand: nil,
+                    hrCap: "< 152 BPM",
+                    cadenceFloor: profile.heightAdjustedCadenceFloor,
+                    primerTitle: "Cadence Pyramids",
+                    adjustmentTriggers: [],
+                    provisional: false
+                )
+            }
+        }
+
+        // 2. Target day is Tomorrow: Return tomorrow's exact prescription (adapted for 48h volume & streak)
+        if targetDay == tomorrow {
+            let tomorrowSession: PrescribedDailySession
+            switch dailyState {
+            case .completedToday(_, let tomorrow):
+                tomorrowSession = tomorrow
+            case .preRun:
+                let dummyContext = SynthesisContext(
+                    activeGoal: activeGoal,
+                    experienceLevel: profile.experienceLevel,
+                    useMetric: useMetric,
+                    userHeightCm: profile.userHeightCm,
+                    now: now
+                )
+                let latestRun = runRecords.first(where: { !$0.isDeleted && $0.date <= now }) ?? RunRecord(
+                    hkWorkoutID: UUID(),
+                    date: now,
+                    totalDistanceMeters: 5000,
+                    duration: 1800,
+                    rawAvgPace: 360,
+                    rawAvgHeartRate: 140,
+                    rawAvgCadence: 160,
+                    workingAvgPace: 360,
+                    workingAvgCadence: 160,
+                    workingAvgHeartRate: 140,
+                    paceCV: 0.05,
+                    paceSlope: 0.0,
+                    percentZone4: 0.0,
+                    detectedTypeRaw: "Easy Run"
+                )
+                tomorrowSession = synthesizeTomorrowPrescription(todayRun: latestRun, runRecords: runRecords, context: dummyContext)
+            }
+
+            var triggers: [String] = []
+            if tomorrowSession.isRestDay {
+                triggers.append("volume_compression")
+            }
+            if tomorrowSession.isTrimmed {
+                triggers.append("recovery_window")
+            }
+
+            return PlannedSession(
+                kind: tomorrowSession.isRestDay ? .rest : .run,
+                title: tomorrowSession.sessionTitle,
+                minutesLow: tomorrowSession.isRestDay ? 0 : max(15, tomorrowSession.mainRunDurationMinutes - 5),
+                minutesHigh: tomorrowSession.isRestDay ? 0 : tomorrowSession.mainRunDurationMinutes,
+                paceBand: tomorrowSession.isRestDay ? nil : tomorrowSession.paceBand,
+                hrCap: tomorrowSession.hrCap,
+                cadenceFloor: tomorrowSession.cadenceFloor > 0 ? tomorrowSession.cadenceFloor : nil,
+                primerTitle: tomorrowSession.isRestDay ? nil : tomorrowSession.primerDrillTitle,
+                adjustmentTriggers: triggers,
+                provisional: false
+            )
+        }
+
+        // 3. Target day is past or beyond tomorrow: Pure weekly template indexed by weekday position
+        var cal = calendar
+        cal.firstWeekday = 1 // Sunday
+        let weekday = cal.component(.weekday, from: targetDay) // 1 = Sun, 7 = Sat
+        return templateSessionForWeekday(weekday: weekday, activeGoal: activeGoal, profile: profile, useMetric: useMetric)
+    }
+
+    /// Pure weekday template for goals (Sun = 1, Mon = 2, Tue = 3, Wed = 4, Thu = 5, Fri = 6, Sat = 7).
+    public static func templateSessionForWeekday(
+        weekday: Int,
+        activeGoal: String,
+        profile: RunnerProfile,
+        useMetric: Bool
+    ) -> PlannedSession {
+        let (aerobicBand, defaultMins) = aerobicDurationForExperience(profile.experienceLevel)
+        _ = aerobicBand
+
+        if activeGoal.localizedCaseInsensitiveContains("5K") {
+            switch weekday {
+            case 1: // Sun
+                return PlannedSession(kind: .run, title: useMetric ? "Aerobic Consistency Run (5 km)" : "Aerobic Consistency Run (3 mi)", minutesLow: 25, minutesHigh: 35, provisional: true)
+            case 2: // Mon
+                return PlannedSession(kind: .run, title: "4x800m 5K Rhythm Intervals (35m)", minutesLow: 30, minutesHigh: 35, primerTitle: "Rhythm Intervals", provisional: true)
+            case 3: // Tue
+                return PlannedSession(kind: .run, title: useMetric ? "5 km Easy Aerobic Run" : "3 mi Easy Aerobic Run", minutesLow: 25, minutesHigh: 30, provisional: true)
+            case 4: // Wed
+                return PlannedSession(kind: .rest, title: "Rest Day", minutesLow: 0, minutesHigh: 0, provisional: true)
+            case 5: // Thu
+                return PlannedSession(kind: .run, title: "8x1 min Hill Surges (30m)", minutesLow: 25, minutesHigh: 30, primerTitle: "Cadence Pyramids", provisional: true)
+            case 6: // Fri
+                return PlannedSession(kind: .run, title: useMetric ? "5 km Easy Aerobic Run" : "3 mi Easy Aerobic Run", minutesLow: 25, minutesHigh: 30, provisional: true)
+            case 7: // Sat
+                return PlannedSession(kind: .run, title: useMetric ? "Long Run 7 km" : "Long Run 4.5 mi", minutesLow: 40, minutesHigh: 50, provisional: true)
+            default:
+                return PlannedSession(kind: .run, title: "Easy Aerobic Run", minutesLow: 30, minutesHigh: 35, provisional: true)
+            }
+        } else if activeGoal.localizedCaseInsensitiveContains("10K") {
+            switch weekday {
+            case 1: // Sun
+                return PlannedSession(kind: .run, title: useMetric ? "Aerobic Consistency Run (6 km)" : "Aerobic Consistency Run (3.5 mi)", minutesLow: 30, minutesHigh: 40, provisional: true)
+            case 2: // Mon
+                return PlannedSession(kind: .run, title: "5x1 km Threshold Intervals (40m)", minutesLow: 35, minutesHigh: 40, primerTitle: "Rhythm Intervals", provisional: true)
+            case 3: // Tue
+                return PlannedSession(kind: .run, title: useMetric ? "6 km Easy Aerobic Run" : "3.5 mi Easy Aerobic Run", minutesLow: 30, minutesHigh: 35, provisional: true)
+            case 4: // Wed
+                return PlannedSession(kind: .rest, title: "Rest Day", minutesLow: 0, minutesHigh: 0, provisional: true)
+            case 5: // Thu
+                return PlannedSession(kind: .run, title: "Tempo Progression (35m)", minutesLow: 30, minutesHigh: 35, primerTitle: "Tempo Surges", provisional: true)
+            case 6: // Fri
+                return PlannedSession(kind: .run, title: useMetric ? "6 km Easy Aerobic Run" : "3.5 mi Easy Aerobic Run", minutesLow: 30, minutesHigh: 35, provisional: true)
+            case 7: // Sat
+                return PlannedSession(kind: .run, title: useMetric ? "Long Run 10 km" : "Long Run 6 mi", minutesLow: 50, minutesHigh: 65, provisional: true)
+            default:
+                return PlannedSession(kind: .run, title: "Easy Aerobic Run", minutesLow: 30, minutesHigh: 35, provisional: true)
+            }
+        } else if activeGoal.localizedCaseInsensitiveContains("Half") || activeGoal.localizedCaseInsensitiveContains("Marathon") {
+            switch weekday {
+            case 1: // Sun
+                return PlannedSession(kind: .run, title: useMetric ? "Aerobic Consistency Run (8 km)" : "Aerobic Consistency Run (5 mi)", minutesLow: 40, minutesHigh: 50, provisional: true)
+            case 2: // Mon
+                return PlannedSession(kind: .run, title: "Zone 2 Steady (45m)", minutesLow: 40, minutesHigh: 45, primerTitle: "Cadence Pyramids", provisional: true)
+            case 3: // Tue
+                return PlannedSession(kind: .run, title: useMetric ? "6 km Easy Aerobic Run" : "3.5 mi Easy Aerobic Run", minutesLow: 30, minutesHigh: 35, provisional: true)
+            case 4: // Wed
+                return PlannedSession(kind: .rest, title: "Rest Day", minutesLow: 0, minutesHigh: 0, provisional: true)
+            case 5: // Thu
+                return PlannedSession(kind: .run, title: "Tempo Surges (35m)", minutesLow: 30, minutesHigh: 35, primerTitle: "Tempo Surges", provisional: true)
+            case 6: // Fri
+                return PlannedSession(kind: .run, title: useMetric ? "Zone 1 Recovery Flush (40m)" : "Zone 1 Recovery Flush (40m)", minutesLow: 35, minutesHigh: 40, provisional: true)
+            case 7: // Sat
+                return PlannedSession(kind: .run, title: useMetric ? "Long Run 14 km" : "Long Run 8.5 mi", minutesLow: 70, minutesHigh: 90, provisional: true)
+            default:
+                return PlannedSession(kind: .run, title: "Easy Aerobic Run", minutesLow: 35, minutesHigh: 45, provisional: true)
+            }
+        } else if activeGoal.localizedCaseInsensitiveContains("Recovery") || activeGoal.localizedCaseInsensitiveContains("Injury") {
+            switch weekday {
+            case 1: // Sun
+                return PlannedSession(kind: .run, title: "Zone 1 Easy Aerobic (30m)", minutesLow: 25, minutesHigh: 30, provisional: true)
+            case 2: // Mon
+                return PlannedSession(kind: .rest, title: "Rest & Mobility Day", minutesLow: 0, minutesHigh: 0, provisional: true)
+            case 3: // Tue
+                return PlannedSession(kind: .run, title: "Zone 1 Recovery Flush (25m)", minutesLow: 20, minutesHigh: 25, provisional: true)
+            case 4: // Wed
+                return PlannedSession(kind: .rest, title: "Rest Day", minutesLow: 0, minutesHigh: 0, provisional: true)
+            case 5: // Thu
+                return PlannedSession(kind: .run, title: "Walk-Jog Progression (20m)", minutesLow: 15, minutesHigh: 20, provisional: true)
+            case 6: // Fri
+                return PlannedSession(kind: .rest, title: "Rest Day", minutesLow: 0, minutesHigh: 0, provisional: true)
+            case 7: // Sat
+                return PlannedSession(kind: .run, title: "Zone 1 Easy Aerobic (30m)", minutesLow: 25, minutesHigh: 30, provisional: true)
+            default:
+                return PlannedSession(kind: .run, title: "Recovery Flush (20m)", minutesLow: 15, minutesHigh: 20, provisional: true)
+            }
+        } else {
+            // Base Building / Just for Fun (Aerobic Foundation)
+            switch weekday {
+            case 1: // Sun
+                return PlannedSession(kind: .run, title: "Aerobic Consistency Run (35m)", minutesLow: 30, minutesHigh: 35, paceBand: "Zone 2 Base", primerTitle: "Cadence Pyramids", provisional: true)
+            case 2: // Mon
+                return PlannedSession(kind: .run, title: useMetric ? "Aerobic Long Run (8 km)" : "Aerobic Long Run (5 mi)", minutesLow: 45, minutesHigh: 55, paceBand: "Zone 2 Base", primerTitle: "Strides", provisional: true)
+            case 3: // Tue
+                return PlannedSession(kind: .run, title: "Zone 2 Easy Aerobic Base", minutesLow: max(25, defaultMins - 5), minutesHigh: defaultMins, paceBand: "Zone 2 Base", primerTitle: "Cadence Pyramids", provisional: true)
+            case 4: // Wed
+                return PlannedSession(kind: .rest, title: "Rest Day", minutesLow: 0, minutesHigh: 0, provisional: true)
+            case 5: // Thu
+                return PlannedSession(kind: .run, title: "Zone 1 Recovery Flush (40m)", minutesLow: 35, minutesHigh: 40, paceBand: "Zone 1 Flush", primerTitle: "Optional 10m Walk", provisional: true)
+            case 6: // Fri
+                return PlannedSession(kind: .run, title: "Easy Aerobic Base (30m)", minutesLow: 25, minutesHigh: 30, paceBand: "Zone 2 Base", primerTitle: "Rhythm Intervals", provisional: true)
+            case 7: // Sat
+                return PlannedSession(kind: .rest, title: "Rest Day", minutesLow: 0, minutesHigh: 0, provisional: true)
+            default:
+                return PlannedSession(kind: .run, title: "Zone 2 Steady (40m)", minutesLow: 35, minutesHigh: 40, paceBand: "Zone 2 Base", provisional: true)
+            }
+        }
+    }
+
     static func generateMicrocycle(
         activeGoal: String,
         now: Date,
@@ -625,11 +1035,25 @@ enum SessionSynthesisEngine {
         isRecoveryWindow: Bool = false,
         startsAfterTomorrow: Bool = false,
         recoveryHoursRemaining: Double = 0.0,
-        hasRecentLongRun: Bool = false
+        hasRecentLongRun: Bool = false,
+        consecutiveRunDays: Int = 0,
+        isTomorrowRest: Bool = false
     ) -> [MicrocycleDay] {
         let calendar = Calendar.current
         var days: [MicrocycleDay] = []
         let dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+
+        // Dynamic Rest Day Placement:
+        // As streak increases, the scheduled rest day shifts earlier rather than remaining permanently 3 days out.
+        let restOffset: Int = {
+            if isTomorrowRest && !startsAfterTomorrow {
+                return 1
+            }
+            if startsAfterTomorrow {
+                return 3
+            }
+            return max(1, min(4, 3 - max(0, consecutiveRunDays - 1)))
+        }()
 
         for offset in 1...5 {
             guard let targetDate = calendar.date(byAdding: .day, value: offset, to: now) else { continue }
@@ -640,7 +1064,11 @@ enum SessionSynthesisEngine {
             var iconName: String
             var isRest: Bool
 
-            if activeGoal.localizedCaseInsensitiveContains("5K") {
+            if offset == restOffset {
+                sessionTitle = "Rest Day"
+                iconName = "bed.double.fill"
+                isRest = true
+            } else if activeGoal.localizedCaseInsensitiveContains("5K") {
                 switch offset {
                 case 1:
                     if isRecoveryWindow {
@@ -657,9 +1085,9 @@ enum SessionSynthesisEngine {
                     iconName = "figure.run"
                     isRest = false
                 case 3:
-                    sessionTitle = "Rest Day"
-                    iconName = "bed.double.fill"
-                    isRest = true
+                    sessionTitle = useMetric ? "5 km Easy Aerobic Run" : "3 mi Easy Aerobic Run"
+                    iconName = "figure.run"
+                    isRest = false
                 case 4:
                     sessionTitle = "8x1 min Hill Surges (30m)"
                     iconName = "mountain.2.fill"
@@ -695,9 +1123,9 @@ enum SessionSynthesisEngine {
                     iconName = "figure.run"
                     isRest = false
                 case 3:
-                    sessionTitle = "Rest Day"
-                    iconName = "bed.double.fill"
-                    isRest = true
+                    sessionTitle = useMetric ? "6 km Easy Aerobic Run" : "3.5 mi Easy Aerobic Run"
+                    iconName = "figure.run"
+                    isRest = false
                 case 4:
                     sessionTitle = "Tempo Progression (35m)"
                     iconName = "bolt.fill"
@@ -739,9 +1167,9 @@ enum SessionSynthesisEngine {
                         isRest = false
                     }
                 case 3:
-                    sessionTitle = "Rest Day"
-                    iconName = "bed.double.fill"
-                    isRest = true
+                    sessionTitle = "Zone 2 Steady 45m"
+                    iconName = "figure.run"
+                    isRest = false
                 case 4:
                     sessionTitle = useMetric ? "Half Marathon Progress (8 km)" : "Half Marathon Progress (5 mi)"
                     iconName = "waveform.path.ecg"
@@ -783,9 +1211,9 @@ enum SessionSynthesisEngine {
                         isRest = false
                     }
                 case 3:
-                    sessionTitle = "Rest Day"
-                    iconName = "bed.double.fill"
-                    isRest = true
+                    sessionTitle = "Zone 2 Steady 45m"
+                    iconName = "figure.run"
+                    isRest = false
                 case 4:
                     sessionTitle = useMetric ? "Marathon Pace Progress (8 km)" : "Marathon Pace Progress (5 mi)"
                     iconName = "waveform.path.ecg"
@@ -849,9 +1277,9 @@ enum SessionSynthesisEngine {
                     iconName = "figure.run"
                     isRest = false
                 case 3:
-                    sessionTitle = "Rest Day"
-                    iconName = "bed.double.fill"
-                    isRest = true
+                    sessionTitle = useMetric ? "Easy Aerobic Base (5 km)" : "Easy Aerobic Base (3 mi)"
+                    iconName = "figure.run"
+                    isRest = false
                 case 4:
                     sessionTitle = "Aerobic Consistency Run (35m)"
                     iconName = "waveform.path"

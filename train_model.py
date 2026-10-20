@@ -85,6 +85,12 @@ def train_and_export():
             "paceSlope": 0.0, "runnerStage": 1, "durationMinutes": 30.0, "cadenceCV": 0.010,
             "hrCV": 0.015
         }, "Recovery Run"),
+        ("Indoor Treadmill Zone 2 Easy Run (Oct 20 Incident)", {
+            "paceDelta": 86.5, "hrDelta": -4.0, "percentZone4": 0.012,
+            "cadenceDelta": -4.0, "verticalOscillation": 9.5, "cv": 0.035,
+            "paceSlope": 0.0, "runnerStage": 1, "durationMinutes": 42.0, "cadenceCV": 0.038,
+            "hrCV": 0.058
+        }, "Easy Run"),
     ]
 
     print("\n--- Validation Test Suite ---")

@@ -112,11 +112,6 @@ struct DrillInterstitialReadoutView: View {
                     .background(Color(UIColor.secondarySystemGroupedBackground))
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
-                    // 0. Readiness Modifier (ACWR) — only when today's prescription was adapted
-                    if readout.isReadinessAdjusted {
-                        readinessCard
-                    }
-
                     // 1. Overview
                     VStack(alignment: .leading, spacing: 6) {
                         HStack(spacing: 5) {

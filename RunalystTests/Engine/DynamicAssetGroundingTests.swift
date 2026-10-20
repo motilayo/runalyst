@@ -171,28 +171,35 @@ final class DynamicAssetGroundingTests: XCTestCase {
         XCTAssertEqual(decoded.metric_explainers?["cadence_floor"], "Anatomical threshold calculated from height.")
     }
 
-    func testReadinessToolResponseJSONRoundTrip() throws {
-        let response = ReadinessToolResponse(
-            schema_name: "READINESS_AND_PRESCRIPTION_RESPONSE",
-            readiness_verdict: "CLEARED_FOR_TRAINING",
-            recovery_status: "Fully recovered.",
-            prescribed_session_name: "Zone 2 Steady Run",
-            intensity_category: "Zone 2 Aerobic Base",
-            prescribed_pace_band: "5:45 - 6:05 /km",
-            prescribed_duration_band: "35 - 45 min",
-            prescribed_cadence_band: "160 - 166 SPM",
-            session_rationale: "Build aerobic base.",
-            guidance_notes: [
-                "recovery_policy": "48 hours between hard sessions."
-            ]
+    func testReadinessFactsJSONRoundTrip() throws {
+        let response = ReadinessFacts(
+            readiness_state: "productive",
+            acwr: 1.05,
+            streak_days: 2,
+            streak_limit: 4,
+            last_48h_minutes: 60.0,
+            weekly_avg_minutes: 150.0,
+            volume_ratio_48h: 0.4,
+            volume_threshold: 0.5,
+            hr_shift_bpm: 2.0,
+            today_minutes: 30.0,
+            today_target_minutes: 30,
+            today_completion_percent: 100,
+            second_run_advisable: false,
+            limiting_factors: ["daily_volume_satisfied"],
+            experience_level: "Intermediate",
+            training_goal: "Base Building",
+            cadence_floor_spm: 156
         )
 
         let encoder = JSONEncoder()
         let data = try encoder.encode(response)
         let decoder = JSONDecoder()
-        let decoded = try decoder.decode(ReadinessToolResponse.self, from: data)
+        let decoded = try decoder.decode(ReadinessFacts.self, from: data)
 
-        XCTAssertEqual(decoded.guidance_notes?["recovery_policy"], "48 hours between hard sessions.")
+        XCTAssertEqual(decoded.readiness_state, "productive")
+        XCTAssertEqual(decoded.second_run_advisable, false)
+        XCTAssertEqual(decoded.limiting_factors, ["daily_volume_satisfied"])
     }
 
     // MARK: - AC-3: Execute Coach Action .displayExplainer

@@ -103,7 +103,7 @@ final class WorkoutBridge {
         return false
     }
 
-    nonisolated private static func extractAllStrings(from dict: [String: Any]?) -> [String] {
+    nonisolated static func extractAllStrings(from dict: [String: Any]?) -> [String] {
         guard let dict = dict else { return [] }
         var result: [String] = []
         for (_, val) in dict {

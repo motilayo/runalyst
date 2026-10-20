@@ -15,6 +15,7 @@ struct AnalystChatView: View {
     @State private var isShowingDrillsLibrary: Bool = false
     @AppStorage("lastWatchExportTimestamp") private var lastWatchExportTimestamp: Double = 0
     @AppStorage("lastExportedDrillId") private var lastExportedDrillId: String = ""
+    @AppStorage("preferredWorkoutIsIndoor") private var preferredWorkoutIsIndoor: Bool = false
 
     let runRecord: RunRecord
     let mode: AnalystChatMode
@@ -345,12 +346,20 @@ struct AnalystChatView: View {
                     }
 
                     if let session = message.attachedSession {
-                        InlineChatNextSessionCard(
+                        PrescribedSessionCardView(
                             session: session,
-                            onOpenDrill: {
-                                openDrillReadout(drillId: session.primerDrillId)
+                            isToday: !isRunToday,
+                            preferredWorkoutIsIndoor: $preferredWorkoutIsIndoor,
+                            onPreviewPrimer: {
+                                openPrimerReadout(for: session)
+                            },
+                            onPreviewMainRun: {
+                                openMainRunReadout(for: session)
                             }
                         )
+                    }
+                    if let schedule = message.attachedSchedule {
+                        UpcomingScheduleCardView(microcycle: schedule)
                     }
                     if let drillId = message.attachedDrillId {
                         InlineChatDrillCard(
@@ -560,188 +569,46 @@ struct AnalystChatView: View {
         )
     }
 
-}
-
-/// An inline workout card surfaced directly inside chat messages displaying the upcoming prescribed session.
-struct InlineChatNextSessionCard: View {
-    let session: PrescribedDailySession
-    let onOpenDrill: () -> Void
-
-    @Query(sort: \RunRecord.date, order: .reverse) private var runRecords: [RunRecord]
-
     private var isRunToday: Bool {
         guard let latest = runRecords.first else { return false }
         return Calendar.current.isDateInToday(latest.date)
     }
 
-    private var timingBadgeText: String {
-        isRunToday ? "TOMORROW'S TARGET" : "TODAY'S WORKOUT"
-    }
-
-    private var timingBadgeColor: Color {
-        isRunToday ? Color(red: 0.0, green: 0.55, blue: 1.0) : Color(red: 0.0, green: 0.75, blue: 0.65)
-    }
-
-    private var timingBadgeIcon: String {
-        isRunToday ? "arrow.forward.circle.fill" : "sparkles"
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Header: Timing Badge + Goal Pill
-            HStack {
-                Label(timingBadgeText, systemImage: timingBadgeIcon)
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(timingBadgeColor)
-
-                Spacer()
-
-                Text(session.targetGoal)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(.secondary)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(Color(UIColor.tertiarySystemGroupedBackground))
-                    .clipShape(Capsule())
-            }
-
-            // Title & Rationale
-            VStack(alignment: .leading, spacing: 4) {
-                Text(session.sessionTitle)
-                    .font(.headline.weight(.bold))
-                    .foregroundColor(.primary)
-
-                Text(session.groundedRationale)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .lineSpacing(2)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            // Pre-Run Primer Box
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 6) {
-                    Text("PRE-RUN PRIMER")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(session.primerDrillId.iconColor)
-
-                    Spacer()
-
-                    Text(session.primerPhasesDuration)
-                        .font(.system(size: 10, weight: .semibold).monospacedDigit())
-                        .foregroundColor(.secondary)
-                }
-
-                HStack(spacing: 10) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(session.primerDrillId.iconColor.opacity(0.15))
-                            .frame(width: 32, height: 32)
-                        Image(systemName: session.primerDrillId.iconName)
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundColor(session.primerDrillId.iconColor)
-                    }
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(session.primerDrillTitle)
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundColor(.primary)
-
-                        Text("Target: \(session.primerTargetCadence)")
-                            .font(.caption2.weight(.medium).monospacedDigit())
-                            .foregroundColor(session.primerDrillId.iconColor)
-                    }
-
-                    Spacer()
-
-                    Button(action: onOpenDrill) {
-                        Text("Review")
-                            .font(.caption.bold())
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 5)
-                            .background(Color(UIColor.secondarySystemFill))
-                            .foregroundColor(.primary)
-                            .clipShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(10)
-            .background(Color(UIColor.tertiarySystemGroupedBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-
-            // Main Run Prescription Metrics
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("MAIN RUN TARGETS")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(Color(red: 0.0, green: 0.55, blue: 1.0))
-                    Spacer()
-                }
-
-                HStack(spacing: 8) {
-                    metricTile(label: "Pace", value: session.paceBand, color: Color(red: 0.0, green: 0.55, blue: 1.0))
-                    metricTile(label: "Duration", value: session.durationBand, color: .primary)
-                }
-                HStack(spacing: 8) {
-                    metricTile(
-                        label: "Cadence",
-                        value: "≥ \(session.cadenceFloor) SPM",
-                        color: Color(red: 0.18, green: 0.82, blue: 0.35)
-                    )
-                    metricTile(
-                        label: "Heart Rate",
-                        value: session.hrCap,
-                        color: Color(red: 1.0, green: 0.18, blue: 0.55)
-                    )
-                }
-            }
-            .padding(10)
-            .background(Color(UIColor.tertiarySystemGroupedBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-
-            // Action Button
-            Button(action: onOpenDrill) {
-                HStack(spacing: 6) {
-                    Image(systemName: "play.fill")
-                        .font(.caption.weight(.bold))
-                    Text("Start \(session.primerDrillTitle)")
-                        .font(.subheadline.weight(.semibold))
-                }
-                .foregroundColor(.white)
-                .frame(maxWidth: .infinity)
-                .frame(minHeight: 44)
-                .background(Color.accentColor)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(14)
-        .background(Color(UIColor.secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(timingBadgeColor.opacity(0.3), lineWidth: 1)
+    private func openPrimerReadout(for session: PrescribedDailySession) {
+        let dto = DrillPrescriptionDTO(
+            title: session.primerDrillTitle,
+            preRunDrillId: session.primerDrillId.rawValue,
+            purpose: session.groundedRationale,
+            targetCadence: session.primerTargetCadence,
+            previousCadence: session.cadenceFloor,
+            durationMinutes: session.primerDrillId.defaultDuration.rawValue,
+            hapticMode: "On",
+            readinessState: session.isTrimmed ? ReadinessState.acuteFatigue.rawValue : nil,
+            isIndoor: preferredWorkoutIsIndoor
         )
-        .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 2)
+        activeReadoutItem = ActiveDrillReadoutItem.fromPrescription(
+            dto: dto,
+            customCoachingTip: session.groundedRationale
+        )
     }
 
-    private func metricTile(label: String, value: String, color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(label.uppercased())
-                .font(.system(size: 9, weight: .bold))
-                .foregroundColor(.secondary)
-            Text(value)
-                .font(.system(size: 11, weight: .semibold).monospacedDigit())
-                .foregroundColor(color)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
-        .background(Color(UIColor.secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    private func openMainRunReadout(for session: PrescribedDailySession) {
+        let mainDrillId = session.mainSessionTemplateId
+        let dto = DrillPrescriptionDTO(
+            title: session.sessionTitle,
+            preRunDrillId: mainDrillId.rawValue,
+            purpose: session.groundedRationale,
+            targetCadence: mainDrillId.isHeartRateTargeted ? nil : "\(session.cadenceFloor)-\(session.cadenceFloor + 6)",
+            previousCadence: session.cadenceFloor,
+            durationMinutes: session.mainRunDurationMinutes,
+            hapticMode: "On",
+            readinessState: session.isTrimmed ? ReadinessState.acuteFatigue.rawValue : nil,
+            isIndoor: preferredWorkoutIsIndoor
+        )
+        activeReadoutItem = ActiveDrillReadoutItem.fromPrescription(
+            dto: dto,
+            customCoachingTip: session.groundedRationale
+        )
     }
 }
 

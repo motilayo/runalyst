@@ -45,9 +45,11 @@ actor ModelManager {
         rawAverageHR: Double? = nil
     ) async -> ClassificationResult {
         let framboise = FramboiseEngine()
-        let cycles = await framboise.extractOscillationCycles(buckets: buckets)
+        let effectiveBuckets = isIndoor ? await framboise.filterRunningSamples(buckets: buckets) : buckets
+        let activeBuckets = effectiveBuckets.isEmpty ? buckets : effectiveBuckets
+        let cycles = await framboise.extractOscillationCycles(buckets: activeBuckets)
         let weightedClass = await framboise.classifyRun(
-            buckets: buckets,
+            buckets: activeBuckets,
             cv: cv,
             slope: slope,
             zone4: percentZone4,
@@ -56,7 +58,8 @@ actor ModelManager {
             averageHR: rawAverageHR,
             paceDelta: paceDelta,
             hrDelta: hrDelta,
-            cycles: cycles
+            cycles: cycles,
+            isIndoor: isIndoor
         )
 
         // Incline Inference: Apple Watch barometric altimeter cannot detect treadmill inclines.
@@ -91,11 +94,21 @@ actor ModelManager {
                 )
                 let prediction = try await classifier.prediction(input: input)
                 var targetClass = prediction.targetClass
-                let probabilities = prediction.classProbability
+                let rawProbabilities = prediction.classProbability
+
+                // Normalize probabilities:
+                // RunalystClassifier (RandomForestClassifier with 150 trees) outputs tree vote sums (sum ~ 150.0).
+                let totalVotes = rawProbabilities.values.reduce(0.0, +)
+                let probabilities: [String: Double]
+                if totalVotes > 1.01 {
+                    probabilities = rawProbabilities.mapValues { $0 / totalVotes }
+                } else {
+                    probabilities = rawProbabilities
+                }
                 let maxProb = probabilities.values.max() ?? 0.0
 
-                // Human-in-the-Loop Confidence Threshold:
-                // If the classifier outputs probability < 75%, refuse to guess and flag for user review.
+                // Human-in-the-Loop Confidence Threshold (ADR-0005):
+                // If the classifier outputs normalized probability < 75%, refuse to guess and flag for user review.
                 var isLowConfidence = maxProb < 0.75
                 if isLowConfidence {
                     targetClass = "Mixed Effort (Review)"
@@ -103,19 +116,27 @@ actor ModelManager {
 
                 // Topological Structural Guardrails (exempt from low confidence flag as they are deterministic truth):
                 // 1. Continuous Run Gate:
-                if (targetClass == "Fartlek" || targetClass == "Intervals" || targetClass == "Pyramids") && cycles.count < 3 {
+                if (prediction.targetClass == "Fartlek" || prediction.targetClass == "Intervals" || prediction.targetClass == "Pyramids") && cycles.count < 3 {
                     targetClass = weightedClass
                     isLowConfidence = false
                 }
 
                 // 2. Intermittent Gate:
-                if targetClass != "Intervals" && targetClass != "Fartlek" && targetClass != "Pyramids" && cycles.count >= 3 {
+                if cycles.count >= 3 && targetClass != "Intervals" && targetClass != "Fartlek" && targetClass != "Pyramids" {
                     targetClass = weightedClass
                     isLowConfidence = false
                 }
 
-                // 3. Environmental & Topographic Override:
-                if weightedClass == "Urban Traffic" || weightedClass == "Hill Repeats" {
+                // 3. Environmental & Topographic Override (Bidirectional & Indoor aware):
+                // Urban Traffic and Hill Repeats can NEVER occur indoors on a treadmill.
+                // Furthermore, Urban Traffic / Hill Repeats require deterministic topological corroboration from FramboiseEngine.
+                if (prediction.targetClass == "Urban Traffic" || prediction.targetClass == "Hill Repeats") && isIndoor {
+                    targetClass = weightedClass
+                    isLowConfidence = false
+                } else if (targetClass == "Urban Traffic" || targetClass == "Hill Repeats") && weightedClass != targetClass {
+                    targetClass = weightedClass
+                    isLowConfidence = false
+                } else if (weightedClass == "Urban Traffic" || weightedClass == "Hill Repeats") && !isIndoor {
                     targetClass = weightedClass
                     isLowConfidence = false
                 }

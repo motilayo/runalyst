@@ -60,15 +60,15 @@ def generate_smooth_seed_data(num_samples=15000):
             workout_class = "Recovery Run"
             
         elif archetype == "Easy":
-            pace_delta = random.gauss(30, 15)          # Slightly slower than baseline
-            hr_delta = random.gauss(-15, 5)
+            pace_delta = random.gauss(45, 25)          # Slower than baseline (Zone 2 / aerobic easy)
+            hr_delta = random.gauss(-12, 8)
             percent_zone4 = random.betavariate(1, 10)   
-            cv = random.gauss(0.022, 0.008)
+            cv = random.gauss(0.025, 0.010)
             pace_slope = random.gauss(0.0, 0.038)
-            cadence_delta = random.gauss(-2, 2)
-            duration_mins = random.gauss(40, 10)
-            cadence_cv = random.gauss(0.012, 0.003)
-            hr_cv = random.gauss(0.022, 0.005)
+            cadence_delta = random.gauss(-3, 3)
+            duration_mins = random.gauss(42, 12)
+            cadence_cv = max(0.008, min(0.045, random.gauss(0.020, 0.008)))
+            hr_cv = max(0.010, min(0.075, random.gauss(0.038, 0.014)))
             workout_class = "Easy Run"
             
         elif archetype == "Steady":

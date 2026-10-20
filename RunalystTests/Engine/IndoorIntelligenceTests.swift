@@ -432,7 +432,7 @@ final class IndoorIntelligenceTests: XCTestCase {
     }
 
     @MainActor
-    func testManageTrainingStateReadinessAndDistressOverride() async throws {
+    func testGetReadinessAndWorkloadToolDistressOverride() async throws {
         let runRecord = makeTestRunRecord(isIndoor: false)
         let chatEngine = AnalystChatEngine(runRecord: runRecord)
 
@@ -442,23 +442,24 @@ final class IndoorIntelligenceTests: XCTestCase {
             XCTAssertNotNil(session)
 
             // Test normal readiness query
-            let normalQuery = ManageTrainingStateQuery(focus: .readiness)
-            let normalTool = ManageTrainingStateTool { query in
-                XCTAssertEqual(query.focus, .readiness)
-                return "{\"readiness_verdict\":\"CLEARED_FOR_TRAINING\"}"
+            let normalQuery = GetReadinessAndWorkloadQuery()
+            let normalTool = GetReadinessAndWorkloadTool { query in
+                XCTAssertNil(query.userReportedDistress)
+                return "{\"readiness_state\":\"productive\",\"second_run_advisable\":true}"
             }
             let normalResult = try await normalTool.call(arguments: normalQuery)
-            XCTAssertTrue(normalResult.contains("CLEARED_FOR_TRAINING"))
+            XCTAssertTrue(normalResult.contains("productive"))
+            XCTAssertTrue(normalResult.contains("second_run_advisable"))
 
             // Test distress override
-            let distressQuery = ManageTrainingStateQuery(focus: .readiness, userReportedDistress: true)
-            let distressTool = ManageTrainingStateTool { query in
-                XCTAssertEqual(query.focus, .readiness)
+            let distressQuery = GetReadinessAndWorkloadQuery(userReportedDistress: true)
+            let distressTool = GetReadinessAndWorkloadTool { query in
                 XCTAssertEqual(query.userReportedDistress, true)
-                return "{\"readiness_verdict\":\"MANDATORY_REST_HEALTH_OVERRIDE\"}"
+                return "{\"limiting_factors\":[\"runner_reported_distress\"],\"readiness_state\":\"distress\",\"second_run_advisable\":false}"
             }
             let distressResult = try await distressTool.call(arguments: distressQuery)
-            XCTAssertTrue(distressResult.contains("MANDATORY_REST_HEALTH_OVERRIDE"))
+            XCTAssertTrue(distressResult.contains("distress"))
+            XCTAssertTrue(distressResult.contains("runner_reported_distress"))
         }
         #endif
     }
@@ -751,25 +752,26 @@ final class IndoorIntelligenceTests: XCTestCase {
     }
 
     @MainActor
-    func testManageTrainingStateAndCoachActionPolymorphism() async throws {
+    func testOrthogonalToolsAndCoachActionPolymorphism() async throws {
         let runRecord = makeTestRunRecord(isIndoor: true)
         let chatEngine = AnalystChatEngine(runRecord: runRecord)
 
         #if canImport(FoundationModels)
         if #available(iOS 26.0, *) {
-            // 1. ManageTrainingStateTool - History comparison
-            let historyQuery = ManageTrainingStateQuery(
-                focus: .history,
-                historyTarget: "previous",
-                historyCompareWith: "last outdoor"
+            // 1. QueryWorkoutHistoryTool - History comparison
+            let historyQuery = QueryWorkoutHistoryQuery(
+                scope: .compare,
+                target: "previous",
+                compareWith: "last outdoor"
             )
-            XCTAssertEqual(historyQuery.focus, .history)
-            XCTAssertEqual(historyQuery.historyTarget, "previous")
-            XCTAssertEqual(historyQuery.historyCompareWith, "last outdoor")
+            XCTAssertEqual(historyQuery.scope, .compare)
+            XCTAssertEqual(historyQuery.target, "previous")
+            XCTAssertEqual(historyQuery.compareWith, "last outdoor")
 
-            // 2. ManageTrainingStateTool - Athlete profile
-            let profileQuery = ManageTrainingStateQuery(focus: .athleteProfile)
-            XCTAssertEqual(profileQuery.focus, .athleteProfile)
+            // 2. GetTrainingScheduleTool - Schedule range query
+            let scheduleQuery = GetTrainingScheduleQuery(from: "2026-10-20", to: "2026-10-24")
+            XCTAssertEqual(scheduleQuery.from, "2026-10-20")
+            XCTAssertEqual(scheduleQuery.to, "2026-10-24")
 
             // 3. ExecuteCoachActionTool - Display Drill
             let drillAction = ExecuteCoachActionQuery(action: .displayDrill, payload: "cadence_pyramids")
@@ -777,8 +779,9 @@ final class IndoorIntelligenceTests: XCTestCase {
             XCTAssertEqual(drillAction.payload, "cadence_pyramids")
 
             // 4. ExecuteCoachActionTool - Update Goal
-            let goalAction = ExecuteCoachActionQuery(action: .updateGoal, payload: "Half Marathon")
+            let goalAction = ExecuteCoachActionQuery(action: .updateGoal, goal: .halfMarathon)
             XCTAssertEqual(goalAction.action, .updateGoal)
+            XCTAssertEqual(goalAction.goal, .halfMarathon)
 
             // 5. ExecuteCoachActionTool - Export to Watch
             let watchAction = ExecuteCoachActionQuery(action: .exportToWatch, payload: "cadence_pyramids")
@@ -1013,7 +1016,7 @@ final class IndoorIntelligenceTests: XCTestCase {
         if #available(iOS 26.0, *) {
             let leanPrompt = chatEngine.buildLeanSystemInstructions()
             XCTAssertTrue(leanPrompt.contains("CONTEXT:"))
-            XCTAssertTrue(leanPrompt.contains("manageTrainingState"))
+            XCTAssertTrue(leanPrompt.contains("getReadinessAndWorkload") || leanPrompt.contains("getTrainingSchedule"))
             XCTAssertFalse(leanPrompt.contains("WORKOUT DATA SHEET:"), "Lean tool instructions must NOT include upfront raw data sheet")
             XCTAssertTrue(leanPrompt.count < 1200, "System prompt must stay under 1,200 characters to comply with TN3193 4,096 token limit")
         }
@@ -1060,7 +1063,7 @@ final class IndoorIntelligenceTests: XCTestCase {
             XCTAssertTrue(instructions.contains("Outside Running"))
             XCTAssertTrue(instructions.contains("Medical Safety"))
             XCTAssertTrue(instructions.contains("inspectWorkout"))
-            XCTAssertTrue(instructions.contains("manageTrainingState"))
+            XCTAssertTrue(instructions.contains("getReadinessAndWorkload") || instructions.contains("getTrainingSchedule"))
             XCTAssertTrue(instructions.contains("executeCoachAction"))
         }
         #endif
@@ -1333,7 +1336,7 @@ final class IndoorIntelligenceTests: XCTestCase {
         XCTAssertEqual(rx.intensityCategory, "EASY_AEROBIC_ZONE_2")
 
         let instructions = chatEngine.buildLeanSystemInstructions()
-        XCTAssertTrue(instructions.contains("manageTrainingState"), "Instructions must provide manageTrainingState tool")
+        XCTAssertTrue(instructions.contains("getReadinessAndWorkload"), "Instructions must provide getReadinessAndWorkload tool")
         XCTAssertFalse(instructions.contains("forbidden_terms"), "Prompt must NOT contain forbidden_terms to avoid token attention bleed")
     }
 
@@ -1428,7 +1431,7 @@ final class IndoorIntelligenceTests: XCTestCase {
 
             XCTAssertTrue(prompt.contains("CONTEXT:"), "Must declare context block")
             XCTAssertTrue(prompt.contains("RULES:"), "Must declare lean rules block")
-            XCTAssertTrue(prompt.contains("manageTrainingState"), "Must reference manageTrainingState tool")
+            XCTAssertTrue(prompt.contains("getReadinessAndWorkload") || prompt.contains("getTrainingSchedule"), "Must reference orthogonal coaching tools")
             XCTAssertFalse(prompt.contains("(belt-driven, static air)"), "Prompt header must not parrot awkward belt-driven static air boilerplate")
             XCTAssertTrue(prompt.count < 1200, "System instructions must stay lean under 1,200 characters to comply with TN3193 4,096 token limit")
         }
@@ -1699,6 +1702,8 @@ final class IndoorIntelligenceTests: XCTestCase {
                 switch query.action {
                 case .displaySession:
                     return "{\"status\":\"session_card_displayed\"}"
+                case .displaySchedule:
+                    return "{\"status\":\"schedule_card_displayed\"}"
                 case .displayDrill:
                     let resolved = PreRunDrillId.resolve(from: query.payload ?? "") ?? .cadencePyramids
                     return "{\"status\":\"interactive_drill_card_displayed\",\"drill_name\":\"\(resolved.title)\"}"
@@ -1744,17 +1749,15 @@ final class IndoorIntelligenceTests: XCTestCase {
             // When readiness is checked for a fresh workout under recovery window,
             // prescription is "Zone 1 Active Recovery Flush"
             chatEngine.modelResponder = { (_: String, _: String) async throws -> String in
-                // Simulate model responding after calling manageTrainingState(.readiness)
-                // Let's directly invoke the readiness tool provider to mirror the session execution
-                let query = ManageTrainingStateQuery(focus: .readiness)
-                let tool = ManageTrainingStateTool { q in
-                    let isDistress = q.userReportedDistress == true
-                    let analysis = chatEngine.makeAnalysisContext(isSubjectiveDistress: isDistress)
+                // Simulate model responding after querying readiness/schedule and displaying drill
+                let query = GetReadinessAndWorkloadQuery()
+                let tool = GetReadinessAndWorkloadTool { _ in
+                    let analysis = chatEngine.makeAnalysisContext(isSubjectiveDistress: false)
                     let rx = analysis.lockedPrescription
                     if let resolved = PreRunDrillId.resolve(from: rx.nextSessionName) {
                         chatEngine.drillRecommendedThisTurn = resolved
                     }
-                    return "{\"prescribed_session_name\":\"\(rx.nextSessionName)\"}"
+                    return "{\"readiness_state\":\"productive\",\"second_run_advisable\":false}"
                 }
                 _ = try await tool.call(arguments: query)
                 return "You're cleared for training. Tomorrow's prescription is **Zone 2 Easy Aerobic Maintenance**."
@@ -1788,40 +1791,45 @@ final class IndoorIntelligenceTests: XCTestCase {
             XCTAssertTrue(instructions.contains("SPM"), "Prompt must require standard SPM unit notation")
             XCTAssertTrue(instructions.count < 1200, "System instructions must stay strictly under 1,200 chars (was \(instructions.count))")
 
-            // 3. Verify readiness tool sanitizes raw snake_case enum to natural English
-            let query = ManageTrainingStateQuery(focus: .readiness)
-            let tool = ManageTrainingStateTool { q in
-                let isDistress = q.userReportedDistress == true
-                let analysis = chatEngine.makeAnalysisContext(isSubjectiveDistress: isDistress)
-                let rx = analysis.lockedPrescription
-                let humanIntensity: String
-                switch rx.intensityCategory {
-                case "RECOVERY_FLUSH_ZONE_1": humanIntensity = "Zone 1 Active Recovery"
-                case "EASY_AEROBIC_ZONE_2": humanIntensity = "Zone 2 Aerobic Base"
-                case "FULL_REST_OVERRIDE": humanIntensity = "Full Rest"
-                case "EASY_AEROBIC_ASSESSMENT": humanIntensity = "Aerobic Assessment"
-                default: humanIntensity = rx.intensityCategory.replacingOccurrences(of: "_", with: " ").capitalized
-                }
-                return "{\"intensity_category\":\"\(humanIntensity)\",\"prescribed_session_name\":\"\(rx.nextSessionName)\"}"
+            // 3. Verify readiness tool provides clean structured facts without leaking internal screaming snake_case
+            let query = GetReadinessAndWorkloadQuery()
+            let tool = GetReadinessAndWorkloadTool { _ in
+                let facts = ReadinessFacts(
+                    readiness_state: "productive",
+                    acwr: 1.05,
+                    streak_days: 2,
+                    streak_limit: 4,
+                    last_48h_minutes: 60,
+                    weekly_avg_minutes: 150,
+                    volume_ratio_48h: 0.4,
+                    volume_threshold: 0.5,
+                    hr_shift_bpm: 2.0,
+                    today_minutes: 30,
+                    today_target_minutes: 30,
+                    today_completion_percent: 100,
+                    second_run_advisable: false,
+                    limiting_factors: ["daily_volume_satisfied"],
+                    experience_level: "Intermediate",
+                    training_goal: "Base Building",
+                    cadence_floor_spm: 156
+                )
+                let data = (try? JSONEncoder().encode(facts)) ?? Data()
+                return String(data: data, encoding: .utf8) ?? "{}"
             }
             let toolResult = try await tool.call(arguments: query)
             XCTAssertFalse(toolResult.contains("RECOVERY_FLUSH_ZONE_1"), "Must not leak screaming snake_case enum to LLM")
             XCTAssertFalse(toolResult.contains("EASY_AEROBIC_ZONE_2"), "Must not leak screaming snake_case enum to LLM")
-            XCTAssertTrue(toolResult.contains("Zone 2 Aerobic Base") || toolResult.contains("Zone 1 Active Recovery"), "Must humanize intensity category")
+            XCTAssertTrue(toolResult.contains("productive"), "Must provide clean structured state")
 
             // 4. Simulate runner asking for a 6-month marathon schedule
             chatEngine.modelResponder = { (_: String, userQuestion: String) async throws -> String in
                 XCTAssertTrue(userQuestion.contains("marathon"))
-                // Execute the update_goal action with marathon payload
-                let query = ExecuteCoachActionQuery(action: .updateGoal, payload: "prepare me for a marathon in 6 months")
+                // Execute the update_goal action with marathon goal
+                let query = ExecuteCoachActionQuery(action: .updateGoal, goal: .marathon)
                 let tool = ExecuteCoachActionTool { q in
-                    var newGoal = q.payload?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "Base Building"
-                    let lower = newGoal.lowercased()
-                    if lower.contains("marathon") && !lower.contains("half") {
-                        newGoal = "Marathon"
-                    }
+                    let newGoal = q.goal?.rawValue ?? "Base Building"
                     UserDefaults.standard.set(newGoal, forKey: "trainingGoal")
-                    return "{\"status\":\"training_goal_updated\",\"goal\":\"\(newGoal)\"}"
+                    return "{\"goal\":\"\(newGoal)\",\"status\":\"training_goal_updated\"}"
                 }
                 _ = try await tool.call(arguments: query)
                 return "I've locked your goal to **Marathon**! A 6-month marathon preparation is structured across four key periodization phases: Base Building, Aerobic Threshold, Peak Volume, and Taper."
@@ -1962,5 +1970,53 @@ final class IndoorIntelligenceTests: XCTestCase {
         let recentRunsCatalog = HistoricalRunMatcher.listRecentRuns(relativeTo: currentRun, in: context, limit: 2)
         XCTAssertTrue(recentRunsCatalog.contains("March 21, 2025 to"), "Catalog header must display lifetime range")
         XCTAssertTrue(recentRunsCatalog.contains("1 older workouts recorded in athlete database down to first logged run on Friday, March 21, 2025"))
+    }
+
+    // MARK: - Oct 20 Incident Regression: Indoor Treadmill Zone 2 Classification
+
+    func testIndoorTreadmillZone2Run_Oct20Incident_ClassifiesAsEasyRun() async {
+        let modelManager = ModelManager()
+        let now = Date()
+        var buckets: [BucketData] = []
+        // Authentic 60-minute Zone 2 run on treadmill with belt pause
+        for i in 0..<120 {
+            let isStop = (i == 40 || i == 80)
+            let pace = isStop ? 900.0 : 400.0
+            let cad = isStop ? 80.0 : 148.0
+            let hr = isStop ? 118.0 : 142.0
+            buckets.append(
+                BucketData(
+                    startTime: now.addingTimeInterval(Double(i * 30)),
+                    distanceMeters: isStop ? 0.0 : 75.0,
+                    durationSeconds: 30.0,
+                    meanPaceSecPerKm: pace,
+                    meanCadence: cad,
+                    meanHR: hr
+                )
+            )
+        }
+
+        let result = await modelManager.predictRunTypeResult(
+            buckets: buckets,
+            paceDelta: 12.0,
+            hrDelta: 0.0,
+            percentZone4: 0.0,
+            cadenceDelta: -3.0,
+            verticalOscillation: 8.5,
+            runnerStage: 1,
+            cv: 0.147,
+            slope: 0.057,
+            durationMinutes: 60.1,
+            cadenceCV: 0.038,
+            hrCV: 0.045,
+            cadenceSlope: 0.0,
+            isIndoor: true,
+            isGymKit: false
+        )
+
+        XCTAssertNotEqual(result.targetClass, "Urban Traffic", "Treadmill run must never classify as Urban Traffic")
+        XCTAssertTrue(result.targetClass == "Easy Run" || result.targetClass == "Steady Effort", "Zone 2 treadmill run should classify as Easy Run or Steady Effort, got: \(result.targetClass)")
+        XCTAssertFalse(result.isReviewRequired)
+        XCTAssertGreaterThanOrEqual(result.confidence, 0.75)
     }
 }
