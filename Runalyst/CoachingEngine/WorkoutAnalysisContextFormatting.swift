@@ -15,19 +15,21 @@ extension WorkoutAnalysisContext {
             : "Outdoors (road/track)"
 
         let isLowConfidenceHR = runRecord.isHeartRateSensorLowConfidence
-        let hrStatus = isLowConfidenceHR ? "Omitted (Sensor lock anomaly < 85 BPM)" : "Reliable"
+        let hrConfidence: SensorConfidence = isLowConfidenceHR ? .unreliableArtifact : .reliable
+        let hrStatus: HeartRateStatus = isLowConfidenceHR ? .sensorLockAnomaly : .reliable
+        let hrStatusStr: String? = isLowConfidenceHR ? "sensor_lock_anomaly" : nil
 
         let blendedTotals = BlendedTotals(
-            _description: "Whole-session averages including warm-up, recoveries, and cooldown.",
+            _description: nil,
             total_distance: distKm,
             total_duration: "\(durMin) min",
             blended_session_avg_pace: workingPaceFormatted,
             blended_session_avg_cadence_spm: workingCadence,
             blended_session_avg_heart_rate_bpm: isLowConfidenceHR ? nil : workingHR,
-            heart_rate_status: isLowConfidenceHR ? hrStatus : nil,
+            heart_rate_status: hrStatusStr,
             height_cadence_floor_spm: floor,
             aerobic_efficiency_factor: efficiencyFactor.map { String(format: "%.2f m/beat", $0) },
-            cardiac_drift: hasCardiacDrift ? "+\(cardiacDriftMagnitudeBPM) BPM rise in second half" : nil,
+            cardiac_drift: hasCardiacDrift ? "+\(cardiacDriftMagnitudeBPM) BPM" : nil,
             stride_archetype: strideArchetype
         )
 
@@ -60,13 +62,20 @@ extension WorkoutAnalysisContext {
                 session_grade: overallGradeReport.grade,
                 pacing_consistency: consistency,
                 active_avg_heart_rate_bpm: isLowConfidenceHR ? nil : avgWorkHR,
-                heart_rate_status: isLowConfidenceHR ? hrStatus : nil,
+                heart_rate_status: hrStatusStr,
                 cadence_floor_status: "\(avgWorkCad) SPM vs \(floor) SPM floor (\(avgWorkCad >= floor ? "above floor" : "sub-floor"))"
             )
 
             repsList = intervalEvaluations.prefix(12).map { rep in
                 let recPace = rep.recoveryPaceFormatted ?? "controlled recovery jog"
                 let recDrop = rep.recoveryHeartRateDrop.map { -$0 } ?? 0
+                var flags: [String] = []
+                if rep.workCadence < floor {
+                    flags.append("cadence_below_floor")
+                }
+                if let drop = rep.recoveryHeartRateDrop, drop < 10 {
+                    flags.append("blunted_hr_recovery")
+                }
                 return IntervalRepDetail(
                     rep_number: rep.repIndex,
                     work_pace: rep.workPaceFormatted,
@@ -75,7 +84,8 @@ extension WorkoutAnalysisContext {
                     recovery_pace: recPace,
                     recovery_hr_drop_bpm: isLowConfidenceHR ? nil : recDrop,
                     work_heart_rate_bpm: isLowConfidenceHR ? nil : rep.workHeartRate,
-                    heart_rate_status: isLowConfidenceHR ? hrStatus : nil,
+                    heart_rate_status: hrStatusStr,
+                    flags: flags,
                     observation: rep.observation.isEmpty ? nil : rep.observation
                 )
             }
@@ -107,7 +117,7 @@ extension WorkoutAnalysisContext {
                 avg_pace: workingPaceFormatted,
                 avg_turnover_spm: workingCadence,
                 avg_heart_rate_bpm: isLowConfidenceHR ? nil : workingHR,
-                heart_rate_status: isLowConfidenceHR ? hrStatus : "Reliable",
+                heart_rate_status: hrStatusStr,
                 session_grade: overallGradeReport.grade,
                 pacing_trend: pacingTrendDescription,
                 cadence_floor_status: "\(workingCadence) SPM vs \(floor) SPM floor (\(workingCadence >= floor ? "above floor" : "sub-floor"))",
@@ -116,25 +126,38 @@ extension WorkoutAnalysisContext {
             )
 
             splitsList = splitEvaluations.prefix(12).map { split in
-                SplitDetail(
+                var flags: [String] = []
+                if split.cadence < floor {
+                    flags.append("cadence_below_floor")
+                }
+                if let f = fastestSplit, f.index == split.index {
+                    flags.append("fastest_split")
+                }
+                if let s = slowestSplit, s.index == split.index {
+                    flags.append("slowest_split")
+                }
+                return SplitDetail(
                     split_index: split.index,
                     pace: split.paceFormatted,
                     cadence_spm: split.cadence,
                     heart_rate_bpm: isLowConfidenceHR ? nil : split.heartRate,
-                    heart_rate_status: isLowConfidenceHR ? hrStatus : nil,
+                    heart_rate_status: hrStatusStr,
                     grade: split.letterGrade,
+                    flags: flags,
                     observation: split.observation.isEmpty ? nil : split.observation
                 )
             }
         }
 
         let movingSec = runRecord.effectiveWorkingDurationSeconds
+        let movingMin = max(1, Int((movingSec / 60.0).rounded()))
         let movingTimeStr = String(format: "%d:%02d", max(0, Int(movingSec) / 60), max(0, Int(movingSec) % 60))
         let workingStats = WorkingStatsDetail(
             moving_time: movingTimeStr,
             moving_pace: workingPaceFormatted,
             working_cadence_spm: workingCadence,
-            working_heart_rate_bpm: isLowConfidenceHR ? nil : workingHR
+            working_heart_rate_bpm: isLowConfidenceHR ? nil : workingHR,
+            _description: nil
         )
 
         let totalSec = runRecord.duration
@@ -147,23 +170,24 @@ extension WorkoutAnalysisContext {
             total_time: totalTimeStr,
             gross_pace: grossPaceStr,
             raw_cadence_spm: Int(runRecord.rawAvgCadence.rounded()),
-            raw_heart_rate_bpm: isLowConfidenceHR ? nil : Int(runRecord.rawAvgHeartRate.rounded())
+            raw_heart_rate_bpm: isLowConfidenceHR ? nil : Int(runRecord.rawAvgHeartRate.rounded()),
+            _description: nil
         )
 
-        let hrConfidence: String = isLowConfidenceHR
-            ? "unreliable_sensor_artifact (resting/cadence-lock HR < 85 BPM detected; heart rate metrics omitted from payload)"
-            : "reliable"
-
-        let metricExplainers = CoachingAssetLibrary.selectExplainers(
-            features: CoachingAssetLibrary.WorkoutFeatureSet(
-                isIndoor: isIndoor,
-                hasCardiacDrift: hasCardiacDrift,
-                hasEfficiencyFactor: efficiencyFactor != nil,
-                hasVerticalOscillation: (runRecord.workingAvgVerticalOscillation ?? runRecord.rawAvgVerticalOscillation) != nil,
-                hasGroundContactTime: false,
-                hasStrideLength: (runRecord.workingAvgStrideLength ?? runRecord.rawAvgStrideLength) != nil,
-                isIntervals: isIntervals
-            )
+        let durationClass: DurationClass
+        if movingMin <= 20 {
+            durationClass = .primer
+        } else if movingMin <= 35 {
+            durationClass = .short
+        } else if movingMin <= 60 {
+            durationClass = .standard
+        } else {
+            durationClass = .long
+        }
+        let durationDetail = DurationDetail(
+            duration_class: durationClass,
+            moving_minutes: movingMin,
+            total_minutes: durMin
         )
 
         return UnifiedWorkoutToolResponse(
@@ -178,11 +202,13 @@ extension WorkoutAnalysisContext {
             working_stats: workingStats,
             workout_stats: workoutStats,
             background_session_totals: blendedTotals,
-            physiological_verdicts: physiologicalVerdicts.promptDescription,
+            findings: physiologicalVerdicts.findings,
             heart_rate_confidence: hrConfidence,
             heart_rate_status: hrStatus,
+            duration: durationDetail,
             duration_summary: "Total elapsed time: \(durMin) minutes",
-            metric_explainers: metricExplainers
+            physiological_verdicts: physiologicalVerdicts.promptDescription,
+            metric_explainers: nil
         )
     }
 

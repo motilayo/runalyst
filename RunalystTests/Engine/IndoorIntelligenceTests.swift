@@ -1193,7 +1193,7 @@ final class IndoorIntelligenceTests: XCTestCase {
 
         // SECONDARY BACKGROUND: Blended session data is demoted
         XCTAssertEqual(unifiedResponse.background_session_totals.blended_session_avg_pace, "6:25/km")
-        XCTAssertTrue(unifiedResponse.background_session_totals._description.contains("Whole-session"))
+        XCTAssertEqual(unifiedResponse.background_session_totals.height_cadence_floor_spm, 150)
 
         // 2. Validate Multi-Turn Chat Flow without Swift Template Interception (Step 1 RCA)
         var turnCount = 0
@@ -1318,9 +1318,9 @@ final class IndoorIntelligenceTests: XCTestCase {
         let chatEngine = AnalystChatEngine(runRecord: lowHRRun)
         let context = chatEngine.makeAnalysisContext()
         let payload = context.buildUnifiedWorkoutToolResponse()
-        XCTAssertTrue(payload.heart_rate_confidence?.contains("unreliable") == true, "Tool payload must explicitly flag low confidence HR sensor data")
+        XCTAssertEqual(payload.heart_rate_confidence, .unreliableArtifact, "Tool payload must explicitly flag low confidence HR sensor data")
         XCTAssertNil(payload.steady_state_scorecard?.avg_heart_rate_bpm, "Low confidence HR integer must be nulled out so LLM cannot quote it")
-        XCTAssertEqual(payload.steady_state_scorecard?.heart_rate_status, "Omitted (Sensor lock anomaly < 85 BPM)")
+        XCTAssertEqual(payload.steady_state_scorecard?.heart_rate_status, "sensor_lock_anomaly")
         XCTAssertNil(payload.splits?.first?.heart_rate_bpm, "Split HR integers must be nulled out")
     }
 
@@ -1649,23 +1649,24 @@ final class IndoorIntelligenceTests: XCTestCase {
         XCTAssertEqual(working?.moving_time, "42:15")
         XCTAssertEqual(working?.moving_pace, "5:38/km")
         XCTAssertEqual(working?.working_cadence_spm, 162)
-        XCTAssertTrue(working?._description.contains("Active moving metrics") ?? false)
 
         // 2. Workout Stats: gross HealthKit session totals
         let workout = response.workout_stats
         XCTAssertNotNil(workout)
         XCTAssertEqual(workout?.total_time, "45:00")
         XCTAssertEqual(workout?.raw_cadence_spm, 158)
-        XCTAssertTrue(workout?._description.contains("Gross HealthKit session totals") ?? false)
 
-        // 3. Duration Summary (AC-1.4 boundary tagging)
-        XCTAssertEqual(response.duration_summary, "Total elapsed time: 45 minutes")
+        // 3. Duration Detail (duration_class + minutes)
+        XCTAssertEqual(response.duration.duration_class, .standard)
+        XCTAssertEqual(response.duration.moving_minutes, 42)
+        XCTAssertEqual(response.duration.total_minutes, 45)
 
-        // 4. Compact JSON includes working_stats, workout_stats, and duration_summary
+        // 4. Compact JSON includes working_stats, workout_stats, and duration
         let json = analysis.unifiedWorkoutAnalysisJSON()
         XCTAssertTrue(json.contains("\"working_stats\""))
         XCTAssertTrue(json.contains("\"workout_stats\""))
-        XCTAssertTrue(json.contains("\"duration_summary\":\"Total elapsed time: 45 minutes\""))
+        XCTAssertTrue(json.contains("\"duration\""))
+        XCTAssertTrue(json.contains("\"standard\""))
         XCTAssertTrue(json.contains("\"moving_pace\":\"5:38/km\""))
     }
 

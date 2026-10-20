@@ -187,6 +187,11 @@ final class ToolPayloadSchemaTests: XCTestCase {
         XCTAssertTrue(facts.contains("Outdoor"))
         XCTAssertTrue(facts.contains("+6 SPM"))
         XCTAssertTrue(facts.contains("20s/km faster"))
+
+        // Phase 2: verify zero narrative prose paragraphs in facts
+        XCTAssertFalse(facts.contains("Positive aerobic development"))
+        XCTAssertFalse(facts.contains("motor-driven belt, static air"))
+        XCTAssertFalse(facts.contains("Both workouts share continuous training structure"))
     }
 
     // MARK: - 4. InspectWorkoutTool Unified Response Contract
@@ -220,6 +225,16 @@ final class ToolPayloadSchemaTests: XCTestCase {
         XCTAssertEqual(stats.working_cadence_spm, 162)
         XCTAssertEqual(stats.working_heart_rate_bpm, 148)
         XCTAssertFalse(stats.moving_pace.isEmpty)
+
+        // Phase 2 structured facts verification
+        XCTAssertFalse(response.findings.isEmpty, "Inspect response must include structured findings")
+        XCTAssertEqual(response.duration.duration_class, .short)
+        XCTAssertEqual(response.duration.total_minutes, 30)
+        XCTAssertEqual(response.heart_rate_confidence, .reliable)
+
+        // Ensure zero canned descriptions or explainer dictionaries are serialized in the default payload
+        XCTAssertFalse(jsonString.contains("\"_description\""), "Tool payload must not contain static _description prose")
+        XCTAssertFalse(jsonString.contains("\"metric_explainers\""), "Default inspect tool payload must omit bloated explainer dictionaries")
     }
 
     // MARK: - 5. ExecuteCoachAction Contract

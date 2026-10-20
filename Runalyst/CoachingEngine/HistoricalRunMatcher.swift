@@ -231,20 +231,15 @@ struct HistoricalRunMatcher {
             let daysDiff = cal.dateComponents([.day], from: cal.startOfDay(for: prior.date), to: cal.startOfDay(for: current.date)).day ?? 0
             let recencyContrast: String
             if daysDiff > 0 {
-                recencyContrast = "Current \(current.classification) on \(current.formattedDate) took place \(daysDiff) day\(daysDiff == 1 ? "" : "s") after prior \(prior.classification) on \(prior.formattedDate)."
+                recencyContrast = "\(daysDiff) day\(daysDiff == 1 ? "" : "s") after prior"
             } else if daysDiff < 0 {
-                recencyContrast = "Prior \(prior.classification) on \(prior.formattedDate) took place \(abs(daysDiff)) day\(abs(daysDiff) == 1 ? "" : "s") after current \(current.classification) on \(current.formattedDate)."
+                recencyContrast = "\(abs(daysDiff)) day\(abs(daysDiff) == 1 ? "" : "s") before prior"
             } else {
-                recencyContrast = "Both workouts took place on the same day (\(current.formattedDate))."
+                recencyContrast = "Same day"
             }
 
             let sameClassification = current.classification.caseInsensitiveCompare(prior.classification) == .orderedSame
-            let classificationComparison: String
-            if sameClassification {
-                classificationComparison = "Both workouts were similarly classified as \(current.classification)."
-            } else {
-                classificationComparison = "Different workout modalities: current run is \(current.classification) vs prior run \(prior.classification)."
-            }
+            let classificationComparison = sameClassification ? "Matched (\(current.classification))" : "Different (\(current.classification) vs \(prior.classification))"
 
             // Unit precision with respect to readability: align displayed precision with delta math
             let currentDistKm = Double(String(format: "%.2f", current.distanceMeters / 1000.0)) ?? (current.distanceMeters / 1000.0)
@@ -287,38 +282,6 @@ struct HistoricalRunMatcher {
                 hrComparison = "identical average heart rate (\(current.heartRateBPM) BPM)"
             }
 
-            let physiologicalSignal: String
-            if paceDeltaSeconds > 0 && heartRateDelta <= 0 {
-                physiologicalSignal = "Positive aerobic development: faster pace sustained at lower/equal heart rate with higher turnover."
-            } else if paceDeltaSeconds > 0 && heartRateDelta > 0 {
-                physiologicalSignal = "Effort escalation: faster pace drove proportional cardiovascular rise."
-            } else if paceDeltaSeconds <= 0 && heartRateDelta < 0 {
-                physiologicalSignal = "Aerobic containment: easier pace kept cardiovascular stress low."
-            } else {
-                physiologicalSignal = "Close mechanical and physiological parity across sessions."
-            }
-
-            let isCurrentInterval = current.classification.localizedCaseInsensitiveContains("interval")
-            let isPriorInterval = prior.classification.localizedCaseInsensitiveContains("interval")
-
-            let structureContrast: String
-            if isCurrentInterval && !isPriorInterval {
-                structureContrast = "Current session was an intermittent interval workout with alternating work reps and recovery valleys, whereas prior session was a continuous \(prior.classification). Recovery intervals actively lowered average heart rate despite high-velocity work reps."
-            } else if !isCurrentInterval && isPriorInterval {
-                structureContrast = "Current session was a continuous \(current.classification), whereas prior session was an intermittent interval workout with active recovery valleys."
-            } else {
-                structureContrast = "Both workouts share continuous training structure."
-            }
-
-            let envContrast: String
-            if current.isIndoor && !prior.isIndoor {
-                envContrast = "Current session was performed indoors on a treadmill (motor-driven belt, static air with thermal buildup, zero wind resistance), whereas prior session was outdoors on road pavement (stationary ground propulsion, convective wind cooling, outdoor grade variations)."
-            } else if !current.isIndoor && prior.isIndoor {
-                envContrast = "Current session was performed outdoors (ground propulsion, wind cooling) vs prior session indoors on a treadmill."
-            } else {
-                envContrast = "Both workouts took place in similar \(envCurrent.lowercased()) environments."
-            }
-
             return """
             HISTORICAL WORKOUT COMPARISON TELEMETRY:
             Current Run:
@@ -343,14 +306,12 @@ struct HistoricalRunMatcher {
             - Recency: \(recencyContrast)
             - Classification: \(classificationComparison)
             - Volume: \(volumeComparison)
-            - Structure: \(structureContrast)
-            - Environment: \(envContrast)
+            - Environment: Current: \(envCurrent) vs Prior: \(envPrior)
 
             Mathematical Telemetry Deltas:
             - Pace: \(paceComparison)
             - Cadence: \(cadComparison)
             - Heart Rate: \(hrComparison)
-            - Physiological Conclusion: \(physiologicalSignal)
             """
         }
 
@@ -459,7 +420,6 @@ struct HistoricalRunMatcher {
             - Pace Gap: \(abs(paceDeltaSec))s/km difference
             - Cadence Gap: \(abs(cadDelta)) SPM difference (turnover strictly in SPM)
             - Heart Rate Gap: \(abs(hrDelta)) BPM cardiac spread
-            - Physiological Contrast: In the best session on \(best.formattedDate), aerobic coupling was optimal with high speed per heartbeat. In contrast, the toughest session on \(worst.formattedDate) exhibited higher cardiovascular strain and lower mechanical turnover.
             """
         }
 
