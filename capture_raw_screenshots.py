@@ -2,8 +2,23 @@ import os
 import subprocess
 import time
 
-IPHONE_ID = "A59BB117-5AD3-4BEF-959A-95B526E29F06"
-IPAD_ID = "F37FD237-165F-4849-8A85-2E4817486EC5"
+def get_booted_device_id(device_type="iPhone"):
+    try:
+        out = subprocess.check_output(["xcrun", "simctl", "list", "devices", "booted"], text=True)
+        for line in out.splitlines():
+            if device_type in line and "(" in line and ")" in line:
+                parts = line.split("(")
+                for p in parts[1:]:
+                    if ")" in p:
+                        cand = p.split(")")[0].strip()
+                        if len(cand) == 36 and "-" in cand:
+                            return cand
+    except Exception:
+        pass
+    return "9B8ADDDA-B76A-4A28-BCA3-239FB5B25BC6" if device_type == "iPhone" else "F37FD237-165F-4849-8A85-2E4817486EC5"
+
+IPHONE_ID = get_booted_device_id("iPhone")
+IPAD_ID = get_booted_device_id("iPad")
 BUNDLE_ID = "com.runalyzer.Runalyzer"
 
 IPHONE_DIR = "/Users/motilayo/workspace/runalyzer/Media/Screenshots/iPhone_Raw"
@@ -33,23 +48,35 @@ def capture_device(device_id, out_dir, label):
     subprocess.run(["xcrun", "simctl", "spawn", device_id, "defaults", "write", BUNDLE_ID, "dashboardTimeRange", "-string", "30 Days"])
     subprocess.run(["xcrun", "simctl", "spawn", device_id, "defaults", "write", BUNDLE_ID, "minimumRunDistance", "-float", "1.0"])
 
+    # Seed mock data once before capturing screens
+    print("--> Seeding mock workout telemetry...")
+    subprocess.run(["xcrun", "simctl", "terminate", device_id, BUNDLE_ID], stderr=subprocess.DEVNULL)
+    subprocess.run(["xcrun", "simctl", "spawn", device_id, "defaults", "write", BUNDLE_ID, "RUNALYST_PREVIEW_SCREEN", "-string", "DASHBOARD"])
+    env_seed = os.environ.copy()
+    env_seed["SIMCTL_CHILD_RUNALYST_FORCE_SEED"] = "true"
+    subprocess.run(["xcrun", "simctl", "launch", device_id, BUNDLE_ID], env=env_seed, capture_output=True)
+    time.sleep(4.0)
+    subprocess.run(["xcrun", "simctl", "terminate", device_id, BUNDLE_ID], stderr=subprocess.DEVNULL)
+    time.sleep(0.5)
+
     for filename, screen_key in SCREENS:
         out_path = os.path.join(out_dir, filename)
         print(f"--> Capturing {screen_key} -> {filename}...")
 
         subprocess.run(["xcrun", "simctl", "terminate", device_id, BUNDLE_ID], stderr=subprocess.DEVNULL)
-        time.sleep(0.5)
+        time.sleep(0.8)
+
+        subprocess.run(["xcrun", "simctl", "spawn", device_id, "defaults", "write", BUNDLE_ID, "RUNALYST_PREVIEW_SCREEN", "-string", screen_key])
 
         env = os.environ.copy()
         env["SIMCTL_CHILD_RUNALYST_PREVIEW_SCREEN"] = screen_key
-        env["SIMCTL_CHILD_RUNALYST_FORCE_SEED"] = "true"
 
         res = subprocess.run([
             "xcrun", "simctl", "launch", device_id, BUNDLE_ID
         ], env=env, capture_output=True, text=True)
 
         # Wait for views to render and transitions to settle
-        time.sleep(2.8)
+        time.sleep(3.5)
 
         subprocess.run([
             "xcrun", "simctl", "io", device_id, "screenshot", out_path
