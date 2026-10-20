@@ -120,6 +120,8 @@ struct PreviewRouterView: View {
             }
         case "WORKOUTS":
             WorkoutsView()
+        case "WORKOUTS_COMPLETED_TODAY":
+            WorkoutsCompletedTodayPreview(existingRuns: existingRuns)
         case "READINESS":
             ReadinessMathModal(acuteLoad: 168.5, chronicWeeklyLoad: 165.2, acwr: 1.02)
         case "DETAIL":
@@ -269,5 +271,49 @@ private struct RunDetailPreviewContainer: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color(UIColor.systemGroupedBackground))
         }
+    }
+}
+
+private struct WorkoutsCompletedTodayPreview: View {
+    let existingRuns: [RunRecord]
+
+    var body: some View {
+        let primerSnap = RunRecordSnapshot(
+            id: UUID(),
+            date: Date().addingTimeInterval(-3600),
+            workoutType: "Indoor Cadence Pyramids",
+            durationFormatted: "15:03",
+            distanceFormatted: "1.46 km",
+            letterGrade: "A",
+            isIndoor: true,
+            isPrimerDrill: true
+        )
+        let mainSnap = RunRecordSnapshot(
+            id: UUID(),
+            date: Date(),
+            workoutType: "Indoor Easy Run",
+            durationFormatted: "40:01",
+            distanceFormatted: "4.48 km",
+            letterGrade: "A",
+            isIndoor: true,
+            isPrimerDrill: false,
+            additionalCompletedRuns: [primerSnap]
+        )
+        let dummyState = SessionSynthesisEngine.evaluateDailyState(
+            runRecords: existingRuns,
+            activeGoal: "Base Building",
+            experienceLevel: "Intermediate",
+            useMetric: true,
+            userHeightCm: 175.0,
+            now: Date()
+        )
+        let dummyTomorrow: PrescribedDailySession = {
+            switch dummyState {
+            case .preRun(let s): return s
+            case .completedToday(_, let s): return s
+            }
+        }()
+
+        WorkoutsView(overrideDailyState: .completedToday(completedRun: mainSnap, tomorrowSession: dummyTomorrow))
     }
 }

@@ -13,7 +13,10 @@ final class SessionSynthesisEngineTests: XCTestCase {
         workingAvgHeartRate: Double = 145.0,
         detectedTypeRaw: String = "Steady Effort",
         framboiseTags: [String] = [],
-        isIndoor: Bool = false
+        isIndoor: Bool = false,
+        workingAvgVerticalOscillation: Double = 8.5,
+        workingAvgStrideLength: Double = 1.05,
+        percentZone4: Double = 0.1
     ) -> RunRecord {
         RunRecord(
             id: id,
@@ -27,20 +30,24 @@ final class SessionSynthesisEngineTests: XCTestCase {
             workingAvgPace: 360.0,
             workingAvgCadence: workingAvgCadence,
             workingAvgHeartRate: workingAvgHeartRate,
-            workingAvgVerticalOscillation: 8.5,
-            rawAvgVerticalOscillation: 8.5,
-            rawAvgStrideLength: 1.05,
-            workingAvgStrideLength: 1.05,
+            workingAvgVerticalOscillation: workingAvgVerticalOscillation,
+            rawAvgVerticalOscillation: workingAvgVerticalOscillation,
+            rawAvgStrideLength: workingAvgStrideLength,
+            workingAvgStrideLength: workingAvgStrideLength,
             workingDistanceMeters: distanceMeters,
             workingDurationSeconds: duration,
             isIndoor: isIndoor,
             paceCV: 0.05,
             paceSlope: 0.0,
-            percentZone4: 0.1,
+            percentZone4: percentZone4,
             detectedTypeRaw: detectedTypeRaw,
             framboiseTags: framboiseTags,
             dataSourceRaw: "wrist"
         )
+    }
+
+    private func dateOffset(days: Int, from date: Date) -> Date {
+        Calendar.current.date(byAdding: .day, value: days, to: date) ?? date.addingTimeInterval(Double(days) * 86400)
     }
 
     // MARK: - 1. Pre-Run State Tests
@@ -115,7 +122,8 @@ final class SessionSynthesisEngineTests: XCTestCase {
         switch state {
         case .preRun(let session):
             XCTAssertTrue(session.isTrimmed, "Drill should be trimmed to protect fatigued legs after cardiac drift")
-            XCTAssertEqual(session.primerPhasesDuration, "7m 30s drill (Trimmed from 10 min)", "Trimmed drill must display 7m 30s (Trimmed from 10 min)")
+            XCTAssertEqual(session.primerPhasesDuration, "7m 30s", "Trimmed drill must display clean 7m 30s")
+            XCTAssertFalse(session.primerTargetCadence.contains("(Adapted)"), "Target cadence must be clean without (Adapted)")
             XCTAssertTrue(
                 session.sessionTitle.contains("Recovery") || session.sessionTitle.contains("Base") || session.sessionTitle.contains("Aerobic"),
                 "Prescription must downgrade to active recovery or easy base"
@@ -175,7 +183,8 @@ final class SessionSynthesisEngineTests: XCTestCase {
                 "Tomorrow should be downgraded to an active recovery flush after today's fartlek"
             )
             XCTAssertTrue(tomorrowSession.isTrimmed, "Tomorrow's drill must be trimmed to protect legs")
-            XCTAssertEqual(tomorrowSession.primerPhasesDuration, "7m 30s drill (Trimmed from 10 min)")
+            XCTAssertEqual(tomorrowSession.primerPhasesDuration, "7m 30s")
+            XCTAssertFalse(tomorrowSession.primerTargetCadence.contains("(Adapted)"))
             XCTAssertTrue(tomorrowSession.hrCap.contains("< 135 BPM") || tomorrowSession.hrCap.contains("< 145 BPM"))
 
             // 3. Verify microcycle starts after Tomorrow (since the hero card is already Tomorrow's Session)
@@ -420,5 +429,362 @@ final class SessionSynthesisEngineTests: XCTestCase {
         XCTAssertEqual(drill.effectiveTargetCadence, 155...161)
         XCTAssertEqual(drill.totalPhasesDurationSeconds, 450)
         XCTAssertEqual(drill.coolDownDurationMinutes, 3.0)
+    }
+
+    // MARK: - 8. Upgraded Synthesis Engine Architecture Tests
+
+    @MainActor
+    func testWeightedBaseline_IntervalsDoNotDistortAerobicPace() {
+        let now = Date()
+
+        // 3 steady runs of 45 mins at 360 s/km (6:00/km)
+        let run1 = makeRun(
+            date: dateOffset(days: -6, from: now),
+            duration: 2700,
+            distanceMeters: 7500,
+            workingAvgCadence: 156,
+            workingAvgHeartRate: 140,
+            detectedTypeRaw: "Steady Effort"
+        )
+        let run2 = makeRun(
+            date: dateOffset(days: -4, from: now),
+            duration: 2700,
+            distanceMeters: 7500,
+            workingAvgCadence: 155,
+            workingAvgHeartRate: 142,
+            detectedTypeRaw: "Steady Effort"
+        )
+        let run3 = makeRun(
+            date: dateOffset(days: -2, from: now),
+            duration: 2700,
+            distanceMeters: 7500,
+            workingAvgCadence: 154,
+            workingAvgHeartRate: 139,
+            detectedTypeRaw: "Steady Effort"
+        )
+
+        // 1 short interval workout of 15 mins at fast 240 s/km (4:00/km)
+        let intervalRun = makeRun(
+            date: dateOffset(days: -1, from: now),
+            duration: 900,
+            distanceMeters: 3750,
+            workingAvgCadence: 172,
+            workingAvgHeartRate: 170,
+            detectedTypeRaw: "Intervals"
+        )
+
+        let runs = [intervalRun, run3, run2, run1]
+        let weightedBaseline = SessionSynthesisEngine.computeWeightedBaseline(from: runs, priorTo: now)
+
+        // Unweighted arithmetic average would be (360*3 + 240)/4 = 330 s/km (5:30/km)
+        // Duration-weighted baseline dampens the 15-min interval run, keeping base > 348 s/km
+        XCTAssertGreaterThan(weightedBaseline.pace, 348.0, "Weighted baseline should not be pulled down by short interval workouts")
+        XCTAssertLessThanOrEqual(weightedBaseline.pace, 360.0)
+    }
+
+    @MainActor
+    func testHeightCalibratedCadenceFloor_TallerRunnerGetsLowerFloor() {
+        let now = Date()
+        let easyRun = makeRun(
+            date: dateOffset(days: -2, from: now),
+            duration: 2400,
+            distanceMeters: 6000,
+            workingAvgCadence: 152,
+            workingAvgHeartRate: 140,
+            detectedTypeRaw: "Steady Effort"
+        )
+
+        let tallState = SessionSynthesisEngine.evaluateDailyState(
+            runRecords: [easyRun],
+            activeGoal: "Base Building",
+            experienceLevel: "Intermediate",
+            useMetric: true,
+            userHeightCm: 198.0,
+            now: now
+        )
+
+        let shortState = SessionSynthesisEngine.evaluateDailyState(
+            runRecords: [easyRun],
+            activeGoal: "Base Building",
+            experienceLevel: "Intermediate",
+            useMetric: true,
+            userHeightCm: 152.0,
+            now: now
+        )
+
+        switch (tallState, shortState) {
+        case (.preRun(let tallSession), .preRun(let shortSession)):
+            XCTAssertLessThan(tallSession.cadenceFloor, shortSession.cadenceFloor, "A 198 cm runner must have a lower cadence floor than a 152 cm runner")
+            XCTAssertLessThanOrEqual(tallSession.cadenceFloor, 148, "Tall runner floor should be lower (e.g. <= 148)")
+            XCTAssertGreaterThanOrEqual(shortSession.cadenceFloor, 154, "Short runner floor should be higher (e.g. >= 154)")
+        default:
+            XCTFail("Expected .preRun state for both")
+        }
+    }
+
+    @MainActor
+    func testPolarized8020_QualityShiftsToZone2_WhenTwoHardRunsBanked() {
+        let now = Date()
+
+        let hardRun1 = makeRun(
+            date: dateOffset(days: -5, from: now),
+            duration: 2700,
+            distanceMeters: 8000,
+            workingAvgCadence: 168,
+            workingAvgHeartRate: 168,
+            detectedTypeRaw: "Intervals"
+        )
+        let hardRun2 = makeRun(
+            date: dateOffset(days: -3, from: now),
+            duration: 3600,
+            distanceMeters: 10500,
+            workingAvgCadence: 164,
+            workingAvgHeartRate: 165,
+            detectedTypeRaw: "Progression Run"
+        )
+        let easyRecovery = makeRun(
+            date: dateOffset(days: -1, from: now),
+            duration: 1800,
+            distanceMeters: 4000,
+            workingAvgCadence: 152,
+            workingAvgHeartRate: 128,
+            detectedTypeRaw: "Recovery Run"
+        )
+
+        let state = SessionSynthesisEngine.evaluateDailyState(
+            runRecords: [easyRecovery, hardRun2, hardRun1],
+            activeGoal: "5K",
+            experienceLevel: "Advanced",
+            useMetric: true,
+            now: now
+        )
+
+        switch state {
+        case .preRun(let session):
+            // 2 hard runs banked in 7 days -> Reverts to Aerobic Base despite 5K goal and productive state
+            XCTAssertTrue(
+                session.sessionTitle.contains("Aerobic") || session.sessionTitle.contains("Base") || session.sessionTitle.contains("Zone 2"),
+                "Session must revert to Zone 2 Aerobic Base under 80/20 rule: \(session.sessionTitle)"
+            )
+            XCTAssertTrue(
+                session.groundedRationale.localizedCaseInsensitiveContains("stimulus") ||
+                session.groundedRationale.localizedCaseInsensitiveContains("polarized") ||
+                session.groundedRationale.localizedCaseInsensitiveContains("80/20") ||
+                session.groundedRationale.localizedCaseInsensitiveContains("hard"),
+                "Rationale should cite 80/20 stimulus cap: \(session.groundedRationale)"
+            )
+        case .completedToday:
+            XCTFail("Expected .preRun state")
+        }
+    }
+
+    @MainActor
+    func testGoalSpecificQuality_PrescriptionsWhenCleared() {
+        let now = Date()
+        let easyRun1 = makeRun(
+            date: dateOffset(days: -3, from: now),
+            duration: 2400,
+            distanceMeters: 5500,
+            workingAvgCadence: 154,
+            workingAvgHeartRate: 135,
+            detectedTypeRaw: "Steady Effort"
+        )
+        let easyRun2 = makeRun(
+            date: dateOffset(days: -1, from: now),
+            duration: 2400,
+            distanceMeters: 5600,
+            workingAvgCadence: 155,
+            workingAvgHeartRate: 136,
+            detectedTypeRaw: "Steady Effort"
+        )
+
+        // 1. 5K goal -> Rhythm Intervals
+        let state5K = SessionSynthesisEngine.evaluateDailyState(
+            runRecords: [easyRun2, easyRun1],
+            activeGoal: "5K",
+            experienceLevel: "Advanced",
+            useMetric: true,
+            now: now
+        )
+        if case .preRun(let session5K) = state5K {
+            XCTAssertTrue(session5K.sessionTitle.contains("Rhythm Intervals") || session5K.mainSessionTemplateId == PreRunDrillId.rhythmIntervals)
+        } else {
+            XCTFail("Expected .preRun for 5K")
+        }
+
+        // 2. 10K goal -> Threshold Surges
+        let state10K = SessionSynthesisEngine.evaluateDailyState(
+            runRecords: [easyRun2, easyRun1],
+            activeGoal: "10K",
+            experienceLevel: "Advanced",
+            useMetric: true,
+            now: now
+        )
+        if case .preRun(let session10K) = state10K {
+            XCTAssertTrue(session10K.sessionTitle.contains("Threshold Surges") || session10K.mainSessionTemplateId == PreRunDrillId.tempoSurges)
+        } else {
+            XCTFail("Expected .preRun for 10K")
+        }
+
+        // 3. Half Marathon -> Lactate Threshold Tempo Surges
+        let stateHalf = SessionSynthesisEngine.evaluateDailyState(
+            runRecords: [easyRun2, easyRun1],
+            activeGoal: "Half Marathon",
+            experienceLevel: "Advanced",
+            useMetric: true,
+            now: now
+        )
+        if case .preRun(let sessionHalf) = stateHalf {
+            XCTAssertTrue(sessionHalf.sessionTitle.contains("Lactate Threshold") || sessionHalf.mainSessionTemplateId == PreRunDrillId.tempoSurges)
+        } else {
+            XCTFail("Expected .preRun for Half Marathon")
+        }
+    }
+
+    @MainActor
+    func testClosedLoopPrimer_SelectsCadencePyramidsOnExcessiveBounce() {
+        let now = Date()
+
+        let bouncyRun = makeRun(
+            date: dateOffset(days: -1, from: now),
+            duration: 2700,
+            distanceMeters: 6500,
+            workingAvgCadence: 148,
+            workingAvgHeartRate: 142,
+            detectedTypeRaw: "Steady Effort",
+            workingAvgVerticalOscillation: 11.2,
+            workingAvgStrideLength: 1.15
+        )
+
+        let state = SessionSynthesisEngine.evaluateDailyState(
+            runRecords: [bouncyRun],
+            activeGoal: "Base Building",
+            experienceLevel: "Intermediate",
+            useMetric: true,
+            now: now
+        )
+
+        switch state {
+        case .preRun(let session):
+            XCTAssertEqual(session.primerDrillId, PreRunDrillId.cadencePyramids, "High bounce (>10.0 cm) must trigger Cadence Pyramids primer")
+            XCTAssertTrue(
+                session.groundedRationale.localizedCaseInsensitiveContains("bounce") ||
+                session.groundedRationale.localizedCaseInsensitiveContains("vertical") ||
+                session.groundedRationale.localizedCaseInsensitiveContains("oscillation") ||
+                session.groundedRationale.localizedCaseInsensitiveContains("cadence"),
+                "Rationale must cite vertical oscillation / bounce: \(session.groundedRationale)"
+            )
+        case .completedToday:
+            XCTFail("Expected .preRun state")
+        }
+    }
+
+    @MainActor
+    func testExperienceScaledDurationBands_AndWorkoutKitPhases() {
+        let now = Date()
+        let baselineRun = makeRun(
+            date: dateOffset(days: -2, from: now),
+            duration: 2400,
+            distanceMeters: 6000,
+            workingAvgCadence: 154,
+            workingAvgHeartRate: 138,
+            detectedTypeRaw: "Steady Effort"
+        )
+
+        // 1. Novice -> 25–35 Min, 30m
+        let noviceState = SessionSynthesisEngine.evaluateDailyState(
+            runRecords: [baselineRun],
+            activeGoal: "Base Building",
+            experienceLevel: "Novice",
+            useMetric: true,
+            now: now
+        )
+        if case .preRun(let session) = noviceState {
+            XCTAssertEqual(session.durationBand, "25–35 Min")
+            XCTAssertEqual(session.mainRunDurationMinutes, 30)
+            let drill = PreRunDrill(id: session.mainSessionTemplateId, duration: .thirtyMinutes)
+            XCTAssertEqual(drill.totalPhasesDurationSeconds, 1800)
+        } else {
+            XCTFail("Expected .preRun for Novice")
+        }
+
+        // 2. Intermediate -> 35–45 Min, 40m
+        let intermediateState = SessionSynthesisEngine.evaluateDailyState(
+            runRecords: [baselineRun],
+            activeGoal: "Base Building",
+            experienceLevel: "Intermediate",
+            useMetric: true,
+            now: now
+        )
+        if case .preRun(let session) = intermediateState {
+            XCTAssertEqual(session.durationBand, "35–45 Min")
+            XCTAssertEqual(session.mainRunDurationMinutes, 40)
+            let drill = PreRunDrill(id: session.mainSessionTemplateId, duration: .fortyMinutes)
+            XCTAssertEqual(drill.totalPhasesDurationSeconds, 2400)
+            let phases = drill.generatePhases()
+            XCTAssertEqual(phases.count, 3)
+            XCTAssertEqual(phases[0].durationSeconds, 300) // 5m warm-up
+            XCTAssertEqual(phases[1].durationSeconds, 1800) // 30m steady
+            XCTAssertEqual(phases[2].durationSeconds, 300) // 5m cool-down
+        } else {
+            XCTFail("Expected .preRun for Intermediate")
+        }
+
+        // 3. Advanced -> 45–60 Min, 50m
+        let advancedState = SessionSynthesisEngine.evaluateDailyState(
+            runRecords: [baselineRun],
+            activeGoal: "Base Building",
+            experienceLevel: "Advanced",
+            useMetric: true,
+            now: now
+        )
+        if case .preRun(let session) = advancedState {
+            XCTAssertEqual(session.durationBand, "45–60 Min")
+            XCTAssertEqual(session.mainRunDurationMinutes, 50)
+            let drill = PreRunDrill(id: session.mainSessionTemplateId, duration: .fiftyMinutes)
+            XCTAssertEqual(drill.totalPhasesDurationSeconds, 3000)
+            let phases = drill.generatePhases()
+            XCTAssertEqual(phases.count, 3)
+            XCTAssertEqual(phases[0].durationSeconds, 300) // 5m warm-up
+            XCTAssertEqual(phases[1].durationSeconds, 2400) // 40m steady
+            XCTAssertEqual(phases[2].durationSeconds, 300) // 5m cool-down
+        } else {
+            XCTFail("Expected .preRun for Advanced")
+        }
+    }
+
+    @MainActor
+    func testMicrocycleRecoverySuppression_WhenHighRecoveryHoursActive() {
+        let now = Date()
+
+        // Yesterday was an exhaustive 2-hour workout generating 48h recovery
+        let heavyRun = makeRun(
+            date: dateOffset(days: -1, from: now),
+            duration: 7200,
+            distanceMeters: 22000,
+            workingAvgCadence: 160,
+            workingAvgHeartRate: 168,
+            detectedTypeRaw: "Progression Run",
+            percentZone4: 0.65
+        )
+
+        let state = SessionSynthesisEngine.evaluateDailyState(
+            runRecords: [heavyRun],
+            activeGoal: "Half Marathon",
+            experienceLevel: "Advanced",
+            useMetric: true,
+            now: now
+        )
+
+        switch state {
+        case .preRun(let session):
+            // Verify Day 2 of microcycle does not schedule Quality/Intervals while recovery window is active
+            if session.microcycle.count >= 2 {
+                let day2 = session.microcycle[1]
+                XCTAssertFalse(day2.sessionTitle.contains("Intervals") || day2.sessionTitle.contains("Surges"), "Day 2 must not schedule quality while in multi-day recovery: \(day2.sessionTitle)")
+            }
+        case .completedToday:
+            XCTFail("Expected .preRun state")
+        }
     }
 }

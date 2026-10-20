@@ -212,6 +212,7 @@ class AnalystChatEngine: ObservableObject {
                 activeGoal: activeGoal,
                 experienceLevel: profile.experienceLevel,
                 useMetric: useMetric,
+                userHeightCm: profile.userHeightCm,
                 now: Date()
             )
 
@@ -293,6 +294,7 @@ class AnalystChatEngine: ObservableObject {
                     activeGoal: activeGoal,
                     experienceLevel: profile.experienceLevel,
                     useMetric: useMetric,
+                    userHeightCm: profile.userHeightCm,
                     now: Date()
                 )
 
@@ -409,6 +411,7 @@ class AnalystChatEngine: ObservableObject {
                     activeGoal: activeGoal,
                     experienceLevel: profile.experienceLevel,
                     useMetric: useMetric,
+                    userHeightCm: profile.userHeightCm,
                     now: Date()
                 )
                 let sessionToAttach: PrescribedDailySession?

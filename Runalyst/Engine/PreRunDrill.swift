@@ -98,7 +98,7 @@ struct PreRunDrill: Sendable {
     /// Warm-up length used by the visual timeline.
     var warmUpDurationMinutes: Double {
         if id == .zone2Run {
-            return duration == .fiveMinutes ? 5.0 : (duration == .tenMinutes ? 2.0 : (duration == .thirtyMinutes ? 5.0 : 3.0))
+            return (duration == .fiveMinutes || duration == .thirtyMinutes || duration == .fortyMinutes || duration == .fiftyMinutes) ? 5.0 : (duration == .tenMinutes ? 2.0 : 3.0)
         } else if id == .tempoSurges && duration == .tenMinutes {
             return 2.5
         } else if id == .strides && duration == .fifteenMinutes {
@@ -106,7 +106,7 @@ struct PreRunDrill: Sendable {
         } else if id == .aerobicFlush || id == .recoveryJog {
             return 0.0
         } else {
-            return duration == .fiveMinutes ? 1.0 : (duration == .tenMinutes ? 2.0 : (duration == .thirtyMinutes ? 4.0 : 3.0))
+            return duration == .fiveMinutes ? 1.0 : (duration == .tenMinutes ? 2.0 : ((duration == .thirtyMinutes || duration == .fortyMinutes || duration == .fiftyMinutes) ? 4.0 : 3.0))
         }
     }
 
@@ -118,49 +118,49 @@ struct PreRunDrill: Sendable {
             case .fiveMinutes: return IntervalSpec(iterations: 3, workSeconds: 20, recoverySeconds: 30, isWalk: true)
             case .tenMinutes: return IntervalSpec(iterations: 4, workSeconds: 30, recoverySeconds: 45, isWalk: true)
             case .fifteenMinutes: return IntervalSpec(iterations: 4, workSeconds: 60, recoverySeconds: 90, isWalk: true)
-            case .thirtyMinutes: return IntervalSpec(iterations: 6, workSeconds: 90, recoverySeconds: 120, isWalk: true)
+            case .thirtyMinutes, .fortyMinutes, .fiftyMinutes: return IntervalSpec(iterations: 6, workSeconds: 90, recoverySeconds: 120, isWalk: true)
             }
         case .rhythmIntervals:
             switch duration {
             case .fiveMinutes: return IntervalSpec(iterations: 3, workSeconds: 20, recoverySeconds: 30, isWalk: false)
             case .tenMinutes: return IntervalSpec(iterations: 4, workSeconds: 30, recoverySeconds: 45, isWalk: false)
             case .fifteenMinutes: return IntervalSpec(iterations: 5, workSeconds: 45, recoverySeconds: 75, isWalk: false)
-            case .thirtyMinutes: return IntervalSpec(iterations: 6, workSeconds: 90, recoverySeconds: 120, isWalk: false)
+            case .thirtyMinutes, .fortyMinutes, .fiftyMinutes: return IntervalSpec(iterations: 6, workSeconds: 90, recoverySeconds: 120, isWalk: false)
             }
         case .tempoSurges:
             switch duration {
             case .fiveMinutes: return IntervalSpec(iterations: 3, workSeconds: 30, recoverySeconds: 45, isWalk: true)
             case .tenMinutes: return IntervalSpec(iterations: 5, workSeconds: 30, recoverySeconds: 60, isWalk: true)
             case .fifteenMinutes: return IntervalSpec(iterations: 3, workSeconds: 120, recoverySeconds: 120, isWalk: true)
-            case .thirtyMinutes: return IntervalSpec(iterations: 4, workSeconds: 180, recoverySeconds: 180, isWalk: true)
+            case .thirtyMinutes, .fortyMinutes, .fiftyMinutes: return IntervalSpec(iterations: 4, workSeconds: 180, recoverySeconds: 180, isWalk: true)
             }
         case .strides:
             switch duration {
             case .fiveMinutes: return IntervalSpec(iterations: 4, workSeconds: 15, recoverySeconds: 45, isWalk: true)
             case .tenMinutes: return IntervalSpec(iterations: 4, workSeconds: 15, recoverySeconds: 45, isWalk: true)
             case .fifteenMinutes: return IntervalSpec(iterations: 6, workSeconds: 20, recoverySeconds: 60, isWalk: true)
-            case .thirtyMinutes: return IntervalSpec(iterations: 8, workSeconds: 30, recoverySeconds: 90, isWalk: true)
+            case .thirtyMinutes, .fortyMinutes, .fiftyMinutes: return IntervalSpec(iterations: 8, workSeconds: 30, recoverySeconds: 90, isWalk: true)
             }
         case .neuromuscularPrimer:
             switch duration {
             case .fiveMinutes: return IntervalSpec(iterations: 3, workSeconds: 15, recoverySeconds: 30, isWalk: true)
             case .tenMinutes: return IntervalSpec(iterations: 4, workSeconds: 20, recoverySeconds: 40, isWalk: true)
             case .fifteenMinutes: return IntervalSpec(iterations: 5, workSeconds: 30, recoverySeconds: 60, isWalk: true)
-            case .thirtyMinutes: return IntervalSpec(iterations: 6, workSeconds: 45, recoverySeconds: 90, isWalk: true)
+            case .thirtyMinutes, .fortyMinutes, .fiftyMinutes: return IntervalSpec(iterations: 6, workSeconds: 45, recoverySeconds: 90, isWalk: true)
             }
         case .fartlekPrimer:
             switch duration {
             case .fiveMinutes: return IntervalSpec(iterations: 3, workSeconds: 30, recoverySeconds: 30, isWalk: false)
             case .tenMinutes: return IntervalSpec(iterations: 4, workSeconds: 45, recoverySeconds: 45, isWalk: false)
             case .fifteenMinutes: return IntervalSpec(iterations: 5, workSeconds: 60, recoverySeconds: 60, isWalk: false)
-            case .thirtyMinutes: return IntervalSpec(iterations: 6, workSeconds: 120, recoverySeconds: 120, isWalk: false)
+            case .thirtyMinutes, .fortyMinutes, .fiftyMinutes: return IntervalSpec(iterations: 6, workSeconds: 120, recoverySeconds: 120, isWalk: false)
             }
         case .hillBounds:
             switch duration {
             case .fiveMinutes: return IntervalSpec(iterations: 3, workSeconds: 15, recoverySeconds: 30, isWalk: true)
             case .tenMinutes: return IntervalSpec(iterations: 4, workSeconds: 20, recoverySeconds: 40, isWalk: true)
             case .fifteenMinutes: return IntervalSpec(iterations: 5, workSeconds: 30, recoverySeconds: 60, isWalk: true)
-            case .thirtyMinutes: return IntervalSpec(iterations: 6, workSeconds: 45, recoverySeconds: 90, isWalk: true)
+            case .thirtyMinutes, .fortyMinutes, .fiftyMinutes: return IntervalSpec(iterations: 6, workSeconds: 45, recoverySeconds: 90, isWalk: true)
             }
         case .aerobicFlush, .recoveryJog:
             return IntervalSpec(iterations: 1, workSeconds: duration.rawValue * 60, recoverySeconds: nil, isWalk: false)
@@ -168,7 +168,7 @@ struct PreRunDrill: Sendable {
             if duration == .fiveMinutes {
                 return IntervalSpec(iterations: 1, workSeconds: 300, recoverySeconds: nil, isWalk: false)
             }
-            let zone2CoolDown = duration == .tenMinutes ? 2.0 : (duration == .thirtyMinutes ? 5.0 : 2.0)
+            let zone2CoolDown = duration == .tenMinutes ? 2.0 : ((duration == .thirtyMinutes || duration == .fortyMinutes || duration == .fiftyMinutes) ? 5.0 : 2.0)
             let steadySeconds = Int((Double(duration.rawValue) - warmUpDurationMinutes - zone2CoolDown) * 60)
             return IntervalSpec(iterations: 1, workSeconds: max(60, steadySeconds), recoverySeconds: nil, isWalk: false)
         }
@@ -201,7 +201,7 @@ struct PreRunDrill: Sendable {
         if id == .aerobicFlush || id == .recoveryJog {
             return 0.0
         } else if id == .zone2Run {
-            return duration == .fiveMinutes ? 0.0 : (duration == .tenMinutes ? 2.0 : (duration == .thirtyMinutes ? 5.0 : 2.0))
+            return duration == .fiveMinutes ? 0.0 : (duration == .tenMinutes ? 2.0 : ((duration == .thirtyMinutes || duration == .fortyMinutes || duration == .fiftyMinutes) ? 5.0 : 2.0))
         } else {
             // Cool-down is anchored to the standard geometry so a readiness-reduced session
             // becomes shorter instead of padding an oversized cool-down.
