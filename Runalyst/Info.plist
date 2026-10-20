@@ -17,9 +17,9 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>2.5.1</string>
+	<string>2.6.0</string>
 	<key>CFBundleVersion</key>
-	<string>8</string>
+	<string>9</string>
 	<key>NSHealthShareUsageDescription</key>
 	<string>Runalyst needs to read your workout data to provide AI coaching insights.</string>
 	<key>NSHealthUpdateUsageDescription</key>
