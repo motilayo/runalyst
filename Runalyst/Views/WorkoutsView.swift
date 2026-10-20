@@ -21,7 +21,12 @@ struct WorkoutsView: View {
     @State private var showingExportAlert = false
     @State private var activeReadoutItem: ActiveDrillReadoutItem?
 
+    var overrideDailyState: DailyTrainingState?
+
     private var dailyState: DailyTrainingState {
+        if let overrideDailyState {
+            return overrideDailyState
+        }
         let profile = RunnerProfile.compute(from: runRecords, trainingGoal: trainingGoal)
         return SessionSynthesisEngine.evaluateDailyState(
             runRecords: runRecords,
@@ -195,6 +200,7 @@ struct WorkoutsView: View {
                                     .font(.subheadline.weight(.semibold))
                                     .foregroundColor(.primary)
                                     .lineLimit(1)
+                                    .minimumScaleFactor(0.85)
                                     .truncationMode(.tail)
                                 Text("\(snap.durationFormatted) • \(snap.distanceFormatted)")
                                     .font(.caption)
@@ -745,7 +751,7 @@ struct WorkoutsView: View {
                     .font(.subheadline.weight(.bold))
                     .foregroundColor(.primary)
 
-                if completedPrimer != nil {
+                if let completedPrimer {
                     Text("Completed • \(completedPrimer.durationFormatted) • \(completedPrimer.distanceFormatted)")
                         .font(.caption)
                         .monospacedDigit()
