@@ -602,10 +602,37 @@ class HealthKitManager: ObservableObject {
         var classificationResult: ClassificationResult?
         let modelManager = ModelManager()
 
+        // Check for scheduled continuous aerobic sessions from WorkoutKit / CustomWorkout
+        let explicitContinuousAerobic: PreRunDrillId? = {
+            #if canImport(WorkoutKit)
+            if let custom = customWorkoutPlan, let name = custom.displayName, let resolved = PreRunDrillId.resolve(from: name), resolved.isAerobicContinuous {
+                return resolved
+            }
+            #endif
+            if let meta = workout.metadata {
+                for str in WorkoutBridge.extractAllStrings(from: meta) {
+                    if let resolved = PreRunDrillId.resolve(from: str), resolved.isAerobicContinuous {
+                        return resolved
+                    }
+                }
+            }
+            return nil
+        }()
+
         if let matchedDrill = matchedDrillIntent {
             let matchedClass = PreRunDrillId.correspondingClassification(for: matchedDrill.drillTitle)
                 ?? PreRunDrillId.correspondingClassification(for: matchedDrill.preRunDrillId ?? "")
                 ?? "Intervals"
+            classification = matchedClass
+            classificationResult = ClassificationResult(
+                targetClass: matchedClass,
+                confidence: 1.0,
+                probabilities: [matchedClass: 1.0],
+                isReviewRequired: false,
+                needsInclineReview: false
+            )
+        } else if let continuousWorkout = explicitContinuousAerobic, zone4 <= 0.20 && cv < 0.10 && duration < 4080 {
+            let matchedClass = continuousWorkout.correspondingClassification
             classification = matchedClass
             classificationResult = ClassificationResult(
                 targetClass: matchedClass,
@@ -677,7 +704,8 @@ class HealthKitManager: ObservableObject {
                 zone4: zone4,
                 durationMinutes: duration / 60.0,
                 cadenceCV: cadenceCV,
-                averageHR: currentHR
+                averageHR: currentHR,
+                isIndoor: isIndoor
             )
             classification = fallbackClass
             classificationResult = ClassificationResult(
@@ -688,7 +716,7 @@ class HealthKitManager: ObservableObject {
                 needsInclineReview: false
             )
         }
-        var tags = await engine.generateFramboiseTags(cv: cv, slope: slope, deadStopsCount: buckets.count - trimmed.count, buckets: trimmed)
+        var tags = await engine.generateFramboiseTags(cv: cv, slope: slope, deadStopsCount: buckets.count - trimmed.count, buckets: trimmed, isIndoor: isIndoor)
         if let matchedDrill = matchedDrillIntent {
             WorkoutBridge.markIntentMatched(workoutID: workout.uuid, drillTitle: matchedDrill.drillTitle, workoutDate: workout.startDate)
 

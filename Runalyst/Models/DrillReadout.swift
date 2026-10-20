@@ -578,6 +578,55 @@ extension ActiveDrillReadoutItem {
             dto: adaptedDTO
         )
     }
+
+    /// Builds an ActiveDrillReadoutItem directly from a synthesized session prescription.
+    /// Preserves the exact target cadence, duration, and structure determined by SessionSynthesisEngine
+    /// without running a second competing post-hoc mutation pass.
+    static func fromPrescription(
+        dto: DrillPrescriptionDTO,
+        customCoachingTip: String? = nil
+    ) -> ActiveDrillReadoutItem {
+        let drillId = dto.preRunDrillId.flatMap(PreRunDrillId.init(rawValue:)) ?? .strides
+        let duration: DrillDuration = {
+            if let raw = dto.durationMinutes {
+                if let exact = DrillDuration(rawValue: raw) { return exact }
+                if raw <= 6 { return .fiveMinutes }
+                if raw <= 12 { return .tenMinutes }
+                if raw <= 20 { return .fifteenMinutes }
+                return .thirtyMinutes
+            }
+            return drillId.defaultDuration
+        }()
+        let haptic = HapticFeedbackMode(rawValue: dto.hapticMode ?? "") ?? .on
+        let state = ReadinessState(rawValue: dto.readinessState ?? "") ?? .productive
+        let isIndoor = dto.isIndoor ?? UserDefaults.standard.bool(forKey: "preferredWorkoutIsIndoor")
+
+        let drill = PreRunDrill(
+            id: drillId,
+            previousCadence: dto.previousCadence,
+            targetCadence: dto.targetCadence,
+            duration: duration,
+            hapticMode: haptic,
+            readinessState: state,
+            isIndoor: isIndoor,
+            customDisplayName: dto.title
+        )
+
+        let readout = DrillReadout.readout(
+            for: drillId,
+            customTitle: dto.title,
+            targetCadence: dto.targetCadence,
+            previousCadence: dto.previousCadence,
+            customDuration: duration,
+            customCoachingTip: customCoachingTip ?? dto.purpose
+        )
+
+        return ActiveDrillReadoutItem(
+            readout: readout,
+            plan: drill.buildWorkoutPlan(),
+            dto: dto
+        )
+    }
 }
 
 extension DrillReadout {

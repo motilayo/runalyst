@@ -54,6 +54,49 @@ struct RunVarianceMapView: View {
         return min(220, ceil((highestCad + 8) / 5) * 5)
     }
 
+    struct CadencePlotPoint: Identifiable {
+        let id: String
+        let minute: Double
+        let cadence: Double
+        let kind: String
+        let isAnchor: Bool
+    }
+
+    private var chartPoints: [CadencePlotPoint] {
+        var points: [CadencePlotPoint] = []
+        let fallbackCad = averageCadence > 0 ? averageCadence : cadenceFloor
+
+        for (idx, seg) in normalizedSegments.enumerated() {
+            let cad = seg.avgCadence > 0 ? seg.avgCadence : fallbackCad
+            let startMin = seg.startSeconds / 60.0
+            let endMin = seg.endSeconds / 60.0
+            let midMin = (seg.startSeconds + seg.endSeconds) / 120.0
+
+            if normalizedSegments.count == 1 || (endMin - startMin) > 2.0 {
+                // Continuous run or extended phase: render start, mid, and end anchors
+                // to guarantee Swift Charts draws continuous lines and areas across the full duration.
+                points.append(CadencePlotPoint(id: "\(idx)-start", minute: startMin, cadence: cad, kind: seg.kind, isAnchor: false))
+                points.append(CadencePlotPoint(id: "\(idx)-mid", minute: midMin, cadence: cad, kind: seg.kind, isAnchor: true))
+                points.append(CadencePlotPoint(id: "\(idx)-end", minute: endMin, cadence: cad, kind: seg.kind, isAnchor: false))
+            } else {
+                // Shorter interval or recovery rep: single midpoint anchor
+                points.append(CadencePlotPoint(id: "\(idx)-mid", minute: midMin, cadence: cad, kind: seg.kind, isAnchor: true))
+            }
+        }
+
+        // Defensive guarantee: Swift Charts requires at least 2 points to render AreaMark and LineMark
+        if points.count == 1, let first = points.first {
+            let endMin = max(maxMinutes, first.minute + 1.0)
+            points = [
+                CadencePlotPoint(id: "start", minute: 0, cadence: first.cadence, kind: first.kind, isAnchor: false),
+                CadencePlotPoint(id: "mid", minute: first.minute, cadence: first.cadence, kind: first.kind, isAnchor: true),
+                CadencePlotPoint(id: "end", minute: endMin, cadence: first.cadence, kind: first.kind, isAnchor: false)
+            ]
+        }
+
+        return points.sorted(by: { $0.minute < $1.minute })
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
@@ -85,11 +128,11 @@ struct RunVarianceMapView: View {
                     }
 
                     // Soft gradient under the cadence line
-                    ForEach(normalizedSegments) { seg in
+                    ForEach(chartPoints) { pt in
                         AreaMark(
-                            x: .value("Time", (seg.startSeconds + seg.endSeconds) / 120.0),
+                            x: .value("Time", pt.minute),
                             yStart: .value("Floor", yMin),
-                            yEnd: .value("Cadence", seg.avgCadence > 0 ? seg.avgCadence : averageCadence)
+                            yEnd: .value("Cadence", pt.cadence)
                         )
                         .interpolationMethod(.catmullRom)
                         .foregroundStyle(
@@ -102,10 +145,10 @@ struct RunVarianceMapView: View {
                     }
 
                     // Prominent Cadence trajectory connecting line
-                    ForEach(normalizedSegments) { seg in
+                    ForEach(chartPoints) { pt in
                         LineMark(
-                            x: .value("Time", (seg.startSeconds + seg.endSeconds) / 120.0),
-                            y: .value("Cadence", seg.avgCadence > 0 ? seg.avgCadence : averageCadence)
+                            x: .value("Time", pt.minute),
+                            y: .value("Cadence", pt.cadence)
                         )
                         .interpolationMethod(.catmullRom)
                         .foregroundStyle(Color.purple)
@@ -113,9 +156,9 @@ struct RunVarianceMapView: View {
                     }
 
                     // Prominent Peak and Trough Point Marks
-                    ForEach(normalizedSegments) { seg in
-                        let midTime = (seg.startSeconds + seg.endSeconds) / 120.0
-                        let cad = seg.avgCadence > 0 ? seg.avgCadence : averageCadence
+                    ForEach(chartPoints.filter(\.isAnchor)) { pt in
+                        let midTime = pt.minute
+                        let cad = pt.cadence
                         let isNearRightEdge = midTime >= (maxMinutes - 1.2)
                         let isNearLeftEdge = midTime <= 0.8
                         let annotationAlignment: Alignment = isNearRightEdge ? .trailing : (isNearLeftEdge ? .leading : .center)
@@ -124,11 +167,11 @@ struct RunVarianceMapView: View {
                             x: .value("Time", midTime),
                             y: .value("Cadence", cad)
                         )
-                        .foregroundStyle(isIntervalOrDrill ? phaseColor(seg.kind) : Color.purple)
-                        .symbolSize(isIntervalOrDrill ? (seg.kind == "work" ? 76 : (seg.kind == "recovery" ? 60 : 44)) : 36)
+                        .foregroundStyle(isIntervalOrDrill ? phaseColor(pt.kind) : Color.purple)
+                        .symbolSize(isIntervalOrDrill ? (pt.kind == "work" ? 76 : (pt.kind == "recovery" ? 60 : 44)) : 36)
                         .annotation(position: .top, alignment: annotationAlignment) {
                             if isIntervalOrDrill {
-                                if seg.kind == "work" {
+                                if pt.kind == "work" {
                                     Text("\(Int(cad))")
                                         .font(.system(size: 10, weight: .bold))
                                         .foregroundColor(.purple)
@@ -137,7 +180,7 @@ struct RunVarianceMapView: View {
                                         .background(Color(UIColor.secondarySystemGroupedBackground))
                                         .clipShape(Capsule())
                                         .shadow(color: Color.black.opacity(0.12), radius: 2)
-                                } else if seg.kind == "recovery" {
+                                } else if pt.kind == "recovery" {
                                     Text("\(Int(cad))")
                                         .font(.system(size: 9, weight: .bold))
                                         .foregroundColor(.teal)

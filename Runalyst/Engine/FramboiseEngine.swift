@@ -9,13 +9,23 @@ actor FramboiseEngine {
     // MARK: - Dead Stop & Walking Filter
 
     /// Filters out stationary time, traffic stops, and walking breaks.
-    /// Strictly filters to KEEP samples where speed is greater than the walking threshold
-    /// (e.g., speed > 1.5 m/s or cadence > 130 SPM). Drops everything else.
+    /// Strictly filters to KEEP samples where speed is greater than the walking threshold.
+    /// When step cadence is present, enforces a biomechanical running floor (>= 125 SPM)
+    /// so arm-swing during walking breaks on treadmills cannot bleed false running speed.
     func filterRunningSamples(buckets: [BucketData]) -> [BucketData] {
         return buckets.filter { bucket in
             let speedMetersPerSecond = bucket.durationSeconds > 0 ? (bucket.distanceMeters / bucket.durationSeconds) : 0
-            let isRunning = speedMetersPerSecond > 1.5 || bucket.meanCadence > 130.0
-            return isRunning
+            if bucket.meanCadence > 0 {
+                if bucket.meanCadence >= 130.0 {
+                    return true
+                } else if bucket.meanCadence >= 125.0 {
+                    return speedMetersPerSecond > 1.65
+                } else {
+                    return false
+                }
+            } else {
+                return speedMetersPerSecond > 1.5
+            }
         }
     }
 
@@ -834,11 +844,12 @@ actor FramboiseEngine {
         hrDelta: Double? = nil,
         cycles: [SurgeRecoveryCycle]? = nil,
         deadStopsCount: Int = 0,
-        hoursSinceHeavyEffort: Double? = nil
+        hoursSinceHeavyEffort: Double? = nil,
+        isIndoor: Bool = false
     ) -> String {
-        // LAYER 0: Environmental Interruption (Urban Traffic)
-        let trafficEntropy = detectUrbanTrafficEntropy(buckets: buckets)
-        let isChaoticTraffic = (trafficEntropy >= 0.04 || (deadStopsCount >= 4 && cv > 0.10))
+        // LAYER 0: Environmental Interruption (Urban Traffic) - strictly impossible indoors
+        let trafficEntropy = isIndoor ? 0.0 : detectUrbanTrafficEntropy(buckets: buckets)
+        let isChaoticTraffic = !isIndoor && (trafficEntropy >= 0.04 || (deadStopsCount >= 4 && cv > 0.10))
 
         // LAYER 1: Continuous Monotonic Progression (Strict low-variance progressive acceleration)
         let isProgression = durationMinutes >= 20.0 && cv < 0.09 && evaluateQuintileProgression(buckets: buckets)
@@ -859,12 +870,12 @@ actor FramboiseEngine {
         let regularityScore = isIntermittent ? calculateCycleRegularity(cycles: cycles) : 0.0
 
         // If traffic was chaotic and it's not a structured threshold interval workout, classify as Urban Traffic
-        if !isUniformSteady && isChaoticTraffic && (zone4 < 0.35 || regularityScore < 0.65) {
+        if !isIndoor && !isUniformSteady && isChaoticTraffic && (zone4 < 0.35 || regularityScore < 0.65) {
             return "Urban Traffic"
         }
 
-        // LAYER 2.5: Topographic Sawtooth Climbs (Hill Repeats)
-        if detectHillRepeats(buckets: buckets) {
+        // LAYER 2.5: Topographic Sawtooth Climbs (Hill Repeats) - strictly impossible indoors
+        if !isIndoor && detectHillRepeats(buckets: buckets) {
             return "Hill Repeats"
         }
 
@@ -927,10 +938,10 @@ actor FramboiseEngine {
 
     // MARK: - Tags
 
-    func generateFramboiseTags(cv: Double, slope: Double, deadStopsCount: Int, buckets: [BucketData] = []) -> [String] {
+    func generateFramboiseTags(cv: Double, slope: Double, deadStopsCount: Int, buckets: [BucketData] = [], isIndoor: Bool = false) -> [String] {
         var tags = [String]()
 
-        if deadStopsCount > 5 {
+        if deadStopsCount > 5 && !isIndoor {
             tags.append("urbanTraffic")
         }
         if slope > 0.225 {

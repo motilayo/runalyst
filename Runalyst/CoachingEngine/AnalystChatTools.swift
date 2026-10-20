@@ -297,6 +297,71 @@ public struct BlendedTotals: Codable, Sendable {
     }
 }
 
+public struct ScheduledDaySummary: Codable, Sendable {
+    public let day_name: String
+    public let session_title: String
+    public let duration_band: String
+    public let target_pace_or_effort: String
+    public let is_rest_day: Bool
+    public let rationale: String
+
+    public init(
+        day_name: String,
+        session_title: String,
+        duration_band: String,
+        target_pace_or_effort: String,
+        is_rest_day: Bool,
+        rationale: String
+    ) {
+        self.day_name = day_name
+        self.session_title = session_title
+        self.duration_band = duration_band
+        self.target_pace_or_effort = target_pace_or_effort
+        self.is_rest_day = is_rest_day
+        self.rationale = rationale
+    }
+}
+
+public struct TodayWorkloadEvaluation: Codable, Sendable {
+    public let sessions_completed_today_count: Int
+    public let completed_sessions_summary: [String]
+    public let total_duration_today: String
+    public let total_distance_today: String
+    public let daily_target_duration_band: String
+    public let daily_target_completion_percent: Int
+    public let acute_load_and_strain_factors: String
+    public let has_done_sufficient_work_today: Bool
+    public let should_run_again_today: Bool
+    public let sufficiency_verdict: String
+    public let second_run_or_supplemental_prescription: String
+
+    public init(
+        sessions_completed_today_count: Int,
+        completed_sessions_summary: [String],
+        total_duration_today: String,
+        total_distance_today: String,
+        daily_target_duration_band: String,
+        daily_target_completion_percent: Int,
+        acute_load_and_strain_factors: String,
+        has_done_sufficient_work_today: Bool,
+        should_run_again_today: Bool,
+        sufficiency_verdict: String,
+        second_run_or_supplemental_prescription: String
+    ) {
+        self.sessions_completed_today_count = sessions_completed_today_count
+        self.completed_sessions_summary = completed_sessions_summary
+        self.total_duration_today = total_duration_today
+        self.total_distance_today = total_distance_today
+        self.daily_target_duration_band = daily_target_duration_band
+        self.daily_target_completion_percent = daily_target_completion_percent
+        self.acute_load_and_strain_factors = acute_load_and_strain_factors
+        self.has_done_sufficient_work_today = has_done_sufficient_work_today
+        self.should_run_again_today = should_run_again_today
+        self.sufficiency_verdict = sufficiency_verdict
+        self.second_run_or_supplemental_prescription = second_run_or_supplemental_prescription
+    }
+}
+
 /// The definitive structure returned to the LLM on readiness and prescription tool call.
 public struct ReadinessToolResponse: Codable, Sendable {
     public let schema_name: String
@@ -311,6 +376,8 @@ public struct ReadinessToolResponse: Codable, Sendable {
     public let prescribed_cadence_band: String
     public let session_rationale: String
     public let guidance_notes: [String: String]?
+    public let upcoming_weekly_schedule: [ScheduledDaySummary]?
+    public let today_workload_evaluation: TodayWorkloadEvaluation?
 
     public init(
         schema_name: String = "READINESS_AND_PRESCRIPTION_RESPONSE",
@@ -324,7 +391,9 @@ public struct ReadinessToolResponse: Codable, Sendable {
         prescribed_duration_band: String,
         prescribed_cadence_band: String,
         session_rationale: String,
-        guidance_notes: [String: String]? = nil
+        guidance_notes: [String: String]? = nil,
+        upcoming_weekly_schedule: [ScheduledDaySummary]? = nil,
+        today_workload_evaluation: TodayWorkloadEvaluation? = nil
     ) {
         self.schema_name = schema_name
         self.readiness_verdict = readiness_verdict
@@ -338,6 +407,8 @@ public struct ReadinessToolResponse: Codable, Sendable {
         self.prescribed_cadence_band = prescribed_cadence_band
         self.session_rationale = session_rationale
         self.guidance_notes = guidance_notes
+        self.upcoming_weekly_schedule = upcoming_weekly_schedule
+        self.today_workload_evaluation = today_workload_evaluation
     }
 }
 // swiftlint:enable identifier_name
@@ -353,6 +424,8 @@ public enum TrainingFocus: String, Sendable {
     case readiness = "readiness"
     case history = "history"
     case athleteProfile = "athlete_profile"
+    case weeklySchedule = "weekly_schedule"
+    case todayWorkload = "today_workload"
 }
 
 @available(iOS 26.0, *)
@@ -368,6 +441,7 @@ public enum HistoryScope: String, Sendable {
 @Generable
 public enum CoachActionType: String, Sendable {
     case displaySession = "display_session"
+    case displaySchedule = "display_schedule"
     case displayDrill = "display_drill"
     case displayExplainer = "display_explainer"
     case exportToWatch = "export_to_watch"
@@ -384,7 +458,7 @@ public struct InspectWorkoutQuery: Sendable {
 @available(iOS 26.0, *)
 @Generable
 public struct ManageTrainingStateQuery: Sendable {
-    @Guide(description: "Focus: 'readiness' for recovery and tomorrow's prescription; 'history' for mathematical comparisons or historical lookups with past runs; 'athlete_profile' for load and cadence floor.")
+    @Guide(description: "Focus: 'readiness' for recovery and tomorrow's prescription; 'weekly_schedule' for the upcoming multi-day schedule; 'today_workload' for evaluating whether today's workload is sufficient and if a second run is advisable; 'history' for mathematical comparisons or lookups with past runs; 'athlete_profile' for load and cadence floor.")
     public var focus: TrainingFocus
 
     @Guide(description: "Set to true if the runner mentions illness, pain, exhaustion, injury, or severe distress.")
@@ -417,7 +491,7 @@ public struct ManageTrainingStateQuery: Sendable {
 @available(iOS 26.0, *)
 @Generable
 public struct ExecuteCoachActionQuery: Sendable {
-    @Guide(description: "Action: 'display_session' to present the interactive next workout session card; 'display_drill' to present an interactive drill card; 'display_explainer' to present an educational concept card explaining a biomechanical or physiological metric (e.g. cadence floor, cardiac drift, efficiency factor); 'update_goal' to adjust training goal; 'export_to_watch' to schedule a workout to Apple Watch; 'record_feedback' to save subjective feedback.")
+    @Guide(description: "Action: 'display_session' to present the interactive next single workout session card; 'display_schedule' to present the upcoming weekly training schedule card; 'display_drill' to present an interactive drill card; 'display_explainer' to present an educational concept card explaining a biomechanical or physiological metric (e.g. cadence floor, cardiac drift, efficiency factor); 'update_goal' to adjust training goal; 'export_to_watch' to schedule a workout to Apple Watch; 'record_feedback' to save subjective feedback.")
     public var action: CoachActionType
 
     @Guide(description: "Payload: workout or drill name (e.g. 'cadence_pyramids', 'strides') for 'display_drill' and 'export_to_watch'; metric or concept key (e.g. 'cadence_floor', 'cardiac_drift', 'efficiency_factor') for 'display_explainer'; race goal (e.g. 'Base Building', '5K', 'Marathon') for 'update_goal'; subjective notes for 'record_feedback'.")

@@ -1699,6 +1699,8 @@ final class IndoorIntelligenceTests: XCTestCase {
                 switch query.action {
                 case .displaySession:
                     return "{\"status\":\"session_card_displayed\"}"
+                case .displaySchedule:
+                    return "{\"status\":\"schedule_card_displayed\"}"
                 case .displayDrill:
                     let resolved = PreRunDrillId.resolve(from: query.payload ?? "") ?? .cadencePyramids
                     return "{\"status\":\"interactive_drill_card_displayed\",\"drill_name\":\"\(resolved.title)\"}"
@@ -1962,5 +1964,53 @@ final class IndoorIntelligenceTests: XCTestCase {
         let recentRunsCatalog = HistoricalRunMatcher.listRecentRuns(relativeTo: currentRun, in: context, limit: 2)
         XCTAssertTrue(recentRunsCatalog.contains("March 21, 2025 to"), "Catalog header must display lifetime range")
         XCTAssertTrue(recentRunsCatalog.contains("1 older workouts recorded in athlete database down to first logged run on Friday, March 21, 2025"))
+    }
+
+    // MARK: - Oct 20 Incident Regression: Indoor Treadmill Zone 2 Classification
+
+    func testIndoorTreadmillZone2Run_Oct20Incident_ClassifiesAsEasyRun() async {
+        let modelManager = ModelManager()
+        let now = Date()
+        var buckets: [BucketData] = []
+        // Authentic 60-minute Zone 2 run on treadmill with belt pause
+        for i in 0..<120 {
+            let isStop = (i == 40 || i == 80)
+            let pace = isStop ? 900.0 : 400.0
+            let cad = isStop ? 80.0 : 148.0
+            let hr = isStop ? 118.0 : 142.0
+            buckets.append(
+                BucketData(
+                    startTime: now.addingTimeInterval(Double(i * 30)),
+                    distanceMeters: isStop ? 0.0 : 75.0,
+                    durationSeconds: 30.0,
+                    meanPaceSecPerKm: pace,
+                    meanCadence: cad,
+                    meanHR: hr
+                )
+            )
+        }
+
+        let result = await modelManager.predictRunTypeResult(
+            buckets: buckets,
+            paceDelta: 12.0,
+            hrDelta: 0.0,
+            percentZone4: 0.0,
+            cadenceDelta: -3.0,
+            verticalOscillation: 8.5,
+            runnerStage: 1,
+            cv: 0.147,
+            slope: 0.057,
+            durationMinutes: 60.1,
+            cadenceCV: 0.038,
+            hrCV: 0.045,
+            cadenceSlope: 0.0,
+            isIndoor: true,
+            isGymKit: false
+        )
+
+        XCTAssertNotEqual(result.targetClass, "Urban Traffic", "Treadmill run must never classify as Urban Traffic")
+        XCTAssertTrue(result.targetClass == "Easy Run" || result.targetClass == "Steady Effort", "Zone 2 treadmill run should classify as Easy Run or Steady Effort, got: \(result.targetClass)")
+        XCTAssertFalse(result.isReviewRequired)
+        XCTAssertGreaterThanOrEqual(result.confidence, 0.75)
     }
 }

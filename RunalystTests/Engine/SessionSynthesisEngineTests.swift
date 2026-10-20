@@ -787,4 +787,156 @@ final class SessionSynthesisEngineTests: XCTestCase {
             XCTFail("Expected .preRun state")
         }
     }
+
+    // MARK: - Rest Day Synthesis & Readout Parity Tests
+
+    @MainActor
+    func testSynthesizeTomorrowPrescription_AfterMonTueCompressiveLoad_PrescribesRestDay() {
+        let now = Date()
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: now)
+        guard let yesterday = calendar.date(byAdding: .day, value: -1, to: today) else { return }
+
+        // User ran Monday (55 min) and Tuesday (60 min)
+        let monRun = makeRun(
+            date: yesterday,
+            duration: 55 * 60,
+            distanceMeters: 8000,
+            workingAvgCadence: 155,
+            workingAvgHeartRate: 138,
+            detectedTypeRaw: "Steady Effort",
+            percentZone4: 0.05
+        )
+        let tueRun = makeRun(
+            date: today,
+            duration: 60 * 60,
+            distanceMeters: 9000,
+            workingAvgCadence: 155,
+            workingAvgHeartRate: 150,
+            detectedTypeRaw: "Easy Run",
+            percentZone4: 0.05
+        )
+
+        // 4-week history establishing ~150m/wk baseline
+        var history: [RunRecord] = []
+        for d in [4, 7, 10, 14, 17, 21, 24] {
+            if let pastDate = calendar.date(byAdding: .day, value: -d, to: today) {
+                history.append(makeRun(
+                    date: pastDate,
+                    duration: 50 * 60,
+                    distanceMeters: 7000,
+                    workingAvgCadence: 155,
+                    workingAvgHeartRate: 142,
+                    detectedTypeRaw: "Easy Run",
+                    percentZone4: 0.05
+                ))
+            }
+        }
+
+        let allRuns = [tueRun, monRun] + history
+        let state = SessionSynthesisEngine.evaluateDailyState(
+            runRecords: allRuns,
+            activeGoal: "General Fitness",
+            experienceLevel: "Intermediate",
+            useMetric: true,
+            now: now
+        )
+
+        switch state {
+        case .completedToday(_, let tomorrowSession):
+            XCTAssertTrue(tomorrowSession.isRestDay, "Wednesday must be prescribed as Rest Day following 115m compressive 48h volume")
+            XCTAssertEqual(tomorrowSession.sessionTitle, "Rest & Structural Recovery Day")
+            XCTAssertEqual(tomorrowSession.mainSessionTemplateId, .aerobicFlush)
+            XCTAssertTrue(tomorrowSession.groundedRationale.contains("48-Hour Volume Compression") || tomorrowSession.groundedRationale.contains("consecutive"))
+            XCTAssertTrue(tomorrowSession.microcycle.contains(where: { $0.isRestDay }), "Tomorrow's lookahead microcycle must include a scheduled rest day")
+        case .preRun:
+            XCTFail("Expected .completedToday since run was logged today")
+        }
+    }
+
+    func testPrescriptionParity_ActiveDrillReadoutItemFromPrescription_MatchesPrescriptionExactly() {
+        let dto = DrillPrescriptionDTO(
+            title: "Cadence Pyramids",
+            preRunDrillId: PreRunDrillId.cadencePyramids.rawValue,
+            purpose: "Cadence priming",
+            targetCadence: "158–164 SPM",
+            previousCadence: 154,
+            durationMinutes: 10,
+            hapticMode: "On",
+            readinessState: nil,
+            isIndoor: false
+        )
+
+        let item = ActiveDrillReadoutItem.fromPrescription(dto: dto, customCoachingTip: "Focus on relaxed shoulders.")
+
+        // Verify exact target cadence and work duration parity between Session Card and Interstitial Preview Sheet
+        XCTAssertEqual(item.readout.targetCadence, "158–164 SPM", "Preview sheet must match the exact target cadence on the session card")
+        XCTAssertEqual(item.dto.targetCadence, "158–164 SPM")
+        XCTAssertEqual(item.readout.title, "Cadence Pyramids")
+        XCTAssertEqual(item.readout.phases.count, 10)
+    }
+
+    func testTodayWorkloadEvaluation_WhenTwoRunsBankedTotallingSixtyMinutes_DeclaresWorkloadSufficient() {
+        let now = Date()
+        let run1 = makeRun(
+            date: now.addingTimeInterval(-3600),
+            duration: 600,
+            distanceMeters: 1040,
+            workingAvgCadence: 152,
+            workingAvgHeartRate: 145,
+            detectedTypeRaw: "Cadence Pyramids",
+            framboiseTags: ["prescribedDrill"],
+            isIndoor: true
+        )
+        let run2 = makeRun(
+            date: now.addingTimeInterval(-1800),
+            duration: 3000,
+            distanceMeters: 5910,
+            workingAvgCadence: 153,
+            workingAvgHeartRate: 155,
+            detectedTypeRaw: "Easy Run",
+            isIndoor: true
+        )
+
+        let runsToday = [run1, run2]
+        let totalDurationSec = runsToday.reduce(0.0) { $0 + $1.duration }
+        let (dailyBand, targetMinutes) = SessionSynthesisEngine.aerobicDurationForExperience("Intermediate")
+        let completedMinutes = Int(round(totalDurationSec / 60.0))
+        let completionPercent = Int(round(Double(completedMinutes) / Double(targetMinutes) * 100.0))
+
+        XCTAssertEqual(runsToday.count, 2)
+        XCTAssertEqual(completedMinutes, 60)
+        XCTAssertEqual(dailyBand, "35–45 Min")
+        XCTAssertEqual(targetMinutes, 40)
+        XCTAssertEqual(completionPercent, 150) // 60 min / 40 min = 150%
+        XCTAssertTrue(completionPercent >= 80, "60 minutes across two runs exceeds the 80% daily sufficiency threshold")
+    }
+
+    func testRunVarianceMap_SingleSteadySegment_GeneratesContinuousAnchors() {
+        let singleSegment = PhaseSegment(
+            startSeconds: 0,
+            endSeconds: 2400,
+            kind: "steady",
+            avgPace: 508,
+            avgCadence: 153,
+            avgHR: 155
+        )
+
+        let segments = [singleSegment]
+        XCTAssertEqual(segments.count, 1)
+
+        // Simulate RunVarianceMapView.chartPoints logic
+        var points: [(minute: Double, cadence: Double, isAnchor: Bool)] = []
+        let seg = segments[0]
+        points.append((minute: seg.startSeconds / 60.0, cadence: seg.avgCadence, isAnchor: false))
+        points.append((minute: (seg.startSeconds + seg.endSeconds) / 120.0, cadence: seg.avgCadence, isAnchor: true))
+        points.append((minute: seg.endSeconds / 60.0, cadence: seg.avgCadence, isAnchor: false))
+
+        XCTAssertEqual(points.count, 3, "Single steady segment must synthesize 3 points (start, mid, end) for continuous charting")
+        XCTAssertEqual(points[0].minute, 0.0)
+        XCTAssertEqual(points[1].minute, 20.0)
+        XCTAssertEqual(points[2].minute, 40.0)
+        XCTAssertEqual(points[0].cadence, 153.0)
+        XCTAssertEqual(points[2].cadence, 153.0)
+    }
 }

@@ -14,6 +14,7 @@ struct AnalystChatMessage: Identifiable, Equatable {
     let attachedDrillId: PreRunDrillId?
     let attachedSession: PrescribedDailySession?
     let attachedExplainerKey: String?
+    let attachedSchedule: [MicrocycleDay]?
 
     enum MessageSender: Equatable {
         case user
@@ -27,7 +28,8 @@ struct AnalystChatMessage: Identifiable, Equatable {
         timestamp: Date = Date(),
         attachedDrillId: PreRunDrillId? = nil,
         attachedSession: PrescribedDailySession? = nil,
-        attachedExplainerKey: String? = nil
+        attachedExplainerKey: String? = nil,
+        attachedSchedule: [MicrocycleDay]? = nil
     ) {
         self.id = id
         self.sender = sender
@@ -36,6 +38,7 @@ struct AnalystChatMessage: Identifiable, Equatable {
         self.attachedDrillId = attachedDrillId
         self.attachedSession = attachedSession
         self.attachedExplainerKey = attachedExplainerKey
+        self.attachedSchedule = attachedSchedule
     }
 }
 
@@ -68,6 +71,8 @@ class AnalystChatEngine: ObservableObject {
     var sessionRecommendedThisTurn: PrescribedDailySession?
     /// Tracks an interactive explainer card recommended during the active conversation turn.
     var explainerRecommendedThisTurn: String?
+    /// Tracks an upcoming schedule card recommended during the active conversation turn.
+    var scheduleRecommendedThisTurn: [MicrocycleDay]?
     #endif
 
     #if DEBUG
@@ -122,6 +127,7 @@ class AnalystChatEngine: ObservableObject {
             self.drillRecommendedThisTurn = nil
             self.sessionRecommendedThisTurn = nil
             self.explainerRecommendedThisTurn = nil
+            self.scheduleRecommendedThisTurn = nil
         }
         #endif
 
@@ -134,7 +140,7 @@ class AnalystChatEngine: ObservableObject {
             if let responder = modelResponder {
                 do {
                     let responseText = try await responder(buildLeanSystemInstructions(), trimmed)
-                    messages.append(AnalystChatMessage(sender: .analyst, text: responseText, attachedDrillId: drillRecommendedThisTurn, attachedSession: sessionRecommendedThisTurn, attachedExplainerKey: explainerRecommendedThisTurn))
+                    messages.append(AnalystChatMessage(sender: .analyst, text: responseText, attachedDrillId: drillRecommendedThisTurn, attachedSession: sessionRecommendedThisTurn, attachedExplainerKey: explainerRecommendedThisTurn, attachedSchedule: scheduleRecommendedThisTurn))
                     return
                 } catch {
                     print("Model responder error: \(error)")
@@ -144,7 +150,7 @@ class AnalystChatEngine: ObservableObject {
             if SystemLanguageModel.default.isAvailable {
                 do {
                     let responseText = try await generateFoundationModelResponse(for: trimmed)
-                    messages.append(AnalystChatMessage(sender: .analyst, text: responseText, attachedDrillId: drillRecommendedThisTurn, attachedSession: sessionRecommendedThisTurn, attachedExplainerKey: explainerRecommendedThisTurn))
+                    messages.append(AnalystChatMessage(sender: .analyst, text: responseText, attachedDrillId: drillRecommendedThisTurn, attachedSession: sessionRecommendedThisTurn, attachedExplainerKey: explainerRecommendedThisTurn, attachedSchedule: scheduleRecommendedThisTurn))
                     return
                 } catch {
                     print("FoundationModels chat error: \(error)")
@@ -186,7 +192,6 @@ class AnalystChatEngine: ObservableObject {
         let envNote = (runRecord.isIndoor ?? false) ? "Indoor Treadmill" : "Outdoors"
 
         let cal = Calendar.current
-        let isRunToday = cal.isDateInToday(runRecord.date)
         let daysDiff = cal.dateComponents([.day], from: cal.startOfDay(for: runRecord.date), to: cal.startOfDay(for: Date())).day ?? 0
         let df = DateFormatter()
         df.locale = Locale(identifier: "en_US_POSIX")
@@ -235,11 +240,11 @@ class AnalystChatEngine: ObservableObject {
         Units: \(unitSystem).
 
         RULES:
-        • NEXT RUN: If no run logged today, next run is TODAY. If run logged today, next run is TOMORROW. Always surface next workout card.
-        • Tools: Call to fetch deterministic telemetry, manage athlete state, or trigger interactive cards.
+        • NEXT RUN: If unrun today, next run is TODAY. If run today, next run is TOMORROW. Surface card via `executeCoachAction`.
+        • Tools: Call to fetch telemetry, manage athlete state, or trigger cards.
         • `inspectWorkout`: moving/gross stats, splits, intervals, reps, physics.
-        • `manageTrainingState`: 'readiness' (set userReportedDistress: true on pain/illness), 'history', 'athlete_profile'.
-        • `executeCoachAction`: 'display_session' (show next workout card), 'display_drill' (show drill card), 'display_explainer' (show metric explainer card), 'update_goal' (race plans), 'export_to_watch', 'record_feedback'.
+        • `manageTrainingState`: 'readiness' (set userReportedDistress: true on pain/illness), 'weekly_schedule', 'today_workload', 'history', 'athlete_profile'.
+        • `executeCoachAction`: 'display_session' (next run card), 'display_schedule' (weekly schedule card), 'display_drill', 'display_explainer', 'update_goal', 'export_to_watch', 'record_feedback'.
         • Formatting: Rich text. Standard units (SPM, min/km, min/mi). Never use Markdown or LaTeX.
         • Medical Safety: Prioritize rest on pain/illness, state AI disclaimer, urge medical care.
         • Outside Running: Warmly refocus on training. Never force drills.
@@ -340,6 +345,8 @@ class AnalystChatEngine: ObservableObject {
                 }
 
                 let guidance = CoachingAssetLibrary.readinessGuidance(for: verdict, isDistress: isDistress || rx.isSubjectiveOverride)
+                let upcomingSchedule = self.buildUpcomingWeeklySchedule(dailyState: dailyState, contextDate: Date())
+                let todayWorkload = self.buildTodayWorkloadEvaluation(allRuns: allRuns, profile: profile, activeGoal: activeGoal, useMetric: useMetric)
 
                 let response = ReadinessToolResponse(
                     schema_name: "READINESS_AND_PRESCRIPTION_RESPONSE",
@@ -353,7 +360,9 @@ class AnalystChatEngine: ObservableObject {
                     prescribed_duration_band: durationBand,
                     prescribed_cadence_band: cadenceBand,
                     session_rationale: rationale,
-                    guidance_notes: guidance
+                    guidance_notes: guidance,
+                    upcoming_weekly_schedule: upcomingSchedule,
+                    today_workload_evaluation: todayWorkload
                 )
 
                 let encoder = JSONEncoder()
@@ -363,6 +372,42 @@ class AnalystChatEngine: ObservableObject {
                     return json
                 }
                 return "{\"intensity_category\":\"\(humanIntensity)\",\"prescribed_pace_band\":\"\(paceBand)\",\"prescribed_session_name\":\"\(sessionName)\",\"next_run_timing\":\"\(nextTiming)\",\"readiness_verdict\":\"\(verdict)\"}"
+
+            case .weeklySchedule:
+                let allRuns = (try? self.runRecord.modelContext?.fetch(FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)]))) ?? [self.runRecord]
+                let activeGoal = UserDefaults.standard.string(forKey: "trainingGoal") ?? "Base Building"
+                let profile = RunnerProfile.compute(from: allRuns)
+                let useMetric = (UserDefaults.standard.object(forKey: "useMetricSystem") as? Bool) ?? true
+                let dailyState = SessionSynthesisEngine.evaluateDailyState(
+                    runRecords: allRuns,
+                    activeGoal: activeGoal,
+                    experienceLevel: profile.experienceLevel,
+                    useMetric: useMetric,
+                    userHeightCm: profile.userHeightCm,
+                    now: Date()
+                )
+                let upcomingSchedule = self.buildUpcomingWeeklySchedule(dailyState: dailyState, contextDate: Date())
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+                if let data = try? encoder.encode(upcomingSchedule),
+                   let json = String(data: data, encoding: .utf8) {
+                    return "{\"active_goal\":\"\(activeGoal)\",\"schema_name\":\"WEEKLY_SCHEDULE_RESPONSE\",\"upcoming_schedule\":\(json)}"
+                }
+                return "{\"active_goal\":\"\(activeGoal)\",\"schema_name\":\"WEEKLY_SCHEDULE_RESPONSE\"}"
+
+            case .todayWorkload:
+                let allRuns = (try? self.runRecord.modelContext?.fetch(FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)]))) ?? [self.runRecord]
+                let activeGoal = UserDefaults.standard.string(forKey: "trainingGoal") ?? "Base Building"
+                let profile = RunnerProfile.compute(from: allRuns)
+                let useMetric = (UserDefaults.standard.object(forKey: "useMetricSystem") as? Bool) ?? true
+                let evaluation = self.buildTodayWorkloadEvaluation(allRuns: allRuns, profile: profile, activeGoal: activeGoal, useMetric: useMetric)
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+                if let data = try? encoder.encode(evaluation),
+                   let json = String(data: data, encoding: .utf8) {
+                    return json
+                }
+                return "{\"has_done_sufficient_work_today\":\(evaluation.has_done_sufficient_work_today),\"sufficiency_verdict\":\"\(evaluation.sufficiency_verdict)\"}"
 
             case .history:
                 let context = self.runRecord.modelContext
@@ -423,7 +468,24 @@ class AnalystChatEngine: ObservableObject {
                 }
                 self.sessionRecommendedThisTurn = sessionToAttach
                 let title = sessionToAttach?.sessionTitle ?? "Upcoming Workout"
-                return "{\"status\":\"session_card_displayed\",\"session_title\":\"\(title)\"}"
+                return "{\"session_title\":\"\(title)\",\"status\":\"session_card_displayed\"}"
+
+            case .displaySchedule:
+                let allRuns = (try? self.runRecord.modelContext?.fetch(FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)]))) ?? [self.runRecord]
+                let activeGoal = UserDefaults.standard.string(forKey: "trainingGoal") ?? "Base Building"
+                let profile = RunnerProfile.compute(from: allRuns)
+                let useMetric = (UserDefaults.standard.object(forKey: "useMetricSystem") as? Bool) ?? true
+                let dailyState = SessionSynthesisEngine.evaluateDailyState(
+                    runRecords: allRuns,
+                    activeGoal: activeGoal,
+                    experienceLevel: profile.experienceLevel,
+                    useMetric: useMetric,
+                    userHeightCm: profile.userHeightCm,
+                    now: Date()
+                )
+                let scheduleDays = self.buildMicrocycleForChat(dailyState: dailyState, contextDate: Date())
+                self.scheduleRecommendedThisTurn = scheduleDays
+                return "{\"days_count\":\(scheduleDays.count),\"status\":\"schedule_card_displayed\"}"
 
             case .displayDrill:
                 let resolved = PreRunDrillId.resolve(from: query.payload ?? "") ?? .cadencePyramids
@@ -623,5 +685,202 @@ class AnalystChatEngine: ObservableObject {
             historicalRuns.append(runRecord)
         }
         return RunnerProfile.compute(from: historicalRuns, now: Date())
+    }
+
+    private func buildUpcomingWeeklySchedule(
+        dailyState: DailyTrainingState,
+        contextDate: Date
+    ) -> [ScheduledDaySummary] {
+        var days: [ScheduledDaySummary] = []
+        let cal = Calendar.current
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "en_US_POSIX")
+        df.dateFormat = "EEEE"
+
+        switch dailyState {
+        case .preRun(let session):
+            days.append(ScheduledDaySummary(
+                day_name: "Today",
+                session_title: session.sessionTitle,
+                duration_band: session.durationBand,
+                target_pace_or_effort: session.paceBand,
+                is_rest_day: session.isRestDay,
+                rationale: session.groundedRationale
+            ))
+            for day in session.microcycle {
+                let parsed = parseScheduleTitle(day.sessionTitle)
+                days.append(ScheduledDaySummary(
+                    day_name: day.dayLabel,
+                    session_title: parsed.name,
+                    duration_band: parsed.detail ?? (day.isRestDay ? "0 Min" : "30–45 Min"),
+                    target_pace_or_effort: day.isRestDay ? "Rest" : "Zone 2 Base",
+                    is_rest_day: day.isRestDay,
+                    rationale: day.isRestDay ? "Consolidate adaptations" : "Aerobic progression"
+                ))
+            }
+        case .completedToday(_, let tomorrowSession):
+            let tomorrow = cal.date(byAdding: .day, value: 1, to: contextDate) ?? contextDate
+            let tomorrowDayName = df.string(from: tomorrow)
+            days.append(ScheduledDaySummary(
+                day_name: tomorrowDayName,
+                session_title: tomorrowSession.sessionTitle,
+                duration_band: tomorrowSession.durationBand,
+                target_pace_or_effort: tomorrowSession.paceBand,
+                is_rest_day: tomorrowSession.isRestDay,
+                rationale: tomorrowSession.groundedRationale
+            ))
+            for day in tomorrowSession.microcycle {
+                let parsed = parseScheduleTitle(day.sessionTitle)
+                days.append(ScheduledDaySummary(
+                    day_name: day.dayLabel,
+                    session_title: parsed.name,
+                    duration_band: parsed.detail ?? (day.isRestDay ? "0 Min" : "30–45 Min"),
+                    target_pace_or_effort: day.isRestDay ? "Rest" : "Zone 2 Base",
+                    is_rest_day: day.isRestDay,
+                    rationale: day.isRestDay ? "Consolidate adaptations" : "Aerobic progression"
+                ))
+            }
+        }
+        return days
+    }
+
+    private func buildMicrocycleForChat(
+        dailyState: DailyTrainingState,
+        contextDate: Date
+    ) -> [MicrocycleDay] {
+        var result: [MicrocycleDay] = []
+        let cal = Calendar.current
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "en_US_POSIX")
+        df.dateFormat = "EEE"
+
+        switch dailyState {
+        case .preRun(let session):
+            result.append(MicrocycleDay(
+                id: "today-\(session.sessionTitle)",
+                dayLabel: "Today",
+                sessionTitle: "\(session.sessionTitle) • \(session.durationBand)",
+                iconName: session.isRestDay ? "bed.double.fill" : "figure.run",
+                isRestDay: session.isRestDay
+            ))
+            result.append(contentsOf: session.microcycle)
+        case .completedToday(_, let tomorrowSession):
+            let tomorrow = cal.date(byAdding: .day, value: 1, to: contextDate) ?? contextDate
+            let tomorrowDayStr = df.string(from: tomorrow)
+            result.append(MicrocycleDay(
+                id: "tomorrow-\(tomorrowSession.sessionTitle)",
+                dayLabel: tomorrowDayStr,
+                sessionTitle: "\(tomorrowSession.sessionTitle) • \(tomorrowSession.durationBand)",
+                iconName: tomorrowSession.isRestDay ? "bed.double.fill" : "figure.run",
+                isRestDay: tomorrowSession.isRestDay
+            ))
+            result.append(contentsOf: tomorrowSession.microcycle)
+        }
+        return result
+    }
+
+    private func parseScheduleTitle(_ title: String) -> (name: String, detail: String?) {
+        if title.contains(" • ") {
+            let parts = title.components(separatedBy: " • ")
+            return (parts[0], parts.count > 1 ? parts[1] : nil)
+        }
+        return (title, nil)
+    }
+
+    private func buildTodayWorkloadEvaluation(
+        allRuns: [RunRecord],
+        profile: RunnerProfile,
+        activeGoal: String,
+        useMetric: Bool
+    ) -> TodayWorkloadEvaluation {
+        let cal = Calendar.current
+        let todayRuns = allRuns.filter { cal.isDateInToday($0.date) && !$0.isDeleted }
+            .sorted(by: { $0.date < $1.date })
+
+        let totalDurationSec = todayRuns.reduce(0.0) { $0 + $1.duration }
+        let totalDistanceMeters = todayRuns.reduce(0.0) {
+            $0 + ($1.totalDistanceMeters > 0 ? $1.totalDistanceMeters : $1.effectiveWorkingDistanceMeters)
+        }
+
+        let durMin = Int(totalDurationSec) / 60
+        let durSec = Int(totalDurationSec) % 60
+        let totalDurStr = String(format: "%d:%02d", durMin, durSec)
+
+        let totalDistStr = useMetric
+            ? String(format: "%.2f km", totalDistanceMeters / 1000.0)
+            : String(format: "%.2f mi", totalDistanceMeters / 1609.344)
+
+        let (dailyBand, targetMinutes) = SessionSynthesisEngine.aerobicDurationForExperience(profile.experienceLevel)
+        let completedMinutes = Int(round(totalDurationSec / 60.0))
+        let completionPercent = targetMinutes > 0 ? Int(round(Double(completedMinutes) / Double(targetMinutes) * 100.0)) : 100
+
+        let streakSummary = StreakAndVolumeSummary.evaluate(
+            runs: allRuns,
+            experienceLevel: profile.experienceLevel,
+            trainingGoal: activeGoal,
+            now: Date()
+        )
+
+        let workingHRs = todayRuns.map(\.workingAvgHeartRate).filter { $0 > 0 }
+        let avgHR = workingHRs.isEmpty ? 0 : Int(round(workingHRs.reduce(0, +) / Double(workingHRs.count)))
+
+        let breakdown: [String] = todayRuns.map { run in
+            let rDurMin = Int(run.duration) / 60
+            let rDurSec = Int(run.duration) % 60
+            let rDurStr = String(format: "%d:%02d", rDurMin, rDurSec)
+            let distVal = run.totalDistanceMeters > 0 ? run.totalDistanceMeters : run.effectiveWorkingDistanceMeters
+            let rDistStr = useMetric
+                ? String(format: "%.2f km", distVal / 1000.0)
+                : String(format: "%.2f mi", distVal / 1609.344)
+            let hrNote = run.workingAvgHeartRate > 0 ? ", \(Int(round(run.workingAvgHeartRate))) BPM HR" : ""
+            let cadNote = run.workingAvgCadence > 0 ? ", \(Int(round(run.workingAvgCadence))) SPM" : ""
+            let prefix = run.isIndoor == true ? "Indoor " : ""
+            return "\(rDurStr) (\(rDistStr)) \(prefix)\(run.normalizedClassification)\(hrNote)\(cadNote)"
+        }
+
+        let ratioPct = Int(round(streakSummary.volumeRatio48h * 100.0))
+        let strainSummary = "48h volume: \(Int(round(streakSummary.last48hDurationMinutes))) min (\(ratioPct)% of 4-week baseline) across \(streakSummary.consecutiveRunDays) consecutive days; working HR: \(avgHR > 0 ? "\(avgHR) BPM" : "Nominal")"
+
+        let hasDoneSufficient: Bool
+        let shouldRunAgain: Bool
+        let verdict: String
+        let prescription: String
+
+        if todayRuns.isEmpty {
+            hasDoneSufficient = false
+            shouldRunAgain = true
+            verdict = "NO_WORK_BANKED_TODAY"
+            prescription = "No sessions logged yet today. Today's primary workout is ready to start."
+        } else if todayRuns.count == 1 && (todayRuns[0].duration <= 1320 && (todayRuns[0].prescribedDrillName != nil || todayRuns[0].totalDistanceMeters <= 2000)) {
+            hasDoneSufficient = false
+            shouldRunAgain = true
+            verdict = "PRIMER_COMPLETE_READY_FOR_MAIN_RUN"
+            prescription = "Primer complete (\(breakdown[0])). Ready for Today's Main Run."
+        } else if completionPercent >= 80 || streakSummary.shouldRecommendRestDay || streakSummary.volumeRatio48h >= 0.50 {
+            hasDoneSufficient = true
+            shouldRunAgain = false
+            verdict = "DAILY_WORKLOAD_SUFFICIENT_REST_RECOMMENDED"
+            prescription = "Sufficient work completed today (\(totalDurStr) / \(totalDistStr) across \(todayRuns.count) session\(todayRuns.count > 1 ? "s" : "") = \(completionPercent)% of your \(dailyBand) daily target). A second run today is counterproductive and increases injury risk. If you want additional movement, limit it to 15–20 min of non-impact walking or mobility."
+        } else {
+            hasDoneSufficient = false
+            shouldRunAgain = true
+            verdict = "PARTIAL_VOLUME_SUPPLEMENTAL_ALLOWED"
+            let remainingMin = max(15, targetMinutes - completedMinutes)
+            prescription = "Partial volume logged today (\(totalDurStr) / \(completionPercent)% of daily target). An optional \(remainingMin)-min easy Zone 1–2 flush jog is permitted if feeling fresh."
+        }
+
+        return TodayWorkloadEvaluation(
+            sessions_completed_today_count: todayRuns.count,
+            completed_sessions_summary: breakdown,
+            total_duration_today: totalDurStr,
+            total_distance_today: totalDistStr,
+            daily_target_duration_band: dailyBand,
+            daily_target_completion_percent: completionPercent,
+            acute_load_and_strain_factors: strainSummary,
+            has_done_sufficient_work_today: hasDoneSufficient,
+            should_run_again_today: shouldRunAgain,
+            sufficiency_verdict: verdict,
+            second_run_or_supplemental_prescription: prescription
+        )
     }
 }
