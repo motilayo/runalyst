@@ -224,4 +224,83 @@ final class AnalystChatEngineTests: XCTestCase {
 
         XCTAssertTrue(engine.messages.isEmpty)
     }
+
+    // MARK: - 6. Leaked Tool Syntax Sanitization and Fallback Action Execution
+
+    func testLeakedExecuteCoachActionDisplayDrillIsSanitizedAndAttachesDrillCard() async {
+        let run = makeRunRecord(date: Date())
+        let engine = AnalystChatEngine(runRecord: run, mode: .macroCoach)
+
+        engine.modelResponder = { _, _ in
+            """
+            With your 48-hour volume compressing gently and no limiting factors beyond a mild cardiac drift, a tempo-surge session is ideal—it builds strength while keeping intensity manageable. I'll display the tempo-surge drill for you right now.
+
+            Next run recommendation: tempo-surge session.
+
+            executeCoachAction:display_drill:tempo_surges
+            """
+        }
+
+        await engine.sendMessage("When should I run next, and what kind of session should I focus on?")
+
+        XCTAssertEqual(engine.messages.count, 2)
+        let analystMsg = engine.messages[1]
+        XCTAssertEqual(analystMsg.sender, .analyst)
+
+        // Raw action token must be stripped from visible text
+        XCTAssertFalse(analystMsg.text.contains("executeCoachAction"))
+        XCTAssertFalse(analystMsg.text.contains("display_drill"))
+
+        // Drill card must be seamlessly attached via fallback
+        XCTAssertEqual(analystMsg.attachedDrillId, .tempoSurges)
+    }
+
+    func testLeakedDirectDisplayDrillIsSanitized() async {
+        let run = makeRunRecord(date: Date())
+        let engine = AnalystChatEngine(runRecord: run, mode: .macroCoach)
+
+        engine.modelResponder = { _, _ in
+            """
+            Focus: A 45-minute easy-pace run to reinforce your progress.
+
+            I'll display the easy-pace drill to guide you.
+
+            display_drill: easy_pace_drill
+            """
+        }
+
+        await engine.sendMessage("When should I run next?")
+
+        XCTAssertEqual(engine.messages.count, 2)
+        let analystMsg = engine.messages[1]
+        XCTAssertFalse(analystMsg.text.contains("display_drill"))
+        XCTAssertFalse(analystMsg.text.contains("easy_pace_drill"))
+    }
+
+    func testLeakedToolSyntaxInHistoryIsSanitizedFromRecentDialoguePrompt() {
+        let run = makeRunRecord(date: Date())
+        let engine = AnalystChatEngine(runRecord: run, mode: .macroCoach)
+
+        // Simulate an earlier message that had raw leaked tokens
+        engine.messages.append(AnalystChatMessage(sender: .user, text: "What drill should I do?", status: .delivered))
+        engine.messages.append(
+            AnalystChatMessage(
+                sender: .analyst,
+                text: "Here is your plan. executeCoachAction:display_drill:tempo_surges",
+                status: .delivered
+            )
+        )
+        engine.messages.append(AnalystChatMessage(sender: .user, text: "Should I run tomorrow?", status: .delivered))
+
+        if #available(iOS 26.0, *) {
+            let instructions = engine.buildLeanSystemInstructions()
+
+            // Reference dialogue block must NOT contain the leaked action strings
+            let recentDialogue = instructions.components(separatedBy: "RECENT DIALOGUE (Reference Only):").last?
+                .components(separatedBy: "TOOLS:").first ?? ""
+            XCTAssertFalse(recentDialogue.contains("executeCoachAction"))
+            XCTAssertFalse(recentDialogue.contains("display_drill"))
+            XCTAssertTrue(recentDialogue.contains("Coach: \"Here is your plan.\""))
+        }
+    }
 }

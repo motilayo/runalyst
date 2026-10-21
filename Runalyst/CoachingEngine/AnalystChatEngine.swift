@@ -85,7 +85,6 @@ class AnalystChatEngine: ObservableObject {
 
     // MARK: - Bounded-Memory State Tracking
     private var turnsSinceSessionRecycle: Int = 0
-    private var lastTurnUsedHeavyTool: Bool = false
     private var toolInvokedDuringActiveTurn: Bool = false
     #endif
 
@@ -163,8 +162,8 @@ class AnalystChatEngine: ObservableObject {
             self.scheduleRecommendedThisTurn = nil
 
             // Proactive Sliding-Window Transcript Compaction:
-            // Recycle the ephemeral session if 3 turns have elapsed or if the last turn invoked a tool.
-            if self.turnsSinceSessionRecycle >= 3 || self.lastTurnUsedHeavyTool {
+            // Recycle the ephemeral session if 4 turns have elapsed.
+            if self.turnsSinceSessionRecycle >= 4 {
                 self.modelSession = nil
             }
         }
@@ -178,10 +177,14 @@ class AnalystChatEngine: ObservableObject {
             if let responder = modelResponder {
                 do {
                     let responseText = try await responder(buildLeanSystemInstructions(), userQuestion)
+                    let sanitized = AnalystResponseSanitizer.sanitize(text: responseText)
+                    if let action = sanitized.detectedAction {
+                        applyFallbackCoachAction(action: action, payload: sanitized.detectedPayload)
+                    }
                     messages.append(
                         AnalystChatMessage(
                             sender: .analyst,
-                            text: responseText,
+                            text: sanitized.text,
                             attachedDrillId: drillRecommendedThisTurn,
                             attachedSession: sessionRecommendedThisTurn,
                             attachedExplainerKey: explainerRecommendedThisTurn,
@@ -189,7 +192,6 @@ class AnalystChatEngine: ObservableObject {
                             status: .delivered
                         )
                     )
-                    self.lastTurnUsedHeavyTool = self.toolInvokedDuringActiveTurn
                     self.turnsSinceSessionRecycle += 1
                     self.toolInvokedDuringActiveTurn = false
                     return
@@ -211,10 +213,14 @@ class AnalystChatEngine: ObservableObject {
             if SystemLanguageModel.default.isAvailable {
                 do {
                     let responseText = try await generateFoundationModelResponse(for: userQuestion)
+                    let sanitized = AnalystResponseSanitizer.sanitize(text: responseText)
+                    if let action = sanitized.detectedAction {
+                        applyFallbackCoachAction(action: action, payload: sanitized.detectedPayload)
+                    }
                     messages.append(
                         AnalystChatMessage(
                             sender: .analyst,
-                            text: responseText,
+                            text: sanitized.text,
                             attachedDrillId: drillRecommendedThisTurn,
                             attachedSession: sessionRecommendedThisTurn,
                             attachedExplainerKey: explainerRecommendedThisTurn,
@@ -222,7 +228,6 @@ class AnalystChatEngine: ObservableObject {
                             status: .delivered
                         )
                     )
-                    self.lastTurnUsedHeavyTool = self.toolInvokedDuringActiveTurn
                     self.turnsSinceSessionRecycle += 1
                     self.toolInvokedDuringActiveTurn = false
                     return
@@ -297,6 +302,24 @@ class AnalystChatEngine: ObservableObject {
                 scheduledTodayStr = "Rest Day"
             }
 
+            let tomorrow = calendar.calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: Date())) ?? Date()
+            let tomorrowSchedule = calendar.evaluateSchedule(
+                from: calendar.startOfDay(for: tomorrow),
+                to: calendar.startOfDay(for: tomorrow),
+                context: ScheduleEvaluationContext(runRecords: allRuns, activeGoal: activeGoal, profile: profile, useMetric: useMetric)
+            ).first
+
+            let scheduledTomorrowStr: String
+            if let plan = tomorrowSchedule?.planned {
+                if plan.kind == .rest {
+                    scheduledTomorrowStr = "Rest Day"
+                } else {
+                    scheduledTomorrowStr = "\(plan.title) (\(plan.minutesLow)–\(plan.minutesHigh) min)"
+                }
+            } else {
+                scheduledTomorrowStr = "Rest Day"
+            }
+
             let loggedTodayStr: String
             if todayRuns.isEmpty {
                 loggedTodayStr = "None"
@@ -314,8 +337,9 @@ class AnalystChatEngine: ObservableObject {
             contextBlock = """
             Scope: Macro AI Coach.
             \(calendar.anchor(useMetric: useMetric))
-            Today Workouts Logged: \(loggedTodayStr)
-            Today Scheduled: \(scheduledTodayStr)
+            Logged Today: \(loggedTodayStr)
+            Today Plan: \(scheduledTodayStr)
+            Tomorrow Plan: \(scheduledTomorrowStr)
             """
         } else {
             let daysDiff = max(0, Calendar.current.dateComponents([.day], from: runRecord.date, to: Date()).day ?? 0)
@@ -339,7 +363,7 @@ class AnalystChatEngine: ObservableObject {
             var lines: [String] = ["RECENT DIALOGUE (Reference Only):"]
             for msg in recentTurns {
                 let role = msg.sender == .user ? "Runner" : "Coach"
-                let cleaned = msg.text.replacingOccurrences(of: "\n", with: " ")
+                let cleaned = AnalystResponseSanitizer.sanitize(text: msg.text).text.replacingOccurrences(of: "\n", with: " ")
                 lines.append("• \(role): \"\(cleaned)\"")
             }
             recentContextBlock = "\n\n" + lines.joined(separator: "\n")
@@ -359,10 +383,11 @@ class AnalystChatEngine: ObservableObject {
         • `executeCoachAction`: Actions ('display_schedule', 'display_drill', 'display_explainer', 'update_goal', 'export_to_watch', 'record_feedback').
 
         RULES:
-        • Scope: Running training, recovery, and biomechanics. Outside Running: Warmly refocus on running.
+        • Scope: Running training & recovery. Outside Running: Warmly refocus.
         • Units: SPM, min/km, min/mi. No LaTeX.
-        • Medical Safety & Well-Being: On pain, injury, illness, dizziness, extreme fatigue, or well-being concerns, urge rest and medical care.
-        • Proactive Drill Card: When recommending a drill, call executeCoachAction('display_drill') in that turn instead of asking permission.
+        • Medical Safety: On pain, injury, or fatigue, urge rest and medical care.
+        • Rest Days: If scheduled as Rest Day, prescribe rest—do not run.
+        • Silent Tools: Never write action/tool syntax (e.g. 'executeCoachAction', 'display_drill') in text. Visual cards trigger silently.
 
         Respond in \(language).
         """
@@ -376,7 +401,6 @@ class AnalystChatEngine: ObservableObject {
 
         // Reset counters inside session creation in one canonical place
         self.turnsSinceSessionRecycle = 0
-        self.lastTurnUsedHeavyTool = false
         self.toolInvokedDuringActiveTurn = false
 
         let inspectWorkoutTool = InspectWorkoutTool { [weak self] _ in
@@ -798,4 +822,236 @@ class AnalystChatEngine: ObservableObject {
         }
         return RunnerProfile.compute(from: historicalRuns, now: Date())
     }
+
+    #if canImport(FoundationModels)
+    @available(iOS 26.0, *)
+    func applyFallbackCoachAction(action: CoachActionType, payload: String?) {
+        switch action {
+        case .displayDrill:
+            if self.drillRecommendedThisTurn == nil {
+                let drillStr = payload ?? ""
+                if let resolved = PreRunDrillId.resolve(from: drillStr) {
+                    self.drillRecommendedThisTurn = resolved
+                } else if drillStr.contains("tempo") || drillStr.contains("surge") {
+                    self.drillRecommendedThisTurn = .tempoSurges
+                } else if drillStr.contains("pyramid") || drillStr.contains("cadence") {
+                    self.drillRecommendedThisTurn = .cadencePyramids
+                } else if drillStr.contains("stride") {
+                    self.drillRecommendedThisTurn = .strides
+                } else if drillStr.contains("rhythm") {
+                    self.drillRecommendedThisTurn = .rhythmIntervals
+                } else if drillStr.contains("hill") {
+                    self.drillRecommendedThisTurn = .hillBounds
+                }
+            }
+        case .displaySchedule:
+            if self.scheduleRecommendedThisTurn == nil {
+                let allRuns = (try? self.runRecord.modelContext?.fetch(FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)]))) ?? [self.runRecord]
+                let activeGoal = UserDefaults.standard.string(forKey: "trainingGoal") ?? "Base Building"
+                let profile = RunnerProfile.compute(from: allRuns)
+                let useMetric = (UserDefaults.standard.object(forKey: "useMetricSystem") as? Bool) ?? true
+                let calendar = TrainingCalendar(calendar: Calendar.current)
+                let today = calendar.startOfDay(for: Date())
+                let schedule = calendar.evaluateSchedule(
+                    from: today,
+                    to: calendar.calendar.date(byAdding: .day, value: 6, to: today) ?? today,
+                    context: ScheduleEvaluationContext(runRecords: allRuns, activeGoal: activeGoal, profile: profile, useMetric: useMetric)
+                )
+                self.scheduleRecommendedThisTurn = schedule.map { day in
+                    let isRest = day.planned.kind == .rest
+                    let icon = isRest ? "bed.double.fill" : "figure.run"
+                    let durStr = isRest ? "0 min" : "\(day.planned.minutesLow)–\(day.planned.minutesHigh) min"
+                    return MicrocycleDay(
+                        id: "\(day.date)-\(day.planned.title)",
+                        dayLabel: day.weekday,
+                        sessionTitle: "\(day.planned.title) • \(durStr)",
+                        iconName: icon,
+                        isRestDay: isRest
+                    )
+                }
+            }
+        case .displaySession:
+            if self.sessionRecommendedThisTurn == nil {
+                let allRuns = (try? self.runRecord.modelContext?.fetch(FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)]))) ?? [self.runRecord]
+                let activeGoal = UserDefaults.standard.string(forKey: "trainingGoal") ?? "Base Building"
+                let profile = RunnerProfile.compute(from: allRuns)
+                let useMetric = (UserDefaults.standard.object(forKey: "useMetricSystem") as? Bool) ?? true
+                let dailyState = SessionSynthesisEngine.evaluateDailyState(
+                    runRecords: allRuns,
+                    activeGoal: activeGoal,
+                    experienceLevel: profile.experienceLevel,
+                    useMetric: useMetric,
+                    userHeightCm: profile.userHeightCm,
+                    now: Date()
+                )
+                switch dailyState {
+                case .preRun(let session):
+                    self.sessionRecommendedThisTurn = session
+                case .completedToday(_, let tomorrowSession):
+                    self.sessionRecommendedThisTurn = tomorrowSession
+                }
+            }
+        case .displayExplainer:
+            if self.explainerRecommendedThisTurn == nil, let rawKey = payload?.trimmingCharacters(in: .whitespacesAndNewlines), !rawKey.isEmpty {
+                let asset = CoachingAssetLibrary.resolve(key: rawKey) ?? CoachingAssetLibrary.defaultAsset(for: rawKey)
+                self.explainerRecommendedThisTurn = asset.key
+            }
+        case .updateGoal:
+            if let newGoal = payload?.trimmingCharacters(in: .whitespacesAndNewlines), !newGoal.isEmpty {
+                UserDefaults.standard.set(newGoal, forKey: "trainingGoal")
+            }
+        case .exportToWatch, .recordFeedback:
+            break
+        }
+    }
+    #endif
 }
+
+#if canImport(FoundationModels)
+@available(iOS 26.0, *)
+public struct SanitizedAnalystResponse: Equatable {
+    public let text: String
+    public let detectedAction: CoachActionType?
+    public let detectedPayload: String?
+}
+
+@available(iOS 26.0, *)
+public enum AnalystResponseSanitizer {
+    /// Strips leaked tool invocation signatures from the LLM response text and extracts any embedded action.
+    public static func sanitize(text: String) -> SanitizedAnalystResponse {
+        var working = text
+        var detectedAction: CoachActionType?
+        var detectedPayload: String?
+
+        // 1. Check for executeCoachAction:action:payload or executeCoachAction:action
+        let execPattern = #"(?i)executecoachaction:([a-z0-9_\-]+)(?::([a-z0-9_\-]+))?"#
+        if let regex = try? NSRegularExpression(pattern: execPattern) {
+            if let match = regex.firstMatch(in: working, range: NSRange(working.startIndex..., in: working)) {
+                if let actionRange = Range(match.range(at: 1), in: working),
+                   let action = parseActionType(String(working[actionRange])) {
+                    detectedAction = action
+                }
+                if match.numberOfRanges > 2, match.range(at: 2).location != NSNotFound,
+                   let payloadRange = Range(match.range(at: 2), in: working) {
+                    detectedPayload = String(working[payloadRange])
+                }
+            }
+            working = regex.stringByReplacingMatches(in: working, range: NSRange(working.startIndex..., in: working), withTemplate: "")
+        }
+
+        // 2. Check for executeCoachAction('action', ...)
+        let fnPattern = #"(?i)executecoachaction\(\s*['"]?([a-z0-9_\-]+)['"]?(?:\s*,\s*(?:payload:\s*)?['"]?([a-z0-9_\-]+)['"]?)?\s*\)"#
+        if let regex = try? NSRegularExpression(pattern: fnPattern) {
+            if detectedAction == nil, let match = regex.firstMatch(in: working, range: NSRange(working.startIndex..., in: working)) {
+                if let actionRange = Range(match.range(at: 1), in: working),
+                   let action = parseActionType(String(working[actionRange])) {
+                    detectedAction = action
+                }
+                if match.numberOfRanges > 2, match.range(at: 2).location != NSNotFound,
+                   let payloadRange = Range(match.range(at: 2), in: working) {
+                    detectedPayload = String(working[payloadRange])
+                }
+            }
+            working = regex.stringByReplacingMatches(in: working, range: NSRange(working.startIndex..., in: working), withTemplate: "")
+        }
+
+        // 3. Check for direct action: display_drill: easy_pace_drill or display_schedule
+        let directPattern = #"(?i)\b(display_drill|display_schedule|display_session|display_explainer|update_goal|export_to_watch|record_feedback)(?::\s*([a-z0-9_\-]+)|\s+([a-z0-9_\-]+))?"#
+        if let regex = try? NSRegularExpression(pattern: directPattern) {
+            if detectedAction == nil, let match = regex.firstMatch(in: working, range: NSRange(working.startIndex..., in: working)) {
+                if let actionRange = Range(match.range(at: 1), in: working),
+                   let action = parseActionType(String(working[actionRange])) {
+                    detectedAction = action
+                }
+                if match.numberOfRanges > 2, match.range(at: 2).location != NSNotFound,
+                   let payloadRange = Range(match.range(at: 2), in: working) {
+                    detectedPayload = String(working[payloadRange])
+                } else if match.numberOfRanges > 3, match.range(at: 3).location != NSNotFound,
+                          let payloadRange = Range(match.range(at: 3), in: working) {
+                    detectedPayload = String(working[payloadRange])
+                }
+            }
+            working = regex.stringByReplacingMatches(in: working, range: NSRange(working.startIndex..., in: working), withTemplate: "")
+        }
+
+        // Clean up markdown ticks around removed commands and collapse blank lines
+        let cleanedLines = working.components(separatedBy: .newlines)
+            .map { line -> String in
+                var trimmed = line.trimmingCharacters(in: .whitespaces)
+                if trimmed == "``" || trimmed == "`" {
+                    return ""
+                }
+                return trimmed
+            }
+        let joined = cleanedLines.joined(separator: "\n")
+        let cleaned = joined
+            .replacingOccurrences(of: "\n{3,}", with: "\n\n", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return SanitizedAnalystResponse(
+            text: cleaned,
+            detectedAction: detectedAction,
+            detectedPayload: detectedPayload
+        )
+    }
+
+    private static func parseActionType(_ raw: String) -> CoachActionType? {
+        let clean = raw.lowercased().replacingOccurrences(of: "-", with: "_").trimmingCharacters(in: CharacterSet(charactersIn: "'\"() \t"))
+        switch clean {
+        case "display_drill", "displaydrill": return .displayDrill
+        case "display_schedule", "displayschedule": return .displaySchedule
+        case "display_session", "displaysession": return .displaySession
+        case "display_explainer", "displayexplainer": return .displayExplainer
+        case "export_to_watch", "exporttowatch": return .exportToWatch
+        case "update_goal", "updategoal": return .updateGoal
+        case "record_feedback", "recordfeedback": return .recordFeedback
+        default: return nil
+        }
+    }
+
+    private static func parseDirectActionLine(_ line: String) -> (CoachActionType, String?)? {
+        let knownActions: [(String, CoachActionType)] = [
+            ("display_drill", .displayDrill),
+            ("display_schedule", .displaySchedule),
+            ("display_session", .displaySession),
+            ("display_explainer", .displayExplainer),
+            ("export_to_watch", .exportToWatch),
+            ("update_goal", .updateGoal),
+            ("record_feedback", .recordFeedback)
+        ]
+
+        let lower = line.lowercased()
+        for (prefix, action) in knownActions {
+            if lower == prefix {
+                return (action, nil)
+            }
+            if lower.hasPrefix("\(prefix):") {
+                let payload = String(line.dropFirst(prefix.count + 1)).trimmingCharacters(in: .whitespaces)
+                return (action, payload.isEmpty ? nil : payload)
+            }
+            if lower.hasPrefix("\(prefix) ") {
+                let payload = String(line.dropFirst(prefix.count + 1)).trimmingCharacters(in: .whitespaces)
+                return (action, payload.isEmpty ? nil : payload)
+            }
+        }
+        return nil
+    }
+
+    private static func parseFunctionCall(_ line: String) -> (CoachActionType, String?)? {
+        let inner = line.dropFirst("executecoachaction(".count)
+        let clean = inner.trimmingCharacters(in: CharacterSet(charactersIn: ") \t"))
+        let parts = clean.components(separatedBy: ",")
+        guard let first = parts.first else { return nil }
+        guard let action = parseActionType(first) else { return nil }
+        var payload: String?
+        if parts.count > 1 {
+            let second = parts[1].replacingOccurrences(of: "payload:", with: "")
+            let trimmedSecond = second.trimmingCharacters(in: CharacterSet(charactersIn: "'\" \t"))
+            if !trimmedSecond.isEmpty {
+                payload = trimmedSecond
+            }
+        }
+        return (action, payload)
+    }
+}
+#endif
