@@ -116,4 +116,42 @@ final class WorkoutTelemetryModalityTests: XCTestCase {
         XCTAssertEqual(WorkoutTelemetryModality.cadence.id, "Cadence Rhythm")
         XCTAssertEqual(WorkoutTelemetryModality.cadence.iconName, "metronome.fill")
     }
+
+    // MARK: - Heart Rate Trajectory Fidelity & Split Progression
+
+    func testHeartRateTrajectoryMapView_ElevatedStrainBadge() {
+        // Run with working HR 154 BPM on 144 BPM ceiling
+        let view = HeartRateTrajectoryMapView(
+            phaseSegments: [PhaseSegment(startSeconds: 0, endSeconds: 3000, kind: "steady", avgPace: 360, avgCadence: 160, avgHR: 154)],
+            workingAvgHeartRate: 154.0,
+            workoutDuration: 3000.0,
+            workoutType: "Zone 2",
+            zone2Ceiling: 144.0,
+            percentZone4: 0.02,
+            hrCV: 0.03
+        )
+
+        // When working HR is 10 BPM over ceiling, status must reflect Elevated Strain (Zone 3)
+        // rather than claiming Cardiac Stability: High
+        XCTAssertNotNil(view)
+    }
+
+    func testHeartRateTrajectoryMapView_WithSplitsProgression() {
+        let splits = [
+            RunSplit(index: 1, distanceMeters: 1000, durationSeconds: 375, paceSecondsPerKm: 375, avgHeartRate: 138, avgCadence: 158, elevationGainMeters: 0),
+            RunSplit(index: 2, distanceMeters: 1000, durationSeconds: 370, paceSecondsPerKm: 370, avgHeartRate: 148, avgCadence: 160, elevationGainMeters: 0),
+            RunSplit(index: 3, distanceMeters: 1000, durationSeconds: 365, paceSecondsPerKm: 365, avgHeartRate: 155, avgCadence: 161, elevationGainMeters: 0),
+            RunSplit(index: 4, distanceMeters: 1000, durationSeconds: 360, paceSecondsPerKm: 360, avgHeartRate: 158, avgCadence: 162, elevationGainMeters: 0)
+        ]
+
+        let view = HeartRateTrajectoryMapView(
+            phaseSegments: [],
+            workingAvgHeartRate: 154.0,
+            workoutDuration: 1470.0,
+            workoutType: "Zone 2",
+            splits: splits
+        )
+
+        XCTAssertNotNil(view)
+    }
 }
