@@ -1,0 +1,120 @@
+import Foundation
+import Testing
+@testable import RunalystCore
+
+@Suite("TheMold Crucible Invariant Tests")
+struct TheMoldTests {
+
+    @Test("TelemetryBucket correctly stores primitives and calculates speed")
+    func telemetryBucketCalculations() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let bucket = TelemetryBucket(
+            timestamp: now,
+            durationSeconds: 60.0,
+            distanceMeters: 200.0,
+            paceSecondsPerKm: 300.0,
+            cadenceSPM: 165.0,
+            heartRateBPM: 145.0,
+            groundContactTimeMs: 240.0,
+            verticalOscillationCm: 8.5,
+            strideLengthMeters: 1.15,
+            elevationGainMeters: 1.2
+        )
+
+        #expect(bucket.timestamp == now)
+        #expect(bucket.distanceMeters == 200.0)
+        #expect(bucket.durationSeconds == 60.0)
+        #expect(bucket.speedMetersPerSecond == 200.0 / 60.0)
+        #expect(bucket.cadenceSPM == 165.0)
+        #expect(bucket.heartRateBPM == 145.0)
+        #expect(bucket.groundContactTimeMs == 240.0)
+        #expect(bucket.verticalOscillationCm == 8.5)
+        #expect(bucket.strideLengthMeters == 1.15)
+        #expect(bucket.elevationGainMeters == 1.2)
+    }
+
+    @Test("WorkingStats calculates derived biomechanical economy and ratios")
+    func workingStatsCalculations() throws {
+        let stats = WorkingStats(
+            workingDistanceMeters: 5000.0,
+            workingDurationSeconds: 1500.0,
+            workingAvgPaceSecondsPerKm: 300.0,
+            workingAvgCadenceSPM: 168.0,
+            workingAvgHeartRateBPM: 150.0,
+            workingAvgVerticalOscillationCm: 9.0,
+            workingAvgStrideLengthMeters: 1.18,
+            workingAvgGroundContactTimeMs: 235.0,
+            rawTotalDistanceMeters: 5100.0,
+            rawTotalDurationSeconds: 1600.0,
+            rawAvgPaceSecondsPerKm: 313.7,
+            rawAvgCadenceSPM: 164.0,
+            rawAvgHeartRateBPM: 148.0,
+            paceCV: 0.045,
+            paceSlope: -0.012,
+            percentZone4: 0.15,
+            deadStopsCount: 2,
+            isIndoor: false,
+            needsInclineReview: false,
+            detectedClassification: "Steady Effort",
+            framboiseTags: ["consistentPace"]
+        )
+
+        // Speed: 60,000 / 300 = 200 m/min
+        #expect(stats.speedMetersPerMinute == 200.0)
+        // Efficiency Factor: 200 / 150 = 1.3333...
+        let ef = try #require(stats.efficiencyFactor)
+        #expect(abs(ef - (200.0 / 150.0)) < 0.001)
+
+        // Vertical Ratio: 9.0 cm / 1.18 m = 7.627...
+        let vr = try #require(stats.verticalRatio)
+        #expect(abs(vr - (9.0 / 1.18)) < 0.001)
+
+        #expect(!stats.isHeartRateSensorLowConfidence)
+    }
+
+    @Test("SubjectiveDistressSignal verifies safety overrides")
+    func subjectiveDistressSignals() throws {
+        #expect(SubjectiveDistressSignal.acuteFatigue.requiresSafetyOverride)
+        #expect(SubjectiveDistressSignal.jointPain.requiresSafetyOverride)
+        #expect(SubjectiveDistressSignal.illnessDeload.requiresSafetyOverride)
+        #expect(SubjectiveDistressSignal.mechanicalBreakdown.requiresSafetyOverride)
+
+        #expect(!SubjectiveDistressSignal.muscleSoreness.requiresSafetyOverride)
+        #expect(!SubjectiveDistressSignal.thermalExhaustion.requiresSafetyOverride)
+    }
+
+    @Test("RunDirective verifies goal overrides and drill titles")
+    func runDirectives() throws {
+        let recovery = RunDirective.easyAerobicRecovery(pacingBand: .zone1Recovery, maxDurationMinutes: 30.0)
+        #expect(recovery.priorityOverridesGoal)
+        #expect(recovery.associatedDrillTitle == nil)
+
+        let pyramids = RunDirective.cadencePyramids(targetFloorSPM: 155, targetCeilingSPM: 170, durationMinutes: 10.0)
+        #expect(!pyramids.priorityOverridesGoal)
+        #expect(pyramids.associatedDrillTitle == "Cadence Pyramids")
+
+        let strides = RunDirective.strides(repetitions: 5, targetSPM: 180)
+        #expect(!strides.priorityOverridesGoal)
+        #expect(strides.associatedDrillTitle == "Strides")
+    }
+
+    @Test("Codable roundtrip preserves Mold ingots bit-for-bit")
+    func codableRoundtrip() throws {
+        let original = TelemetryBucket(
+            timestamp: Date(timeIntervalSince1970: 1_700_000_123),
+            durationSeconds: 30.0,
+            distanceMeters: 100.0,
+            paceSecondsPerKm: 300.0,
+            cadenceSPM: 160.0,
+            heartRateBPM: 140.0,
+            groundContactTimeMs: 250.0,
+            verticalOscillationCm: 8.0,
+            strideLengthMeters: 1.1,
+            elevationGainMeters: 0.5
+        )
+
+        let encoded = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(TelemetryBucket.self, from: encoded)
+        #expect(original == decoded)
+    }
+}
