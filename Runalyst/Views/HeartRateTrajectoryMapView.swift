@@ -3,7 +3,8 @@ import Charts
 
 /// Renders the Heart Rate Trajectory visualization for Aerobic Workouts
 /// (Zone 2, Easy Runs, Long Runs, and Recovery Runs).
-/// Highlighting Zone 2/3 thresholds, cardiac stability, and aerobic ceiling adherence.
+/// Highlighting Zone 2/3 thresholds, cardiac stability, and aerobic ceiling adherence
+/// following Apple Health's clean visual language.
 struct HeartRateTrajectoryMapView: View {
     let phaseSegments: [PhaseSegment]
     let workingAvgHeartRate: Double
@@ -14,6 +15,8 @@ struct HeartRateTrajectoryMapView: View {
     var percentZone4: Double = 0.0
     var hrCV: Double?
     var selectedModality: Binding<WorkoutTelemetryModality>?
+
+    @State private var selectedMinute: Double?
 
     private static let neonPink = Color(red: 1.0, green: 0.18, blue: 0.55)
 
@@ -106,6 +109,10 @@ struct HeartRateTrajectoryMapView: View {
         return points.sorted(by: { $0.minute < $1.minute })
     }
 
+    private var peakPoint: HRPlotPoint? {
+        chartPoints.max(by: { $0.heartRate < $1.heartRate })
+    }
+
     private var cardiacStabilityText: String {
         if percentZone4 <= 0.04 && (hrCV ?? 0.05) <= 0.08 {
             return "Cardiac Stability: High"
@@ -124,6 +131,11 @@ struct HeartRateTrajectoryMapView: View {
         } else {
             return Color.red
         }
+    }
+
+    private var scrubbedPoint: HRPlotPoint? {
+        guard let minute = selectedMinute else { return nil }
+        return chartPoints.min(by: { abs($0.minute - minute) < abs($1.minute - minute) })
     }
 
     var body: some View {
@@ -157,7 +169,7 @@ struct HeartRateTrajectoryMapView: View {
                     // Shaded Aerobic Target Envelope
                     RectangleMark(
                         xStart: .value("Start", 0.0),
-                        xEnd: .value("End", maxMinutes + 1.0),
+                        xEnd: .value("End", maxMinutes),
                         yStart: .value("Min Y", yMin),
                         yEnd: .value("Threshold", effectiveThreshold)
                     )
@@ -173,7 +185,7 @@ struct HeartRateTrajectoryMapView: View {
                         .interpolationMethod(.catmullRom)
                         .foregroundStyle(
                             LinearGradient(
-                                colors: [Self.neonPink.opacity(0.32), Self.neonPink.opacity(0.02)],
+                                colors: [Self.neonPink.opacity(0.28), Self.neonPink.opacity(0.02)],
                                 startPoint: .top,
                                 endPoint: .bottom
                             )
@@ -191,26 +203,33 @@ struct HeartRateTrajectoryMapView: View {
                         .lineStyle(StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
                     }
 
-                    // Midpoint & Peak BPM Point Marks
+                    // De-cluttered subtle dots along the curve (Apple Health Style)
                     ForEach(chartPoints.filter(\.isAnchor)) { pt in
-                        let midTime = pt.minute
-                        let hr = pt.heartRate
-                        let isAboveThreshold = hr > effectiveThreshold
-                        let isNearRightEdge = midTime >= (maxMinutes - 1.2)
-                        let isNearLeftEdge = midTime <= 0.8
-                        let annotationAlignment: Alignment = isNearRightEdge ? .trailing : (isNearLeftEdge ? .leading : .center)
+                        PointMark(
+                            x: .value("Time", pt.minute),
+                            y: .value("Heart Rate", pt.heartRate)
+                        )
+                        .foregroundStyle(Self.neonPink)
+                        .symbolSize(18)
+                    }
+
+                    // Single clean Peak Heart Rate callout (prevents overlapping badge noise)
+                    if let peak = peakPoint, selectedMinute == nil {
+                        let isNearRight = peak.minute >= (maxMinutes - 4.0)
+                        let isNearLeft = peak.minute <= 4.0
+                        let peakAlignment: Alignment = isNearRight ? .trailing : (isNearLeft ? .leading : .center)
 
                         PointMark(
-                            x: .value("Time", midTime),
-                            y: .value("Heart Rate", hr)
+                            x: .value("Time", peak.minute),
+                            y: .value("Heart Rate", peak.heartRate)
                         )
-                        .foregroundStyle(isAboveThreshold ? Color.orange : Self.neonPink)
-                        .symbolSize(36)
-                        .annotation(position: .top, alignment: annotationAlignment) {
-                            Text("\(Int(round(hr)))")
+                        .foregroundStyle(peak.heartRate > effectiveThreshold ? Color.orange : Self.neonPink)
+                        .symbolSize(40)
+                        .annotation(position: .top, alignment: peakAlignment) {
+                            Text("\(Int(round(peak.heartRate))) Peak")
                                 .font(.system(size: 10, weight: .bold).monospacedDigit())
-                                .foregroundColor(isAboveThreshold ? .orange : Self.neonPink)
-                                .padding(.horizontal, 5)
+                                .foregroundColor(peak.heartRate > effectiveThreshold ? .orange : Self.neonPink)
+                                .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
                                 .background(Color(UIColor.secondarySystemGroupedBackground))
                                 .clipShape(Capsule())
@@ -218,47 +237,72 @@ struct HeartRateTrajectoryMapView: View {
                         }
                     }
 
-                    // Aerobic Ceiling / Zone Threshold Rule
+                    // Interactive Scrub Indicator
+                    if let scrub = scrubbedPoint {
+                        RuleMark(x: .value("Scrubbed Time", scrub.minute))
+                            .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [3, 3]))
+                            .foregroundStyle(Color.secondary.opacity(0.8))
+                            .annotation(position: .top, alignment: .center) {
+                                VStack(spacing: 2) {
+                                    Text("\(Int(round(scrub.heartRate))) BPM")
+                                        .font(.system(size: 11, weight: .bold).monospacedDigit())
+                                        .foregroundColor(Self.neonPink)
+                                    Text("\(Int(scrub.minute))m")
+                                        .font(.system(size: 9).monospacedDigit())
+                                        .foregroundColor(.secondary)
+                                }
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 3)
+                                .background(Color(UIColor.secondarySystemGroupedBackground))
+                                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                                .shadow(color: Color.black.opacity(0.15), radius: 3)
+                            }
+                    }
+
+                    // Aerobic Ceiling / Zone Threshold Rule with Apple Health-Style Inline Label
                     RuleMark(y: .value("Aerobic Ceiling", effectiveThreshold))
                         .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [4, 4]))
                         .foregroundStyle(isRecovery ? Color.secondary.opacity(0.7) : Color.orange.opacity(0.85))
+                        .annotation(position: .top, alignment: .leading) {
+                            Text(isRecovery ? "\(Int(effectiveThreshold)) BPM Zone 1 Ceiling" : "\(Int(effectiveThreshold)) BPM Zone 2 Ceiling")
+                                .font(.system(size: 9.5, weight: .bold).monospacedDigit())
+                                .foregroundColor(isRecovery ? Color.secondary : Color.orange)
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 1.5)
+                                .background(Color(UIColor.secondarySystemGroupedBackground).opacity(0.92))
+                                .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                        }
                 }
-                .chartScrollableAxes(.horizontal)
-                .chartXVisibleDomain(length: min(maxMinutes + 1.0, 13.5))
-                .chartXScale(domain: 0...(maxMinutes + 1.0))
+                .chartXSelection(value: $selectedMinute)
+                .chartXScale(domain: 0...maxMinutes)
                 .chartYScale(domain: yMin...yMax)
-                .frame(height: 220)
+                .frame(height: 200)
 
-                // Contextual Legend & Stability Badge
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 12) {
-                        legendItem(color: Self.neonPink, label: "Heart Rate")
-
-                        HStack(spacing: 4) {
-                            HStack(spacing: 2) {
-                                Rectangle()
-                                    .fill(isRecovery ? Color.secondary.opacity(0.7) : Color.orange.opacity(0.85))
-                                    .frame(width: 4, height: 1.5)
-                                Rectangle()
-                                    .fill(isRecovery ? Color.secondary.opacity(0.7) : Color.orange.opacity(0.85))
-                                    .frame(width: 4, height: 1.5)
-                            }
-                            Text(isRecovery ? "Zone 1 Ceiling (\(Int(effectiveThreshold)))" : "Zone 2 Ceiling (\(Int(effectiveThreshold)) BPM)")
-                                .font(.caption2.weight(.medium))
-                                .foregroundColor(.secondary)
-                        }
-
-                        // Cardiac Stability Pill
-                        HStack(spacing: 4) {
-                            Circle()
-                                .fill(cardiacStabilityColor)
-                                .frame(width: 6, height: 6)
-                            Text(cardiacStabilityText)
-                                .font(.caption2.weight(.medium))
-                                .foregroundColor(.secondary)
-                        }
+                // Clean Adaptive Legend & Cardiac Stability Row (Zero Truncation)
+                HStack(alignment: .center, spacing: 8) {
+                    HStack(spacing: 5) {
+                        Circle()
+                            .fill(Self.neonPink)
+                            .frame(width: 8, height: 8)
+                        Text("Heart Rate")
+                            .font(.caption2.weight(.medium))
+                            .foregroundColor(.secondary)
                     }
-                    .padding(.horizontal, 1)
+
+                    Spacer()
+
+                    HStack(spacing: 5) {
+                        Circle()
+                            .fill(cardiacStabilityColor)
+                            .frame(width: 6, height: 6)
+                        Text(cardiacStabilityText)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundColor(cardiacStabilityColor)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(cardiacStabilityColor.opacity(0.12))
+                    .clipShape(Capsule())
                 }
                 .padding(.top, 4)
             }
@@ -272,16 +316,5 @@ struct HeartRateTrajectoryMapView: View {
                 .stroke(Color(UIColor.separator).opacity(0.15), lineWidth: 0.5)
         )
         .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
-    }
-
-    private func legendItem(color: Color, label: String) -> some View {
-        HStack(spacing: 4) {
-            Circle()
-                .fill(color)
-                .frame(width: 8, height: 8)
-            Text(label)
-                .font(.caption2.weight(.medium))
-                .foregroundColor(.secondary)
-        }
     }
 }
