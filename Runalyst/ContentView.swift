@@ -42,7 +42,9 @@ struct ContentView: View {
                     }
                     .tag(0)
 
-                    WorkoutsView()
+                    WorkoutsView(onSync: { force in
+                        await syncData(force: force)
+                    })
                         .tabItem {
                             Label("Workouts", systemImage: "figure.run")
                         }
