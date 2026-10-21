@@ -432,4 +432,31 @@ final class AnalystChatEngineTests: XCTestCase {
             XCTAssertEqual(cleaned2, "Your readiness is strong—great! But tomorrow is a rest day for recovery.")
         }
     }
+
+    // MARK: - 14. Decoupled Macro Coach (Zero Runs / No RunRecord Anchor)
+
+    func testMacroCoachDecoupledFromRunRecordInitializesAndGeneratesInstructionsUnder1200Chars() {
+        if #available(iOS 26.0, *) {
+            let engine = AnalystChatEngine(modelContext: nil, runRecord: nil, mode: .macroCoach)
+            let instructions = engine.buildLeanSystemInstructions()
+
+            XCTAssertFalse(instructions.isEmpty)
+            XCTAssertTrue(instructions.contains("Today:"), "System instructions should provide today schedule context")
+            XCTAssertTrue(instructions.count < 1200, "System instructions must stay strictly under 1,200 chars (was \(instructions.count))")
+        }
+    }
+
+    func testMacroCoachDecoupledCanAnswerQuestionsAndAttachCards() async {
+        let engine = AnalystChatEngine(modelContext: nil, runRecord: nil, mode: .macroCoach)
+
+        engine.modelResponder = { _, _ in
+            "Tomorrow is a scheduled rest day. Take time to recover."
+        }
+
+        await engine.sendMessage("Should I run tomorrow?")
+
+        XCTAssertEqual(engine.messages.count, 2)
+        let analystMsg = engine.messages[1]
+        XCTAssertNotNil(analystMsg.attachedSession, "Session card should attach proactively even without an anchored runRecord")
+    }
 }

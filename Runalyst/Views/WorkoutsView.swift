@@ -75,24 +75,20 @@ struct WorkoutsView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    if !runRecords.isEmpty {
-                        Button {
-                            showingAnalystChat = true
-                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                        } label: {
-                            Image(systemName: "bubble.left.and.bubble.right.fill")
-                                .foregroundColor(.purple)
-                        }
-                        .accessibilityLabel("AI Coach")
+                    Button {
+                        showingAnalystChat = true
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    } label: {
+                        Image(systemName: "bubble.left.and.bubble.right.fill")
+                            .foregroundColor(.purple)
                     }
+                    .accessibilityLabel("AI Coach")
                 }
             }
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarBackground(.regularMaterial, for: .navigationBar)
             .sheet(isPresented: $showingAnalystChat) {
-                if let latestRun = runRecords.first {
-                    AnalystChatView(runRecord: latestRun, mode: .macroCoach)
-                }
+                AnalystChatView(mode: .macroCoach)
             }
             .sheet(isPresented: $showingUserProfile) {
                 UserProfileView()

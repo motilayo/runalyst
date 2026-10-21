@@ -70,7 +70,18 @@ class AnalystChatEngine: ObservableObject {
     private let mode: AnalystChatMode
     private let runSignature: RunSignature?
     private let macroProfile: MacroProfile?
-    private let runRecord: RunRecord
+    private let runRecord: RunRecord?
+    private var explicitModelContext: ModelContext?
+
+    var modelContext: ModelContext? {
+        explicitModelContext ?? runRecord?.modelContext
+    }
+
+    func setModelContextIfNeeded(_ context: ModelContext) {
+        if self.explicitModelContext == nil {
+            self.explicitModelContext = context
+        }
+    }
 
     #if canImport(FoundationModels)
     private var modelSession: Any? // LanguageModelSession on iOS 26+
@@ -94,11 +105,11 @@ class AnalystChatEngine: ObservableObject {
     #endif
 
     private var baselineStats: (avgPace: Double, avgCadence: Double, avgHR: Double)? {
-        guard let context = runRecord.modelContext,
-              let thirtyDaysAgo = Calendar.current.date(byAdding: .day, value: -30, to: runRecord.date) else {
+        let targetDate = runRecord?.date ?? Date()
+        guard let context = modelContext,
+              let thirtyDaysAgo = Calendar.current.date(byAdding: .day, value: -30, to: targetDate) else {
             return nil
         }
-        let targetDate = runRecord.date
         let descriptor = FetchDescriptor<RunRecord>(
             predicate: #Predicate<RunRecord> { $0.date >= thirtyDaysAgo && $0.date < targetDate }
         )
@@ -121,8 +132,23 @@ class AnalystChatEngine: ObservableObject {
         macroProfile: MacroProfile? = nil
     ) {
         self.runRecord = runRecord
+        self.explicitModelContext = runRecord.modelContext
         self.mode = mode
         self.runSignature = runSignature ?? runRecord.signature
+        self.macroProfile = macroProfile ?? MacroProfile.load()
+    }
+
+    init(
+        modelContext: ModelContext? = nil,
+        runRecord: RunRecord? = nil,
+        mode: AnalystChatMode = .macroCoach,
+        runSignature: RunSignature? = nil,
+        macroProfile: MacroProfile? = nil
+    ) {
+        self.runRecord = runRecord
+        self.explicitModelContext = modelContext ?? runRecord?.modelContext
+        self.mode = mode
+        self.runSignature = runSignature ?? runRecord?.signature
         self.macroProfile = macroProfile ?? MacroProfile.load()
     }
 
@@ -257,10 +283,41 @@ class AnalystChatEngine: ObservableObject {
     // MARK: - Analysis Context Factory
 
     func makeAnalysisContext(isSubjectiveDistress: Bool = false) -> WorkoutAnalysisContext {
-        let totalRuns = (try? runRecord.modelContext?.fetchCount(FetchDescriptor<RunRecord>())) ?? 1
+        let run = runRecord ?? (try? modelContext?.fetch(FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)])))?.first ?? RunRecord(
+            hkWorkoutID: UUID(),
+            date: Date(),
+            totalDistanceMeters: 0,
+            duration: 0,
+            rawAvgPace: 0,
+            rawAvgHeartRate: 0,
+            rawAvgCadence: 0,
+            workingAvgPace: 0,
+            workingAvgCadence: 0,
+            workingAvgHeartRate: 0,
+            paceCV: 0,
+            paceSlope: 0,
+            percentZone4: 0,
+            detectedTypeRaw: "Run"
+        )
+        let totalRuns = (try? modelContext?.fetchCount(FetchDescriptor<RunRecord>())) ?? 1
         return WorkoutAnalysisContext(
-            runRecord: runRecord,
-            runSignature: runSignature,
+            runRecord: run,
+            runSignature: runSignature ?? run.signature,
+            macroProfile: macroProfile,
+            recoveryTimeline: recoveryTimeline,
+            baselineStats: baselineStats,
+            runnerProfile: runnerProfile,
+            isSubjectiveDistress: isSubjectiveDistress,
+            totalHistoricalRunsCount: totalRuns
+        )
+    }
+
+    func makeAnalysisContext(for targetRun: RunRecord?, isSubjectiveDistress: Bool = false) -> WorkoutAnalysisContext? {
+        guard let run = targetRun ?? runRecord else { return nil }
+        let totalRuns = (try? modelContext?.fetchCount(FetchDescriptor<RunRecord>())) ?? 1
+        return WorkoutAnalysisContext(
+            runRecord: run,
+            runSignature: runSignature ?? run.signature,
             macroProfile: macroProfile,
             recoveryTimeline: recoveryTimeline,
             baselineStats: baselineStats,
@@ -283,7 +340,7 @@ class AnalystChatEngine: ObservableObject {
 
         let contextBlock: String
         if mode == .macroCoach {
-            let allRuns = (try? runRecord.modelContext?.fetch(FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)]))) ?? [runRecord]
+            let allRuns = (try? modelContext?.fetch(FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)]))) ?? (runRecord.map { [$0] } ?? [])
             let todayRuns = allRuns.filter { calendar.calendar.isDateInToday($0.date) && !$0.isDeleted }
             let activeGoal = UserDefaults.standard.string(forKey: "trainingGoal") ?? "Base Building"
             let profile = RunnerProfile.compute(from: allRuns)
@@ -329,13 +386,15 @@ class AnalystChatEngine: ObservableObject {
                 nextRunNote = " Next: \(next.day.weekday) (\(next.day.planned.minutesHigh)m)."
             }
             contextBlock = "Today: \(scheduledTodayStr) (\(loggedTodayStr)). Tomorrow: \(scheduledTomorrowStr).\(nextRunNote)"
-        } else {
+        } else if let runRecord {
             let daysDiff = max(0, Calendar.current.dateComponents([.day], from: runRecord.date, to: Date()).day ?? 0)
             let dateStr = TrainingCalendar.weekdayFormatter.string(from: runRecord.date)
             let temporalGrounding = daysDiff == 0 ? "Today" : "\(dateStr) (\(daysDiff)d ago)"
             let runType = runRecord.normalizedClassification
             let envNote = (runRecord.isIndoor ?? false) ? "Indoor" : "Outdoor"
             contextBlock = "Workout: \(runType) (\(envNote), \(temporalGrounding))."
+        } else {
+            contextBlock = "General Coaching: Today (\(TrainingCalendar.weekdayFormatter.string(from: Date())))."
         }
 
         var recentContextBlock = ""
@@ -392,13 +451,16 @@ class AnalystChatEngine: ObservableObject {
         let inspectWorkoutTool = InspectWorkoutTool { [weak self] _ in
             guard let self else { return "" }
             self.toolInvokedDuringActiveTurn = true
-            return self.makeAnalysisContext().compactTelemetryAnalysis()
+            if self.runRecord != nil || (try? self.modelContext?.fetchCount(FetchDescriptor<RunRecord>())) ?? 0 > 0 {
+                return self.makeAnalysisContext().compactTelemetryAnalysis()
+            }
+            return "{\"status\":\"no_workout_recorded\"}"
         }
 
         let getTrainingScheduleTool = GetTrainingScheduleTool { [weak self] query in
             guard let self else { return "No schedule days planned." }
             self.toolInvokedDuringActiveTurn = true
-            let allRuns = (try? self.runRecord.modelContext?.fetch(FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)]))) ?? [self.runRecord]
+            let allRuns = (try? self.modelContext?.fetch(FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)]))) ?? (self.runRecord.map { [$0] } ?? [])
             let activeGoal = UserDefaults.standard.string(forKey: "trainingGoal") ?? "Base Building"
             let profile = RunnerProfile.compute(from: allRuns)
             let useMetric = (UserDefaults.standard.object(forKey: "useMetricSystem") as? Bool) ?? true
@@ -432,8 +494,7 @@ class AnalystChatEngine: ObservableObject {
             guard let self else { return "{}" }
             self.toolInvokedDuringActiveTurn = true
             let isDistress = query.userReportedDistress == true
-            let analysis = self.makeAnalysisContext(isSubjectiveDistress: isDistress)
-            let allRuns = (try? self.runRecord.modelContext?.fetch(FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)]))) ?? [self.runRecord]
+            let allRuns = (try? self.modelContext?.fetch(FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)]))) ?? (self.runRecord.map { [$0] } ?? [])
             let activeGoal = UserDefaults.standard.string(forKey: "trainingGoal") ?? "Base Building"
             let profile = RunnerProfile.compute(from: allRuns)
             let useMetric = (UserDefaults.standard.object(forKey: "useMetricSystem") as? Bool) ?? true
@@ -451,8 +512,10 @@ class AnalystChatEngine: ObservableObject {
                 now: Date()
             )
 
+            let isOverride = isDistress || self.makeAnalysisContext(isSubjectiveDistress: isDistress).lockedPrescription.isSubjectiveOverride
+
             var limitingFactors: [String] = []
-            if isDistress || analysis.lockedPrescription.isSubjectiveOverride {
+            if isOverride {
                 limitingFactors.append("runner_reported_distress")
             }
             if streakSummary.consecutiveRunDays >= streakSummary.maxConsecutiveDays {
@@ -469,7 +532,7 @@ class AnalystChatEngine: ObservableObject {
             }
 
             let secondRunAdvisable: Bool
-            if isDistress || analysis.lockedPrescription.isSubjectiveOverride {
+            if isOverride {
                 secondRunAdvisable = false
             } else if todayRuns.isEmpty {
                 secondRunAdvisable = true
@@ -482,7 +545,7 @@ class AnalystChatEngine: ObservableObject {
             }
 
             let readinessState: String
-            if isDistress || analysis.lockedPrescription.isSubjectiveOverride {
+            if isOverride {
                 readinessState = "distress"
             } else {
                 readinessState = self.currentReadiness.state.rawValue
@@ -520,7 +583,7 @@ class AnalystChatEngine: ObservableObject {
         let queryWorkoutHistoryTool = QueryWorkoutHistoryTool { [weak self] query in
             guard let self else { return "{}" }
             self.toolInvokedDuringActiveTurn = true
-            let context = self.runRecord.modelContext
+            let context = self.modelContext
             switch query.scope {
             case .performanceArc:
                 return HistoricalRunMatcher.analyzePerformanceArc(relativeTo: self.runRecord, in: context).structuredTelemetryFacts
@@ -538,14 +601,20 @@ class AnalystChatEngine: ObservableObject {
                 guard let prior = HistoricalRunMatcher.findRun(matching: target, relativeTo: self.runRecord, in: context) else {
                     return "{\"status\":\"no_matching_run\",\"target\":\"\(target)\"}"
                 }
-                return HistoricalRunMatcher.compare(current: self.runRecord, with: prior).structuredTelemetryFacts
+                if let run = self.runRecord {
+                    return HistoricalRunMatcher.compare(current: run, with: prior).structuredTelemetryFacts
+                } else if let latest = (try? context?.fetch(FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)])))?.first, latest.id != prior.id {
+                    return HistoricalRunMatcher.compare(current: latest, with: prior).structuredTelemetryFacts
+                } else {
+                    return "{\"status\":\"insufficient_runs_for_comparison\"}"
+                }
             }
         }
 
         let coachActionTool = ExecuteCoachActionTool { [weak self] query in
             guard let self else { return "{}" }
             self.toolInvokedDuringActiveTurn = true
-            let allRuns = (try? self.runRecord.modelContext?.fetch(FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)]))) ?? [self.runRecord]
+            let allRuns = (try? self.modelContext?.fetch(FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)]))) ?? (self.runRecord.map { [$0] } ?? [])
             let activeGoal = UserDefaults.standard.string(forKey: "trainingGoal") ?? "Base Building"
             let profile = RunnerProfile.compute(from: allRuns)
             let useMetric = (UserDefaults.standard.object(forKey: "useMetricSystem") as? Bool) ?? true
@@ -614,7 +683,7 @@ class AnalystChatEngine: ObservableObject {
             case .exportToWatch:
                 let resolved = PreRunDrillId.resolve(from: query.payload ?? "") ?? .cadencePyramids
                 let template = DrillTemplate.template(for: resolved)
-                let baseCadence = Int(self.runRecord.workingAvgCadence) > 0 ? Int(self.runRecord.workingAvgCadence) : 155
+                let baseCadence = Int(self.runRecord?.workingAvgCadence ?? 0) > 0 ? Int(self.runRecord?.workingAvgCadence ?? 0) : 155
                 let target = template.calculateTargetCadence(baseCadence)
                 let dto = DrillPrescriptionDTO(
                     title: template.title,
@@ -664,9 +733,9 @@ class AnalystChatEngine: ObservableObject {
 
             case .recordFeedback:
                 let feedback = query.payload ?? ""
-                if !feedback.isEmpty {
-                    self.runRecord.framboiseTags.append("feedback:\(feedback.prefix(40))")
-                    try? self.runRecord.modelContext?.save()
+                if !feedback.isEmpty, let run = self.runRecord {
+                    run.framboiseTags.append("feedback:\(feedback.prefix(40))")
+                    try? run.modelContext?.save()
                 }
                 return "{\"status\":\"feedback_recorded\"}"
             }
@@ -747,7 +816,7 @@ class AnalystChatEngine: ObservableObject {
     // MARK: - Readiness & Recovery Timeline
 
     var readinessAssessment: ReadinessAssessment {
-        assessReadiness(asOf: runRecord.date)
+        assessReadiness(asOf: mode == .macroCoach ? Date() : (runRecord?.date ?? Date()))
     }
 
     var currentReadiness: ReadinessAssessment {
@@ -755,7 +824,7 @@ class AnalystChatEngine: ObservableObject {
     }
 
     private func assessReadiness(asOf date: Date) -> ReadinessAssessment {
-        if let context = runRecord.modelContext {
+        if let context = modelContext {
             return ReadinessEvaluator.assess(context: context, now: date)
         }
         if let profile = macroProfile {
@@ -773,21 +842,22 @@ class AnalystChatEngine: ObservableObject {
     }
 
     var isHeavySession: Bool {
-        ReadinessRunSnapshot(run: runRecord).isHardSession
+        guard let run = runRecord else { return false }
+        return ReadinessRunSnapshot(run: run).isHardSession
     }
 
     private var recentSnapshots: [ReadinessRunSnapshot] {
         let cutoff = Date().addingTimeInterval(-7 * 24 * 3600)
         var snapshots: [ReadinessRunSnapshot] = []
-        if let context = runRecord.modelContext {
+        if let context = modelContext {
             let descriptor = FetchDescriptor<RunRecord>(
                 predicate: #Predicate<RunRecord> { $0.date >= cutoff },
                 sortBy: [SortDescriptor(\.date, order: .reverse)]
             )
             snapshots = (try? context.fetch(descriptor))?.map(ReadinessRunSnapshot.init(run:)) ?? []
         }
-        if !snapshots.contains(where: { $0.date == runRecord.date }) {
-            snapshots.append(ReadinessRunSnapshot(run: runRecord))
+        if let run = runRecord, !snapshots.contains(where: { $0.date == run.date }) {
+            snapshots.append(ReadinessRunSnapshot(run: run))
         }
         return snapshots
     }
@@ -798,13 +868,13 @@ class AnalystChatEngine: ObservableObject {
 
     var runnerProfile: RunnerProfile {
         var historicalRuns: [RunRecord] = []
-        if let context = runRecord.modelContext {
+        if let context = modelContext {
             let cutoff = Date().addingTimeInterval(-30 * 24 * 3600)
             let desc = FetchDescriptor<RunRecord>(predicate: #Predicate<RunRecord> { $0.date >= cutoff })
             historicalRuns = (try? context.fetch(desc)) ?? []
         }
-        if !historicalRuns.contains(where: { $0.date == runRecord.date }) {
-            historicalRuns.append(runRecord)
+        if let run = runRecord, !historicalRuns.contains(where: { $0.date == run.date }) {
+            historicalRuns.append(run)
         }
         return RunnerProfile.compute(from: historicalRuns, now: Date())
     }
@@ -834,7 +904,7 @@ class AnalystChatEngine: ObservableObject {
             }
         case .displaySchedule:
             if self.scheduleRecommendedThisTurn == nil {
-                let allRuns = (try? self.runRecord.modelContext?.fetch(FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)]))) ?? [self.runRecord]
+                let allRuns = (try? self.modelContext?.fetch(FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)]))) ?? (self.runRecord.map { [$0] } ?? [])
                 let activeGoal = UserDefaults.standard.string(forKey: "trainingGoal") ?? "Base Building"
                 let profile = RunnerProfile.compute(from: allRuns)
                 let useMetric = (UserDefaults.standard.object(forKey: "useMetricSystem") as? Bool) ?? true
@@ -860,7 +930,7 @@ class AnalystChatEngine: ObservableObject {
             }
         case .displaySession:
             if self.sessionRecommendedThisTurn == nil {
-                let allRuns = (try? self.runRecord.modelContext?.fetch(FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)]))) ?? [self.runRecord]
+                let allRuns = (try? self.modelContext?.fetch(FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)]))) ?? (self.runRecord.map { [$0] } ?? [])
                 let activeGoal = UserDefaults.standard.string(forKey: "trainingGoal") ?? "Base Building"
                 let profile = RunnerProfile.compute(from: allRuns)
                 let useMetric = (UserDefaults.standard.object(forKey: "useMetricSystem") as? Bool) ?? true
@@ -954,7 +1024,7 @@ class AnalystChatEngine: ObservableObject {
     }
 
     func findNextScheduledRun() -> (date: Date, day: ScheduleDay)? {
-        let allRuns = (try? self.runRecord.modelContext?.fetch(FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)]))) ?? [self.runRecord]
+        let allRuns = (try? self.modelContext?.fetch(FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)]))) ?? (self.runRecord.map { [$0] } ?? [])
         let activeGoal = UserDefaults.standard.string(forKey: "trainingGoal") ?? "Base Building"
         let profile = RunnerProfile.compute(from: allRuns)
         let useMetric = (UserDefaults.standard.object(forKey: "useMetricSystem") as? Bool) ?? true

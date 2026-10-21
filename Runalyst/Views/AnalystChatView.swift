@@ -5,6 +5,7 @@ import WorkoutKit
 /// Interactive chat view allowing athletes to converse with the AI Biomechanics Analyst.
 struct AnalystChatView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
     @Query(sort: \RunRecord.date, order: .reverse) private var runRecords: [RunRecord]
     @StateObject private var engine: AnalystChatEngine
     @State private var inputText: String = ""
@@ -17,35 +18,45 @@ struct AnalystChatView: View {
     @AppStorage("lastExportedDrillId") private var lastExportedDrillId: String = ""
     @AppStorage("preferredWorkoutIsIndoor") private var preferredWorkoutIsIndoor: Bool = false
 
-    let runRecord: RunRecord
+    let runRecord: RunRecord?
     let mode: AnalystChatMode
 
-    init(runRecord: RunRecord, mode: AnalystChatMode = .runInspection) {
+    init(runRecord: RunRecord? = nil, mode: AnalystChatMode? = nil, modelContext: ModelContext? = nil) {
+        let resolvedMode = mode ?? (runRecord == nil ? .macroCoach : .runInspection)
         self.runRecord = runRecord
-        self.mode = mode
-        _engine = StateObject(wrappedValue: AnalystChatEngine(runRecord: runRecord, mode: mode))
+        self.mode = resolvedMode
+        _engine = StateObject(wrappedValue: AnalystChatEngine(modelContext: modelContext ?? runRecord?.modelContext, runRecord: runRecord, mode: resolvedMode))
     }
 
     private var headerSubtitle: String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "EEE, MMM d"
-        let dateStr = formatter.string(from: runRecord.date)
-        let isIndoor = runRecord.isIndoor ?? false
-        let envStr = isIndoor ? "Indoor" : "Outdoor"
-        let typeStr = runRecord.detectedTypeRaw.isEmpty ? "Run" : runRecord.detectedTypeRaw
-
-        let cal = Calendar.current
-        let isRunToday = cal.isDateInToday(runRecord.date)
-
         if mode == .macroCoach {
-            if isRunToday {
-                return "🔒 On-Device • Today's \(typeStr) Logged"
+            if let latest = runRecords.first {
+                let cal = Calendar.current
+                let isRunToday = cal.isDateInToday(latest.date)
+                let typeStr = latest.detectedTypeRaw.isEmpty ? "Run" : latest.detectedTypeRaw
+                let formatter = DateFormatter()
+                formatter.locale = Locale(identifier: "en_US_POSIX")
+                formatter.dateFormat = "EEE, MMM d"
+                let dateStr = formatter.string(from: latest.date)
+                if isRunToday {
+                    return "🔒 On-Device • Today's \(typeStr) Logged"
+                } else {
+                    return "🔒 On-Device • Last Run: \(dateStr)"
+                }
             } else {
-                return "🔒 On-Device • Last Run: \(dateStr) (\(typeStr))"
+                return "🔒 On-Device • Daily Training Guidance"
             }
-        } else {
+        } else if let runRecord {
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.dateFormat = "EEE, MMM d"
+            let dateStr = formatter.string(from: runRecord.date)
+            let isIndoor = runRecord.isIndoor ?? false
+            let envStr = isIndoor ? "Indoor" : "Outdoor"
+            let typeStr = runRecord.detectedTypeRaw.isEmpty ? "Run" : runRecord.detectedTypeRaw
             return "🔒 On-Device • \(dateStr) \(envStr) \(typeStr)"
+        } else {
+            return "🔒 On-Device • Daily Training Guidance"
         }
     }
 
@@ -238,6 +249,7 @@ struct AnalystChatView: View {
                 MetricExplainerSheet(info: info)
             }
             .task {
+                engine.setModelContextIfNeeded(modelContext)
                 if ProcessInfo.processInfo.environment["RUNALYST_PREVIEW_SCREEN"] == "ANALYST_ACTIVE" {
                     try? await Task.sleep(nanoseconds: 400_000_000)
                     await engine.sendMessage("How was my cadence and rhythm during this run?")
@@ -442,7 +454,7 @@ struct AnalystChatView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 let cal = Calendar.current
-                let isRunToday = cal.isDateInToday(runRecord.date)
+                let isRunToday = runRecords.first.map { cal.isDateInToday($0.date) } ?? false
 
                 if mode == .macroCoach {
                     chipButton("When Should I Run Next?", icon: "figure.run", iconColor: Color(red: 0.0, green: 0.55, blue: 1.0)) {
@@ -455,19 +467,21 @@ struct AnalystChatView: View {
                             : "Am I recovered to run today, or should I take a rest day?"
                         submitQuestion()
                     }
-                    chipButton("Review Last Run", icon: "clock.arrow.circlepath", iconColor: Color(red: 0.18, green: 0.82, blue: 0.35)) {
-                        let df = DateFormatter()
-                        df.locale = Locale(identifier: "en_US_POSIX")
-                        df.dateFormat = "EEEE"
-                        let weekday = df.string(from: runRecord.date)
-                        inputText = "How was my effort and pacing during \(weekday)'s \(runRecord.detectedTypeRaw)?"
-                        submitQuestion()
+                    if let latest = runRecords.first {
+                        chipButton("Review Last Run", icon: "clock.arrow.circlepath", iconColor: Color(red: 0.18, green: 0.82, blue: 0.35)) {
+                            let df = DateFormatter()
+                            df.locale = Locale(identifier: "en_US_POSIX")
+                            df.dateFormat = "EEEE"
+                            let weekday = df.string(from: latest.date)
+                            inputText = "How was my effort and pacing during \(weekday)'s \(latest.detectedTypeRaw)?"
+                            submitQuestion()
+                        }
                     }
                     chipButton("Weekly Training Status", icon: "calendar", iconColor: .purple) {
                         inputText = "How is my weekly mileage and overall training balance?"
                         submitQuestion()
                     }
-                } else {
+                } else if let runRecord {
                     chipButton("When Should I Run Next?", icon: "calendar", iconColor: .purple) {
                         inputText = "When should I run next, and what kind of session should I focus on?"
                         submitQuestion()
@@ -509,8 +523,8 @@ struct AnalystChatView: View {
             .map { $0.text.lowercased() }
             .joined(separator: " ")
 
-        let isInterval = runRecord.evaluationModality == .intervals
-        let splitChipTitle = isInterval ? (runRecord.detectedTypeRaw == "Fartlek" ? "Surge Analysis" : "Break Down Intervals") : "Break Down Splits"
+        let isInterval = runRecord?.evaluationModality == .intervals
+        let splitChipTitle = isInterval ? ((runRecord?.detectedTypeRaw == "Fartlek") ? "Surge Analysis" : "Break Down Intervals") : "Break Down Splits"
         let splitChipPrompt = isInterval ? "Grade my performance in each interval of this run" : "Grade my performance in each split of this run"
         let splitChipIcon = isInterval ? "waveform.path.ecg" : "chart.bar.xaxis"
 
@@ -594,12 +608,13 @@ struct AnalystChatView: View {
     }
 
     private func openDrillReadout(drillId: PreRunDrillId) {
-        let matchingRec = runRecord.insight?.drillRecommendations?.first { rec in
+        let matchingRec = runRecord?.insight?.drillRecommendations?.first { rec in
             rec.preRunDrillId == drillId.rawValue ||
             rec.drillTitle.localizedCaseInsensitiveContains(drillId.title)
         }
         let template = DrillTemplate.template(for: drillId)
-        let baseline = matchingRec?.previousCadence ?? (Int(runRecord.workingAvgCadence) > 0 ? Int(runRecord.workingAvgCadence) : 155)
+        let fallbackCadence = runRecords.first.map { Int($0.workingAvgCadence) } ?? 155
+        let baseline = matchingRec?.previousCadence ?? ((runRecord.map { Int($0.workingAvgCadence) } ?? fallbackCadence) > 0 ? (runRecord.map { Int($0.workingAvgCadence) } ?? fallbackCadence) : 155)
         let target = matchingRec?.targetCadence?.replacingOccurrences(of: " SPM", with: "") ?? template.calculateTargetCadence(baseline)
         let cue = matchingRec?.drillCues ?? template.generateInstructionalCue(target)
 
@@ -667,20 +682,30 @@ struct AnalystChatView: View {
 /// An inline, interactive card surfaced directly inside chat messages when a corrective drill is recommended.
 struct InlineChatDrillCard: View {
     let drillId: PreRunDrillId
-    let runRecord: RunRecord
+    let runRecord: RunRecord?
     let onOpenReadout: () -> Void
 
     @Query(sort: \RunRecord.date, order: .reverse) private var runRecords: [RunRecord]
 
+    private var effectiveRun: RunRecord? {
+        runRecord ?? runRecords.first
+    }
+
     private var matchingDrillRec: DrillRecommendation? {
-        runRecord.insight?.drillRecommendations?.first { rec in
+        effectiveRun?.insight?.drillRecommendations?.first { rec in
             rec.preRunDrillId == drillId.rawValue ||
             rec.drillTitle.localizedCaseInsensitiveContains(drillId.title)
         }
     }
 
     private var baselineCadence: Int {
-        matchingDrillRec?.previousCadence ?? (Int(runRecord.workingAvgCadence) > 0 ? Int(runRecord.workingAvgCadence) : 155)
+        if let recCad = matchingDrillRec?.previousCadence, recCad > 0 {
+            return recCad
+        }
+        if let working = effectiveRun?.workingAvgCadence, working > 0 {
+            return Int(working)
+        }
+        return 155
     }
 
     private var targetCadenceDisplay: String {
@@ -709,13 +734,15 @@ struct InlineChatDrillCard: View {
                 now: Date()
             )
             let profile = RunnerProfile.compute(from: runRecords)
+            let pace = (effectiveRun?.workingAvgPace ?? 0) > 0 ? effectiveRun?.workingAvgPace : nil
+            let daysDiff = effectiveRun.map { Calendar.current.dateComponents([.day], from: $0.date, to: Date()).day ?? 0 } ?? 0
             let tzInput = TrainingZoneInput(
-                baselinePaceSec: runRecord.workingAvgPace > 0 ? runRecord.workingAvgPace : nil,
-                workoutPaceSec: runRecord.workingAvgPace > 0 ? runRecord.workingAvgPace : nil,
+                baselinePaceSec: pace,
+                workoutPaceSec: pace,
                 activeGoal: UserDefaults.standard.string(forKey: "trainingGoal") ?? "Base Building",
                 experienceLevel: profile.experienceLevel,
                 readyForHard: timeline.readyForHard,
-                daysSinceWorkout: Calendar.current.dateComponents([.day], from: runRecord.date, to: Date()).day ?? 0,
+                daysSinceWorkout: daysDiff,
                 heightAdjustedCadenceFloor: profile.heightAdjustedCadenceFloor,
                 useMetricSystem: useMetric,
                 totalHistoricalRunsCount: runRecords.count
@@ -869,7 +896,7 @@ struct InlineChatDrillCard: View {
 /// when an explainer or physiological concept is referenced.
 struct InlineChatExplainerCard: View {
     let explainerKey: String
-    let runRecord: RunRecord
+    let runRecord: RunRecord?
     let onOpenExplainer: (MetricExplainerInfo) -> Void
 
     private var asset: CoachingAssetLibrary.Asset {
@@ -923,40 +950,41 @@ struct InlineChatExplainerCard: View {
     }
 
     private var liveMetricDisplay: String? {
+        guard let run = runRecord else { return nil }
         switch asset.key {
         case "cadence_floor":
-            let floor = RunnerProfile.compute(from: [runRecord], now: runRecord.date).heightAdjustedCadenceFloor
+            let floor = RunnerProfile.compute(from: [run], now: run.date).heightAdjustedCadenceFloor
             return "\(floor) SPM Floor"
         case "cadence":
-            let cad = Int(runRecord.workingAvgCadence.rounded())
+            let cad = Int(run.workingAvgCadence.rounded())
             return cad > 0 ? "\(cad) SPM" : nil
         case "pace":
-            return runRecord.workingAvgPace > 0 ? PaceFormatter.formatPace(secondsPerKilometer: runRecord.workingAvgPace) : nil
+            return run.workingAvgPace > 0 ? PaceFormatter.formatPace(secondsPerKilometer: run.workingAvgPace) : nil
         case "heart_rate":
-            let hr = Int(runRecord.workingAvgHeartRate.rounded())
+            let hr = Int(run.workingAvgHeartRate.rounded())
             return hr > 0 ? "\(hr) BPM" : nil
         case "efficiency_factor":
-            if let ef = runRecord.efficiencyFactor {
+            if let ef = run.efficiencyFactor {
                 return String(format: "%.2f m/beat", ef)
             }
             return nil
         case "vertical_oscillation":
-            if let vo = runRecord.workingAvgVerticalOscillation ?? runRecord.rawAvgVerticalOscillation {
+            if let vo = run.workingAvgVerticalOscillation ?? run.rawAvgVerticalOscillation {
                 return String(format: "%.1f cm", vo)
             }
             return nil
         case "stride_length":
-            if let sl = runRecord.workingAvgStrideLength ?? runRecord.rawAvgStrideLength {
+            if let sl = run.workingAvgStrideLength ?? run.rawAvgStrideLength {
                 return String(format: "%.2f m", sl)
             }
             return nil
         case "bounce_ratio", "vertical_ratio":
-            if let vr = runRecord.verticalRatio {
+            if let vr = run.verticalRatio {
                 return String(format: "%.1f%%", vr * 100.0)
             }
             return nil
         case "pacing_consistency", "pace_cv":
-            return String(format: "%.2f CV", runRecord.paceCV)
+            return String(format: "%.2f CV", run.paceCV)
         default:
             return nil
         }
