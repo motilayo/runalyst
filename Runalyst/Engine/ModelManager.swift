@@ -1,13 +1,42 @@
 import Foundation
 import CoreML
 
-/// Structured classification result including confidence, full probability distribution, and incline inference.
+/// Epistemic provenance of a workout classification.
+enum ClassificationProvenance: String, Codable, Sendable {
+    /// Discovered via deterministic time-series sequence grammar (cycles, contrast, duration).
+    case deterministic
+    /// Inferred via CoreML statistical model with high posterior confidence (>= 0.75).
+    case inferred
+    /// Low statistical confidence (< 0.75) requiring human review.
+    case needsReview
+    /// Authoritatively confirmed or corrected by the runner.
+    case userConfirmed
+}
+
+/// Structured classification result including confidence, full probability distribution, epistemic provenance, and incline inference.
 struct ClassificationResult: Sendable, Equatable {
     let targetClass: String
     let confidence: Double
     let probabilities: [String: Double]
+    let provenance: ClassificationProvenance
     let isReviewRequired: Bool
     let needsInclineReview: Bool
+
+    init(
+        targetClass: String,
+        confidence: Double,
+        probabilities: [String: Double],
+        provenance: ClassificationProvenance = .inferred,
+        isReviewRequired: Bool,
+        needsInclineReview: Bool
+    ) {
+        self.targetClass = targetClass
+        self.confidence = confidence
+        self.probabilities = probabilities
+        self.provenance = provenance
+        self.isReviewRequired = isReviewRequired
+        self.needsInclineReview = needsInclineReview
+    }
 }
 
 /// A manager for interfacing with the CoreML RunalystClassifier.
@@ -93,59 +122,87 @@ actor ModelManager {
                     hrCV: hrCV
                 )
                 let prediction = try await classifier.prediction(input: input)
-                var targetClass = prediction.targetClass
                 let rawProbabilities = prediction.classProbability
 
                 // Normalize probabilities:
                 // RunalystClassifier (RandomForestClassifier with 150 trees) outputs tree vote sums (sum ~ 150.0).
                 let totalVotes = rawProbabilities.values.reduce(0.0, +)
-                let probabilities: [String: Double]
+                var probabilities: [String: Double]
                 if totalVotes > 1.01 {
                     probabilities = rawProbabilities.mapValues { $0 / totalVotes }
                 } else {
                     probabilities = rawProbabilities
                 }
-                let maxProb = probabilities.values.max() ?? 0.0
 
-                // Human-in-the-Loop Confidence Threshold (ADR-0005):
-                // If the classifier outputs normalized probability < 75%, refuse to guess and flag for user review.
-                var isLowConfidence = maxProb < 0.75
-                if isLowConfidence {
-                    targetClass = "Mixed Effort (Review)"
+                // Bayesian Domain Conditioning: Physical sensor constraint
+                // P(OutdoorOnly | Indoor) = 0. Impossible hypotheses have measure zero indoors.
+                if isIndoor {
+                    probabilities.removeValue(forKey: "Urban Traffic")
+                    probabilities.removeValue(forKey: "Hill Repeats")
+                    let validTotal = probabilities.values.reduce(0.0, +)
+                    if validTotal > 0 {
+                        probabilities = probabilities.mapValues { $0 / validTotal }
+                    }
                 }
 
-                // Topological Structural Guardrails (exempt from low confidence flag as they are deterministic truth):
+                var targetClass = prediction.targetClass
+                var isDeterministic = false
+
+                // Topological Structural Guardrails (Structural Subsumption: Grammar proofs strictly subsume ML inference)
                 // 1. Continuous Run Gate:
-                if (prediction.targetClass == "Fartlek" || prediction.targetClass == "Intervals" || prediction.targetClass == "Pyramids") && cycles.count < 3 {
+                // If CoreML predicts an intermittent class but signal grammar proves it is continuous:
+                if (prediction.targetClass == "Fartlek" || prediction.targetClass == "Intervals" || prediction.targetClass == "Pyramids") && (weightedClass != "Fartlek" && weightedClass != "Intervals" && weightedClass != "Pyramids") {
                     targetClass = weightedClass
-                    isLowConfidence = false
+                    isDeterministic = true
                 }
-
                 // 2. Intermittent Gate:
-                if cycles.count >= 3 && targetClass != "Intervals" && targetClass != "Fartlek" && targetClass != "Pyramids" {
+                // If signal grammar proves the workout is intermittent (Rule A: >= 3 cycles, or Rule B: 2 cycles short set):
+                else if weightedClass == "Intervals" || weightedClass == "Fartlek" || weightedClass == "Pyramids" {
                     targetClass = weightedClass
-                    isLowConfidence = false
+                    isDeterministic = true
                 }
-
                 // 3. Environmental & Topographic Override (Bidirectional & Indoor aware):
                 // Urban Traffic and Hill Repeats can NEVER occur indoors on a treadmill.
                 // Furthermore, Urban Traffic / Hill Repeats require deterministic topological corroboration from FramboiseEngine.
-                if (prediction.targetClass == "Urban Traffic" || prediction.targetClass == "Hill Repeats") && isIndoor {
+                else if (prediction.targetClass == "Urban Traffic" || prediction.targetClass == "Hill Repeats") && isIndoor {
                     targetClass = weightedClass
-                    isLowConfidence = false
+                    isDeterministic = true
                 } else if (targetClass == "Urban Traffic" || targetClass == "Hill Repeats") && weightedClass != targetClass {
                     targetClass = weightedClass
-                    isLowConfidence = false
+                    isDeterministic = true
                 } else if (weightedClass == "Urban Traffic" || weightedClass == "Hill Repeats") && !isIndoor {
                     targetClass = weightedClass
-                    isLowConfidence = false
+                    isDeterministic = true
+                }
+
+                let finalConfidence: Double
+                let provenance: ClassificationProvenance
+                let isReviewRequired: Bool
+
+                if isDeterministic {
+                    provenance = .deterministic
+                    finalConfidence = 1.0
+                    probabilities[targetClass] = 1.0
+                    isReviewRequired = false
+                } else {
+                    let maxProb = probabilities.values.max() ?? 0.0
+                    finalConfidence = maxProb
+                    if maxProb < 0.75 {
+                        targetClass = "Mixed Effort (Review)"
+                        provenance = .needsReview
+                        isReviewRequired = true
+                    } else {
+                        provenance = .inferred
+                        isReviewRequired = false
+                    }
                 }
 
                 return ClassificationResult(
                     targetClass: targetClass,
-                    confidence: maxProb,
+                    confidence: finalConfidence,
                     probabilities: probabilities,
-                    isReviewRequired: isLowConfidence || targetClass == "Mixed Effort (Review)",
+                    provenance: provenance,
+                    isReviewRequired: isReviewRequired,
                     needsInclineReview: needsInclineReview
                 )
             } catch {
@@ -155,8 +212,9 @@ actor ModelManager {
 
         return ClassificationResult(
             targetClass: weightedClass,
-            confidence: 0.85,
-            probabilities: [weightedClass: 0.85],
+            confidence: 1.0,
+            probabilities: [weightedClass: 1.0],
+            provenance: .deterministic,
             isReviewRequired: false,
             needsInclineReview: needsInclineReview
         )

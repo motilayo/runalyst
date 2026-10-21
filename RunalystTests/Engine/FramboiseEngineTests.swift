@@ -1043,4 +1043,87 @@ final class FramboiseEngineTests: XCTestCase {
         XCTAssertEqual(work[4].durationSeconds, 150.0, "Rep 5 (Round 5): 2m 30s")
         XCTAssertEqual(work[5].durationSeconds, 135.0, "Rep 6 (Round 6 bridged): 2m 15s")
     }
+
+    // MARK: - Structural Subsumption & 2-Cycle Guardrail
+
+    func testStructuralSubsumption_ThreeCorroboratedCycles_OverridesScalarCVGate() async {
+        // Reproduce Oct 06 / Oct 04 scenario:
+        // Whole-run Pace CV is diluted by warm-up / steady volume to 0.113 (< 0.12).
+        // However, 3+ corroborated cycles with contrast >= 25 s/km exist.
+        // Structural subsumption mandates classifying as intermittent (Intervals if regularity >= 0.65).
+        var buckets: [BucketData] = []
+        var currentTime = Date()
+
+        for _ in 0..<4 {
+            // Work: 60s at 180 SPM, 320 s/km (5:20/km), 168 HR
+            for _ in 0..<2 {
+                buckets.append(BucketData(startTime: currentTime, distanceMeters: 93.75, durationSeconds: 30, meanPaceSecPerKm: 320, meanCadence: 180, meanHR: 168))
+                currentTime = currentTime.addingTimeInterval(30)
+            }
+            // Recovery: 60s at 145 SPM, 420 s/km (7:00/km), 140 HR (+100s pace contrast)
+            for _ in 0..<2 {
+                buckets.append(BucketData(startTime: currentTime, distanceMeters: 71.4, durationSeconds: 30, meanPaceSecPerKm: 420, meanCadence: 145, meanHR: 140))
+                currentTime = currentTime.addingTimeInterval(30)
+            }
+        }
+
+        let cycles = await engine.extractOscillationCycles(buckets: buckets)
+        XCTAssertGreaterThanOrEqual(cycles.count, 3)
+
+        // Pass cv = 0.113 (< 0.12). Rule A guarantees structural cycles subsume scalar CV.
+        let classification = await engine.classifyRun(
+            buckets: buckets,
+            cv: 0.113,
+            slope: 0.0,
+            zone4: 0.35,
+            durationMinutes: 45.0,
+            cadenceCV: 0.035,
+            averageHR: 154.0
+        )
+        XCTAssertEqual(classification, "Intervals", "3+ corroborated cycles with contrast >= 25 s/km must subsume scalar cv = 0.113")
+    }
+
+    func testTwoCycleFallback_ShortSetRequiresPaceCVAbove12Percent() async {
+        // Rule B: Exactly 2 cycles.
+        // Short set requires cv >= 0.12 to confirm deliberate intermittent structure.
+        var buckets: [BucketData] = []
+        var currentTime = Date()
+
+        for _ in 0..<2 {
+            // Work: 60s at 180 SPM, 320 s/km
+            for _ in 0..<2 {
+                buckets.append(BucketData(startTime: currentTime, distanceMeters: 93.75, durationSeconds: 30, meanPaceSecPerKm: 320, meanCadence: 180, meanHR: 168))
+                currentTime = currentTime.addingTimeInterval(30)
+            }
+            // Recovery: 60s at 145 SPM, 420 s/km
+            for _ in 0..<2 {
+                buckets.append(BucketData(startTime: currentTime, distanceMeters: 71.4, durationSeconds: 30, meanPaceSecPerKm: 420, meanCadence: 145, meanHR: 140))
+                currentTime = currentTime.addingTimeInterval(30)
+            }
+        }
+
+        // Test 1: cv = 0.13 (>= 0.12) -> passes Rule B as Intervals
+        let classificationPass = await engine.classifyRun(
+            buckets: buckets,
+            cv: 0.13,
+            slope: 0.0,
+            zone4: 0.40,
+            durationMinutes: 15.0,
+            cadenceCV: 0.040,
+            averageHR: 155.0
+        )
+        XCTAssertEqual(classificationPass, "Intervals", "2 cycles with cv >= 0.12 must pass Rule B as Intervals")
+
+        // Test 2: cv = 0.09 (< 0.12) -> fails Rule B, falls through to continuous steady
+        let classificationFail = await engine.classifyRun(
+            buckets: buckets,
+            cv: 0.09,
+            slope: 0.0,
+            zone4: 0.20,
+            durationMinutes: 15.0,
+            cadenceCV: 0.020,
+            averageHR: 145.0
+        )
+        XCTAssertNotEqual(classificationFail, "Intervals", "2 cycles with cv < 0.12 must not classify as Intervals")
+    }
 }

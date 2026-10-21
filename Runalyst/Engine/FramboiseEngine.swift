@@ -862,11 +862,20 @@ actor FramboiseEngine {
         let isUniformSteady = cv < 0.10
 
         // LAYER 2: Structural Gate (Intermittent vs. Continuous)
-        // Interval classification strictly requires calculatePaceCV >= 0.12, workRepCount >= 2 cycles,
-        // and minimum speed contrast delta of workPace <= recoveryPace - 25.0 s/km.
+        // Rule A (Structural Proof): 3+ corroborated cycles with contrast >= 25.0 s/km strictly subsumes scalar cv.
+        // Rule B (Short Set Fallback): 2 cycles requires whole-run cv >= 0.12, contrast >= 25.0 s/km, and not uniform steady.
         let cycles = cycles ?? extractOscillationCycles(buckets: buckets)
         let avgCycleContrast = cycles.isEmpty ? 0.0 : (cycles.map { $0.recoveryPace - $0.workPace }.reduce(0, +) / Double(cycles.count))
-        let isIntermittent = !isUniformSteady && cv >= 0.12 && cycles.count >= 2 && avgCycleContrast >= 25.0
+        let isIntermittent: Bool = {
+            guard avgCycleContrast >= 25.0 else { return false }
+            if cycles.count >= 3 {
+                return true
+            }
+            if cycles.count == 2 && cv >= 0.12 && !isUniformSteady {
+                return true
+            }
+            return false
+        }()
         let regularityScore = isIntermittent ? calculateCycleRegularity(cycles: cycles) : 0.0
 
         // If traffic was chaotic and it's not a structured threshold interval workout, classify as Urban Traffic

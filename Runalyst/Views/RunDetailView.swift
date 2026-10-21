@@ -456,7 +456,7 @@ struct RunDetailView: View {
                 isIntervalOrDrill: isIntervalOrDrill,
                 workoutType: runRecord.detectedTypeRaw
             )
-            .id("workoutRhythmChart")
+            .id("workoutRhythmChart-\(runRecord.detectedTypeRaw)")
         }
     }
 
@@ -717,7 +717,7 @@ struct RunDetailView: View {
                 }
 
                 // Mixed Effort Review Banner (Only displayed if not already prompting incline)
-                if runRecord.needsInclineReview != true && (runRecord.detectedTypeRaw == "Mixed Effort (Review)" || (runRecord.classificationConfidence ?? 1.0) < 0.75) {
+                if runRecord.needsInclineReview != true && runRecord.needsClassificationReview {
                     VStack(alignment: .leading, spacing: 10) {
                         HStack {
                             ZStack {
@@ -748,12 +748,21 @@ struct RunDetailView: View {
 
                         let candidates: [(key: String, value: Double)] = {
                             if let probs = runRecord.classificationProbabilities, !probs.isEmpty {
-                                return probs.filter { $0.key != "Mixed Effort (Review)" }
-                                    .sorted { $0.value > $1.value }
-                                    .prefix(3)
-                                    .map { (key: $0.key, value: $0.value) }
+                                var filtered = probs.filter { $0.key != "Mixed Effort (Review)" }
+                                if runRecord.isIndoor == true {
+                                    filtered = filtered.filter { $0.key != "Urban Traffic" && $0.key != "Hill Repeats" }
+                                }
+                                var sorted = filtered.sorted { $0.value > $1.value }
+                                let currentType = runRecord.detectedTypeRaw
+                                if currentType != "Mixed Effort (Review)" && !sorted.prefix(3).contains(where: { $0.key == currentType }) {
+                                    sorted.insert((key: currentType, value: probs[currentType] ?? 0.50), at: 0)
+                                }
+                                return Array(sorted.prefix(3)).map { (key: $0.key, value: $0.value) }
                             } else {
-                                return [("Intervals", 0.45), ("Hill Repeats", 0.35), ("Tempo Run", 0.20)]
+                                let defaultOptions = (runRecord.isIndoor == true) ?
+                                    [("Intervals", 0.45), ("Fartlek", 0.35), ("Steady Effort", 0.20)] :
+                                    [("Intervals", 0.45), ("Hill Repeats", 0.35), ("Tempo Run", 0.20)]
+                                return defaultOptions
                             }
                         }()
 
@@ -880,6 +889,7 @@ struct RunDetailView: View {
 
                 // MARK: Scorecard & AI Run Analysis
                 performanceAndAnalysisSection
+                    .id("performanceSection-\(runRecord.detectedTypeRaw)")
 
                 // MARK: Data Toggle
                 HStack(spacing: 8) {
@@ -1234,6 +1244,11 @@ struct RunDetailView: View {
         )
         modelContext.insert(correction)
         runRecord.detectedTypeRaw = newType
+        runRecord.classificationProvenance = .userConfirmed
+        runRecord.classificationConfidence = 1.0
+        if !runRecord.framboiseTags.contains("userConfirmedClassification") {
+            runRecord.framboiseTags.append("userConfirmedClassification")
+        }
         try? modelContext.save()
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
