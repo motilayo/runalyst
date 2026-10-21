@@ -400,4 +400,36 @@ final class AnalystChatEngineTests: XCTestCase {
             XCTAssertTrue(instructions.count < 1200, "System instructions must stay strictly under 1,200 chars (was \(instructions.count))")
         }
     }
+
+    // MARK: - 12. Next Scheduled Run Resolution (Not Tomorrow's Rest Day)
+
+    func testWhenIsMyNextScheduledRunAttachesUpcomingRunSessionCardNotRestDay() async {
+        let run = makeRunRecord(date: Date())
+        let engine = AnalystChatEngine(runRecord: run, mode: .macroCoach)
+
+        engine.modelResponder = { _, _ in
+            "Your next scheduled run is on Thursday: a 30-minute Easy Aerobic run."
+        }
+
+        await engine.sendMessage("So when is my next scheduled run?")
+
+        XCTAssertEqual(engine.messages.count, 2)
+        let analystMsg = engine.messages[1]
+        XCTAssertNotNil(analystMsg.attachedSession, "Session card must be attached when runner asks for next scheduled run")
+        XCTAssertFalse(analystMsg.attachedSession?.isRestDay ?? true, "Attached session must be an actual run, not a rest day")
+    }
+
+    // MARK: - 13. Sanitizer Strips Trailing Repetitive Offers
+
+    func testSanitizerStripsTrailingSharpenFormOffers() {
+        if #available(iOS 26.0, *) {
+            let input1 = "Tomorrow is a rest day—no run scheduled. Take this time to recover and prepare for your next session. Would you like a drill to sharpen your running form or anything else?"
+            let cleaned1 = AnalystResponseSanitizer.sanitize(text: input1).text
+            XCTAssertEqual(cleaned1, "Tomorrow is a rest day—no run scheduled. Take this time to recover and prepare for your next session.")
+
+            let input2 = "Your readiness is strong—great! But tomorrow is a rest day for recovery. Would you like me to display your current readiness and workload overview?"
+            let cleaned2 = AnalystResponseSanitizer.sanitize(text: input2).text
+            XCTAssertEqual(cleaned2, "Your readiness is strong—great! But tomorrow is a rest day for recovery.")
+        }
+    }
 }

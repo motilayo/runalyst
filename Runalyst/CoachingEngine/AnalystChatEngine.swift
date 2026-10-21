@@ -322,29 +322,20 @@ class AnalystChatEngine: ObservableObject {
                 scheduledTomorrowStr = "Rest Day"
             }
 
-            let loggedTodayStr: String
-            if todayRuns.isEmpty {
-                loggedTodayStr = "None"
-            } else {
-                let totalSec = todayRuns.reduce(0.0) { $0 + $1.duration }
-                let durMin = Int(totalSec) / 60
-                let durSec = Int(totalSec) % 60
-                let durStr = String(format: "%d:%02d", durMin, durSec)
-                let totalMeters = todayRuns.reduce(0.0) { $0 + ($1.totalDistanceMeters > 0 ? $1.totalDistanceMeters : $1.effectiveWorkingDistanceMeters) }
-                let distStr = useMetric ? String(format: "%.2f km", totalMeters / 1000.0) : String(format: "%.2f mi", totalMeters / 1609.344)
-                let types = todayRuns.map(\.normalizedClassification).joined(separator: ", ")
-                loggedTodayStr = "\(todayRuns.count) (\(types), \(distStr), \(durStr))"
-            }
+            let loggedTodayStr = todayRuns.isEmpty ? "None" : "\(todayRuns.count) run"
 
-            let todayStr = TrainingCalendar.isoDateFormatter.string(from: Date())
-            contextBlock = "Macro Coach (\(todayStr)). Today: \(scheduledTodayStr) (\(loggedTodayStr)). Tomorrow: \(scheduledTomorrowStr)."
+            var nextRunNote = ""
+            if let next = findNextScheduledRun() {
+                nextRunNote = " Next: \(next.day.weekday) (\(next.day.planned.minutesHigh)m)."
+            }
+            contextBlock = "Today: \(scheduledTodayStr) (\(loggedTodayStr)). Tomorrow: \(scheduledTomorrowStr).\(nextRunNote)"
         } else {
             let daysDiff = max(0, Calendar.current.dateComponents([.day], from: runRecord.date, to: Date()).day ?? 0)
             let dateStr = TrainingCalendar.weekdayFormatter.string(from: runRecord.date)
             let temporalGrounding = daysDiff == 0 ? "Today" : "\(dateStr) (\(daysDiff)d ago)"
             let runType = runRecord.normalizedClassification
             let envNote = (runRecord.isIndoor ?? false) ? "Indoor" : "Outdoor"
-            contextBlock = "Workout Inspection: \(runType) (\(envNote), \(temporalGrounding))."
+            contextBlock = "Workout: \(runType) (\(envNote), \(temporalGrounding))."
         }
 
         var recentContextBlock = ""
@@ -357,7 +348,7 @@ class AnalystChatEngine: ObservableObject {
             for msg in recentTurns {
                 let role = msg.sender == .user ? "Runner" : "Coach"
                 let cleaned = AnalystResponseSanitizer.sanitize(text: msg.text).text.replacingOccurrences(of: "\n", with: " ")
-                let truncated = cleaned.count > 30 ? "\(cleaned.prefix(27))..." : cleaned
+                let truncated = cleaned.count > 38 ? "\(cleaned.prefix(35))..." : cleaned
                 lines.append("• \(role): \"\(truncated)\"")
             }
             recentContextBlock = "\n\n" + lines.joined(separator: "\n")
@@ -377,10 +368,11 @@ class AnalystChatEngine: ObservableObject {
         • `executeCoachAction`: ('display_drill', 'display_schedule', 'display_explainer', 'update_goal', 'export_to_watch', 'record_feedback').
 
         RULES:
-        • Outside Running: Warmly refocus. Units: SPM, min/km. No LaTeX.
-        • Medical Safety: Urge rest on pain. Rest Days: Prescribe rest—do not run.
-        • ACWR: Acute:Chronic Workload Ratio (<0.8 = low, >1.4 = spike). Low ACWR is never overload.
-        • Proactive Cards: Never ask permission to show drills/schedule. Trigger immediately.
+        • Outside Running: Refocus. Units: SPM, min/km. No LaTeX.
+        • Medical Safety: Urge rest on pain. Rest Days: Prescribe rest.
+        • Schedule: Rest days allow adaptation when fresh; state upcoming run when asked.
+        • ACWR: Acute:Chronic Workload Ratio (<0.8=low, >1.4=spike). Low ACWR is not overload.
+        • Proactive Cards: Never ask permission to show drills/schedule; trigger directly.
         • Silent Tools: Never write commands ('executeCoachAction', 'display_drill', 'Display the drill') in text.
 
         Respond in \(language).
@@ -922,12 +914,68 @@ class AnalystChatEngine: ObservableObject {
 
         // 2. Proactive Session / Schedule Attachment
         if self.sessionRecommendedThisTurn == nil && self.scheduleRecommendedThisTurn == nil {
-            if isTomorrowOrNextRunQuery(lowerUser) || (lowerResponse.contains("tomorrow") && (lowerResponse.contains("rest day") || lowerResponse.contains("plan") || lowerResponse.contains("scheduled"))) {
+            if isNextRunQuery(lowerUser) {
+                if let next = findNextScheduledRun() {
+                    let day = next.day
+                    let primerTitle = day.planned.primerTitle ?? "Cadence Pyramids"
+                    let primerId = PreRunDrillId.resolve(from: primerTitle) ?? .cadencePyramids
+                    let dateStr = TrainingCalendar.weekdayFormatter.string(from: next.date)
+                    self.sessionRecommendedThisTurn = PrescribedDailySession(
+                        targetGoal: UserDefaults.standard.string(forKey: "trainingGoal") ?? "Base Building",
+                        sessionTitle: "\(day.planned.title) (\(dateStr))",
+                        durationBand: "\(day.planned.minutesLow)–\(day.planned.minutesHigh) min",
+                        paceBand: day.planned.paceBand ?? "Easy Aerobic",
+                        hrCap: day.planned.hrCap ?? "< 152 BPM",
+                        cadenceFloor: day.planned.cadenceFloor ?? 155,
+                        groundedRationale: "Scheduled next run on your training calendar.",
+                        readinessStateText: "Upcoming Planned Session",
+                        readinessTriggerLead: nil,
+                        primerDrillId: primerId,
+                        primerDrillTitle: primerTitle,
+                        primerTargetCadence: "155-165 SPM",
+                        primerWorkDescription: "Pre-run technique primer.",
+                        primerPhasesDuration: "10 min",
+                        isTrimmed: false,
+                        microcycle: [],
+                        mainSessionTemplateId: .zone2Run,
+                        mainRunDurationMinutes: day.planned.minutesHigh,
+                        completedPrimerRun: nil,
+                        isRestDay: false
+                    )
+                } else {
+                    applyFallbackCoachAction(action: .displaySession, payload: nil)
+                }
+            } else if isTomorrowOrNextRunQuery(lowerUser) || (lowerResponse.contains("tomorrow") && (lowerResponse.contains("rest day") || lowerResponse.contains("plan") || lowerResponse.contains("scheduled"))) {
                 applyFallbackCoachAction(action: .displaySession, payload: nil)
             } else if isWeeklyScheduleQuery(lowerUser) {
                 applyFallbackCoachAction(action: .displaySchedule, payload: nil)
             }
         }
+    }
+
+    func findNextScheduledRun() -> (date: Date, day: ScheduleDay)? {
+        let allRuns = (try? self.runRecord.modelContext?.fetch(FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)]))) ?? [self.runRecord]
+        let activeGoal = UserDefaults.standard.string(forKey: "trainingGoal") ?? "Base Building"
+        let profile = RunnerProfile.compute(from: allRuns)
+        let useMetric = (UserDefaults.standard.object(forKey: "useMetricSystem") as? Bool) ?? true
+        let calendar = TrainingCalendar(calendar: Calendar.current)
+        let today = calendar.startOfDay(for: Date())
+        let tomorrow = calendar.calendar.date(byAdding: .day, value: 1, to: today) ?? today
+        let schedule = calendar.evaluateSchedule(
+            from: tomorrow,
+            to: calendar.calendar.date(byAdding: .day, value: 7, to: today) ?? today,
+            context: ScheduleEvaluationContext(runRecords: allRuns, activeGoal: activeGoal, profile: profile, useMetric: useMetric)
+        )
+        for day in schedule {
+            if day.planned.kind != .rest, let date = calendar.parseISO(day.date) {
+                return (date, day)
+            }
+        }
+        return nil
+    }
+
+    private func isNextRunQuery(_ text: String) -> Bool {
+        text.contains("next run") || text.contains("next workout") || text.contains("run next") || text.contains("next scheduled run") || (text.contains("when") && text.contains("run") && !text.contains("last"))
     }
 
     private func isAffirmativeOrDisplayCommand(_ text: String) -> Bool {
@@ -1084,6 +1132,19 @@ public enum AnalystResponseSanitizer {
                 cleaned = "Thanks for the feedback; I've noted that for your training."
             }
         }
+
+        // 5. Strip trailing repetitive calls-to-action (e.g. "Would you like a drill to sharpen your running form?")
+        let trailingOfferPattern = #"(?i)[\.\?!]?\s*(?:would you like (?:me to display|a drill|to review|to see|anything)[^\.\?!]*[\.\?!]?|shall i (?:display|show|guide)[^\.\?!]*[\.\?!]?)\s*$"#
+        if let regex = try? NSRegularExpression(pattern: trailingOfferPattern) {
+            let nsCleaned = cleaned as NSString
+            let range = NSRange(location: 0, length: nsCleaned.length)
+            let stripped = regex.stringByReplacingMatches(in: cleaned, options: [], range: range, withTemplate: ".")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if !stripped.isEmpty && stripped != "." {
+                cleaned = stripped
+            }
+        }
+        cleaned = cleaned.replacingOccurrences(of: #"\.{2,}"#, with: ".", options: .regularExpression)
 
         return SanitizedAnalystResponse(
             text: cleaned,
