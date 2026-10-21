@@ -20,8 +20,10 @@ struct WorkoutsView: View {
     @State private var watchExportSuccessMessage: String?
     @State private var showingExportAlert = false
     @State private var activeReadoutItem: ActiveDrillReadoutItem?
+    @State private var isSyncing = false
 
     var overrideDailyState: DailyTrainingState?
+    var onSync: ((Bool) async -> Void)?
 
     private var dailyState: DailyTrainingState {
         if let overrideDailyState {
@@ -53,6 +55,20 @@ struct WorkoutsView: View {
                 .padding(.horizontal, 16)
                 .padding(.top, 14)
                 .padding(.bottom, 20)
+            }
+            .refreshable {
+                guard !isSyncing else { return }
+                isSyncing = true
+                defer { isSyncing = false }
+
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+
+                let syncTask = Task {
+                    if let onSync {
+                        await onSync(false)
+                    }
+                }
+                _ = await syncTask.value
             }
             .background(Color(UIColor.systemGroupedBackground).ignoresSafeArea())
             .navigationTitle("Workouts")
