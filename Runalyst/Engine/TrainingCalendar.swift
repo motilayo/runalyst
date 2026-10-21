@@ -213,7 +213,7 @@ extension TrainingCalendar {
             } else if dateStart > today {
                 completion = .upcoming
             } else if planned.kind == .rest {
-                completion = .completed
+                completion = (dateStart == today && runsOnDay.isEmpty) ? .pending : .completed
             } else if dateStart < today {
                 completion = .missed
             } else {
@@ -229,6 +229,63 @@ extension TrainingCalendar {
                 planned: planned
             )
         }
+    }
+
+    /// Formats a token-dense plain-text summary of the evaluated schedule for on-device LLM consumption.
+    public static func formatCompactScheduleSummary(days: [ScheduleDay]) -> String {
+        guard !days.isEmpty else { return "No schedule days planned." }
+        var lines: [String] = ["SCHEDULE TIMELINE:"]
+        for day in days {
+            let relativePrefix: String
+            switch day.relative {
+            case .today:
+                relativePrefix = "Today (\(day.weekday), \(day.date))"
+            case .tomorrow:
+                relativePrefix = "Tomorrow (\(day.weekday), \(day.date))"
+            case .past, .future:
+                relativePrefix = "\(day.weekday) (\(day.date))"
+            }
+
+            var parts: [String] = []
+
+            // Completed workouts on this calendar day
+            if !day.completed.isEmpty {
+                let completedStr = day.completed.map { summary in
+                    "\(summary.distance) \(summary.unit) \(summary.type) (COMPLETED)"
+                }.joined(separator: ", ")
+                parts.append(completedStr)
+            }
+
+            // Planned status for this calendar day
+            if day.planned.kind == .rest {
+                if day.completed.isEmpty {
+                    parts.append("Rest Day (No run scheduled)")
+                }
+            } else {
+                var plannedDesc = "\(day.planned.title) (\(day.planned.minutesLow)-\(day.planned.minutesHigh) min"
+                if day.planned.minutesLow == day.planned.minutesHigh {
+                    plannedDesc = "\(day.planned.title) (\(day.planned.minutesLow) min"
+                }
+                if let pace = day.planned.paceBand {
+                    plannedDesc += " @ \(pace)"
+                }
+                plannedDesc += ")"
+                if let primer = day.planned.primerTitle {
+                    plannedDesc += ", Primer: \(primer)"
+                }
+                if day.completion == .missed {
+                    parts.append("Missed: \(plannedDesc)")
+                } else if day.completed.isEmpty {
+                    parts.append("Planned: \(plannedDesc)")
+                } else {
+                    parts.append("Target: \(plannedDesc)")
+                }
+            }
+
+            let line = "• \(relativePrefix): " + parts.joined(separator: " | ")
+            lines.append(line)
+        }
+        return lines.joined(separator: "\n")
     }
 }
 

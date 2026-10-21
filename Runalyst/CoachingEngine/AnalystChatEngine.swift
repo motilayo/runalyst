@@ -5,6 +5,12 @@ import SwiftUI
 import FoundationModels
 #endif
 
+/// Chat message delivery status.
+enum MessageDeliveryStatus: Equatable, Sendable {
+    case delivered
+    case failed(retryPrompt: String)
+}
+
 /// Chat message model for the interactive AI Analyst conversation.
 struct AnalystChatMessage: Identifiable, Equatable {
     let id: UUID
@@ -15,6 +21,7 @@ struct AnalystChatMessage: Identifiable, Equatable {
     let attachedSession: PrescribedDailySession?
     let attachedExplainerKey: String?
     let attachedSchedule: [MicrocycleDay]?
+    let status: MessageDeliveryStatus
 
     enum MessageSender: Equatable {
         case user
@@ -29,7 +36,8 @@ struct AnalystChatMessage: Identifiable, Equatable {
         attachedDrillId: PreRunDrillId? = nil,
         attachedSession: PrescribedDailySession? = nil,
         attachedExplainerKey: String? = nil,
-        attachedSchedule: [MicrocycleDay]? = nil
+        attachedSchedule: [MicrocycleDay]? = nil,
+        status: MessageDeliveryStatus = .delivered
     ) {
         self.id = id
         self.sender = sender
@@ -39,6 +47,7 @@ struct AnalystChatMessage: Identifiable, Equatable {
         self.attachedSession = attachedSession
         self.attachedExplainerKey = attachedExplainerKey
         self.attachedSchedule = attachedSchedule
+        self.status = status
     }
 }
 
@@ -73,6 +82,11 @@ class AnalystChatEngine: ObservableObject {
     var explainerRecommendedThisTurn: String?
     /// Tracks an upcoming schedule card recommended during the active conversation turn.
     var scheduleRecommendedThisTurn: [MicrocycleDay]?
+
+    // MARK: - Bounded-Memory State Tracking
+    private var turnsSinceSessionRecycle: Int = 0
+    private var lastTurnUsedHeavyTool: Bool = false
+    private var toolInvokedDuringActiveTurn: Bool = false
     #endif
 
     #if DEBUG
@@ -117,9 +131,28 @@ class AnalystChatEngine: ObservableObject {
     func sendMessage(_ userQuestion: String) async {
         let trimmed = userQuestion.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+        guard !isResponding else { return }
 
-        messages.append(AnalystChatMessage(sender: .user, text: trimmed))
+        messages.append(AnalystChatMessage(sender: .user, text: trimmed, status: .delivered))
         isResponding = true
+
+        await executeChatTurn(userQuestion: trimmed, isRetry: false)
+    }
+
+    /// Retries a previously failed message in place without duplicating user message bubbles.
+    func retryMessage(failedMessageId: UUID) async {
+        guard !isResponding else { return }
+        guard let index = messages.firstIndex(where: { $0.id == failedMessageId }),
+              case .failed(let retryPrompt) = messages[index].status else { return }
+
+        // Mutate synchronously on MainActor before awaiting
+        messages.remove(at: index)
+        isResponding = true
+
+        await executeChatTurn(userQuestion: retryPrompt, isRetry: true)
+    }
+
+    private func executeChatTurn(userQuestion: String, isRetry: Bool) async {
         defer { isResponding = false }
 
         #if canImport(FoundationModels)
@@ -128,40 +161,90 @@ class AnalystChatEngine: ObservableObject {
             self.sessionRecommendedThisTurn = nil
             self.explainerRecommendedThisTurn = nil
             self.scheduleRecommendedThisTurn = nil
+
+            // Proactive Sliding-Window Transcript Compaction:
+            // Recycle the ephemeral session if 3 turns have elapsed or if the last turn invoked a tool.
+            if self.turnsSinceSessionRecycle >= 3 || self.lastTurnUsedHeavyTool {
+                self.modelSession = nil
+            }
         }
         #endif
 
         // FoundationModels: the runner's message goes straight to the session.
-        // Lean instructions + native tools only. No Swift intent parsing or output rewriting—
-        // the model reads the tool spec and decides what to call.
+        // Lean instructions + native tools only.
         #if canImport(FoundationModels)
         if #available(iOS 26.0, *) {
             #if DEBUG
             if let responder = modelResponder {
                 do {
-                    let responseText = try await responder(buildLeanSystemInstructions(), trimmed)
-                    messages.append(AnalystChatMessage(sender: .analyst, text: responseText, attachedDrillId: drillRecommendedThisTurn, attachedSession: sessionRecommendedThisTurn, attachedExplainerKey: explainerRecommendedThisTurn, attachedSchedule: scheduleRecommendedThisTurn))
+                    let responseText = try await responder(buildLeanSystemInstructions(), userQuestion)
+                    messages.append(
+                        AnalystChatMessage(
+                            sender: .analyst,
+                            text: responseText,
+                            attachedDrillId: drillRecommendedThisTurn,
+                            attachedSession: sessionRecommendedThisTurn,
+                            attachedExplainerKey: explainerRecommendedThisTurn,
+                            attachedSchedule: scheduleRecommendedThisTurn,
+                            status: .delivered
+                        )
+                    )
+                    self.lastTurnUsedHeavyTool = self.toolInvokedDuringActiveTurn
+                    self.turnsSinceSessionRecycle += 1
+                    self.toolInvokedDuringActiveTurn = false
                     return
                 } catch {
+                    if isNonRetryableError(error) {
+                        messages.append(
+                            AnalystChatMessage(
+                                sender: .analyst,
+                                text: systemUnavailableMessage(),
+                                status: .failed(retryPrompt: userQuestion)
+                            )
+                        )
+                        return
+                    }
                     print("Model responder error: \(error)")
                 }
             }
             #endif
             if SystemLanguageModel.default.isAvailable {
                 do {
-                    let responseText = try await generateFoundationModelResponse(for: trimmed)
-                    messages.append(AnalystChatMessage(sender: .analyst, text: responseText, attachedDrillId: drillRecommendedThisTurn, attachedSession: sessionRecommendedThisTurn, attachedExplainerKey: explainerRecommendedThisTurn, attachedSchedule: scheduleRecommendedThisTurn))
+                    let responseText = try await generateFoundationModelResponse(for: userQuestion)
+                    messages.append(
+                        AnalystChatMessage(
+                            sender: .analyst,
+                            text: responseText,
+                            attachedDrillId: drillRecommendedThisTurn,
+                            attachedSession: sessionRecommendedThisTurn,
+                            attachedExplainerKey: explainerRecommendedThisTurn,
+                            attachedSchedule: scheduleRecommendedThisTurn,
+                            status: .delivered
+                        )
+                    )
+                    self.lastTurnUsedHeavyTool = self.toolInvokedDuringActiveTurn
+                    self.turnsSinceSessionRecycle += 1
+                    self.toolInvokedDuringActiveTurn = false
                     return
                 } catch {
                     print("FoundationModels chat error: \(error)")
                     self.modelSession = nil
+                    if (error is CancellationError) || Task.isCancelled {
+                        return
+                    }
                 }
             }
         }
         #endif
 
-        // No simulated coach: if the on-device model can't answer, say so honestly.
-        messages.append(AnalystChatMessage(sender: .analyst, text: systemUnavailableMessage()))
+        // No simulated coach: if the on-device model can't answer, record failure with retry prompt.
+        messages.append(
+            AnalystChatMessage(
+                sender: .analyst,
+                text: systemUnavailableMessage(),
+                status: .failed(retryPrompt: userQuestion)
+            )
+        )
     }
 
     // MARK: - Analysis Context Factory
@@ -195,9 +278,28 @@ class AnalystChatEngine: ObservableObject {
         if mode == .macroCoach {
             let allRuns = (try? runRecord.modelContext?.fetch(FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)]))) ?? [runRecord]
             let todayRuns = allRuns.filter { calendar.calendar.isDateInToday($0.date) && !$0.isDeleted }
-            let stateDesc: String
+            let activeGoal = UserDefaults.standard.string(forKey: "trainingGoal") ?? "Base Building"
+            let profile = RunnerProfile.compute(from: allRuns)
+            let todaySchedule = calendar.evaluateSchedule(
+                from: calendar.startOfDay(for: Date()),
+                to: calendar.startOfDay(for: Date()),
+                context: ScheduleEvaluationContext(runRecords: allRuns, activeGoal: activeGoal, profile: profile, useMetric: useMetric)
+            ).first
+
+            let scheduledTodayStr: String
+            if let plan = todaySchedule?.planned {
+                if plan.kind == .rest {
+                    scheduledTodayStr = "Rest Day"
+                } else {
+                    scheduledTodayStr = "\(plan.title) (\(plan.minutesLow)–\(plan.minutesHigh) min)"
+                }
+            } else {
+                scheduledTodayStr = "Rest Day"
+            }
+
+            let loggedTodayStr: String
             if todayRuns.isEmpty {
-                stateDesc = "Pre-run (0 sessions logged today)."
+                loggedTodayStr = "None"
             } else {
                 let totalSec = todayRuns.reduce(0.0) { $0 + $1.duration }
                 let durMin = Int(totalSec) / 60
@@ -205,12 +307,15 @@ class AnalystChatEngine: ObservableObject {
                 let durStr = String(format: "%d:%02d", durMin, durSec)
                 let totalMeters = todayRuns.reduce(0.0) { $0 + ($1.totalDistanceMeters > 0 ? $1.totalDistanceMeters : $1.effectiveWorkingDistanceMeters) }
                 let distStr = useMetric ? String(format: "%.2f km", totalMeters / 1000.0) : String(format: "%.2f mi", totalMeters / 1609.344)
-                stateDesc = "Completed today (\(todayRuns.count) sessions, \(durStr), \(distStr))."
+                let types = todayRuns.map(\.normalizedClassification).joined(separator: ", ")
+                loggedTodayStr = "\(todayRuns.count) (\(types), \(distStr), \(durStr))"
             }
+
             contextBlock = """
             Scope: Macro AI Coach.
             \(calendar.anchor(useMetric: useMetric))
-            Athlete State: \(stateDesc)
+            Today Workouts Logged: \(loggedTodayStr)
+            Today Scheduled: \(scheduledTodayStr)
             """
         } else {
             let daysDiff = max(0, Calendar.current.dateComponents([.day], from: runRecord.date, to: Date()).day ?? 0)
@@ -221,15 +326,30 @@ class AnalystChatEngine: ObservableObject {
             contextBlock = """
             Scope: Workout Inspection.
             \(calendar.anchor(useMetric: useMetric))
-            Reviewing: \(runType) (\(envNote), \(temporalGrounding)).
+            Reviewing Workout: \(runType) (\(envNote), \(temporalGrounding))
             """
+        }
+
+        var recentContextBlock = ""
+        let deliveredMessages = self.messages.filter { $0.status == .delivered }
+        let completedHistory = deliveredMessages.dropLast(self.messages.last?.sender == .user ? 1 : 0)
+        let recentTurns = completedHistory.suffix(4)
+
+        if !recentTurns.isEmpty {
+            var lines: [String] = ["RECENT DIALOGUE (Reference Only):"]
+            for msg in recentTurns {
+                let role = msg.sender == .user ? "Runner" : "Coach"
+                let cleaned = msg.text.replacingOccurrences(of: "\n", with: " ")
+                lines.append("• \(role): \"\(cleaned)\"")
+            }
+            recentContextBlock = "\n\n" + lines.joined(separator: "\n")
         }
 
         return """
         You are Runalyst—an empathetic running coach. Speak directly to the runner with warmth and brevity.
 
         CONTEXT:
-        \(contextBlock)
+        \(contextBlock)\(recentContextBlock)
 
         TOOLS:
         • `getTrainingSchedule`: Query calendar workouts ('yyyy-MM-dd').
@@ -239,11 +359,10 @@ class AnalystChatEngine: ObservableObject {
         • `executeCoachAction`: Actions ('display_schedule', 'display_drill', 'display_explainer', 'update_goal', 'export_to_watch', 'record_feedback').
 
         RULES:
-        • If today is completed, state schedule is clear and note completed work before pivoting to tomorrow.
-        • Rest of week: remaining days ending Saturday. Next week: Sunday through Saturday.
+        • Scope: Running training, recovery, and biomechanics. Outside Running: Warmly refocus on running.
         • Units: SPM, min/km, min/mi. No LaTeX.
-        • Medical Safety: On pain/illness, urge rest and medical care.
-        • Outside Running: Warmly refocus on running.
+        • Medical Safety & Well-Being: On pain, injury, illness, dizziness, extreme fatigue, or well-being concerns, urge rest and medical care.
+        • Proactive Drill Card: When recommending a drill, call executeCoachAction('display_drill') in that turn instead of asking permission.
 
         Respond in \(language).
         """
@@ -255,13 +374,20 @@ class AnalystChatEngine: ObservableObject {
             return existing
         }
 
+        // Reset counters inside session creation in one canonical place
+        self.turnsSinceSessionRecycle = 0
+        self.lastTurnUsedHeavyTool = false
+        self.toolInvokedDuringActiveTurn = false
+
         let inspectWorkoutTool = InspectWorkoutTool { [weak self] _ in
             guard let self else { return "" }
+            self.toolInvokedDuringActiveTurn = true
             return self.makeAnalysisContext().compactTelemetryAnalysis()
         }
 
         let getTrainingScheduleTool = GetTrainingScheduleTool { [weak self] query in
-            guard let self else { return "[]" }
+            guard let self else { return "No schedule days planned." }
+            self.toolInvokedDuringActiveTurn = true
             let allRuns = (try? self.runRecord.modelContext?.fetch(FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)]))) ?? [self.runRecord]
             let activeGoal = UserDefaults.standard.string(forKey: "trainingGoal") ?? "Base Building"
             let profile = RunnerProfile.compute(from: allRuns)
@@ -289,17 +415,12 @@ class AnalystChatEngine: ObservableObject {
                 context: context
             )
 
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
-            if let data = try? encoder.encode(schedule),
-               let json = String(data: data, encoding: .utf8) {
-                return json
-            }
-            return "[]"
+            return TrainingCalendar.formatCompactScheduleSummary(days: schedule)
         }
 
         let getReadinessAndWorkloadTool = GetReadinessAndWorkloadTool { [weak self] query in
             guard let self else { return "{}" }
+            self.toolInvokedDuringActiveTurn = true
             let isDistress = query.userReportedDistress == true
             let analysis = self.makeAnalysisContext(isSubjectiveDistress: isDistress)
             let allRuns = (try? self.runRecord.modelContext?.fetch(FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)]))) ?? [self.runRecord]
@@ -388,6 +509,7 @@ class AnalystChatEngine: ObservableObject {
 
         let queryWorkoutHistoryTool = QueryWorkoutHistoryTool { [weak self] query in
             guard let self else { return "{}" }
+            self.toolInvokedDuringActiveTurn = true
             let context = self.runRecord.modelContext
             switch query.scope {
             case .performanceArc:
@@ -412,6 +534,7 @@ class AnalystChatEngine: ObservableObject {
 
         let coachActionTool = ExecuteCoachActionTool { [weak self] query in
             guard let self else { return "{}" }
+            self.toolInvokedDuringActiveTurn = true
             let allRuns = (try? self.runRecord.modelContext?.fetch(FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)]))) ?? [self.runRecord]
             let activeGoal = UserDefaults.standard.string(forKey: "trainingGoal") ?? "Base Building"
             let profile = RunnerProfile.compute(from: allRuns)
@@ -557,13 +680,35 @@ class AnalystChatEngine: ObservableObject {
     }
 
     @available(iOS 26.0, *)
+    private func isNonRetryableError(_ error: Error) -> Bool {
+        if error is CancellationError {
+            return true
+        }
+        if let genError = error as? LanguageModelSession.GenerationError {
+            switch genError {
+            case .guardrailViolation, .refusal, .unsupportedLanguageOrLocale:
+                return true
+            default:
+                return false
+            }
+        }
+        return false
+    }
+
+    @available(iOS 26.0, *)
     private func generateFoundationModelResponse(for userQuestion: String) async throws -> String {
-        // One session per chat so the model remembers what it already said.
-        // Only start fresh when the transcript genuinely overflows the context window.
         do {
             let response = try await getOrCreateSession().respond(to: userQuestion)
             return response.content.trimmingCharacters(in: .whitespacesAndNewlines)
-        } catch LanguageModelSession.GenerationError.exceededContextWindowSize {
+        } catch {
+            if isNonRetryableError(error) {
+                throw error
+            }
+
+            // Invariant 3: Cooperative cancellation across the 300ms backoff
+            try await Task.sleep(for: .milliseconds(300))
+            try Task.checkCancellation()
+
             self.modelSession = nil
             let retry = try await getOrCreateSession().respond(to: userQuestion)
             return retry.content.trimmingCharacters(in: .whitespacesAndNewlines)
