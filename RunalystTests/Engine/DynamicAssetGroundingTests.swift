@@ -137,6 +137,12 @@ final class DynamicAssetGroundingTests: XCTestCase {
     }
 
     func testUnifiedWorkoutToolResponseJSONRoundTrip() throws {
+        let findings = [
+            PhysiologicalFinding(domain: "cadence", code: "stable_turnover", metric: "spm", value: 165, severity: "optimal"),
+            PhysiologicalFinding(domain: "cardiac", code: "stable_cardiac_coupling", metric: "bpm", value: 145, severity: "optimal")
+        ]
+        let duration = DurationDetail(duration_class: .standard, moving_minutes: 30, total_minutes: 30)
+
         let response = UnifiedWorkoutToolResponse(
             schema_name: "UNIFIED_WORKOUT_TOOL_RESPONSE",
             workout_type: "Steady Effort",
@@ -149,11 +155,10 @@ final class DynamicAssetGroundingTests: XCTestCase {
                 blended_session_avg_cadence_spm: 165,
                 height_cadence_floor_spm: 155
             ),
-            physiological_verdicts: "Steady aerobic state confirmed.",
-            metric_explainers: [
-                "cadence_floor": "Anatomical threshold calculated from height.",
-                "working_stats": "Pause-trimmed active moving telemetry."
-            ]
+            findings: findings,
+            heart_rate_confidence: .reliable,
+            heart_rate_status: .reliable,
+            duration: duration
         )
 
         let encoder = JSONEncoder()
@@ -162,13 +167,17 @@ final class DynamicAssetGroundingTests: XCTestCase {
         let jsonStr = String(data: data, encoding: .utf8)
 
         XCTAssertNotNil(jsonStr)
-        XCTAssertTrue(jsonStr?.contains("metric_explainers") == true)
-        XCTAssertTrue(jsonStr?.contains("cadence_floor") == true)
-        XCTAssertTrue(jsonStr?.contains("working_stats") == true)
+        XCTAssertTrue(jsonStr?.contains("findings") == true)
+        XCTAssertTrue(jsonStr?.contains("stable_turnover") == true)
+        XCTAssertTrue(jsonStr?.contains("duration") == true)
+        XCTAssertTrue(jsonStr?.contains("standard") == true)
 
         let decoder = JSONDecoder()
         let decoded = try decoder.decode(UnifiedWorkoutToolResponse.self, from: data)
-        XCTAssertEqual(decoded.metric_explainers?["cadence_floor"], "Anatomical threshold calculated from height.")
+        XCTAssertEqual(decoded.findings.count, 2)
+        XCTAssertEqual(decoded.findings.first?.code, "stable_turnover")
+        XCTAssertEqual(decoded.duration.duration_class, .standard)
+        XCTAssertEqual(decoded.duration.moving_minutes, 30)
     }
 
     func testReadinessFactsJSONRoundTrip() throws {

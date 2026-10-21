@@ -3,6 +3,39 @@ import Foundation
 // MARK: - Unified Native Tool Schemas
 // swiftlint:disable identifier_name
 
+// MARK: - Sensor & Duration Categorization Enums
+
+public enum SensorConfidence: String, Codable, Sendable {
+    case reliable
+    case unreliableArtifact = "unreliable_sensor_artifact"
+    case omitted
+}
+
+public enum HeartRateStatus: String, Codable, Sendable {
+    case reliable
+    case sensorLockAnomaly = "sensor_lock_anomaly"
+    case omitted
+}
+
+public enum DurationClass: String, Codable, Sendable {
+    case primer
+    case short
+    case standard
+    case long
+}
+
+public struct DurationDetail: Codable, Sendable, Equatable {
+    public let duration_class: DurationClass
+    public let moving_minutes: Int
+    public let total_minutes: Int
+
+    public init(duration_class: DurationClass, moving_minutes: Int, total_minutes: Int) {
+        self.duration_class = duration_class
+        self.moving_minutes = moving_minutes
+        self.total_minutes = total_minutes
+    }
+}
+
 /// The definitive structure returned to the LLM on workout analysis tool call.
 public struct UnifiedWorkoutToolResponse: Codable, Sendable {
     public let schema_name: String
@@ -31,17 +64,19 @@ public struct UnifiedWorkoutToolResponse: Codable, Sendable {
     // SECONDARY BACKGROUND (Blended session data - demoted so LLM doesn't confuse it)
     public let background_session_totals: BlendedTotals
 
-    // Indisputable causal physiological diagnoses computed locally in Swift
-    public let physiological_verdicts: String
+    // Structured causal physiological diagnosis findings
+    public let findings: [PhysiologicalFinding]
 
     // Verification of sensor plausibility and omission status
-    public let heart_rate_confidence: String?
-    public let heart_rate_status: String?
+    public let heart_rate_confidence: SensorConfidence?
+    public let heart_rate_status: HeartRateStatus?
 
-    // Duration boundary tagging
+    // Duration classification
+    public let duration: DurationDetail
+
+    // Optional legacy fields for backward compatibility
     public let duration_summary: String?
-
-    // Canonical compact explainer dictionary grounding the metrics present in this run
+    public let physiological_verdicts: String?
     public let metric_explainers: [String: String]?
 
     public init(
@@ -56,10 +91,12 @@ public struct UnifiedWorkoutToolResponse: Codable, Sendable {
         working_stats: WorkingStatsDetail? = nil,
         workout_stats: WorkoutStatsDetail? = nil,
         background_session_totals: BlendedTotals,
-        physiological_verdicts: String,
-        heart_rate_confidence: String? = nil,
-        heart_rate_status: String? = nil,
+        findings: [PhysiologicalFinding] = [],
+        heart_rate_confidence: SensorConfidence? = nil,
+        heart_rate_status: HeartRateStatus? = nil,
+        duration: DurationDetail = DurationDetail(duration_class: .standard, moving_minutes: 30, total_minutes: 30),
         duration_summary: String? = nil,
+        physiological_verdicts: String? = nil,
         metric_explainers: [String: String]? = nil
     ) {
         self.schema_name = schema_name
@@ -73,10 +110,12 @@ public struct UnifiedWorkoutToolResponse: Codable, Sendable {
         self.working_stats = working_stats
         self.workout_stats = workout_stats
         self.background_session_totals = background_session_totals
-        self.physiological_verdicts = physiological_verdicts
+        self.findings = findings
         self.heart_rate_confidence = heart_rate_confidence
         self.heart_rate_status = heart_rate_status
+        self.duration = duration
         self.duration_summary = duration_summary
+        self.physiological_verdicts = physiological_verdicts
         self.metric_explainers = metric_explainers
     }
 }
@@ -87,14 +126,14 @@ public struct WorkingStatsDetail: Codable, Sendable {
     public let moving_pace: String
     public let working_cadence_spm: Int
     public let working_heart_rate_bpm: Int?
-    public let _description: String
+    public let _description: String?
 
     public init(
         moving_time: String,
         moving_pace: String,
         working_cadence_spm: Int,
         working_heart_rate_bpm: Int? = nil,
-        _description: String = "Active moving metrics with pauses, red lights, and walking breaks filtered out."
+        _description: String? = nil
     ) {
         self.moving_time = moving_time
         self.moving_pace = moving_pace
@@ -110,14 +149,14 @@ public struct WorkoutStatsDetail: Codable, Sendable {
     public let gross_pace: String
     public let raw_cadence_spm: Int
     public let raw_heart_rate_bpm: Int?
-    public let _description: String
+    public let _description: String?
 
     public init(
         total_time: String,
         gross_pace: String,
         raw_cadence_spm: Int,
         raw_heart_rate_bpm: Int? = nil,
-        _description: String = "Gross HealthKit session totals from start to finish including stopped time and walking."
+        _description: String? = nil
     ) {
         self.total_time = total_time
         self.gross_pace = gross_pace
@@ -170,6 +209,7 @@ public struct IntervalRepDetail: Codable, Sendable {
     public let recovery_hr_drop_bpm: Int?
     public let work_heart_rate_bpm: Int?
     public let heart_rate_status: String?
+    public let flags: [String]
     public let observation: String?
 
     public init(
@@ -181,6 +221,7 @@ public struct IntervalRepDetail: Codable, Sendable {
         recovery_hr_drop_bpm: Int? = nil,
         work_heart_rate_bpm: Int? = nil,
         heart_rate_status: String? = nil,
+        flags: [String] = [],
         observation: String? = nil
     ) {
         self.rep_number = rep_number
@@ -191,6 +232,7 @@ public struct IntervalRepDetail: Codable, Sendable {
         self.recovery_hr_drop_bpm = recovery_hr_drop_bpm
         self.work_heart_rate_bpm = work_heart_rate_bpm
         self.heart_rate_status = heart_rate_status
+        self.flags = flags
         self.observation = observation
     }
 }
@@ -236,6 +278,7 @@ public struct SplitDetail: Codable, Sendable {
     public let heart_rate_bpm: Int?
     public let heart_rate_status: String?
     public let grade: String
+    public let flags: [String]
     public let observation: String?
 
     public init(
@@ -245,6 +288,7 @@ public struct SplitDetail: Codable, Sendable {
         heart_rate_bpm: Int? = nil,
         heart_rate_status: String? = nil,
         grade: String,
+        flags: [String] = [],
         observation: String? = nil
     ) {
         self.split_index = split_index
@@ -253,12 +297,12 @@ public struct SplitDetail: Codable, Sendable {
         self.heart_rate_bpm = heart_rate_bpm
         self.heart_rate_status = heart_rate_status
         self.grade = grade
+        self.flags = flags
         self.observation = observation
     }
 }
 
 public struct BlendedTotals: Codable, Sendable {
-    public let _description: String
     public let total_distance: String
     public let total_duration: String
     public let blended_session_avg_pace: String
@@ -269,9 +313,10 @@ public struct BlendedTotals: Codable, Sendable {
     public let aerobic_efficiency_factor: String?
     public let cardiac_drift: String?
     public let stride_archetype: String?
+    public let _description: String?
 
     public init(
-        _description: String = "Whole-session averages including warm-up, recoveries, and cooldown.",
+        _description: String? = nil,
         total_distance: String,
         total_duration: String,
         blended_session_avg_pace: String,
@@ -294,6 +339,43 @@ public struct BlendedTotals: Codable, Sendable {
         self.aerobic_efficiency_factor = aerobic_efficiency_factor
         self.cardiac_drift = cardiac_drift
         self.stride_archetype = stride_archetype
+    }
+}
+
+public struct HistoricalRunSummary: Codable, Sendable, Equatable {
+    public let date: String
+    public let weekday: String
+    public let classification: String
+    public let environment: String
+    public let distance_km: Double
+    public let duration_minutes: Int
+    public let pace: String
+    public let cadence_spm: Int
+    public let heart_rate_bpm: Int?
+    public let efficiency_factor: Double?
+
+    public init(
+        date: String,
+        weekday: String,
+        classification: String,
+        environment: String,
+        distance_km: Double,
+        duration_minutes: Int,
+        pace: String,
+        cadence_spm: Int,
+        heart_rate_bpm: Int? = nil,
+        efficiency_factor: Double? = nil
+    ) {
+        self.date = date
+        self.weekday = weekday
+        self.classification = classification
+        self.environment = environment
+        self.distance_km = distance_km
+        self.duration_minutes = duration_minutes
+        self.pace = pace
+        self.cadence_spm = cadence_spm
+        self.heart_rate_bpm = heart_rate_bpm
+        self.efficiency_factor = efficiency_factor
     }
 }
 

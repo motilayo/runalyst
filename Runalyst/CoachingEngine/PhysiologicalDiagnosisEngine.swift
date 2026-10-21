@@ -184,12 +184,88 @@ enum PacingExecutionVerdict: Sendable, Equatable {
     }
 }
 
+/// Structured, machine-readable physiological diagnosis finding for on-device LLM tools.
+public struct PhysiologicalFinding: Codable, Sendable, Equatable {
+    public let domain: String
+    public let code: String
+    public let metric: String
+    public let value: Double?
+    public let threshold: Double?
+    public let severity: String
+
+    public init(
+        domain: String,
+        code: String,
+        metric: String,
+        value: Double? = nil,
+        threshold: Double? = nil,
+        severity: String = "optimal"
+    ) {
+        self.domain = domain
+        self.code = code
+        self.metric = metric
+        self.value = value
+        self.threshold = threshold
+        self.severity = severity
+    }
+}
+
 /// Aggregated physiological diagnostic verdicts deterministically calculated by Swift.
 struct PhysiologicalVerdicts: Sendable, Equatable {
     let cadence: CadenceCausalVerdict
     let cardiac: CardiacCausalVerdict
     let verticalEconomy: VerticalEconomyVerdict
     let pacing: PacingExecutionVerdict
+
+    var findings: [PhysiologicalFinding] {
+        var list: [PhysiologicalFinding] = []
+
+        switch cadence {
+        case .gradeResistance(let drop, let elev, let severity):
+            list.append(PhysiologicalFinding(domain: "cadence", code: "grade_resistance", metric: "spm", value: Double(drop), threshold: elev, severity: severity.rawValue))
+        case .lateNeuromuscularFatigue(let decay, let pace, let severity):
+            list.append(PhysiologicalFinding(domain: "cadence", code: "late_neuromuscular_fatigue", metric: "spm", value: Double(decay), threshold: Double(pace), severity: severity.rawValue))
+        case .subFloorStridePattern(let working, let floor, let severity):
+            list.append(PhysiologicalFinding(domain: "cadence", code: "sub_floor_cadence", metric: "spm", value: Double(working), threshold: Double(floor), severity: severity.rawValue))
+        case .stableHeightCalibratedTurnover(let working):
+            list.append(PhysiologicalFinding(domain: "cadence", code: "stable_turnover", metric: "spm", value: Double(working), severity: "optimal"))
+        case .strideOverLengthening(let drop, let str, let severity):
+            list.append(PhysiologicalFinding(domain: "cadence", code: "stride_over_lengthening", metric: "spm", value: Double(drop), threshold: str, severity: severity.rawValue))
+        }
+
+        switch cardiac {
+        case .thermalOrCardiovascularDrift(let drift, let dur, let severity):
+            list.append(PhysiologicalFinding(domain: "cardiac", code: "cardiac_drift", metric: "bpm", value: Double(drift), threshold: Double(dur), severity: severity.rawValue))
+        case .elevationInducedCardiacSurge(let elev, let rise, let severity):
+            list.append(PhysiologicalFinding(domain: "cardiac", code: "elevation_cardiac_surge", metric: "bpm", value: Double(rise), threshold: elev, severity: severity.rawValue))
+        case .pacingOvershootDecoupling(let paceDelta, let hrRise, let severity):
+            list.append(PhysiologicalFinding(domain: "cardiac", code: "pacing_overshoot_decoupling", metric: "bpm", value: Double(hrRise), threshold: Double(paceDelta), severity: severity.rawValue))
+        case .thermalStrain:
+            list.append(PhysiologicalFinding(domain: "cardiac", code: "thermal_strain", metric: "heat_index", severity: "critical"))
+        case .stableCardiovascularCoupling(let avgHR):
+            list.append(PhysiologicalFinding(domain: "cardiac", code: "stable_cardiac_coupling", metric: "bpm", value: Double(avgHR), severity: "optimal"))
+        }
+
+        switch verticalEconomy {
+        case .excessiveVerticalDisplacement(let ratio, let bounce, let severity):
+            list.append(PhysiologicalFinding(domain: "vertical_economy", code: "excessive_vertical_bounce", metric: "cm", value: bounce, threshold: ratio, severity: severity.rawValue))
+        case .optimalForwardKinematics(let ratio, let bounce):
+            list.append(PhysiologicalFinding(domain: "vertical_economy", code: "optimal_forward_kinematics", metric: "cm", value: bounce, threshold: ratio, severity: "optimal"))
+        case .treadmillDeckKinematics(let cad):
+            list.append(PhysiologicalFinding(domain: "vertical_economy", code: "treadmill_deck_kinematics", metric: "spm", value: Double(cad), severity: "optimal"))
+        }
+
+        switch pacing {
+        case .earlyOverpaceFade(let first, let second, let fade, let severity):
+            list.append(PhysiologicalFinding(domain: "pacing", code: "early_overpace_fade", metric: "s_per_km", value: Double(fade), threshold: second - first, severity: severity.rawValue))
+        case .progressiveAcceleration(_, let gain):
+            list.append(PhysiologicalFinding(domain: "pacing", code: "progressive_acceleration", metric: "s_per_km", value: Double(gain), severity: "optimal"))
+        case .disciplinedMetronomic(let spread):
+            list.append(PhysiologicalFinding(domain: "pacing", code: "disciplined_metronomic", metric: "s_per_km", value: Double(spread), severity: "optimal"))
+        }
+
+        return list
+    }
 
     var promptDescription: String {
         return """
