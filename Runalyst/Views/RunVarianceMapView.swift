@@ -10,6 +10,7 @@ struct RunVarianceMapView: View {
     var workoutDuration: Double?
     var isIntervalOrDrill: Bool = true
     var workoutType: String?
+    var selectedModality: Binding<WorkoutTelemetryModality>?
 
     private var isRecovery: Bool {
         workoutType == "Recovery Run"
@@ -105,6 +106,17 @@ struct RunVarianceMapView: View {
                 Text(isIntervalOrDrill ? "Cadence surges, steady running, and recoveries across your run" : (isRecovery ? "Gentle active recovery cadence trajectory with low mechanical strain" : "Continuous cadence trajectory across your session"))
                     .font(.caption)
                     .foregroundColor(.secondary)
+            }
+
+            if let selectedModality = selectedModality {
+                Picker("Telemetry Mode", selection: selectedModality) {
+                    Text("Heart Rate").tag(WorkoutTelemetryModality.heartRate)
+                    Text("Cadence").tag(WorkoutTelemetryModality.cadence)
+                }
+                .pickerStyle(.segmented)
+                .onChange(of: selectedModality.wrappedValue) { _, _ in
+                    UISelectionFeedbackGenerator().selectionChanged()
+                }
             }
 
             if normalizedSegments.isEmpty {
