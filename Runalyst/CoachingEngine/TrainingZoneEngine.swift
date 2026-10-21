@@ -117,7 +117,8 @@ enum TrainingZoneEngine {
     }
 
     /// Calculates locked zones and session prescription with cold-start fallbacks and subjective override.
-    static func computePrescription(_ input: TrainingZoneInput) -> LockedTrainingPrescription {
+    @MainActor
+    static func computePrescription(_ input: TrainingZoneInput, runs: [RunRecord] = []) -> LockedTrainingPrescription {
         // 1. Subjective Override Interception
         if input.isSubjectiveDistress {
             return LockedTrainingPrescription(
@@ -140,7 +141,7 @@ enum TrainingZoneEngine {
         }
 
         // 2. Cold Start Fallback Hierarchy
-        let hasRuns = input.totalHistoricalRunsCount > 0
+        let hasRuns = !runs.isEmpty || input.totalHistoricalRunsCount > 0
         let hasGraduated = hasCompletedAssessment || hasRuns
 
         // Determine reference anchor pace
@@ -224,36 +225,66 @@ enum TrainingZoneEngine {
         let z4Str = formatRange(lowSec: z4PaceLow, highSec: z4PaceHigh, useMetric: input.useMetricSystem)
         let z5Str = formatRange(lowSec: z5PaceLow, highSec: z5PaceHigh, useMetric: input.useMetricSystem)
 
-        // 4. Next Session Prescription
-        let nextName: String
-        let nextDur: String
-        let nextPace: String
-        let nextCad: String
-        let rationale: String
-        let category: String
-
-        if !input.readyForHard {
-            nextName = "Zone 1 Active Recovery Flush"
-            nextDur = "25–35 minutes"
-            nextPace = z1Str
-            nextCad = "\(input.heightAdjustedCadenceFloor - 2)–\(input.heightAdjustedCadenceFloor + 4) SPM"
-            rationale = "You are currently in an active recovery window. Keep effort gentle to flush metabolic waste without muscular breakdown."
-            category = "RECOVERY_FLUSH_ZONE_1"
-        } else if input.daysSinceWorkout >= 2 {
-            nextName = "Zone 2 Easy Aerobic Base"
-            nextDur = "35–45 minutes"
-            nextPace = z2Str
-            nextCad = "\(input.heightAdjustedCadenceFloor)–\(input.heightAdjustedCadenceFloor + 6) SPM"
-            rationale = "You have had full rest days and are completely recovered. Ready to build aerobic capillary density at conversational pace."
-            category = "EASY_AEROBIC_ZONE_2"
+        // 4. Delegate Next-Session Prescription to SessionSynthesisEngine (Single Source of Truth)
+        let effectiveRuns: [RunRecord]
+        if !runs.isEmpty {
+            effectiveRuns = runs
         } else {
-            nextName = "Zone 2 Easy Aerobic Maintenance"
-            nextDur = "30–40 minutes"
-            nextPace = z2Str
-            nextCad = "\(input.heightAdjustedCadenceFloor)–\(input.heightAdjustedCadenceFloor + 6) SPM"
-            rationale = "Cleared for training. Build continuous aerobic base toward your goal of \(input.activeGoal)."
-            category = "EASY_AEROBIC_ZONE_2"
+            let runDate = Calendar.current.date(byAdding: .day, value: -max(1, input.daysSinceWorkout), to: Date()) ?? Date().addingTimeInterval(-86400)
+            let repRun = RunRecord(
+                hkWorkoutID: UUID(),
+                date: runDate,
+                totalDistanceMeters: 5000.0,
+                duration: anchorPace * 5.0,
+                rawAvgPace: anchorPace,
+                rawAvgHeartRate: input.readyForHard ? 142.0 : 168.0,
+                rawAvgCadence: Double(input.heightAdjustedCadenceFloor),
+                workingAvgPace: anchorPace,
+                workingAvgCadence: Double(input.heightAdjustedCadenceFloor),
+                workingAvgHeartRate: input.readyForHard ? 142.0 : 168.0,
+                paceCV: 0.05,
+                paceSlope: 0.0,
+                percentZone4: 0.1,
+                detectedTypeRaw: input.readyForHard ? "Steady Effort" : "Recovery Jog"
+            )
+            if !input.readyForHard {
+                repRun.framboiseTags = [FramboiseReadinessTag.cardiacDrift]
+            }
+            effectiveRuns = [repRun]
         }
+
+        let dailyState = SessionSynthesisEngine.evaluateDailyState(
+            runRecords: effectiveRuns,
+            activeGoal: input.activeGoal,
+            experienceLevel: input.experienceLevel,
+            useMetric: input.useMetricSystem,
+            userHeightCm: 175.0,
+            now: Date()
+        )
+
+        let session: PrescribedDailySession = {
+            switch dailyState {
+            case .preRun(let s): return s
+            case .completedToday(_, let tomorrow): return tomorrow
+            }
+        }()
+
+        let nextName = session.sessionTitle
+        let nextDur = session.durationBand
+        let nextPace = session.paceBand
+        let nextCad = session.primerTargetCadence.isEmpty ? "\(input.heightAdjustedCadenceFloor)–\(input.heightAdjustedCadenceFloor + 6) SPM" : session.primerTargetCadence
+        let rationale = session.groundedRationale
+        let category: String = {
+            if session.isRestDay || session.mainSessionTemplateId == .aerobicFlush {
+                return "RECOVERY_FLUSH_ZONE_1"
+            } else if session.mainSessionTemplateId == .tempoSurges {
+                return "THRESHOLD_ZONE_4"
+            } else if session.mainSessionTemplateId == .rhythmIntervals {
+                return "INTERVAL_ZONE_5"
+            } else {
+                return "EASY_AEROBIC_ZONE_2"
+            }
+        }()
 
         return LockedTrainingPrescription(
             referencePaceSec: anchorPace,
@@ -272,6 +303,38 @@ enum TrainingZoneEngine {
             zone5IntervalPace: z5Str,
             intensityCategory: category
         )
+    }
+
+    /// Delegates directly to SessionSynthesisEngine while supplying the athlete's actual RunRecord history.
+    @MainActor
+    static func computePrescription(
+        runs: [RunRecord],
+        profile: RunnerProfile? = nil,
+        activeGoal: String = "Base Building",
+        experienceLevel: String = "Intermediate",
+        useMetricSystem: Bool = true,
+        userHeightCm: Double = 175.0,
+        isSubjectiveDistress: Bool = false,
+        now: Date = Date()
+    ) -> LockedTrainingPrescription {
+        let latestRun = runs.first(where: { !$0.isDeleted })
+        let baselinePace = latestRun?.workingAvgPace
+        let cadenceFloor = profile?.heightAdjustedCadenceFloor ?? Int((150.0 / (max(130.0, min(220.0, userHeightCm)) / 175.0)).rounded())
+        let daysSince = latestRun.map { Calendar.current.dateComponents([.day], from: $0.date, to: now).day ?? 0 } ?? 0
+
+        let input = TrainingZoneInput(
+            baselinePaceSec: baselinePace,
+            workoutPaceSec: latestRun?.workingAvgPace,
+            activeGoal: activeGoal,
+            experienceLevel: experienceLevel,
+            readyForHard: true,
+            daysSinceWorkout: daysSince,
+            heightAdjustedCadenceFloor: cadenceFloor,
+            useMetricSystem: useMetricSystem,
+            isSubjectiveDistress: isSubjectiveDistress,
+            totalHistoricalRunsCount: runs.count
+        )
+        return computePrescription(input, runs: runs)
     }
 
     private static func defaultPaceForExperience(_ level: String) -> Double {

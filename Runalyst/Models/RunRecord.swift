@@ -189,6 +189,10 @@ final class RunRecord {
         }
     }
 
+    var splits: [RunSplit] {
+        signature?.splits ?? []
+    }
+
     init(
         id: UUID = UUID(),
         hkWorkoutID: UUID,

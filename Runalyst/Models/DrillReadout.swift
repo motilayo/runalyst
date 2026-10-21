@@ -92,7 +92,7 @@ struct DrillReadout: Sendable, Identifiable {
             case .fifteenMinutes:
                 overviewText = "In this session, you will complete a tempo surge workout to build speed endurance."
                 breakdownText = "You’ll start with a 3-minute easy warm-up jog. This is followed by 3 sets of 2-minute tempo surges, paired with 2 minutes of walk recovery."
-            case .thirtyMinutes, .fortyMinutes, .fiftyMinutes:
+            case .thirtyMinutes, .thirtyFiveMinutes, .fortyMinutes, .fiftyMinutes:
                 overviewText = "In this session, you will complete a tempo surge workout to build sustained speed and aerobic power."
                 breakdownText = "You’ll start with a 4-minute easy warm-up jog. This is followed by 4 sets of 3-minute tempo surges, paired with 3 minutes of walk recovery, finishing with a 2-minute cool-down."
             }
@@ -138,7 +138,7 @@ struct DrillReadout: Sendable, Identifiable {
             case .fifteenMinutes:
                 overviewText = "In this drill, you will wake up your leg turnover and find a quick, springy rhythm before your run."
                 breakdownText = "You’ll start with a 5-minute easy jog to warm up the joints, followed by 6 short interval sets. In each interval, you’ll accelerate into a 20-second sprint, followed immediately by a 60-second walk to let your heart rate drop completely."
-            case .thirtyMinutes, .fortyMinutes, .fiftyMinutes:
+            case .thirtyMinutes, .thirtyFiveMinutes, .fortyMinutes, .fiftyMinutes:
                 overviewText = "In this session, you will build leg speed with relaxed accelerations to prime your turnover."
                 breakdownText = "You’ll start with a 5-minute easy jog, followed by 8 sets of 30-second strides and 90-second walks, finishing with a 5-minute cool-down."
             }
@@ -217,7 +217,7 @@ struct DrillReadout: Sendable, Identifiable {
                 breakdownText = "You’ll start with a 2-minute easy jog warm-up. This is followed by 4 sets of intervals where you run at high cadence for 30 seconds, followed by 45 seconds of walk recovery to reset."
             case .fifteenMinutes:
                 breakdownText = "You’ll start with a 3-minute easy jog warm-up. This is followed by 4 sets of 1-minute high cadence intervals, paired with 90 seconds of walk recovery."
-            case .thirtyMinutes, .fortyMinutes, .fiftyMinutes:
+            case .thirtyMinutes, .thirtyFiveMinutes, .fortyMinutes, .fiftyMinutes:
                 breakdownText = "You’ll start with a 4-minute easy jog warm-up. This is followed by 6 sets of 90-second high cadence intervals, paired with 2 minutes of walk recovery."
             }
 
@@ -259,7 +259,7 @@ struct DrillReadout: Sendable, Identifiable {
                 breakdownText = "You’ll start with a 2-minute easy warm-up jog. This is followed by 4 sets of rhythm intervals for 30 seconds, paired with 45 seconds of relaxed recovery jog."
             case .fifteenMinutes:
                 breakdownText = "You’ll start with a 3-minute easy warm-up jog. This is followed by 5 sets of rhythm intervals for 45 seconds, paired with 75 seconds of relaxed recovery jog."
-            case .thirtyMinutes, .fortyMinutes, .fiftyMinutes:
+            case .thirtyMinutes, .thirtyFiveMinutes, .fortyMinutes, .fiftyMinutes:
                 breakdownText = "You’ll start with a 4-minute easy warm-up jog. This is followed by 6 sets of rhythm intervals for 90 seconds, paired with 2 minutes of relaxed recovery jog."
             }
 
@@ -301,7 +301,7 @@ struct DrillReadout: Sendable, Identifiable {
                 breakdownText = "You’ll start with a 2-minute easy warm-up jog. This is followed by 4 sets of 20-second fast-feet bursts, paired with 40 seconds of walk recovery."
             case .fifteenMinutes:
                 breakdownText = "You’ll start with a 3-minute easy warm-up jog. This is followed by 5 sets of 30-second fast-feet bursts, paired with 60 seconds of walk recovery."
-            case .thirtyMinutes, .fortyMinutes, .fiftyMinutes:
+            case .thirtyMinutes, .thirtyFiveMinutes, .fortyMinutes, .fiftyMinutes:
                 breakdownText = "You’ll start with a 4-minute easy warm-up jog. This is followed by 6 sets of 45-second fast-feet bursts, paired with 90 seconds of walk recovery."
             }
 
@@ -340,7 +340,7 @@ struct DrillReadout: Sendable, Identifiable {
                 breakdownText = "You’ll start with a 2-minute warm-up jog. This is followed by 4 sets of 20-second uphill bounds, followed by 40 seconds of walk recovery."
             case .fifteenMinutes:
                 breakdownText = "You’ll start with a 3-minute warm-up jog. This is followed by 5 sets of 30-second uphill bounds, followed by 60 seconds of walk recovery."
-            case .thirtyMinutes, .fortyMinutes, .fiftyMinutes:
+            case .thirtyMinutes, .thirtyFiveMinutes, .fortyMinutes, .fiftyMinutes:
                 breakdownText = "You’ll start with a 4-minute warm-up jog. This is followed by 6 sets of 45-second uphill bounds, followed by 90 seconds of walk recovery."
             }
 
@@ -450,13 +450,13 @@ struct DrillReadout: Sendable, Identifiable {
                 breakdownText = "You’ll start with a 2-minute warm-up jog. This is followed by 4 sets of 45-second pick-ups, alternating with 45 seconds of relaxed recovery."
             case .fifteenMinutes:
                 breakdownText = "You’ll start with a 3-minute warm-up jog. This is followed by 5 sets of 1-minute pick-ups, alternating with 1 minute of relaxed recovery."
-            case .thirtyMinutes, .fortyMinutes, .fiftyMinutes:
+            case .thirtyMinutes, .thirtyFiveMinutes, .fortyMinutes, .fiftyMinutes:
                 breakdownText = "You’ll start with a 4-minute warm-up jog. This is followed by 6 sets of 2-minute pick-ups, alternating with 2 minutes of relaxed recovery."
             }
 
             let coachingTip = customCoachingTip ?? DrillTemplate.template(for: .fartlekPrimer).generateInstructionalCue(targetStr)
 
-            let isLongWorkout = duration == .thirtyMinutes || duration == .fortyMinutes || duration == .fiftyMinutes
+            let isLongWorkout = duration == .thirtyMinutes || duration == .thirtyFiveMinutes || duration == .fortyMinutes || duration == .fiftyMinutes
             let overview = isLongWorkout
                 ? "In this session, you will practice shifting gears with continuous aerobic pickups to build versatility."
                 : "In this drill, you will practice shifting gears with quick surges to dial in your rhythm."
@@ -501,11 +501,7 @@ extension ActiveDrillReadoutItem {
         let drillId = standardDTO.preRunDrillId.flatMap(PreRunDrillId.init(rawValue:)) ?? .strides
         let duration: DrillDuration = {
             if let raw = standardDTO.durationMinutes {
-                if let exact = DrillDuration(rawValue: raw) { return exact }
-                if raw <= 6 { return .fiveMinutes }
-                if raw <= 12 { return .tenMinutes }
-                if raw <= 20 { return .fifteenMinutes }
-                return .thirtyMinutes
+                return DrillDuration.nearest(toMinutes: raw)
             }
             return drillId.defaultDuration
         }()
@@ -589,11 +585,7 @@ extension ActiveDrillReadoutItem {
         let drillId = dto.preRunDrillId.flatMap(PreRunDrillId.init(rawValue:)) ?? .strides
         let duration: DrillDuration = {
             if let raw = dto.durationMinutes {
-                if let exact = DrillDuration(rawValue: raw) { return exact }
-                if raw <= 6 { return .fiveMinutes }
-                if raw <= 12 { return .tenMinutes }
-                if raw <= 20 { return .fifteenMinutes }
-                return .thirtyMinutes
+                return DrillDuration.nearest(toMinutes: raw)
             }
             return drillId.defaultDuration
         }()

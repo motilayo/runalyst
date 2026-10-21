@@ -653,6 +653,6 @@ struct WorkoutAnalysisContext {
             isSubjectiveDistress: isSubjectiveDistress,
             totalHistoricalRunsCount: totalHistoricalRunsCount
         )
-        self.lockedPrescription = TrainingZoneEngine.computePrescription(tzInput)
+        self.lockedPrescription = TrainingZoneEngine.computePrescription(tzInput, runs: [runRecord])
     }
 }
