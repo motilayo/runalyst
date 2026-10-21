@@ -827,7 +827,8 @@ class HealthKitManager: ObservableObject {
             needsInclineReview: classificationResult?.needsInclineReview,
             runSignatureData: signatureData,
             ambientTemperatureCelsius: weather.temperatureCelsius,
-            ambientHumidity: weather.humidityPercent
+            ambientHumidity: weather.humidityPercent,
+            classificationProvenanceRaw: classificationResult?.provenance.rawValue
         )
     }
 
@@ -938,8 +939,19 @@ class HealthKitManager: ObservableObject {
         let hasManualCorrection = (try? context.fetch(correctionDescriptor))?.isEmpty == false
 
         // 4. Update RunRecord in-place
-        if !hasManualCorrection {
+        let isUserConfirmed = hasManualCorrection || record.classificationProvenance == .userConfirmed || record.framboiseTags.contains("userConfirmedClassification")
+        if !isUserConfirmed {
             record.detectedTypeRaw = dto.detectedTypeRaw
+            record.classificationConfidence = dto.classificationConfidence
+            record.classificationProbabilitiesData = dto.classificationProbabilitiesData
+            record.classificationProvenanceRaw = dto.classificationProvenanceRaw
+        } else {
+            // Guardrail 2: Protect "userConfirmed" state across HealthKit resyncs
+            record.classificationProvenance = .userConfirmed
+            record.classificationConfidence = 1.0
+            if !record.framboiseTags.contains("userConfirmedClassification") {
+                record.framboiseTags.append("userConfirmedClassification")
+            }
         }
         record.totalDistanceMeters = dto.totalDistanceMeters
         record.duration = dto.duration
@@ -959,8 +971,10 @@ class HealthKitManager: ObservableObject {
             record.isIndoor = dto.isIndoor
         }
         record.dataSourceRaw = dto.dataSourceRaw
-        record.classificationConfidence = dto.classificationConfidence
-        record.classificationProbabilitiesData = dto.classificationProbabilitiesData
+        if !isUserConfirmed {
+            record.classificationConfidence = dto.classificationConfidence
+            record.classificationProbabilitiesData = dto.classificationProbabilitiesData
+        }
         record.hrCV = dto.hrCV
         record.cadenceSlope = dto.cadenceSlope
         record.needsInclineReview = dto.needsInclineReview

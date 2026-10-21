@@ -70,9 +70,128 @@ final class IndoorIntelligenceTests: XCTestCase {
         if result.confidence < 0.75 {
             XCTAssertEqual(result.targetClass, "Mixed Effort (Review)")
             XCTAssertTrue(result.isReviewRequired)
+            XCTAssertEqual(result.provenance, .needsReview)
         } else {
             XCTAssertTrue(result.confidence >= 0.75)
+            XCTAssertTrue(result.provenance == .inferred || result.provenance == .deterministic)
         }
+    }
+
+    func testBayesianDomainConditioning_IndoorExcludesOutdoorOnlyHypotheses() async {
+        let modelManager = ModelManager()
+        let now = Date()
+        var dummyBuckets: [BucketData] = []
+        for i in 0..<10 {
+            dummyBuckets.append(
+                BucketData(
+                    startTime: now.addingTimeInterval(Double(i * 30)),
+                    distanceMeters: 100.0,
+                    durationSeconds: 30.0,
+                    meanPaceSecPerKm: 300.0,
+                    meanCadence: 165.0,
+                    meanHR: 150.0
+                )
+            )
+        }
+
+        let result = await modelManager.predictRunTypeResult(
+            buckets: dummyBuckets,
+            paceDelta: 10.0,
+            hrDelta: 2.0,
+            percentZone4: 0.18,
+            cadenceDelta: 0.0,
+            verticalOscillation: 9.5,
+            runnerStage: 1,
+            cv: 0.11,
+            slope: -0.01,
+            durationMinutes: 30.0,
+            cadenceCV: 0.02,
+            hrCV: 0.08,
+            cadenceSlope: 0.0,
+            isIndoor: true,
+            isGymKit: false
+        )
+
+        // Bayesian Domain Conditioning Axiom: P(Urban Traffic | Indoor) = 0 and P(Hill Repeats | Indoor) = 0
+        XCTAssertNil(result.probabilities["Urban Traffic"], "Indoor probability space must strictly exclude Urban Traffic")
+        XCTAssertNil(result.probabilities["Hill Repeats"], "Indoor probability space must strictly exclude Hill Repeats")
+    }
+
+    func testDeterministicSequenceGrammar_AssignsDeterministicProvenanceAndConfidence() async {
+        let modelManager = ModelManager()
+        var buckets: [BucketData] = []
+        var currentTime = Date()
+
+        // 4 crisp interval cycles with +100s contrast
+        for _ in 0..<4 {
+            for _ in 0..<2 {
+                buckets.append(BucketData(startTime: currentTime, distanceMeters: 100, durationSeconds: 30, meanPaceSecPerKm: 300, meanCadence: 180, meanHR: 170))
+                currentTime = currentTime.addingTimeInterval(30)
+            }
+            for _ in 0..<2 {
+                buckets.append(BucketData(startTime: currentTime, distanceMeters: 60, durationSeconds: 30, meanPaceSecPerKm: 500, meanCadence: 140, meanHR: 135))
+                currentTime = currentTime.addingTimeInterval(30)
+            }
+        }
+
+        let result = await modelManager.predictRunTypeResult(
+            buckets: buckets,
+            paceDelta: 0.0,
+            hrDelta: 0.0,
+            percentZone4: 0.40,
+            cadenceDelta: 0.0,
+            verticalOscillation: 9.5,
+            runnerStage: 1,
+            cv: 0.14,
+            slope: 0.0,
+            durationMinutes: 20.0,
+            cadenceCV: 0.05,
+            hrCV: 0.08,
+            cadenceSlope: 0.0,
+            isIndoor: true,
+            isGymKit: false
+        )
+
+        XCTAssertEqual(result.targetClass, "Intervals")
+        XCTAssertEqual(result.provenance, .deterministic, "3+ sequence grammar cycles must establish .deterministic provenance")
+        XCTAssertEqual(result.confidence, 1.0, "Deterministic grammar proof carries 1.0 confidence")
+        XCTAssertFalse(result.isReviewRequired, "Deterministic grammar proof must never require review")
+    }
+
+    func testFiniteStateMachine_UserConfirmedStateIsAbsorbingAndDismissesBanner() {
+        let run = RunRecord(
+            hkWorkoutID: UUID(),
+            date: Date(),
+            totalDistanceMeters: 5000,
+            duration: 1800,
+            rawAvgPace: 360,
+            rawAvgHeartRate: 150,
+            rawAvgCadence: 160,
+            workingAvgPace: 360,
+            workingAvgCadence: 160,
+            workingAvgHeartRate: 150,
+            paceCV: 0.12,
+            paceSlope: 0.0,
+            percentZone4: 0.1,
+            detectedTypeRaw: "Mixed Effort (Review)",
+            classificationConfidence: 0.54,
+            classificationProvenanceRaw: ClassificationProvenance.needsReview.rawValue
+        )
+
+        // 1. Initial .needsReview state
+        XCTAssertTrue(run.needsClassificationReview, "Run in .needsReview must flag needsClassificationReview = true")
+
+        // 2. Transition delta(.needsReview, userSelect) -> .userConfirmed
+        run.classificationProvenance = .userConfirmed
+        run.classificationConfidence = 1.0
+        run.detectedTypeRaw = "Fartlek"
+
+        // 3. Absorbing state verification
+        XCTAssertFalse(run.needsClassificationReview, "User-confirmed state is absorbing and must dismiss review banner")
+
+        // 4. Deterministic state verification
+        run.classificationProvenance = .deterministic
+        XCTAssertFalse(run.needsClassificationReview, "Deterministic provenance must never require classification review")
     }
 
     func testInclineInferenceFlaggingOnIndoorWorkout() {

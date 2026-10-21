@@ -32,6 +32,12 @@ struct RunRecordDTO: Sendable {
     let runSignatureData: Data?
     let ambientTemperatureCelsius: Double?
     let ambientHumidity: Double?
+    let classificationProvenanceRaw: String?
+
+    var classificationProvenance: ClassificationProvenance? {
+        guard let raw = classificationProvenanceRaw else { return nil }
+        return ClassificationProvenance(rawValue: raw)
+    }
 
     init(
         hkWorkoutID: UUID,
@@ -64,7 +70,8 @@ struct RunRecordDTO: Sendable {
         needsInclineReview: Bool? = nil,
         runSignatureData: Data? = nil,
         ambientTemperatureCelsius: Double? = nil,
-        ambientHumidity: Double? = nil
+        ambientHumidity: Double? = nil,
+        classificationProvenanceRaw: String? = nil
     ) {
         self.hkWorkoutID = hkWorkoutID
         self.date = date
@@ -97,6 +104,7 @@ struct RunRecordDTO: Sendable {
         self.runSignatureData = runSignatureData
         self.ambientTemperatureCelsius = ambientTemperatureCelsius
         self.ambientHumidity = ambientHumidity
+        self.classificationProvenanceRaw = classificationProvenanceRaw
     }
 
     /// Evaluates whether active running heart rate is implausibly low (e.g. < 85 BPM during active running > 5 min).

@@ -243,7 +243,8 @@ struct ContentView: View {
                             needsInclineReview: dto.needsInclineReview,
                             runSignatureData: dto.runSignatureData,
                             ambientTemperatureCelsius: dto.ambientTemperatureCelsius,
-                            ambientHumidity: dto.ambientHumidity
+                            ambientHumidity: dto.ambientHumidity,
+                            classificationProvenanceRaw: dto.classificationProvenanceRaw
                         )
                         modelContext.insert(newRun)
 
