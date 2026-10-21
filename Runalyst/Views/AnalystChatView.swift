@@ -318,72 +318,124 @@ struct AnalystChatView: View {
                         }
                     }
             } else {
-                VStack(alignment: .leading, spacing: 10) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(TelemetryHighlighter.highlight(message.text))
-                            .font(.subheadline)
-                            .foregroundColor(.primary)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .lineSpacing(3)
-                            .textSelection(.enabled)
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 14)
-                    .background(Color(UIColor.secondarySystemGroupedBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .stroke(Color.white.opacity(0.06), lineWidth: 1)
-                    )
-                    .shadow(color: Color.black.opacity(0.03), radius: 5, x: 0, y: 1)
-                    .contextMenu {
-                        Button {
-                            UIPasteboard.general.string = message.text
-                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                        } label: {
-                            Label("Copy", systemImage: "doc.on.doc")
+                if case .failed(let retryPrompt) = message.status {
+                    failedMessageCard(message: message, retryPrompt: retryPrompt)
+                } else {
+                    VStack(alignment: .leading, spacing: 10) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(TelemetryHighlighter.highlight(message.text))
+                                .font(.subheadline)
+                                .foregroundColor(.primary)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .lineSpacing(3)
+                                .textSelection(.enabled)
                         }
-                    }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 14)
+                        .background(Color(UIColor.secondarySystemGroupedBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                .stroke(Color.white.opacity(0.06), lineWidth: 1)
+                        )
+                        .shadow(color: Color.black.opacity(0.03), radius: 5, x: 0, y: 1)
+                        .contextMenu {
+                            Button {
+                                UIPasteboard.general.string = message.text
+                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            } label: {
+                                Label("Copy", systemImage: "doc.on.doc")
+                            }
+                        }
 
-                    if let session = message.attachedSession {
-                        PrescribedSessionCardView(
-                            session: session,
-                            isToday: !isRunToday,
-                            preferredWorkoutIsIndoor: $preferredWorkoutIsIndoor,
-                            onPreviewPrimer: {
-                                openPrimerReadout(for: session)
-                            },
-                            onPreviewMainRun: {
-                                openMainRunReadout(for: session)
-                            }
-                        )
-                    }
-                    if let schedule = message.attachedSchedule {
-                        UpcomingScheduleCardView(microcycle: schedule)
-                    }
-                    if let drillId = message.attachedDrillId {
-                        InlineChatDrillCard(
-                            drillId: drillId,
-                            runRecord: runRecord,
-                            onOpenReadout: {
-                                openDrillReadout(drillId: drillId)
-                            }
-                        )
-                    }
-                    if let explainerKey = message.attachedExplainerKey {
-                        InlineChatExplainerCard(
-                            explainerKey: explainerKey,
-                            runRecord: runRecord,
-                            onOpenExplainer: { info in
-                                activeExplainerInfo = info
-                            }
-                        )
+                        if let session = message.attachedSession {
+                            PrescribedSessionCardView(
+                                session: session,
+                                isToday: !isRunToday,
+                                preferredWorkoutIsIndoor: $preferredWorkoutIsIndoor,
+                                onPreviewPrimer: {
+                                    openPrimerReadout(for: session)
+                                },
+                                onPreviewMainRun: {
+                                    openMainRunReadout(for: session)
+                                }
+                            )
+                        }
+                        if let schedule = message.attachedSchedule {
+                            UpcomingScheduleCardView(microcycle: schedule)
+                        }
+                        if let drillId = message.attachedDrillId {
+                            InlineChatDrillCard(
+                                drillId: drillId,
+                                runRecord: runRecord,
+                                onOpenReadout: {
+                                    openDrillReadout(drillId: drillId)
+                                }
+                            )
+                        }
+                        if let explainerKey = message.attachedExplainerKey {
+                            InlineChatExplainerCard(
+                                explainerKey: explainerKey,
+                                runRecord: runRecord,
+                                onOpenExplainer: { info in
+                                    activeExplainerInfo = info
+                                }
+                            )
+                        }
                     }
                 }
                 Spacer(minLength: 28)
             }
         }
         .padding(.horizontal)
+    }
+
+    private func failedMessageCard(message: AnalystChatMessage, retryPrompt: String) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundColor(.orange)
+                    .font(.subheadline)
+                Text("Analysis Interrupted")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(.primary)
+            }
+
+            Text(message.text)
+                .font(.footnote)
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .lineSpacing(2)
+
+            Button {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                Task {
+                    await engine.retryMessage(failedMessageId: message.id)
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.clockwise")
+                    Text("Retry")
+                }
+                .font(.caption.weight(.semibold))
+                .foregroundColor(.white)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(Color.purple)
+                .clipShape(Capsule())
+            }
+            .padding(.top, 2)
+            .accessibilityLabel("Retry analysis for \(retryPrompt)")
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .background(Color(UIColor.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(Color.orange.opacity(0.3), lineWidth: 1)
+        )
+        .shadow(color: Color.black.opacity(0.03), radius: 5, x: 0, y: 1)
     }
 
     private var quickPromptChips: some View {

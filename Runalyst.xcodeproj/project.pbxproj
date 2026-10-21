@@ -72,6 +72,7 @@
 		B1110053D4E5F60718293A53 /* SessionSynthesisEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110053D4E5F60718293A53 /* SessionSynthesisEngineTests.swift */; };
 		B111005DD4E5F60718293A5D /* TrainingCalendarTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A111005DD4E5F60718293A5D /* TrainingCalendarTests.swift */; };
 		B111005ED4E5F60718293A5E /* ToolPayloadSchemaTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A111005ED4E5F60718293A5E /* ToolPayloadSchemaTests.swift */; };
+		B1110060D4E5F60718293A60 /* AnalystChatEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110060D4E5F60718293A60 /* AnalystChatEngineTests.swift */; };
 		B1110020D4E5F60718293A20 /* Runalyst/CoachingEngine/WorkoutAnalysisContextFormatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110020D4E5F60718293A20 /* Runalyst/CoachingEngine/WorkoutAnalysisContextFormatting.swift */; };
 		B1110021D4E5F60718293A21 /* Runalyst/Utilities/RunSplitSynthesis.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110021D4E5F60718293A21 /* Runalyst/Utilities/RunSplitSynthesis.swift */; };
 		B1110022D4E5F60718293A22 /* Runalyst/Views/StatBox.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110022D4E5F60718293A22 /* Runalyst/Views/StatBox.swift */; };
@@ -193,6 +194,7 @@
 		A1110053D4E5F60718293A53 /* SessionSynthesisEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionSynthesisEngineTests.swift; sourceTree = "<group>"; };
 		A111005DD4E5F60718293A5D /* TrainingCalendarTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainingCalendarTests.swift; sourceTree = "<group>"; };
 		A111005ED4E5F60718293A5E /* ToolPayloadSchemaTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolPayloadSchemaTests.swift; sourceTree = "<group>"; };
+		A1110060D4E5F60718293A60 /* AnalystChatEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalystChatEngineTests.swift; sourceTree = "<group>"; };
 		A1110020D4E5F60718293A20 /* Runalyst/CoachingEngine/WorkoutAnalysisContextFormatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/CoachingEngine/WorkoutAnalysisContextFormatting.swift; sourceTree = SOURCE_ROOT; };
 		A1110021D4E5F60718293A21 /* Runalyst/Utilities/RunSplitSynthesis.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Utilities/RunSplitSynthesis.swift; sourceTree = SOURCE_ROOT; };
 		A1110022D4E5F60718293A22 /* Runalyst/Views/StatBox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/StatBox.swift; sourceTree = SOURCE_ROOT; };
@@ -324,6 +326,7 @@
 				A1110053D4E5F60718293A53 /* SessionSynthesisEngineTests.swift */,
 				A111005DD4E5F60718293A5D /* TrainingCalendarTests.swift */,
 				A111005ED4E5F60718293A5E /* ToolPayloadSchemaTests.swift */,
+				A1110060D4E5F60718293A60 /* AnalystChatEngineTests.swift */,
 			);
 			path = Engine;
 			sourceTree = "<group>";
@@ -732,6 +735,7 @@
 				B1110053D4E5F60718293A53 /* SessionSynthesisEngineTests.swift in Sources */,
 				B111005DD4E5F60718293A5D /* TrainingCalendarTests.swift in Sources */,
 				B111005ED4E5F60718293A5E /* ToolPayloadSchemaTests.swift in Sources */,
+				B1110060D4E5F60718293A60 /* AnalystChatEngineTests.swift in Sources */,
 				B1110009D4E5F60718293A09 /* IndoorIntelligenceTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
