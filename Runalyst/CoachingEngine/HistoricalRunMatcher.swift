@@ -370,25 +370,28 @@ struct HistoricalRunMatcher {
         let totalRunsInPast30Days: Int
         let bestRun: TelemetryData?
         let worstRun: TelemetryData?
-        let currentRun: TelemetryData
+        let currentRun: TelemetryData?
 
         /// Structured mathematical and telemetry facts for FoundationModels tool injection.
         /// Zero canned coaching prose; purely factual telemetry.
         var structuredTelemetryFacts: String {
+            guard let current = currentRun else {
+                return "30-DAY PERFORMANCE ARC TELEMETRY:\nNo workouts recorded in the past 30 days."
+            }
             guard let best = bestRun else {
                 return """
                 30-DAY PERFORMANCE ARC TELEMETRY:
-                Only 1 workout recorded in the past 30 days (\(currentRun.weekday), \(currentRun.formattedDate)):
-                - Type: \(currentRun.classification) (\(currentRun.isIndoor ? "Indoor Treadmill" : "Outdoor"))
-                - Distance: \(String(format: "%.2f", currentRun.distanceMeters / 1000.0)) km (\(Int(currentRun.durationSeconds / 60)) min)
-                - Working Pace: \(currentRun.paceFormatted)
-                - Working Cadence: \(currentRun.cadenceSPM) SPM
-                - Working Heart Rate: \(currentRun.heartRateBPM) BPM
-                - Efficiency Factor: \(currentRun.efficiencyFactor.map { String(format: "%.2f m/beat", $0) } ?? "N/A")
+                Only 1 workout recorded in the past 30 days (\(current.weekday), \(current.formattedDate)):
+                - Type: \(current.classification) (\(current.isIndoor ? "Indoor Treadmill" : "Outdoor"))
+                - Distance: \(String(format: "%.2f", current.distanceMeters / 1000.0)) km (\(Int(current.durationSeconds / 60)) min)
+                - Working Pace: \(current.paceFormatted)
+                - Working Cadence: \(current.cadenceSPM) SPM
+                - Working Heart Rate: \(current.heartRateBPM) BPM
+                - Efficiency Factor: \(current.efficiencyFactor.map { String(format: "%.2f m/beat", $0) } ?? "N/A")
                 """
             }
 
-            let worst = worstRun ?? currentRun
+            let worst = worstRun ?? current
             let paceDeltaSec = Int(worst.paceSecondsPerKm.rounded() - best.paceSecondsPerKm.rounded())
             let cadDelta = best.cadenceSPM - worst.cadenceSPM
             let hrDelta = worst.heartRateBPM - best.heartRateBPM
@@ -425,11 +428,14 @@ struct HistoricalRunMatcher {
 
         /// Natural language synthesized coaching arc for fallback and offline coaching contexts.
         var coachingArcSummary: String {
+            guard let current = currentRun else {
+                return "In the past 30 days, you have no recorded workouts."
+            }
             guard let best = bestRun else {
-                return "In the past 30 days, you have 1 workout recorded: your **\(currentRun.weekday), \(currentRun.formattedDate) \(currentRun.classification)** (**\(String(format: "%.2f", currentRun.distanceMeters / 1000.0)) km** at **\(currentRun.paceFormatted)** with **\(currentRun.cadenceSPM) SPM** cadence)."
+                return "In the past 30 days, you have 1 workout recorded: your **\(current.weekday), \(current.formattedDate) \(current.classification)** (**\(String(format: "%.2f", current.distanceMeters / 1000.0)) km** at **\(current.paceFormatted)** with **\(current.cadenceSPM) SPM** cadence)."
             }
 
-            let worst = worstRun ?? currentRun
+            let worst = worstRun ?? current
             let paceDeltaSec = Int(worst.paceSecondsPerKm.rounded() - best.paceSecondsPerKm.rounded())
             let cadDelta = best.cadenceSPM - worst.cadenceSPM
             let bestEF = best.efficiencyFactor.map { String(format: "%.2f", $0) } ?? ""
@@ -526,17 +532,17 @@ struct HistoricalRunMatcher {
     /// Finds a historical run in the model context matching the user's natural language query.
     static func findRun(
         matching query: String,
-        relativeTo currentRun: RunRecord,
+        relativeTo currentRun: RunRecord? = nil,
         in context: ModelContext?
     ) -> RunRecord? {
         guard let context = context else { return nil }
         let descriptor = FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)])
         guard let allRuns = try? context.fetch(descriptor) else { return nil }
 
-        let otherRuns = allRuns.filter { $0.id != currentRun.id }
-        guard !otherRuns.isEmpty else { return nil }
+        let pool = currentRun.map { cr in allRuns.filter { $0.id != cr.id } } ?? allRuns
+        guard !pool.isEmpty else { return nil }
 
-        return findRun(matching: query, in: otherRuns, relativeTo: currentRun)
+        return findRun(matching: query, in: pool, relativeTo: currentRun)
     }
 
     typealias HistoricalQueryCriteria = Runalyst.HistoricalQueryCriteria
@@ -693,36 +699,63 @@ struct HistoricalRunMatcher {
 
     /// Evaluates 30-day performance rankings, identifying the athlete's peak and toughest workouts.
     static func analyzePerformanceArc(
-        relativeTo currentRun: RunRecord,
+        relativeTo currentRun: RunRecord? = nil,
         in context: ModelContext?
     ) -> PerformanceArcAnalysis {
-        let currentTelemetry = extractTelemetry(from: currentRun)
         guard let context = context else {
+            if let current = currentRun {
+                let currentTelemetry = extractTelemetry(from: current)
+                return PerformanceArcAnalysis(
+                    totalRunsInPast30Days: 1,
+                    bestRun: currentTelemetry,
+                    worstRun: nil,
+                    currentRun: currentTelemetry
+                )
+            }
             return PerformanceArcAnalysis(
-                totalRunsInPast30Days: 1,
-                bestRun: currentTelemetry,
+                totalRunsInPast30Days: 0,
+                bestRun: nil,
                 worstRun: nil,
-                currentRun: currentTelemetry
+                currentRun: nil
             )
         }
 
         let descriptor = FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)])
         guard let allRuns = try? context.fetch(descriptor), !allRuns.isEmpty else {
+            if let current = currentRun {
+                let currentTelemetry = extractTelemetry(from: current)
+                return PerformanceArcAnalysis(
+                    totalRunsInPast30Days: 1,
+                    bestRun: currentTelemetry,
+                    worstRun: nil,
+                    currentRun: currentTelemetry
+                )
+            }
             return PerformanceArcAnalysis(
-                totalRunsInPast30Days: 1,
-                bestRun: currentTelemetry,
+                totalRunsInPast30Days: 0,
+                bestRun: nil,
                 worstRun: nil,
-                currentRun: currentTelemetry
+                currentRun: nil
             )
         }
 
+        guard let referenceRun = currentRun ?? allRuns.first else {
+            return PerformanceArcAnalysis(
+                totalRunsInPast30Days: 0,
+                bestRun: nil,
+                worstRun: nil,
+                currentRun: nil
+            )
+        }
+        let currentTelemetry = extractTelemetry(from: referenceRun)
+
         let calendar = Calendar.current
-        let thirtyDaysAgo = calendar.date(byAdding: .day, value: -30, to: currentRun.date) ?? currentRun.date.addingTimeInterval(-30 * 86400)
-        let futureLimit = currentRun.date.addingTimeInterval(3600)
+        let thirtyDaysAgo = calendar.date(byAdding: .day, value: -30, to: referenceRun.date) ?? referenceRun.date.addingTimeInterval(-30 * 86400)
+        let futureLimit = referenceRun.date.addingTimeInterval(3600)
 
         var past30DaysRuns = allRuns.filter { $0.date >= thirtyDaysAgo && $0.date <= futureLimit }
-        if !past30DaysRuns.contains(where: { $0.id == currentRun.id }) {
-            past30DaysRuns.append(currentRun)
+        if !past30DaysRuns.contains(where: { $0.id == referenceRun.id }) {
+            past30DaysRuns.append(referenceRun)
         }
 
         guard past30DaysRuns.count >= 2 else {
@@ -801,12 +834,15 @@ struct HistoricalRunMatcher {
 
     /// Formats a concise catalog of the athlete's recorded workouts for tool listing queries.
     static func listRecentRuns(
-        relativeTo currentRun: RunRecord,
+        relativeTo currentRun: RunRecord? = nil,
         in context: ModelContext?,
         limit: Int = 10
     ) -> String {
         guard let context = context else {
-            return "Only the current run is available in stored records."
+            if let currentRun {
+                return "Only the current run is available in stored records."
+            }
+            return "No workouts found in stored records."
         }
         let descriptor = FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)])
         guard let allRuns = try? context.fetch(descriptor), !allRuns.isEmpty else {
@@ -825,7 +861,7 @@ struct HistoricalRunMatcher {
             "Showing \(min(limit, totalCount)) most recent workouts (newest to oldest):"
         ]
         for run in allRuns.prefix(limit) {
-            let isCurrent = run.id == currentRun.id
+            let isCurrent = currentRun != nil && run.id == currentRun?.id
             let marker = isCurrent ? " [CURRENT WORKOUT]" : ""
             let env = (run.isIndoor ?? false) ? "Indoor Treadmill" : "Outdoor"
             let distKm = String(format: "%.2f km", run.totalDistanceMeters / 1000.0)

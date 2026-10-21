@@ -224,4 +224,239 @@ final class AnalystChatEngineTests: XCTestCase {
 
         XCTAssertTrue(engine.messages.isEmpty)
     }
+
+    // MARK: - 6. Leaked Tool Syntax Sanitization and Fallback Action Execution
+
+    func testLeakedExecuteCoachActionDisplayDrillIsSanitizedAndAttachesDrillCard() async {
+        let run = makeRunRecord(date: Date())
+        let engine = AnalystChatEngine(runRecord: run, mode: .macroCoach)
+
+        engine.modelResponder = { _, _ in
+            """
+            With your 48-hour volume compressing gently and no limiting factors beyond a mild cardiac drift, a tempo-surge session is ideal—it builds strength while keeping intensity manageable. I'll display the tempo-surge drill for you right now.
+
+            Next run recommendation: tempo-surge session.
+
+            executeCoachAction:display_drill:tempo_surges
+            """
+        }
+
+        await engine.sendMessage("When should I run next, and what kind of session should I focus on?")
+
+        XCTAssertEqual(engine.messages.count, 2)
+        let analystMsg = engine.messages[1]
+        XCTAssertEqual(analystMsg.sender, .analyst)
+
+        // Raw action token must be stripped from visible text
+        XCTAssertFalse(analystMsg.text.contains("executeCoachAction"))
+        XCTAssertFalse(analystMsg.text.contains("display_drill"))
+
+        // Drill card must be seamlessly attached via fallback
+        XCTAssertEqual(analystMsg.attachedDrillId, .tempoSurges)
+    }
+
+    func testLeakedDirectDisplayDrillIsSanitized() async {
+        let run = makeRunRecord(date: Date())
+        let engine = AnalystChatEngine(runRecord: run, mode: .macroCoach)
+
+        engine.modelResponder = { _, _ in
+            """
+            Focus: A 45-minute easy-pace run to reinforce your progress.
+
+            I'll display the easy-pace drill to guide you.
+
+            display_drill: easy_pace_drill
+            """
+        }
+
+        await engine.sendMessage("When should I run next?")
+
+        XCTAssertEqual(engine.messages.count, 2)
+        let analystMsg = engine.messages[1]
+        XCTAssertFalse(analystMsg.text.contains("display_drill"))
+        XCTAssertFalse(analystMsg.text.contains("easy_pace_drill"))
+    }
+
+    func testLeakedToolSyntaxInHistoryIsSanitizedFromRecentDialoguePrompt() {
+        let run = makeRunRecord(date: Date())
+        let engine = AnalystChatEngine(runRecord: run, mode: .macroCoach)
+
+        // Simulate an earlier message that had raw leaked tokens
+        engine.messages.append(AnalystChatMessage(sender: .user, text: "What drill should I do?", status: .delivered))
+        engine.messages.append(
+            AnalystChatMessage(
+                sender: .analyst,
+                text: "Here is your plan. executeCoachAction:display_drill:tempo_surges",
+                status: .delivered
+            )
+        )
+        engine.messages.append(AnalystChatMessage(sender: .user, text: "Should I run tomorrow?", status: .delivered))
+
+        if #available(iOS 26.0, *) {
+            let instructions = engine.buildLeanSystemInstructions()
+
+            // Reference dialogue block must NOT contain the leaked action strings
+            let recentDialogue = instructions.components(separatedBy: "RECENT DIALOGUE (Reference Only):").last?
+                .components(separatedBy: "TOOLS:").first ?? ""
+            XCTAssertFalse(recentDialogue.contains("executeCoachAction"))
+            XCTAssertFalse(recentDialogue.contains("display_drill"))
+            XCTAssertTrue(recentDialogue.contains("Coach: \"Here is your plan.\""))
+        }
+    }
+
+    // MARK: - 7. Standalone "Display the drill." Sanitization & Action Detection
+
+    func testSanitizerCleansStandaloneDisplayTheDrillAndProvidesCleanText() {
+        if #available(iOS 26.0, *) {
+            let sanitized = AnalystResponseSanitizer.sanitize(text: "Display the drill.")
+            XCTAssertEqual(sanitized.detectedAction, .displayDrill)
+            XCTAssertEqual(sanitized.text, "Here is the drill to focus on.")
+
+            let sanitizedWithSpecific = AnalystResponseSanitizer.sanitize(text: "Display drill: cadence_pyramids")
+            XCTAssertEqual(sanitizedWithSpecific.detectedAction, .displayDrill)
+            XCTAssertEqual(sanitizedWithSpecific.text, "Here is the Cadence Pyramids drill to focus on.")
+        }
+    }
+
+    // MARK: - 8. Proactive Drill Attachment on Demand
+
+    func testExplicitUserDrillRequestAttachesDrillCardEvenWithoutToolCall() async {
+        let run = makeRunRecord(date: Date())
+        let engine = AnalystChatEngine(runRecord: run, mode: .macroCoach)
+
+        // Model returns pure prose with no tool call and no leaked token
+        engine.modelResponder = { _, _ in
+            "Cadence pyramids are a fantastic way to train a lighter foot strike and keep your bounce controlled."
+        }
+
+        await engine.sendMessage("Focus on the cadence pyramid drill")
+
+        XCTAssertEqual(engine.messages.count, 2)
+        let analystMsg = engine.messages[1]
+        XCTAssertEqual(analystMsg.sender, .analyst)
+        XCTAssertEqual(analystMsg.attachedDrillId, .cadencePyramids, "Drill card must be attached proactively when user asks for cadence pyramids")
+    }
+
+    // MARK: - 9. Affirmative Confirmation ("Display the drill." / "Yes") Attaches Prior Mentioned Drill
+
+    func testAffirmativeConfirmationFollowingDrillMentionAttachesDrillCard() async {
+        let run = makeRunRecord(date: Date())
+        let engine = AnalystChatEngine(runRecord: run, mode: .macroCoach)
+
+        // Turn 1: Coach recommends Cadence Pyramids
+        engine.messages.append(AnalystChatMessage(sender: .user, text: "How can I improve my rhythm?", status: .delivered))
+        engine.messages.append(AnalystChatMessage(sender: .analyst, text: "I recommend trying the Cadence Pyramids drill before your next easy run.", status: .delivered))
+
+        // Turn 2: User responds "Display the drill."
+        engine.modelResponder = { _, _ in
+            "Here is the workout structure for you."
+        }
+
+        await engine.sendMessage("Display the drill.")
+
+        XCTAssertEqual(engine.messages.count, 4)
+        let lastMsg = engine.messages[3]
+        XCTAssertEqual(lastMsg.attachedDrillId, .cadencePyramids, "Affirmative command must attach the drill mentioned in dialogue")
+    }
+
+    // MARK: - 10. Tomorrow Run Query Proactively Attaches Session Card
+
+    func testTomorrowRunQueryProactivelyAttachesSessionCard() async {
+        let run = makeRunRecord(date: Date())
+        let engine = AnalystChatEngine(runRecord: run, mode: .macroCoach)
+
+        engine.modelResponder = { _, _ in
+            "Tomorrow is planned as a scheduled rest day to allow your legs to recover fully."
+        }
+
+        await engine.sendMessage("Can I run tomorrow?")
+
+        XCTAssertEqual(engine.messages.count, 2)
+        let analystMsg = engine.messages[1]
+        XCTAssertNotNil(analystMsg.attachedSession, "Session card must be attached when runner asks about tomorrow's schedule")
+    }
+
+    // MARK: - 11. System Prompt Characters Strictly Under 1200 With Full History
+
+    func testSystemInstructionsUnder1200CharactersWithFourTurns() {
+        let run = makeRunRecord(date: Date())
+        let engine = AnalystChatEngine(runRecord: run, mode: .macroCoach)
+
+        // Populate 4 full turns of dialogue
+        for i in 1...4 {
+            engine.messages.append(AnalystChatMessage(sender: .user, text: "Question number \(i) about my workout pacing and heart rate recovery?", status: .delivered))
+            engine.messages.append(AnalystChatMessage(sender: .analyst, text: "Answer number \(i) explaining the physiological reason why pacing was stable.", status: .delivered))
+        }
+
+        if #available(iOS 26.0, *) {
+            let instructions = engine.buildLeanSystemInstructions()
+
+            // Verify prompt rules
+            XCTAssertTrue(instructions.contains("ACWR: Acute:Chronic Workload Ratio"), "Prompt must ground ACWR acronym")
+            XCTAssertTrue(instructions.contains("Proactive Cards: Never ask permission"), "Prompt must ban permission asking")
+            XCTAssertTrue(instructions.contains("Display the drill"), "Prompt must explicitly forbid echoing display the drill")
+
+            // TN3193 character budget ceiling
+            XCTAssertTrue(instructions.count < 1200, "System instructions must stay strictly under 1,200 chars (was \(instructions.count))")
+        }
+    }
+
+    // MARK: - 12. Next Scheduled Run Resolution (Not Tomorrow's Rest Day)
+
+    func testWhenIsMyNextScheduledRunAttachesUpcomingRunSessionCardNotRestDay() async {
+        let run = makeRunRecord(date: Date())
+        let engine = AnalystChatEngine(runRecord: run, mode: .macroCoach)
+
+        engine.modelResponder = { _, _ in
+            "Your next scheduled run is on Thursday: a 30-minute Easy Aerobic run."
+        }
+
+        await engine.sendMessage("So when is my next scheduled run?")
+
+        XCTAssertEqual(engine.messages.count, 2)
+        let analystMsg = engine.messages[1]
+        XCTAssertNotNil(analystMsg.attachedSession, "Session card must be attached when runner asks for next scheduled run")
+        XCTAssertFalse(analystMsg.attachedSession?.isRestDay ?? true, "Attached session must be an actual run, not a rest day")
+    }
+
+    // MARK: - 13. Sanitizer Strips Trailing Repetitive Offers
+
+    func testSanitizerStripsTrailingSharpenFormOffers() {
+        if #available(iOS 26.0, *) {
+            let input1 = "Tomorrow is a rest day—no run scheduled. Take this time to recover and prepare for your next session. Would you like a drill to sharpen your running form or anything else?"
+            let cleaned1 = AnalystResponseSanitizer.sanitize(text: input1).text
+            XCTAssertEqual(cleaned1, "Tomorrow is a rest day—no run scheduled. Take this time to recover and prepare for your next session.")
+
+            let input2 = "Your readiness is strong—great! But tomorrow is a rest day for recovery. Would you like me to display your current readiness and workload overview?"
+            let cleaned2 = AnalystResponseSanitizer.sanitize(text: input2).text
+            XCTAssertEqual(cleaned2, "Your readiness is strong—great! But tomorrow is a rest day for recovery.")
+        }
+    }
+
+    // MARK: - 14. Decoupled Macro Coach (Zero Runs / No RunRecord Anchor)
+
+    func testMacroCoachDecoupledFromRunRecordInitializesAndGeneratesInstructionsUnder1200Chars() {
+        if #available(iOS 26.0, *) {
+            let engine = AnalystChatEngine(modelContext: nil, runRecord: nil, mode: .macroCoach)
+            let instructions = engine.buildLeanSystemInstructions()
+
+            XCTAssertFalse(instructions.isEmpty)
+            XCTAssertTrue(instructions.contains("Today:"), "System instructions should provide today schedule context")
+            XCTAssertTrue(instructions.count < 1200, "System instructions must stay strictly under 1,200 chars (was \(instructions.count))")
+        }
+    }
+
+    func testMacroCoachDecoupledCanAnswerQuestionsAndAttachCards() async {
+        let engine = AnalystChatEngine(modelContext: nil, runRecord: nil, mode: .macroCoach)
+
+        engine.modelResponder = { _, _ in
+            "Tomorrow is a scheduled rest day. Take time to recover."
+        }
+
+        await engine.sendMessage("Should I run tomorrow?")
+
+        XCTAssertEqual(engine.messages.count, 2)
+        let analystMsg = engine.messages[1]
+        XCTAssertNotNil(analystMsg.attachedSession, "Session card should attach proactively even without an anchored runRecord")
+    }
 }
