@@ -1126,4 +1126,70 @@ final class FramboiseEngineTests: XCTestCase {
         )
         XCTAssertNotEqual(classificationFail, "Intervals", "2 cycles with cv < 0.12 must not classify as Intervals")
     }
+
+    // MARK: - Heart Rate Missing Sample Dilution Protection
+
+    func testGeneratePhaseSegments_DoesNotDiluteHRWithMissingSampleBuckets() async {
+        let engine = FramboiseEngine()
+        var buckets: [BucketData] = []
+        var currentTime = Date()
+
+        // 50 buckets total:
+        // 40 buckets with authentic HR 155 BPM
+        // 10 buckets with dropped sensor reading (0 BPM)
+        for i in 0..<50 {
+            let hr: Double = (i % 5 == 0) ? 0.0 : 155.0
+            buckets.append(
+                BucketData(
+                    startTime: currentTime,
+                    distanceMeters: 40.0,
+                    durationSeconds: 15.0,
+                    meanPaceSecPerKm: 375.0,
+                    meanCadence: 160.0,
+                    meanHR: hr
+                )
+            )
+            currentTime = currentTime.addingTimeInterval(15.0)
+        }
+
+        let segments = await engine.generatePhaseSegments(from: buckets, cadenceFloor: 150.0)
+        XCTAssertFalse(segments.isEmpty)
+
+        // Prior to the fix, 155 * (40/50) = 124 BPM.
+        // With the fix, average HR across valid buckets must be exactly 155 BPM.
+        for seg in segments {
+            XCTAssertEqual(seg.avgHR, 155.0, accuracy: 0.1, "PhaseSegment avgHR must not be diluted by zero-HR buckets")
+        }
+    }
+
+    func testCalculateSplits_DoesNotDiluteHRWithMissingSampleBuckets() async {
+        let engine = FramboiseEngine()
+        var buckets: [BucketData] = []
+        var currentTime = Date()
+
+        // Generate 1 km of running: 25 buckets of 40m each = 1000m
+        // 20 buckets with 154 BPM, 5 buckets with 0 BPM (missing samples)
+        for i in 0..<25 {
+            let hr: Double = (i % 5 == 0) ? 0.0 : 154.0
+            buckets.append(
+                BucketData(
+                    startTime: currentTime,
+                    distanceMeters: 40.0,
+                    durationSeconds: 15.0,
+                    meanPaceSecPerKm: 375.0,
+                    meanCadence: 160.0,
+                    meanHR: hr
+                )
+            )
+            currentTime = currentTime.addingTimeInterval(15.0)
+        }
+
+        let splits = await engine.calculateSplits(from: buckets, splitDistanceMeters: 1000.0)
+        XCTAssertEqual(splits.count, 1)
+
+        let split = splits[0]
+        // Prior to fix, 154 * (20/25) = 123.2 BPM.
+        // With fix, avgHeartRate must equal 154 BPM.
+        XCTAssertEqual(split.avgHeartRate, 154.0, accuracy: 0.1, "Split avgHeartRate must not be diluted by missing HR")
+    }
 }

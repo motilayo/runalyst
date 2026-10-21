@@ -46,6 +46,8 @@ struct AdaptiveWorkoutTelemetryCard: View {
                     workoutType: workoutType ?? runRecord.detectedTypeRaw,
                     percentZone4: runRecord.percentZone4,
                     hrCV: runRecord.hrCV,
+                    splits: runRecord.signature?.splits ?? [],
+                    rawAvgHeartRate: runRecord.rawAvgHeartRate,
                     selectedModality: canToggle ? $selectedModality : nil
                 )
             } else {

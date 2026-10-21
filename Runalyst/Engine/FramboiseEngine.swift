@@ -281,7 +281,7 @@ actor FramboiseEngine {
         var raw: [PhaseSegment] = []
         var curKind = ""
         var segStart: Double = 0
-        var pSum = 0.0, cSum = 0.0, hrSum = 0.0, count = 0.0, elapsed = 0.0
+        var pSum = 0.0, cSum = 0.0, hrSum = 0.0, count = 0.0, hrCount = 0.0, elapsed = 0.0
 
         for (index, b) in buckets.enumerated() {
             // 20-bucket rolling centered window (as mandated by AGENTS.md ADR-0006/0007)
@@ -325,16 +325,19 @@ actor FramboiseEngine {
                     kind: curKind,
                     avgPace: count > 0 ? pSum / count : 0,
                     avgCadence: count > 0 ? cSum / count : 0,
-                    avgHR: count > 0 ? hrSum / count : 0
+                    avgHR: hrCount > 0 ? hrSum / hrCount : 0
                 ))
                 curKind = kind
                 segStart = elapsed
-                pSum = 0; cSum = 0; hrSum = 0; count = 0
+                pSum = 0; cSum = 0; hrSum = 0; count = 0; hrCount = 0
             }
 
             pSum += b.meanPaceSecPerKm
             cSum += b.meanCadence
-            if b.meanHR > 0 { hrSum += b.meanHR }
+            if b.meanHR >= 40.0 {
+                hrSum += b.meanHR
+                hrCount += 1.0
+            }
             count += 1.0
             elapsed += b.durationSeconds
         }
@@ -346,7 +349,7 @@ actor FramboiseEngine {
                 kind: curKind,
                 avgPace: count > 0 ? pSum / count : 0,
                 avgCadence: count > 0 ? cSum / count : 0,
-                avgHR: count > 0 ? hrSum / count : 0
+                avgHR: hrCount > 0 ? hrSum / hrCount : 0
             ))
         }
 
@@ -491,13 +494,18 @@ actor FramboiseEngine {
         let durA = a.durationSeconds
         let durB = b.durationSeconds
         let activeDur = durA + durB
+        let hrDurA = a.avgHR > 0 ? durA : 0.0
+        let hrDurB = b.avgHR > 0 ? durB : 0.0
+        let totalHRDur = hrDurA + hrDurB
+        let mergedHR = totalHRDur > 0 ? (a.avgHR * hrDurA + b.avgHR * hrDurB) / totalHRDur : (a.avgHR > 0 ? a.avgHR : b.avgHR)
+
         return PhaseSegment(
             startSeconds: a.startSeconds,
             endSeconds: b.endSeconds,
             kind: a.kind,
             avgPace: activeDur > 0 ? (a.avgPace * durA + b.avgPace * durB) / activeDur : a.avgPace,
             avgCadence: activeDur > 0 ? (a.avgCadence * durA + b.avgCadence * durB) / activeDur : a.avgCadence,
-            avgHR: activeDur > 0 ? (a.avgHR * durA + b.avgHR * durB) / activeDur : a.avgHR
+            avgHR: mergedHR
         )
     }
 
@@ -1019,13 +1027,15 @@ actor FramboiseEngine {
         var currentSplitIndex = 1
 
         var accumulatedDistance = 0.0, accumulatedDuration = 0.0
-        var accumulatedWeightedHR = 0.0, accumulatedWeightedCadence = 0.0, accumulatedElevation = 0.0
+        var accumulatedWeightedHR = 0.0, accumulatedHRDuration = 0.0
+        var accumulatedWeightedCadence = 0.0, accumulatedCadenceDuration = 0.0
+        var accumulatedElevation = 0.0
 
         func flushSplit() {
             guard accumulatedDistance > 0 else { return }
             let pace = accumulatedDuration / (accumulatedDistance / 1000.0)
-            let hr = accumulatedDuration > 0 ? (accumulatedWeightedHR / accumulatedDuration) : 0.0
-            let cad = accumulatedDuration > 0 ? (accumulatedWeightedCadence / accumulatedDuration) : 0.0
+            let hr = accumulatedHRDuration > 0 ? (accumulatedWeightedHR / accumulatedHRDuration) : 0.0
+            let cad = accumulatedCadenceDuration > 0 ? (accumulatedWeightedCadence / accumulatedCadenceDuration) : 0.0
             splits.append(RunSplit(
                 index: currentSplitIndex,
                 distanceMeters: accumulatedDistance,
@@ -1037,7 +1047,9 @@ actor FramboiseEngine {
             ))
             currentSplitIndex += 1
             accumulatedDistance = 0; accumulatedDuration = 0
-            accumulatedWeightedHR = 0; accumulatedWeightedCadence = 0; accumulatedElevation = 0
+            accumulatedWeightedHR = 0; accumulatedHRDuration = 0
+            accumulatedWeightedCadence = 0; accumulatedCadenceDuration = 0
+            accumulatedElevation = 0
         }
 
         for bucket in buckets {
@@ -1052,8 +1064,14 @@ actor FramboiseEngine {
                 if bucketDistance <= distanceNeeded {
                     accumulatedDistance += bucketDistance
                     accumulatedDuration += bucketDuration
-                    accumulatedWeightedHR += bucketHR * bucketDuration
-                    accumulatedWeightedCadence += bucketCadence * bucketDuration
+                    if bucketHR >= 40.0 {
+                        accumulatedWeightedHR += bucketHR * bucketDuration
+                        accumulatedHRDuration += bucketDuration
+                    }
+                    if bucketCadence > 0.0 {
+                        accumulatedWeightedCadence += bucketCadence * bucketDuration
+                        accumulatedCadenceDuration += bucketDuration
+                    }
                     accumulatedElevation += bucketElevation
                     if accumulatedDistance >= splitDistanceMeters { flushSplit() }
                     break
@@ -1064,8 +1082,14 @@ actor FramboiseEngine {
 
                     accumulatedDistance += distanceNeeded
                     accumulatedDuration += splitDurationPart
-                    accumulatedWeightedHR += bucketHR * splitDurationPart
-                    accumulatedWeightedCadence += bucketCadence * splitDurationPart
+                    if bucketHR >= 40.0 {
+                        accumulatedWeightedHR += bucketHR * splitDurationPart
+                        accumulatedHRDuration += splitDurationPart
+                    }
+                    if bucketCadence > 0.0 {
+                        accumulatedWeightedCadence += bucketCadence * splitDurationPart
+                        accumulatedCadenceDuration += splitDurationPart
+                    }
                     accumulatedElevation += splitElevationPart
                     flushSplit()
 
