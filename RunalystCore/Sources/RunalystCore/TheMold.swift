@@ -186,6 +186,113 @@ public struct WorkingStats: Sendable, Codable, Equatable {
     }
 }
 
+// MARK: - Interval Segmentation Ingot (Topological & Multi-Signal Shapes)
+
+/// Classification of a segmented interval phase.
+public enum IntervalPhaseKind: String, Sendable, Codable, Equatable, CaseIterable {
+    case work
+    case recovery
+    case steady
+    case walking
+}
+
+/// A discrete continuous temporal phase within a running session.
+public struct IntervalPhaseSegment: Sendable, Codable, Equatable {
+    public let startSeconds: Double
+    public let endSeconds: Double
+    public let kind: IntervalPhaseKind
+    public let avgPaceSecondsPerKm: Double
+    public let avgCadenceSPM: Double
+    public let avgHeartRateBPM: Double
+
+    public var durationSeconds: Double {
+        max(0.0, endSeconds - startSeconds)
+    }
+
+    public init(
+        startSeconds: Double,
+        endSeconds: Double,
+        kind: IntervalPhaseKind,
+        avgPaceSecondsPerKm: Double,
+        avgCadenceSPM: Double,
+        avgHeartRateBPM: Double
+    ) {
+        self.startSeconds = startSeconds
+        self.endSeconds = endSeconds
+        self.kind = kind
+        self.avgPaceSecondsPerKm = avgPaceSecondsPerKm
+        self.avgCadenceSPM = avgCadenceSPM
+        self.avgHeartRateBPM = avgHeartRateBPM
+    }
+}
+
+/// A corroborated surge-and-recovery oscillation cycle extracted from telemetry.
+public struct IntervalOscillationCycle: Sendable, Codable, Equatable {
+    public let workDurationSeconds: Double
+    public let recoveryDurationSeconds: Double
+    public let workCadenceSPM: Double
+    public let recoveryCadenceSPM: Double
+    public let workPaceSecondsPerKm: Double
+    public let recoveryPaceSecondsPerKm: Double
+    public let workHeartRateBPM: Double
+    public let recoveryHeartRateBPM: Double
+    public let isCorroborated: Bool
+    public let isDominantPaceSurge: Bool
+    public let corroborationScore: Int
+
+    public init(
+        workDurationSeconds: Double,
+        recoveryDurationSeconds: Double,
+        workCadenceSPM: Double,
+        recoveryCadenceSPM: Double,
+        workPaceSecondsPerKm: Double,
+        recoveryPaceSecondsPerKm: Double,
+        workHeartRateBPM: Double,
+        recoveryHeartRateBPM: Double,
+        isCorroborated: Bool,
+        isDominantPaceSurge: Bool = false,
+        corroborationScore: Int = 0
+    ) {
+        self.workDurationSeconds = workDurationSeconds
+        self.recoveryDurationSeconds = recoveryDurationSeconds
+        self.workCadenceSPM = workCadenceSPM
+        self.recoveryCadenceSPM = recoveryCadenceSPM
+        self.workPaceSecondsPerKm = workPaceSecondsPerKm
+        self.recoveryPaceSecondsPerKm = recoveryPaceSecondsPerKm
+        self.workHeartRateBPM = workHeartRateBPM
+        self.recoveryHeartRateBPM = recoveryHeartRateBPM
+        self.isCorroborated = isCorroborated
+        self.isDominantPaceSurge = isDominantPaceSurge
+        self.corroborationScore = corroborationScore
+    }
+}
+
+/// The synthesized result of biomechanical interval and progression segmentation.
+public struct IntervalSegmentationReport: Sendable, Codable, Equatable {
+    public let phases: [IntervalPhaseSegment]
+    public let cycles: [IntervalOscillationCycle]
+    public let workRepsCount: Int
+    public let cycleRegularityScore: Double
+    public let isMonotonicProgression: Bool
+    public let isIntermittentWorkout: Bool
+
+    public init(
+        phases: [IntervalPhaseSegment],
+        cycles: [IntervalOscillationCycle],
+        workRepsCount: Int,
+        cycleRegularityScore: Double,
+        isMonotonicProgression: Bool,
+        isIntermittentWorkout: Bool
+    ) {
+        self.phases = phases
+        self.cycles = cycles
+        self.workRepsCount = workRepsCount
+        self.cycleRegularityScore = cycleRegularityScore
+        self.isMonotonicProgression = isMonotonicProgression
+        self.isIntermittentWorkout = isIntermittentWorkout
+    }
+}
+
 // MARK: - Subjective Distress Signal (User Override States)
 
 /// Signals representing user overrides, reported physical fatigue, soreness,
