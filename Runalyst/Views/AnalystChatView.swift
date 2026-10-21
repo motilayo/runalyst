@@ -720,7 +720,7 @@ struct InlineChatDrillCard: View {
                 useMetricSystem: useMetric,
                 totalHistoricalRunsCount: runRecords.count
             )
-            let rx = TrainingZoneEngine.computePrescription(tzInput)
+            let rx = TrainingZoneEngine.computePrescription(tzInput, runs: runRecords)
             if !rx.compactDurationBand.isEmpty && rx.compactDurationBand != "Rest Day" {
                 return rx.compactDurationBand
             }

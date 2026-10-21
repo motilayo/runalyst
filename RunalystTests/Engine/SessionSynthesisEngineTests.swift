@@ -939,4 +939,227 @@ final class SessionSynthesisEngineTests: XCTestCase {
         XCTAssertEqual(points[0].cadence, 153.0)
         XCTAssertEqual(points[2].cadence, 153.0)
     }
+
+    // MARK: - Edge-Case Architecture Refinements (AC 1–AC 4)
+
+    @MainActor
+    func testRecentHadCadenceFade_ThreeTierDisjunction() {
+        let now = Date()
+        let twoDaysAgo = Calendar.current.date(byAdding: .day, value: -2, to: now) ?? now.addingTimeInterval(-172800)
+
+        // Tier 1: Tag present
+        let runWithTag = makeRun(date: twoDaysAgo, framboiseTags: [FramboiseReadinessTag.cadenceFade])
+        let stateTag = SessionSynthesisEngine.evaluateDailyState(
+            runRecords: [runWithTag],
+            activeGoal: "Base Building",
+            experienceLevel: "Intermediate",
+            useMetric: true,
+            now: now
+        )
+        if case .preRun(let session) = stateTag {
+            XCTAssertEqual(session.primerDrillId, .rhythmIntervals, "Tier 1: Tag .cadenceFade must select Rhythm Intervals")
+            XCTAssertTrue(session.groundedRationale.contains("Rhythm Intervals"))
+        } else {
+            XCTFail("Expected preRun state")
+        }
+
+        // Tier 2: Tag absent, slope < -0.15
+        let runWithSlope = makeRun(date: twoDaysAgo, framboiseTags: [])
+        runWithSlope.cadenceSlope = -0.22
+        let stateSlope = SessionSynthesisEngine.evaluateDailyState(
+            runRecords: [runWithSlope],
+            activeGoal: "Base Building",
+            experienceLevel: "Intermediate",
+            useMetric: true,
+            now: now
+        )
+        if case .preRun(let session) = stateSlope {
+            XCTAssertEqual(session.primerDrillId, .rhythmIntervals, "Tier 2: cadenceSlope < -0.15 must trigger Rhythm Intervals")
+        } else {
+            XCTFail("Expected preRun state")
+        }
+
+        // Tier 2 Negative: Tag absent, slope >= -0.15
+        let runWithGentleSlope = makeRun(date: twoDaysAgo, framboiseTags: [])
+        runWithGentleSlope.cadenceSlope = -0.05
+        let stateGentle = SessionSynthesisEngine.evaluateDailyState(
+            runRecords: [runWithGentleSlope],
+            activeGoal: "Base Building",
+            experienceLevel: "Intermediate",
+            useMetric: true,
+            now: now
+        )
+        if case .preRun(let session) = stateGentle {
+            XCTAssertNotEqual(session.primerDrillId, .rhythmIntervals, "Tier 2 Negative: cadenceSlope >= -0.15 should not trigger cadence fade")
+        } else {
+            XCTFail("Expected preRun state")
+        }
+
+        // Tier 3: Tag absent, slope nil, splits count >= 3 with drop >= 5.0 SPM
+        let runWithSplits = makeRun(date: twoDaysAgo, framboiseTags: [])
+        runWithSplits.cadenceSlope = nil
+        let splits = [
+            RunSplit(index: 1, distanceMeters: 1000, durationSeconds: 300, paceSecondsPerKm: 300, avgHeartRate: 145, avgCadence: 165.0, elevationGainMeters: 0),
+            RunSplit(index: 2, distanceMeters: 1000, durationSeconds: 300, paceSecondsPerKm: 300, avgHeartRate: 147, avgCadence: 164.0, elevationGainMeters: 0),
+            RunSplit(index: 3, distanceMeters: 1000, durationSeconds: 320, paceSecondsPerKm: 320, avgHeartRate: 152, avgCadence: 157.0, elevationGainMeters: 0)
+        ]
+        // Early 2/3 mean = (165 + 164) / 2 = 164.5. Late 1/3 mean = 157.0. Drop = 7.5 SPM (>= 5.0).
+        let sig = RunSignature(
+            classification: "Steady Effort",
+            confidence: 0.95,
+            probabilities: ["Steady Effort": 0.95],
+            anomalies: [],
+            cadenceFloor: 150.0,
+            phaseSegments: [],
+            dataSource: "wrist",
+            isIndoor: false,
+            needsInclineReview: false,
+            splits: splits
+        )
+        runWithSplits.signature = sig
+        let stateSplits = SessionSynthesisEngine.evaluateDailyState(
+            runRecords: [runWithSplits],
+            activeGoal: "Base Building",
+            experienceLevel: "Intermediate",
+            useMetric: true,
+            now: now
+        )
+        if case .preRun(let session) = stateSplits {
+            XCTAssertEqual(session.primerDrillId, .rhythmIntervals, "Tier 3: Splits cadence drop >= 5.0 SPM must trigger Rhythm Intervals")
+        } else {
+            XCTFail("Expected preRun state")
+        }
+    }
+
+    @MainActor
+    func testTargetCadenceBand_3NFConsistencyAcrossGoals() {
+        let base = 160
+        // Direct functional test
+        let bandProductive = SessionSynthesisEngine.targetCadenceBand(for: .rhythmIntervals, state: .productive, baseCadence: base)
+        XCTAssertEqual(bandProductive, "166–172 SPM", "Productive rhythm intervals must be +6 to +12 SPM")
+        XCTAssertFalse(bandProductive.contains("(Adapted)"), "Target band must not contain (Adapted) suffix")
+
+        let bandFatigue = SessionSynthesisEngine.targetCadenceBand(for: .cadencePyramids, state: .acuteFatigue, baseCadence: base)
+        XCTAssertEqual(bandFatigue, "159–165 SPM", "Acute fatigue must be -1 to +5 SPM")
+
+        let bandDeload = SessionSynthesisEngine.targetCadenceBand(for: .strides, state: .deload, baseCadence: base)
+        XCTAssertEqual(bandDeload, "170–178 SPM", "Deload strides must be +10 to +18 SPM")
+
+        // Cross-goal consistency: 10K vs Base Building vs 5K vs Polarized fallback
+        let goals = ["5K", "10K", "Half Marathon", "Base Building", "Marathon"]
+        let now = Date()
+        let twoDaysAgo = Calendar.current.date(byAdding: .day, value: -2, to: now) ?? now.addingTimeInterval(-172800)
+
+        for goal in goals {
+            let run = makeRun(date: twoDaysAgo, framboiseTags: [FramboiseReadinessTag.cadenceFade])
+            let state = SessionSynthesisEngine.evaluateDailyState(
+                runRecords: [run],
+                activeGoal: goal,
+                experienceLevel: "Intermediate",
+                useMetric: true,
+                now: now
+            )
+            if case .preRun(let session) = state {
+                if session.primerDrillId == .rhythmIntervals {
+                    XCTAssertTrue(session.primerTargetCadence.contains("SPM"))
+                    XCTAssertFalse(session.primerTargetCadence.contains("(Adapted)"))
+                }
+            }
+        }
+    }
+
+    func testExactThirtyFiveMinutePrescriptionAndPhaseCompilation() {
+        // Bijective domain model
+        XCTAssertEqual(DrillDuration.thirtyFiveMinutes.rawValue, 35)
+        XCTAssertEqual(DrillDuration.nearest(toMinutes: 35), .thirtyFiveMinutes)
+        XCTAssertEqual(DrillDuration.nearest(toMinutes: 34), .thirtyFiveMinutes)
+        XCTAssertEqual(DrillDuration.nearest(toMinutes: 36), .thirtyFiveMinutes)
+        XCTAssertEqual(DrillDuration.nearest(toMinutes: 32), .thirtyMinutes)
+        XCTAssertEqual(DrillDuration.nearest(toMinutes: 38), .fortyMinutes)
+
+        // PreRunDrill geometry for 35m session
+        let drill = PreRunDrill(
+            id: .tempoSurges,
+            previousCadence: 160,
+            targetCadence: "166–172 SPM",
+            duration: .thirtyFiveMinutes
+        )
+        let phases = drill.generatePhases()
+        let totalSeconds = phases.reduce(0.0) { $0 + Double($1.durationSeconds) }
+        XCTAssertEqual(totalSeconds, 35.0 * 60.0, "35-minute tempo surges must sum to exactly 2100 seconds")
+
+        // WorkoutPlan compilation
+        #if canImport(WorkoutKit)
+        if #available(iOS 17.0, *) {
+            let plan = drill.buildWorkoutPlan()
+            XCTAssertNotNil(plan)
+        }
+        #endif
+
+        // Readout compilation
+        let readout = DrillReadout.readout(
+            for: .tempoSurges,
+            targetCadence: "166–172 SPM",
+            previousCadence: 160,
+            customDuration: .thirtyFiveMinutes
+        )
+        XCTAssertEqual(readout.durationMinutes, 35)
+        XCTAssertTrue(readout.subtitle.contains("35 min"))
+        XCTAssertFalse(readout.breakdown.isEmpty)
+
+        // DTO compilation with nearest-neighbor lookup
+        let dto = DrillPrescriptionDTO(
+            title: "10K Threshold Surges",
+            preRunDrillId: PreRunDrillId.tempoSurges.rawValue,
+            purpose: "Threshold quality session",
+            targetCadence: "166–172 SPM",
+            previousCadence: 160,
+            durationMinutes: 35,
+            readinessState: ReadinessState.productive.rawValue
+        )
+        let readoutFromPrescription = ActiveDrillReadoutItem.fromPrescription(dto: dto)
+        XCTAssertEqual(readoutFromPrescription.readout.durationMinutes, 35)
+        XCTAssertEqual(readoutFromPrescription.dto.durationMinutes, 35)
+    }
+
+    @MainActor
+    func testTrainingZoneEngineParityWithSessionSynthesisEngine() {
+        let now = Date()
+        let twoDaysAgo = Calendar.current.date(byAdding: .day, value: -2, to: now) ?? now.addingTimeInterval(-172800)
+        let run = makeRun(date: twoDaysAgo, workingAvgCadence: 162.0, workingAvgHeartRate: 142.0)
+        let runs = [run]
+
+        let dailyState = SessionSynthesisEngine.evaluateDailyState(
+            runRecords: runs,
+            activeGoal: "Base Building",
+            experienceLevel: "Intermediate",
+            useMetric: true,
+            userHeightCm: 175.0,
+            now: now
+        )
+
+        let expectedSession: PrescribedDailySession = {
+            switch dailyState {
+            case .preRun(let s): return s
+            case .completedToday(_, let tomorrow): return tomorrow
+            }
+        }()
+
+        let tzRx = TrainingZoneEngine.computePrescription(
+            runs: runs,
+            activeGoal: "Base Building",
+            experienceLevel: "Intermediate",
+            useMetricSystem: true,
+            userHeightCm: 175.0,
+            now: now
+        )
+
+        // Bit-for-bit parity
+        XCTAssertEqual(tzRx.nextSessionName, expectedSession.sessionTitle)
+        XCTAssertEqual(tzRx.prescribedDurationBand, expectedSession.durationBand)
+        XCTAssertEqual(tzRx.prescribedPaceBand, expectedSession.paceBand)
+        XCTAssertEqual(tzRx.sessionRationale, expectedSession.groundedRationale)
+        XCTAssertFalse(tzRx.isColdStart)
+        XCTAssertFalse(tzRx.isSubjectiveOverride)
+    }
 }

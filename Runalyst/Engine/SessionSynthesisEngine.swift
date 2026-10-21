@@ -118,6 +118,34 @@ enum DailyTrainingState: Sendable, Equatable {
 /// Single source of truth powering the dedicated Workouts tab, Dashboard Directive card, and AI Coach state.
 enum SessionSynthesisEngine {
 
+    /// Pure, deterministic calculation of target cadence band for a pre-run primer
+    /// decoupled from goal-specific branching (enforcing 3NF parameterization).
+    public static func targetCadenceBand(
+        for primer: PreRunDrillId,
+        state: ReadinessState,
+        baseCadence: Int
+    ) -> String {
+        switch state {
+        case .acuteFatigue:
+            return "\(baseCadence - 1)–\(baseCadence + 5) SPM"
+        case .deload:
+            return "\(baseCadence + 10)–\(baseCadence + 18) SPM"
+        case .productive:
+            switch primer {
+            case .cadencePyramids:
+                return "\(baseCadence + 4)–\(baseCadence + 10) SPM"
+            case .rhythmIntervals:
+                return "\(baseCadence + 6)–\(baseCadence + 12) SPM"
+            case .tempoSurges:
+                return "\(baseCadence + 6)–\(baseCadence + 12) SPM"
+            case .strides:
+                return "\(baseCadence + 8)–\(baseCadence + 14) SPM"
+            default:
+                return "\(baseCadence + 4)–\(baseCadence + 10) SPM"
+            }
+        }
+    }
+
     /// Determines whether a workout recorded today is strictly a short pre-run primer drill
     /// rather than the day's main aerobic or quality run.
     @MainActor
@@ -223,15 +251,21 @@ enum SessionSynthesisEngine {
             if recent.framboiseTags.contains("cardiacDrift") || recent.framboiseTags.contains("fatigueDrift") {
                 hadCardiacDrift = true
             }
-            let analysisContext = WorkoutAnalysisContext(
-                runRecord: recent,
-                runSignature: recent.signature,
-                macroProfile: nil,
-                recoveryTimeline: RecoveryTimeline(now: now, lastHard: nil, hardSessionsLast72h: 0, requiredHours: 24, state: .productive)
-            )
-            if analysisContext.hasCardiacDrift {
-                hadCardiacDrift = true
-                driftBPM = analysisContext.cardiacDriftMagnitudeBPM > 0 ? analysisContext.cardiacDriftMagnitudeBPM : 18
+            let splits = recent.splits
+            if splits.count >= 4 {
+                let half = splits.count / 2
+                let earlySplits = Array(splits[0..<half])
+                let lateSplits = Array(splits[half...])
+                let earlyHR = earlySplits.reduce(0.0) { $0 + $1.avgHeartRate } / Double(earlySplits.count)
+                let lateHR = lateSplits.reduce(0.0) { $0 + $1.avgHeartRate } / Double(lateSplits.count)
+                let hrRise = Int((lateHR - earlyHR).rounded())
+                let earlyPace = earlySplits.reduce(0.0) { $0 + $1.paceSecondsPerKm } / Double(earlySplits.count)
+                let latePace = lateSplits.reduce(0.0) { $0 + $1.paceSecondsPerKm } / Double(lateSplits.count)
+                let paceDiff = latePace - earlyPace
+                if hrRise >= 5 && paceDiff >= -2.0 {
+                    hadCardiacDrift = true
+                    driftBPM = max(18, hrRise)
+                }
             }
         }
 
@@ -259,7 +293,6 @@ enum SessionSynthesisEngine {
         let readinessStatus: String
         let primerDrillId: PreRunDrillId
         let primerTitle: String
-        let primerTarget: String
         let primerWork: String
         let primerDuration: String
         let isTrimmed: Bool
@@ -276,7 +309,28 @@ enum SessionSynthesisEngine {
         }()
         let recentHadCadenceFade: Bool = {
             guard let recent = recentRun else { return false }
-            return recent.framboiseTags.contains(FramboiseReadinessTag.cadenceFade)
+            // Tier 1 (Tag): Persisted Tag
+            if recent.framboiseTags.contains(FramboiseReadinessTag.cadenceFade) {
+                return true
+            }
+            // Tier 2 (Linear Regression Slope): Slope < -0.15
+            if let slope = recent.cadenceSlope {
+                return slope < -0.15
+            }
+            // Tier 3 (Raw Split Telemetry Decay): >= 3 splits, mean cadence drop >= 5.0 SPM
+            let splits = recent.splits
+            if splits.count >= 3 {
+                let splitIdx = (splits.count * 2) / 3
+                let earlyCount = Double(splitIdx)
+                let lateCount = Double(splits.count - splitIdx)
+                guard earlyCount > 0 && lateCount > 0 else { return false }
+                let early = splits[0..<splitIdx].map(\.avgCadence).reduce(0, +) / earlyCount
+                let late = splits[splitIdx...].map(\.avgCadence).reduce(0, +) / lateCount
+                if (early - late) >= 5.0 {
+                    return true
+                }
+            }
+            return false
         }()
 
         // Evaluate Streak & 48-Hour Volume Compression
@@ -372,7 +426,6 @@ enum SessionSynthesisEngine {
 
             primerDrillId = .cadencePyramids
             primerTitle = "Cadence Pyramids"
-            primerTarget = "\(baseCadence - 1)–\(baseCadence + 5) SPM"
             primerWork = "2 x 30 sec work • 45 sec walk • Moderate / Zone 3"
             primerDuration = "7m 30s"
             isTrimmed = true
@@ -392,7 +445,6 @@ enum SessionSynthesisEngine {
 
             primerDrillId = .strides
             primerTitle = "Strides"
-            primerTarget = "\(baseCadence + 10)–\(baseCadence + 18) SPM"
             primerWork = "3 x 20 sec strides • 90 sec walk"
             primerDuration = "7m 30s"
             isTrimmed = true
@@ -415,7 +467,6 @@ enum SessionSynthesisEngine {
 
                 primerDrillId = recentHadExcessiveBounce ? .cadencePyramids : .rhythmIntervals
                 primerTitle = primerDrillId == .cadencePyramids ? "Cadence Pyramids" : "Rhythm Intervals"
-                primerTarget = primerDrillId == .cadencePyramids ? "\(baseCadence + 4)–\(baseCadence + 10) SPM" : "\(baseCadence + 8)–\(baseCadence + 14) SPM"
                 primerWork = primerDrillId == .cadencePyramids ? "4 x 30 sec work • 45 sec walk" : "4 x 30 sec work • 45 sec jog float"
                 primerDuration = "10 min drill"
             } else if activeGoal.localizedCaseInsensitiveContains("10K") {
@@ -432,7 +483,6 @@ enum SessionSynthesisEngine {
 
                 primerDrillId = recentHadCadenceFade ? .rhythmIntervals : (recentHadExcessiveBounce ? .cadencePyramids : .tempoSurges)
                 primerTitle = primerDrillId == .tempoSurges ? "Tempo Surges" : (primerDrillId == .rhythmIntervals ? "Rhythm Intervals" : "Cadence Pyramids")
-                primerTarget = "\(baseCadence + 6)–\(baseCadence + 12) SPM"
                 primerWork = "4 x 30 sec work • 45 sec recovery"
                 primerDuration = "10 min drill"
             } else if activeGoal.localizedCaseInsensitiveContains("Half") || activeGoal.localizedCaseInsensitiveContains("Marathon") {
@@ -450,7 +500,6 @@ enum SessionSynthesisEngine {
 
                     primerDrillId = recentHadExcessiveBounce ? .cadencePyramids : .rhythmIntervals
                     primerTitle = primerDrillId == .cadencePyramids ? "Cadence Pyramids" : "Rhythm Intervals"
-                    primerTarget = "\(baseCadence + 4)–\(baseCadence + 10) SPM"
                     primerWork = "4 x 30 sec work • 45 sec walk"
                     primerDuration = "10 min drill"
                 } else {
@@ -469,7 +518,6 @@ enum SessionSynthesisEngine {
 
                     primerDrillId = recentHadExcessiveBounce ? .cadencePyramids : (recentHadCadenceFade ? .rhythmIntervals : .strides)
                     primerTitle = primerDrillId == .strides ? "Strides" : (primerDrillId == .rhythmIntervals ? "Rhythm Intervals" : "Cadence Pyramids")
-                    primerTarget = "\(baseCadence + 4)–\(baseCadence + 10) SPM"
                     primerWork = "4 x 30 sec work • 45 sec walk"
                     primerDuration = "10 min drill"
                 }
@@ -495,7 +543,6 @@ enum SessionSynthesisEngine {
 
                 primerDrillId = recentHadExcessiveBounce ? .cadencePyramids : (recentHadCadenceFade ? .rhythmIntervals : .cadencePyramids)
                 primerTitle = primerDrillId == .rhythmIntervals ? "Rhythm Intervals" : "Cadence Pyramids"
-                primerTarget = "\(baseCadence + 4)–\(baseCadence + 10) SPM"
                 primerWork = "4 x 30 sec work • 45 sec walk"
                 primerDuration = "10 min drill"
             }
@@ -523,10 +570,11 @@ enum SessionSynthesisEngine {
 
             primerDrillId = recentHadExcessiveBounce ? .cadencePyramids : (recentHadCadenceFade ? .rhythmIntervals : .cadencePyramids)
             primerTitle = primerDrillId == .rhythmIntervals ? "Rhythm Intervals" : "Cadence Pyramids"
-            primerTarget = "\(baseCadence + 4)–\(baseCadence + 10) SPM"
             primerWork = "4 x 30 sec work • 45 sec walk"
             primerDuration = "10 min drill"
         }
+
+        let primerTarget = targetCadenceBand(for: primerDrillId, state: readiness.state, baseCadence: baseCadence)
 
         let isRecovery = (readiness.state == .acuteFatigue || hadCardiacDrift)
         let threeDaysAgo = cal.date(byAdding: .day, value: -3, to: now) ?? now.addingTimeInterval(-3 * 86400)
@@ -762,13 +810,18 @@ enum SessionSynthesisEngine {
             distStr = String(format: "%.2f mi", distMeters / 1609.344)
         }
 
-        let context = WorkoutAnalysisContext(
-            runRecord: run,
-            runSignature: run.signature,
-            macroProfile: nil,
-            recoveryTimeline: RecoveryTimeline(now: Date(), lastHard: nil, hardSessionsLast72h: 0, requiredHours: 24, state: .productive)
+        let gradeInput = RunGradeInput(
+            type: run.detectedTypeRaw,
+            isHard: run.detectedTypeRaw.localizedCaseInsensitiveContains("Interval") || run.detectedTypeRaw.localizedCaseInsensitiveContains("Tempo"),
+            percentZone4: run.percentZone4,
+            cadence: Int(run.workingAvgCadence.rounded()),
+            workPaces: [],
+            paceDeltaVsBaseline: nil,
+            hrDeltaVsBaseline: nil,
+            cadenceFade: run.framboiseTags.contains(FramboiseReadinessTag.cadenceFade),
+            cardiacDrift: run.framboiseTags.contains(FramboiseReadinessTag.cardiacDrift)
         )
-        let grade = context.overallGradeReport.grade
+        let grade = RunGrade.evaluate(gradeInput).grade
 
         let prefix = (run.isIndoor == true) ? "Indoor " : ""
         let isPrimer = isShortPrimerWorkout(run)

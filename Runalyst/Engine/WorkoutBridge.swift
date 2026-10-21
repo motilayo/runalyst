@@ -391,11 +391,7 @@ final class WorkoutBridge {
         let preRunId = PreRunDrillId(rawValue: dto.preRunDrillId ?? "") ?? .strides
         let duration: DrillDuration = {
             if let raw = dto.durationMinutes {
-                if let exact = DrillDuration(rawValue: raw) { return exact }
-                if raw <= 6 { return .fiveMinutes }
-                if raw <= 12 { return .tenMinutes }
-                if raw <= 20 { return .fifteenMinutes }
-                return .thirtyMinutes
+                return DrillDuration.nearest(toMinutes: raw)
             }
             return preRunId.defaultDuration
         }()

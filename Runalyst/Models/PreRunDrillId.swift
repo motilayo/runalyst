@@ -7,11 +7,18 @@ public enum DrillDuration: Int, CaseIterable, Sendable, Codable {
     case tenMinutes = 10
     case fifteenMinutes = 15
     case thirtyMinutes = 30
+    case thirtyFiveMinutes = 35
     case fortyMinutes = 40
     case fiftyMinutes = 50
 
     public var title: String {
         "\(rawValue) min"
+    }
+
+    /// Resolves an integer minute count to the closest canonical DrillDuration using minimum distance.
+    public static func nearest(toMinutes raw: Int) -> DrillDuration {
+        if let exact = DrillDuration(rawValue: raw) { return exact }
+        return allCases.min(by: { abs($0.rawValue - raw) < abs($1.rawValue - raw) }) ?? .thirtyMinutes
     }
 }
 

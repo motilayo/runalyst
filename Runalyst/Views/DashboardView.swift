@@ -295,7 +295,7 @@ struct DashboardView: View {
             isSubjectiveDistress: false,
             totalHistoricalRunsCount: runRecords.count
         )
-        return TrainingZoneEngine.computePrescription(tzInput)
+        return TrainingZoneEngine.computePrescription(tzInput, runs: runRecords)
     }
 
     private func hrCapText(for rx: LockedTrainingPrescription) -> String {
