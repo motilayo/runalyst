@@ -448,7 +448,8 @@ struct RunDetailView: View {
             let isRecovery = runRecord.detectedTypeRaw == "Recovery Run" || (runRecord.percentZone4 <= 0.02 && runRecord.workingAvgHeartRate > 0 && runRecord.workingAvgHeartRate <= 135)
             let effectiveFloor = isRecovery ? min(runRecord.signature?.cadenceFloor ?? 150.0, 142.0) : (runRecord.signature?.cadenceFloor ?? 150.0)
 
-            RunVarianceMapView(
+            AdaptiveWorkoutTelemetryCard(
+                runRecord: runRecord,
                 phaseSegments: segments,
                 cadenceFloor: effectiveFloor,
                 averageCadence: runRecord.workingAvgCadence,
