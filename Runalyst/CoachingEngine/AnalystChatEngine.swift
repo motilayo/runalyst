@@ -278,9 +278,28 @@ class AnalystChatEngine: ObservableObject {
         if mode == .macroCoach {
             let allRuns = (try? runRecord.modelContext?.fetch(FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)]))) ?? [runRecord]
             let todayRuns = allRuns.filter { calendar.calendar.isDateInToday($0.date) && !$0.isDeleted }
-            let stateDesc: String
+            let activeGoal = UserDefaults.standard.string(forKey: "trainingGoal") ?? "Base Building"
+            let profile = RunnerProfile.compute(from: allRuns)
+            let todaySchedule = calendar.evaluateSchedule(
+                from: calendar.startOfDay(for: Date()),
+                to: calendar.startOfDay(for: Date()),
+                context: ScheduleEvaluationContext(runRecords: allRuns, activeGoal: activeGoal, profile: profile, useMetric: useMetric)
+            ).first
+
+            let scheduledTodayStr: String
+            if let plan = todaySchedule?.planned {
+                if plan.kind == .rest {
+                    scheduledTodayStr = "Rest Day"
+                } else {
+                    scheduledTodayStr = "\(plan.title) (\(plan.minutesLow)–\(plan.minutesHigh) min)"
+                }
+            } else {
+                scheduledTodayStr = "Rest Day"
+            }
+
+            let loggedTodayStr: String
             if todayRuns.isEmpty {
-                stateDesc = "Pre-run (0 sessions logged today)."
+                loggedTodayStr = "None"
             } else {
                 let totalSec = todayRuns.reduce(0.0) { $0 + $1.duration }
                 let durMin = Int(totalSec) / 60
@@ -288,12 +307,15 @@ class AnalystChatEngine: ObservableObject {
                 let durStr = String(format: "%d:%02d", durMin, durSec)
                 let totalMeters = todayRuns.reduce(0.0) { $0 + ($1.totalDistanceMeters > 0 ? $1.totalDistanceMeters : $1.effectiveWorkingDistanceMeters) }
                 let distStr = useMetric ? String(format: "%.2f km", totalMeters / 1000.0) : String(format: "%.2f mi", totalMeters / 1609.344)
-                stateDesc = "Completed today (\(todayRuns.count) sessions, \(durStr), \(distStr))."
+                let types = todayRuns.map(\.normalizedClassification).joined(separator: ", ")
+                loggedTodayStr = "\(todayRuns.count) (\(types), \(distStr), \(durStr))"
             }
+
             contextBlock = """
             Scope: Macro AI Coach.
             \(calendar.anchor(useMetric: useMetric))
-            Athlete State: \(stateDesc)
+            Today Workouts Logged: \(loggedTodayStr)
+            Today Scheduled: \(scheduledTodayStr)
             """
         } else {
             let daysDiff = max(0, Calendar.current.dateComponents([.day], from: runRecord.date, to: Date()).day ?? 0)
@@ -304,7 +326,7 @@ class AnalystChatEngine: ObservableObject {
             contextBlock = """
             Scope: Workout Inspection.
             \(calendar.anchor(useMetric: useMetric))
-            Reviewing: \(runType) (\(envNote), \(temporalGrounding)).
+            Reviewing Workout: \(runType) (\(envNote), \(temporalGrounding))
             """
         }
 
@@ -337,11 +359,10 @@ class AnalystChatEngine: ObservableObject {
         • `executeCoachAction`: Actions ('display_schedule', 'display_drill', 'display_explainer', 'update_goal', 'export_to_watch', 'record_feedback').
 
         RULES:
-        • If today is completed, state schedule is clear and note completed work before pivoting to tomorrow.
-        • Rest of week: remaining days ending Saturday. Next week: Sunday through Saturday.
+        • Scope: Running training, recovery, and biomechanics. Outside Running: Warmly refocus on running.
         • Units: SPM, min/km, min/mi. No LaTeX.
-        • Medical Safety: On pain/illness, urge rest and medical care.
-        • Outside Running: Warmly refocus on running.
+        • Medical Safety & Well-Being: On pain, injury, illness, dizziness, extreme fatigue, or well-being concerns, urge rest and medical care.
+        • Proactive Drill Card: When recommending a drill, call executeCoachAction('display_drill') in that turn instead of asking permission.
 
         Respond in \(language).
         """

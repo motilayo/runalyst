@@ -112,9 +112,9 @@ final class AnalystChatEngineTests: XCTestCase {
         let formatted = TrainingCalendar.formatCompactScheduleSummary(days: [day1, day2, day3])
 
         XCTAssertTrue(formatted.contains("SCHEDULE TIMELINE:"))
-        XCTAssertTrue(formatted.contains("Today (Monday): 5.27 km Fartlek (COMPLETED)"))
-        XCTAssertTrue(formatted.contains("Tomorrow (Tuesday): Planned: Zone 2 Easy Aerobic Base (30 min @ 7:44-8:14/km), Primer: Cadence Pyramids"))
-        XCTAssertTrue(formatted.contains("Wednesday (2026-10-21): Rest & Recovery"))
+        XCTAssertTrue(formatted.contains("Today (Monday, 2026-10-19): 5.27 km Fartlek (COMPLETED)"))
+        XCTAssertTrue(formatted.contains("Tomorrow (Tuesday, 2026-10-20): Planned: Zone 2 Easy Aerobic Base (30 min @ 7:44-8:14/km), Primer: Cadence Pyramids"))
+        XCTAssertTrue(formatted.contains("Wednesday (2026-10-21): Rest Day (No run scheduled)"))
 
         // Must not contain raw JSON markers
         XCTAssertFalse(formatted.contains("\"date\":"))

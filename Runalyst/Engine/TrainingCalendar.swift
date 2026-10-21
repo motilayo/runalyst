@@ -213,7 +213,7 @@ extension TrainingCalendar {
             } else if dateStart > today {
                 completion = .upcoming
             } else if planned.kind == .rest {
-                completion = .completed
+                completion = (dateStart == today && runsOnDay.isEmpty) ? .pending : .completed
             } else if dateStart < today {
                 completion = .missed
             } else {
@@ -239,9 +239,9 @@ extension TrainingCalendar {
             let relativePrefix: String
             switch day.relative {
             case .today:
-                relativePrefix = "Today (\(day.weekday))"
+                relativePrefix = "Today (\(day.weekday), \(day.date))"
             case .tomorrow:
-                relativePrefix = "Tomorrow (\(day.weekday))"
+                relativePrefix = "Tomorrow (\(day.weekday), \(day.date))"
             case .past, .future:
                 relativePrefix = "\(day.weekday) (\(day.date))"
             }
@@ -259,7 +259,7 @@ extension TrainingCalendar {
             // Planned status for this calendar day
             if day.planned.kind == .rest {
                 if day.completed.isEmpty {
-                    parts.append("Rest & Recovery")
+                    parts.append("Rest Day (No run scheduled)")
                 }
             } else {
                 var plannedDesc = "\(day.planned.title) (\(day.planned.minutesLow)-\(day.planned.minutesHigh) min"

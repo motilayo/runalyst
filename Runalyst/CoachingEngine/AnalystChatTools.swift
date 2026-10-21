@@ -614,7 +614,7 @@ public struct ExecuteCoachActionQuery: Sendable {
     @Guide(description: "New goal for 'update_goal'.")
     public var goal: TrainingGoal?
 
-    @Guide(description: "Payload: drill name for 'display_drill' and 'export_to_watch'; metric key for 'display_explainer'; subjective notes for 'record_feedback'.")
+    @Guide(description: "Payload: canonical drill id ('cadence_pyramids', 'rhythm_intervals', 'tempo_surges', 'strides') for 'display_drill' and 'export_to_watch'; metric key for 'display_explainer'; subjective notes for 'record_feedback'.")
     public var payload: String?
 
     public init(
