@@ -113,7 +113,7 @@ enum PreRunDrillId: String, CaseIterable, Codable, Sendable {
         if let direct = PreRunDrillId(rawValue: clean) {
             return direct
         }
-        if clean.contains("recovery_flush") || clean.contains("aerobic_flush") {
+        if clean.contains("recovery_flush") || clean.contains("aerobic_flush") || clean.contains("flush") {
             return .aerobicFlush
         }
         if clean.contains("zone_2") || clean.contains("zone2") || clean.contains("aerobic_base") {
@@ -122,22 +122,29 @@ enum PreRunDrillId: String, CaseIterable, Codable, Sendable {
         if clean.contains("recovery_jog") {
             return .recoveryJog
         }
-        if clean.contains("cadence_pyramid") || clean.contains("pyramid") {
+        if clean.contains("cadence_pyramid") || clean.contains("pyramid") || clean.contains("cadence_drill") || clean == "cadence"
+            || (clean.contains("cadence") && (clean.contains("drill") || clean.contains("exercise") || clean.contains("workout"))) {
             return .cadencePyramids
         }
         if clean.contains("rhythm") {
             return .rhythmIntervals
         }
-        if clean.contains("tempo_surge") || clean.contains("surge") {
+        if clean.contains("tempo_surge") || clean.contains("surge") || clean.contains("tempo_drill")
+            || (clean.contains("tempo") && (clean.contains("drill") || clean.contains("exercise"))) {
             return .tempoSurges
         }
         if clean.contains("stride") {
             return .strides
         }
-        if clean.contains("hill_bound") {
+        if clean.contains("hill_bound") || clean.contains("hill_drill") || clean.contains("hill_bounds")
+            || (clean.contains("hill") && (clean.contains("drill") || clean.contains("bound"))) {
             return .hillBounds
         }
-        if clean.contains("neuromuscular") || clean.contains("form_primer") {
+        if clean.contains("fartlek") {
+            return .fartlekPrimer
+        }
+        if clean.contains("neuromuscular") || clean.contains("form_primer") || clean.contains("primer")
+            || (clean.contains("form") && clean.contains("drill")) {
             return .neuromuscularPrimer
         }
         for drill in PreRunDrillId.allCases {

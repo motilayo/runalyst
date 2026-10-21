@@ -181,6 +181,7 @@ class AnalystChatEngine: ObservableObject {
                     if let action = sanitized.detectedAction {
                         applyFallbackCoachAction(action: action, payload: sanitized.detectedPayload)
                     }
+                    resolveProactiveAttachments(userQuestion: userQuestion, sanitizedText: sanitized.text)
                     messages.append(
                         AnalystChatMessage(
                             sender: .analyst,
@@ -217,6 +218,7 @@ class AnalystChatEngine: ObservableObject {
                     if let action = sanitized.detectedAction {
                         applyFallbackCoachAction(action: action, payload: sanitized.detectedPayload)
                     }
+                    resolveProactiveAttachments(userQuestion: userQuestion, sanitizedText: sanitized.text)
                     messages.append(
                         AnalystChatMessage(
                             sender: .analyst,
@@ -334,60 +336,52 @@ class AnalystChatEngine: ObservableObject {
                 loggedTodayStr = "\(todayRuns.count) (\(types), \(distStr), \(durStr))"
             }
 
-            contextBlock = """
-            Scope: Macro AI Coach.
-            \(calendar.anchor(useMetric: useMetric))
-            Logged Today: \(loggedTodayStr)
-            Today Plan: \(scheduledTodayStr)
-            Tomorrow Plan: \(scheduledTomorrowStr)
-            """
+            let todayStr = TrainingCalendar.isoDateFormatter.string(from: Date())
+            contextBlock = "Macro Coach (\(todayStr)). Today: \(scheduledTodayStr) (\(loggedTodayStr)). Tomorrow: \(scheduledTomorrowStr)."
         } else {
             let daysDiff = max(0, Calendar.current.dateComponents([.day], from: runRecord.date, to: Date()).day ?? 0)
             let dateStr = TrainingCalendar.weekdayFormatter.string(from: runRecord.date)
             let temporalGrounding = daysDiff == 0 ? "Today" : "\(dateStr) (\(daysDiff)d ago)"
             let runType = runRecord.normalizedClassification
-            let envNote = (runRecord.isIndoor ?? false) ? "Indoor Treadmill" : "Outdoor"
-            contextBlock = """
-            Scope: Workout Inspection.
-            \(calendar.anchor(useMetric: useMetric))
-            Reviewing Workout: \(runType) (\(envNote), \(temporalGrounding))
-            """
+            let envNote = (runRecord.isIndoor ?? false) ? "Indoor" : "Outdoor"
+            contextBlock = "Workout Inspection: \(runType) (\(envNote), \(temporalGrounding))."
         }
 
         var recentContextBlock = ""
         let deliveredMessages = self.messages.filter { $0.status == .delivered }
         let completedHistory = deliveredMessages.dropLast(self.messages.last?.sender == .user ? 1 : 0)
-        let recentTurns = completedHistory.suffix(4)
+        let recentTurns = completedHistory.suffix(2)
 
         if !recentTurns.isEmpty {
             var lines: [String] = ["RECENT DIALOGUE (Reference Only):"]
             for msg in recentTurns {
                 let role = msg.sender == .user ? "Runner" : "Coach"
                 let cleaned = AnalystResponseSanitizer.sanitize(text: msg.text).text.replacingOccurrences(of: "\n", with: " ")
-                lines.append("• \(role): \"\(cleaned)\"")
+                let truncated = cleaned.count > 30 ? "\(cleaned.prefix(27))..." : cleaned
+                lines.append("• \(role): \"\(truncated)\"")
             }
             recentContextBlock = "\n\n" + lines.joined(separator: "\n")
         }
 
         return """
-        You are Runalyst—an empathetic running coach. Speak directly to the runner with warmth and brevity.
+        You are Runalyst—an empathetic running coach. Speak directly with warmth and brevity.
 
         CONTEXT:
         \(contextBlock)\(recentContextBlock)
 
         TOOLS:
-        • `getTrainingSchedule`: Query calendar workouts ('yyyy-MM-dd').
-        • `getReadinessAndWorkload`: Query recovery, ACWR, volume, second-run safety.
-        • `queryWorkoutHistory`: Compare runs or analyze 30-day performance arc.
-        • `inspectWorkout`: Inspect workout metrics, intervals, splits.
-        • `executeCoachAction`: Actions ('display_schedule', 'display_drill', 'display_explainer', 'update_goal', 'export_to_watch', 'record_feedback').
+        • `getTrainingSchedule`: Dates ('yyyy-MM-dd').
+        • `getReadinessAndWorkload`: Recovery, ACWR, volume.
+        • `queryWorkoutHistory`: Compare runs.
+        • `inspectWorkout`: Splits.
+        • `executeCoachAction`: ('display_drill', 'display_schedule', 'display_explainer', 'update_goal', 'export_to_watch', 'record_feedback').
 
         RULES:
-        • Scope: Running training & recovery. Outside Running: Warmly refocus.
-        • Units: SPM, min/km, min/mi. No LaTeX.
-        • Medical Safety: On pain, injury, or fatigue, urge rest and medical care.
-        • Rest Days: If scheduled as Rest Day, prescribe rest—do not run.
-        • Silent Tools: Never write action/tool syntax (e.g. 'executeCoachAction', 'display_drill') in text. Visual cards trigger silently.
+        • Outside Running: Warmly refocus. Units: SPM, min/km. No LaTeX.
+        • Medical Safety: Urge rest on pain. Rest Days: Prescribe rest—do not run.
+        • ACWR: Acute:Chronic Workload Ratio (<0.8 = low, >1.4 = spike). Low ACWR is never overload.
+        • Proactive Cards: Never ask permission to show drills/schedule. Trigger immediately.
+        • Silent Tools: Never write commands ('executeCoachAction', 'display_drill', 'Display the drill') in text.
 
         Respond in \(language).
         """
@@ -842,6 +836,8 @@ class AnalystChatEngine: ObservableObject {
                     self.drillRecommendedThisTurn = .rhythmIntervals
                 } else if drillStr.contains("hill") {
                     self.drillRecommendedThisTurn = .hillBounds
+                } else {
+                    self.drillRecommendedThisTurn = .cadencePyramids
                 }
             }
         case .displaySchedule:
@@ -903,6 +899,67 @@ class AnalystChatEngine: ObservableObject {
         case .exportToWatch, .recordFeedback:
             break
         }
+    }
+
+    private func resolveProactiveAttachments(userQuestion: String, sanitizedText: String) {
+        let lowerUser = userQuestion.lowercased()
+        let lowerResponse = sanitizedText.lowercased()
+
+        // 1. Proactive Drill Attachment
+        if self.drillRecommendedThisTurn == nil {
+            if let drill = PreRunDrillId.resolve(from: userQuestion) {
+                self.drillRecommendedThisTurn = drill
+            } else if isAffirmativeOrDisplayCommand(lowerUser) {
+                if let drill = findRecentDrillMentionInHistory() {
+                    self.drillRecommendedThisTurn = drill
+                }
+            } else if lowerResponse.contains("drill") || lowerResponse.contains("pyramid") || lowerResponse.contains("tempo surge") {
+                if let drill = PreRunDrillId.resolve(from: sanitizedText) {
+                    self.drillRecommendedThisTurn = drill
+                }
+            }
+        }
+
+        // 2. Proactive Session / Schedule Attachment
+        if self.sessionRecommendedThisTurn == nil && self.scheduleRecommendedThisTurn == nil {
+            if isTomorrowOrNextRunQuery(lowerUser) || (lowerResponse.contains("tomorrow") && (lowerResponse.contains("rest day") || lowerResponse.contains("plan") || lowerResponse.contains("scheduled"))) {
+                applyFallbackCoachAction(action: .displaySession, payload: nil)
+            } else if isWeeklyScheduleQuery(lowerUser) {
+                applyFallbackCoachAction(action: .displaySchedule, payload: nil)
+            }
+        }
+    }
+
+    private func isAffirmativeOrDisplayCommand(_ text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: CharacterSet.punctuationCharacters.union(.whitespacesAndNewlines))
+        let directMatches: Set<String> = [
+            "yes", "yeah", "yep", "sure", "please", "yes please", "ok", "okay",
+            "display the drill", "display drill", "show me", "show it", "show drill",
+            "show the drill", "focus on the cadence pyramid drill", "focus on the drill"
+        ]
+        if directMatches.contains(trimmed) { return true }
+        if trimmed.hasPrefix("show ") || trimmed.hasPrefix("display ") { return true }
+        return trimmed == "yes" || trimmed.hasPrefix("yes ")
+    }
+
+    private func isTomorrowOrNextRunQuery(_ text: String) -> Bool {
+        text.contains("tomorrow") || text.contains("next run") || text.contains("next workout") || text.contains("run next")
+    }
+
+    private func isWeeklyScheduleQuery(_ text: String) -> Bool {
+        text.contains("schedule") || text.contains("this week") || text.contains("rest of the week") || text.contains("calendar") || text.contains("microcycle")
+    }
+
+    private func findRecentDrillMentionInHistory() -> PreRunDrillId? {
+        for msg in messages.reversed() {
+            if let drill = msg.attachedDrillId {
+                return drill
+            }
+            if let resolved = PreRunDrillId.resolve(from: msg.text) {
+                return resolved
+            }
+        }
+        return .cadencePyramids
     }
     #endif
 }
@@ -974,6 +1031,22 @@ public enum AnalystResponseSanitizer {
             working = regex.stringByReplacingMatches(in: working, range: NSRange(working.startIndex..., in: working), withTemplate: "")
         }
 
+        // 4. Check for standalone command lines like "Display the drill." or "Display drill: ..."
+        let commandLinePattern = #"(?im)^\s*(?:i(?:'ll| will)\s+)?display\s+(?:the\s+)?(drill|schedule|session|explainer)(?:\s*:\s*([a-z0-9_\-]+))?[\.\?!]?\s*$"#
+        if let regex = try? NSRegularExpression(pattern: commandLinePattern) {
+            if detectedAction == nil, let match = regex.firstMatch(in: working, range: NSRange(working.startIndex..., in: working)) {
+                if let actionRange = Range(match.range(at: 1), in: working),
+                   let action = parseActionType("display_" + String(working[actionRange])) {
+                    detectedAction = action
+                }
+                if match.numberOfRanges > 2, match.range(at: 2).location != NSNotFound,
+                   let payloadRange = Range(match.range(at: 2), in: working) {
+                    detectedPayload = String(working[payloadRange])
+                }
+            }
+            working = regex.stringByReplacingMatches(in: working, range: NSRange(working.startIndex..., in: working), withTemplate: "")
+        }
+
         // Clean up markdown ticks around removed commands and collapse blank lines
         let cleanedLines = working.components(separatedBy: .newlines)
             .map { line -> String in
@@ -984,9 +1057,33 @@ public enum AnalystResponseSanitizer {
                 return trimmed
             }
         let joined = cleanedLines.joined(separator: "\n")
-        let cleaned = joined
+        var cleaned = joined
             .replacingOccurrences(of: "\n{3,}", with: "\n\n", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // If the model leaked a pure command with no conversational text, provide a natural coach statement
+        if cleaned.isEmpty, let action = detectedAction {
+            switch action {
+            case .displayDrill:
+                if let payload = detectedPayload, let drill = PreRunDrillId.resolve(from: payload) {
+                    cleaned = "Here is the \(drill.title) drill to focus on."
+                } else {
+                    cleaned = "Here is the drill to focus on."
+                }
+            case .displaySchedule:
+                cleaned = "Here is your upcoming training schedule."
+            case .displaySession:
+                cleaned = "Here is your next planned session."
+            case .displayExplainer:
+                cleaned = "Here is the visual explainer."
+            case .updateGoal:
+                cleaned = "I've updated your training goal."
+            case .exportToWatch:
+                cleaned = "I've sent the workout to your Apple Watch."
+            case .recordFeedback:
+                cleaned = "Thanks for the feedback; I've noted that for your training."
+            }
+        }
 
         return SanitizedAnalystResponse(
             text: cleaned,

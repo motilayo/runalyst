@@ -303,4 +303,101 @@ final class AnalystChatEngineTests: XCTestCase {
             XCTAssertTrue(recentDialogue.contains("Coach: \"Here is your plan.\""))
         }
     }
+
+    // MARK: - 7. Standalone "Display the drill." Sanitization & Action Detection
+
+    func testSanitizerCleansStandaloneDisplayTheDrillAndProvidesCleanText() {
+        if #available(iOS 26.0, *) {
+            let sanitized = AnalystResponseSanitizer.sanitize(text: "Display the drill.")
+            XCTAssertEqual(sanitized.detectedAction, .displayDrill)
+            XCTAssertEqual(sanitized.text, "Here is the drill to focus on.")
+
+            let sanitizedWithSpecific = AnalystResponseSanitizer.sanitize(text: "Display drill: cadence_pyramids")
+            XCTAssertEqual(sanitizedWithSpecific.detectedAction, .displayDrill)
+            XCTAssertEqual(sanitizedWithSpecific.text, "Here is the Cadence Pyramids drill to focus on.")
+        }
+    }
+
+    // MARK: - 8. Proactive Drill Attachment on Demand
+
+    func testExplicitUserDrillRequestAttachesDrillCardEvenWithoutToolCall() async {
+        let run = makeRunRecord(date: Date())
+        let engine = AnalystChatEngine(runRecord: run, mode: .macroCoach)
+
+        // Model returns pure prose with no tool call and no leaked token
+        engine.modelResponder = { _, _ in
+            "Cadence pyramids are a fantastic way to train a lighter foot strike and keep your bounce controlled."
+        }
+
+        await engine.sendMessage("Focus on the cadence pyramid drill")
+
+        XCTAssertEqual(engine.messages.count, 2)
+        let analystMsg = engine.messages[1]
+        XCTAssertEqual(analystMsg.sender, .analyst)
+        XCTAssertEqual(analystMsg.attachedDrillId, .cadencePyramids, "Drill card must be attached proactively when user asks for cadence pyramids")
+    }
+
+    // MARK: - 9. Affirmative Confirmation ("Display the drill." / "Yes") Attaches Prior Mentioned Drill
+
+    func testAffirmativeConfirmationFollowingDrillMentionAttachesDrillCard() async {
+        let run = makeRunRecord(date: Date())
+        let engine = AnalystChatEngine(runRecord: run, mode: .macroCoach)
+
+        // Turn 1: Coach recommends Cadence Pyramids
+        engine.messages.append(AnalystChatMessage(sender: .user, text: "How can I improve my rhythm?", status: .delivered))
+        engine.messages.append(AnalystChatMessage(sender: .analyst, text: "I recommend trying the Cadence Pyramids drill before your next easy run.", status: .delivered))
+
+        // Turn 2: User responds "Display the drill."
+        engine.modelResponder = { _, _ in
+            "Here is the workout structure for you."
+        }
+
+        await engine.sendMessage("Display the drill.")
+
+        XCTAssertEqual(engine.messages.count, 4)
+        let lastMsg = engine.messages[3]
+        XCTAssertEqual(lastMsg.attachedDrillId, .cadencePyramids, "Affirmative command must attach the drill mentioned in dialogue")
+    }
+
+    // MARK: - 10. Tomorrow Run Query Proactively Attaches Session Card
+
+    func testTomorrowRunQueryProactivelyAttachesSessionCard() async {
+        let run = makeRunRecord(date: Date())
+        let engine = AnalystChatEngine(runRecord: run, mode: .macroCoach)
+
+        engine.modelResponder = { _, _ in
+            "Tomorrow is planned as a scheduled rest day to allow your legs to recover fully."
+        }
+
+        await engine.sendMessage("Can I run tomorrow?")
+
+        XCTAssertEqual(engine.messages.count, 2)
+        let analystMsg = engine.messages[1]
+        XCTAssertNotNil(analystMsg.attachedSession, "Session card must be attached when runner asks about tomorrow's schedule")
+    }
+
+    // MARK: - 11. System Prompt Characters Strictly Under 1200 With Full History
+
+    func testSystemInstructionsUnder1200CharactersWithFourTurns() {
+        let run = makeRunRecord(date: Date())
+        let engine = AnalystChatEngine(runRecord: run, mode: .macroCoach)
+
+        // Populate 4 full turns of dialogue
+        for i in 1...4 {
+            engine.messages.append(AnalystChatMessage(sender: .user, text: "Question number \(i) about my workout pacing and heart rate recovery?", status: .delivered))
+            engine.messages.append(AnalystChatMessage(sender: .analyst, text: "Answer number \(i) explaining the physiological reason why pacing was stable.", status: .delivered))
+        }
+
+        if #available(iOS 26.0, *) {
+            let instructions = engine.buildLeanSystemInstructions()
+
+            // Verify prompt rules
+            XCTAssertTrue(instructions.contains("ACWR: Acute:Chronic Workload Ratio"), "Prompt must ground ACWR acronym")
+            XCTAssertTrue(instructions.contains("Proactive Cards: Never ask permission"), "Prompt must ban permission asking")
+            XCTAssertTrue(instructions.contains("Display the drill"), "Prompt must explicitly forbid echoing display the drill")
+
+            // TN3193 character budget ceiling
+            XCTAssertTrue(instructions.count < 1200, "System instructions must stay strictly under 1,200 chars (was \(instructions.count))")
+        }
+    }
 }
