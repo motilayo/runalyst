@@ -383,7 +383,7 @@ struct PrescribedSessionCardView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(session.sessionTitle)
+                    Text(mainRunDrill.id.title)
                         .font(.subheadline.weight(.bold))
                         .foregroundColor(.primary)
 

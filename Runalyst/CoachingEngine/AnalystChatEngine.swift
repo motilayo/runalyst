@@ -204,10 +204,12 @@ class AnalystChatEngine: ObservableObject {
                 do {
                     let responseText = try await responder(buildLeanSystemInstructions(), userQuestion)
                     let sanitized = AnalystResponseSanitizer.sanitize(text: responseText)
+                    var wasExplicitToolDrill = false
                     if let action = sanitized.detectedAction {
+                        if action == .displayDrill { wasExplicitToolDrill = true }
                         applyFallbackCoachAction(action: action, payload: sanitized.detectedPayload)
                     }
-                    resolveProactiveAttachments(userQuestion: userQuestion, sanitizedText: sanitized.text)
+                    resolveProactiveAttachments(userQuestion: userQuestion, sanitizedText: sanitized.text, wasExplicitToolDrill: wasExplicitToolDrill)
                     messages.append(
                         AnalystChatMessage(
                             sender: .analyst,
@@ -241,10 +243,12 @@ class AnalystChatEngine: ObservableObject {
                 do {
                     let responseText = try await generateFoundationModelResponse(for: userQuestion)
                     let sanitized = AnalystResponseSanitizer.sanitize(text: responseText)
+                    var wasExplicitToolDrill = false
                     if let action = sanitized.detectedAction {
+                        if action == .displayDrill { wasExplicitToolDrill = true }
                         applyFallbackCoachAction(action: action, payload: sanitized.detectedPayload)
                     }
-                    resolveProactiveAttachments(userQuestion: userQuestion, sanitizedText: sanitized.text)
+                    resolveProactiveAttachments(userQuestion: userQuestion, sanitizedText: sanitized.text, wasExplicitToolDrill: wasExplicitToolDrill)
                     messages.append(
                         AnalystChatMessage(
                             sender: .analyst,
@@ -338,6 +342,13 @@ class AnalystChatEngine: ObservableObject {
         let useMetric = (UserDefaults.standard.object(forKey: "useMetricSystem") as? Bool) ?? true
         let language = Locale.current.language.languageCode?.identifier ?? "en"
 
+        let df = DateFormatter()
+        df.calendar = Calendar(identifier: .gregorian)
+        df.locale = Locale(identifier: "en_US_POSIX")
+        df.dateFormat = "EEE, MMM d, yyyy"
+        let today = calendar.startOfDay(for: Date())
+        let todayDateStr = df.string(from: today)
+
         let contextBlock: String
         if mode == .macroCoach {
             let allRuns = (try? modelContext?.fetch(FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)]))) ?? (runRecord.map { [$0] } ?? [])
@@ -345,8 +356,8 @@ class AnalystChatEngine: ObservableObject {
             let activeGoal = UserDefaults.standard.string(forKey: "trainingGoal") ?? "Base Building"
             let profile = RunnerProfile.compute(from: allRuns)
             let todaySchedule = calendar.evaluateSchedule(
-                from: calendar.startOfDay(for: Date()),
-                to: calendar.startOfDay(for: Date()),
+                from: today,
+                to: today,
                 context: ScheduleEvaluationContext(runRecords: allRuns, activeGoal: activeGoal, profile: profile, useMetric: useMetric)
             ).first
 
@@ -361,7 +372,8 @@ class AnalystChatEngine: ObservableObject {
                 scheduledTodayStr = "Rest Day"
             }
 
-            let tomorrow = calendar.calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: Date())) ?? Date()
+            let tomorrow = calendar.calendar.date(byAdding: .day, value: 1, to: today) ?? today
+            let tomorrowDateStr = df.string(from: tomorrow)
             let tomorrowSchedule = calendar.evaluateSchedule(
                 from: calendar.startOfDay(for: tomorrow),
                 to: calendar.startOfDay(for: tomorrow),
@@ -383,18 +395,19 @@ class AnalystChatEngine: ObservableObject {
 
             var nextRunNote = ""
             if let next = findNextScheduledRun() {
-                nextRunNote = " Next: \(next.day.weekday) (\(next.day.planned.minutesHigh)m)."
+                let nextDateStr = df.string(from: next.date)
+                nextRunNote = " Next: \(nextDateStr) (\(next.day.planned.minutesHigh)m)."
             }
-            contextBlock = "Today: \(scheduledTodayStr) (\(loggedTodayStr)). Tomorrow: \(scheduledTomorrowStr).\(nextRunNote)"
+            contextBlock = "Today: (\(todayDateStr)) \(scheduledTodayStr) (\(loggedTodayStr)). Tomorrow: (\(tomorrowDateStr)) \(scheduledTomorrowStr).\(nextRunNote)"
         } else if let runRecord {
             let daysDiff = max(0, Calendar.current.dateComponents([.day], from: runRecord.date, to: Date()).day ?? 0)
-            let dateStr = TrainingCalendar.weekdayFormatter.string(from: runRecord.date)
-            let temporalGrounding = daysDiff == 0 ? "Today" : "\(dateStr) (\(daysDiff)d ago)"
+            let runDateStr = df.string(from: runRecord.date)
+            let temporalGrounding = daysDiff == 0 ? "Today" : "\(runDateStr) (\(daysDiff)d ago)"
             let runType = runRecord.normalizedClassification
             let envNote = (runRecord.isIndoor ?? false) ? "Indoor" : "Outdoor"
-            contextBlock = "Workout: \(runType) (\(envNote), \(temporalGrounding))."
+            contextBlock = "Today is \(todayDateStr). Workout: \(runType) (\(envNote), \(temporalGrounding))."
         } else {
-            contextBlock = "General Coaching: Today (\(TrainingCalendar.weekdayFormatter.string(from: Date())))."
+            contextBlock = "General Coaching: Today is \(todayDateStr)."
         }
 
         var recentContextBlock = ""
@@ -420,16 +433,15 @@ class AnalystChatEngine: ObservableObject {
         \(contextBlock)\(recentContextBlock)
 
         TOOLS:
-        • `getTrainingSchedule`: Dates ('yyyy-MM-dd').
-        • `getReadinessAndWorkload`: Recovery, ACWR, volume.
-        • `queryWorkoutHistory`: Compare runs.
+        • `getTrainingSchedule`: Dates.
+        • `getReadinessAndWorkload`: Recovery, ACWR.
+        • `queryWorkoutHistory`: Compare.
         • `inspectWorkout`: Splits.
         • `executeCoachAction`: ('display_drill', 'display_schedule', 'display_explainer', 'update_goal', 'export_to_watch', 'record_feedback').
 
         RULES:
         • Outside Running: Refocus. Units: SPM, min/km. No LaTeX.
-        • Medical Safety: Urge rest on pain. Rest Days: Prescribe rest.
-        • Schedule: Rest days allow adaptation when fresh; state upcoming run when asked.
+        • Medical Safety: Urge rest on pain/rest days; state upcoming run when asked.
         • ACWR: Acute:Chronic Workload Ratio (<0.8=low, >1.4=spike). Low ACWR is not overload.
         • Proactive Cards: Never ask permission to show drills/schedule; trigger directly.
         • Silent Tools: Never write commands ('executeCoachAction', 'display_drill', 'Display the drill') in text.
@@ -995,7 +1007,7 @@ class AnalystChatEngine: ObservableObject {
         }
     }
 
-    private func resolveProactiveAttachments(userQuestion: String, sanitizedText: String) {
+    private func resolveProactiveAttachments(userQuestion: String, sanitizedText: String, wasExplicitToolDrill: Bool = false) {
         let lowerUser = userQuestion.lowercased()
         let lowerResponse = sanitizedText.lowercased()
 
@@ -1019,23 +1031,35 @@ class AnalystChatEngine: ObservableObject {
             if isNextRunQuery(lowerUser) {
                 if let next = findNextScheduledRun() {
                     let day = next.day
-                    let primerTitle = day.planned.primerTitle ?? "Cadence Pyramids"
-                    let primerId = PreRunDrillId.resolve(from: primerTitle) ?? .cadencePyramids
+                    var primerTitle = day.planned.primerTitle ?? "Cadence Pyramids"
+                    var primerId = PreRunDrillId.resolve(from: primerTitle) ?? .cadencePyramids
                     let dateStr = TrainingCalendar.weekdayFormatter.string(from: next.date)
                     let isToday = Calendar.current.isDateInToday(next.date)
+
+                    if let recommendedDrill = self.drillRecommendedThisTurn {
+                        primerId = recommendedDrill
+                        primerTitle = recommendedDrill.title
+                    }
+
+                    let cadenceFloor = day.planned.cadenceFloor ?? 155
+                    let primerTarget: String = {
+                        let template = DrillTemplate.template(for: primerId)
+                        return template.calculateTargetCadence(cadenceFloor)
+                    }()
+
                     self.sessionRecommendedThisTurn = PrescribedDailySession(
                         targetGoal: UserDefaults.standard.string(forKey: "trainingGoal") ?? "Base Building",
                         sessionTitle: day.planned.title,
                         durationBand: "\(day.planned.minutesLow)–\(day.planned.minutesHigh) min",
                         paceBand: day.planned.paceBand ?? "Easy Aerobic",
                         hrCap: day.planned.hrCap ?? "< 152 BPM",
-                        cadenceFloor: day.planned.cadenceFloor ?? 155,
+                        cadenceFloor: cadenceFloor,
                         groundedRationale: "Scheduled next run on your training calendar.",
                         readinessStateText: "Upcoming Planned Session",
                         readinessTriggerLead: nil,
                         primerDrillId: primerId,
                         primerDrillTitle: primerTitle,
-                        primerTargetCadence: "155-165 SPM",
+                        primerTargetCadence: primerTarget,
                         primerWorkDescription: "Pre-run technique primer.",
                         primerPhasesDuration: "10 min",
                         isTrimmed: false,
@@ -1054,6 +1078,59 @@ class AnalystChatEngine: ObservableObject {
                 applyFallbackCoachAction(action: .displaySession, payload: nil)
             } else if isWeeklyScheduleQuery(lowerUser) {
                 applyFallbackCoachAction(action: .displaySchedule, payload: nil)
+            }
+        }
+
+        // 3. Deduplicate and Harmonize Attachments
+        deduplicateAndAlignAttachments(userQuestion: userQuestion, wasExplicitToolDrill: wasExplicitToolDrill)
+    }
+
+    private func deduplicateAndAlignAttachments(userQuestion: String, wasExplicitToolDrill: Bool = false) {
+        let lowerUser = userQuestion.lowercased()
+        let isExplicitStandaloneDrillQuery = wasExplicitToolDrill || (lowerUser.contains("drill") && !isNextRunQuery(lowerUser) && !isTomorrowOrNextRunQuery(lowerUser) && !isWeeklyScheduleQuery(lowerUser))
+
+        if let session = self.sessionRecommendedThisTurn {
+            // When an upcoming or daily session is attached, suppress standalone schedule cards (only show the session)
+            if isNextRunQuery(lowerUser) || isTomorrowOrNextRunQuery(lowerUser) {
+                self.scheduleRecommendedThisTurn = nil
+            }
+
+            if let drill = self.drillRecommendedThisTurn {
+                if !drill.isAerobicContinuous {
+                    let alignedPrimerTarget: String = {
+                        let template = DrillTemplate.template(for: drill)
+                        return template.calculateTargetCadence(session.cadenceFloor)
+                    }()
+                    let alignedSession = PrescribedDailySession(
+                        targetGoal: session.targetGoal,
+                        sessionTitle: session.sessionTitle,
+                        durationBand: session.durationBand,
+                        paceBand: session.paceBand,
+                        hrCap: session.hrCap,
+                        cadenceFloor: session.cadenceFloor,
+                        groundedRationale: session.groundedRationale,
+                        readinessStateText: session.readinessStateText,
+                        readinessTriggerLead: session.readinessTriggerLead,
+                        primerDrillId: drill,
+                        primerDrillTitle: drill.title,
+                        primerTargetCadence: alignedPrimerTarget,
+                        primerWorkDescription: session.primerWorkDescription,
+                        primerPhasesDuration: session.primerPhasesDuration,
+                        isTrimmed: session.isTrimmed,
+                        microcycle: session.microcycle,
+                        mainSessionTemplateId: session.mainSessionTemplateId,
+                        mainRunDurationMinutes: session.mainRunDurationMinutes,
+                        completedPrimerRun: session.completedPrimerRun,
+                        isRestDay: session.isRestDay,
+                        dayLabel: session.dayLabel,
+                        isToday: session.isToday
+                    )
+                    self.sessionRecommendedThisTurn = alignedSession
+
+                    if !isExplicitStandaloneDrillQuery {
+                        self.drillRecommendedThisTurn = nil
+                    }
+                }
             }
         }
     }

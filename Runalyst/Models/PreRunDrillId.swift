@@ -120,25 +120,16 @@ enum PreRunDrillId: String, CaseIterable, Codable, Sendable {
         if let direct = PreRunDrillId(rawValue: clean) {
             return direct
         }
-        if clean.contains("recovery_flush") || clean.contains("aerobic_flush") || clean.contains("flush") {
-            return .aerobicFlush
-        }
-        if clean.contains("zone_2") || clean.contains("zone2") || clean.contains("aerobic_base") {
-            return .zone2Run
-        }
-        if clean.contains("recovery_jog") {
-            return .recoveryJog
-        }
         if clean.contains("cadence_pyramid") || clean.contains("pyramid") || clean.contains("cadence_drill") || clean == "cadence"
             || (clean.contains("cadence") && (clean.contains("drill") || clean.contains("exercise") || clean.contains("workout"))) {
             return .cadencePyramids
         }
-        if clean.contains("rhythm") {
-            return .rhythmIntervals
-        }
         if clean.contains("tempo_surge") || clean.contains("surge") || clean.contains("tempo_drill")
             || (clean.contains("tempo") && (clean.contains("drill") || clean.contains("exercise"))) {
             return .tempoSurges
+        }
+        if clean.contains("rhythm") {
+            return .rhythmIntervals
         }
         if clean.contains("stride") {
             return .strides
@@ -153,6 +144,15 @@ enum PreRunDrillId: String, CaseIterable, Codable, Sendable {
         if clean.contains("neuromuscular") || clean.contains("form_primer") || clean.contains("primer")
             || (clean.contains("form") && clean.contains("drill")) {
             return .neuromuscularPrimer
+        }
+        if clean.contains("recovery_flush") || clean.contains("aerobic_flush") || clean.contains("flush") {
+            return .aerobicFlush
+        }
+        if clean.contains("recovery_jog") {
+            return .recoveryJog
+        }
+        if clean.contains("zone_2") || clean.contains("zone2") || clean.contains("aerobic_base") {
+            return .zone2Run
         }
         for drill in PreRunDrillId.allCases {
             if drill.rawValue == clean || drill.title.lowercased() == string.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
