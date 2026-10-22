@@ -116,6 +116,7 @@
 		B34F9612C3224FC787FE1029 /* DrillTemplate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F216137F6DD0451D940D3AF6 /* DrillTemplate.swift */; };
 		B9C0D1E2F3A4B5C6D7E80102 /* ReadinessModifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8B9C0D1E2F3A4B5C6D7E801 /* ReadinessModifier.swift */; };
 		BCCC58D89E55F0E512F2AA77 /* FramboiseEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF6702113B57AA6128E0FBEF /* FramboiseEngineTests.swift */; };
+		BB1100019E55F0E512345678 /* ContinuousMillAssayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11000128E0FBEF12345678 /* ContinuousMillAssayTests.swift */; };
 		CE739F8BEC86FD28A3B81019 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B29A62CEEC0D478BA7CAB794 /* Foundation.framework */; };
 		D1E2F3A4B5C6D7E801020304 /* ReadinessModifierTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D1E2F3A4B5C6D7E8010203 /* ReadinessModifierTests.swift */; };
 		D4199BCA5EEC404CA22EC9CA /* HealthKitSeeder.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCEEDA06759A48099F6A59F2 /* HealthKitSeeder.swift */; };
@@ -275,6 +276,7 @@
 		F3A3B3C3D3E3F30313233343 /* DrillReadoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrillReadoutTests.swift; sourceTree = "<group>"; };
 		FCEEDA06759A48099F6A59F2 /* HealthKitSeeder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HealthKitSeeder.swift; path = Runalyst/Utilities/HealthKitSeeder.swift; sourceTree = SOURCE_ROOT; };
 		FF6702113B57AA6128E0FBEF /* FramboiseEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FramboiseEngineTests.swift; sourceTree = "<group>"; };
+		AA11000128E0FBEF12345678 /* ContinuousMillAssayTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContinuousMillAssayTests.swift; sourceTree = "<group>"; };
 		Q1W2E3R4T5Y6U7I8O9P0A1S2 /* Runalyst/Views/RunDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/RunDetailView.swift; sourceTree = SOURCE_ROOT; };
 		Z1X2C3V4B5N6M7L8K9J0H1G2 /* Runalyst/CoachingEngine/CoachingEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/CoachingEngine/CoachingEngine.swift; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
@@ -320,6 +322,7 @@
 		0CE070311479D8F538A56EF6 /* Engine */ = {
 			isa = PBXGroup;
 			children = (
+				AA11000128E0FBEF12345678 /* ContinuousMillAssayTests.swift */,
 				FF6702113B57AA6128E0FBEF /* FramboiseEngineTests.swift */,
 				B5C4F20AE97B4554C7EF2CAA /* SafeTargetCalculatorTests.swift */,
 				C0D1E2F3A4B5C6D7E8010203 /* ReadinessModifierTests.swift */,
@@ -742,6 +745,7 @@
 				695AB71B15A216F6DE67C683 /* HealthKitManagerTests.swift in Sources */,
 				912022DFB3EE8B3DA99DDB78 /* HealthKitManagerSeedingTests.swift in Sources */,
 				BCCC58D89E55F0E512F2AA77 /* FramboiseEngineTests.swift in Sources */,
+				BB1100019E55F0E512345678 /* ContinuousMillAssayTests.swift in Sources */,
 				5A1725D2EAD5FC515C5326B4 /* SafeTargetCalculatorTests.swift in Sources */,
 				D1E2F3A4B5C6D7E801020304 /* ReadinessModifierTests.swift in Sources */,
 				EA1EEE590D98ECC58149601F /* CardiacGuardrailTests.swift in Sources */,

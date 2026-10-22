@@ -35,16 +35,11 @@ public enum IntervalSegmenterCore {
             let isSurge: Bool
             var duration: Double
             var buckets: [TelemetryBucket]
-
-            var avgCadence: Double {
-                buckets.isEmpty ? 0 : (buckets.map(\.cadenceSPM).reduce(0, +) / Double(buckets.count))
-            }
-            var avgPace: Double {
-                buckets.isEmpty ? 0 : (buckets.map(\.paceSecondsPerKm).reduce(0, +) / Double(buckets.count))
-            }
+            var avgCadence: Double { buckets.isEmpty ? 0 : (buckets.map(\.cadenceSPM).reduce(0, +) / Double(buckets.count)) }
+            var avgPace: Double { buckets.isEmpty ? 0 : (buckets.map(\.paceSecondsPerKm).reduce(0, +) / Double(buckets.count)) }
             var avgHR: Double {
-                let validHRs = buckets.map(\.heartRateBPM).filter { $0 > 0 }
-                return validHRs.isEmpty ? 0 : (validHRs.reduce(0, +) / Double(validHRs.count))
+                let valid = buckets.map(\.heartRateBPM).filter { $0 > 0 }
+                return valid.isEmpty ? 0 : (valid.reduce(0, +) / Double(valid.count))
             }
         }
 
@@ -217,7 +212,7 @@ public enum IntervalSegmenterCore {
         let minPace = quintilePaces.min() ?? Double.infinity
         let q5IsFastest = (quintilePaces[4] <= minPace + 0.5)
 
-        return fasterTransitions >= 3 && slowerTransitions <= 1 && q5IsFastest
+        return fasterTransitions >= 3 && slowerTransitions == 0 && q5IsFastest
     }
 
     /// Segments continuous telemetry buckets into Work, Recovery, Steady, or Walking windows.
@@ -287,14 +282,10 @@ public enum IntervalSegmenterCore {
                 curKind = kind
                 segStart = elapsed
             } else if curKind != kind, let activeKind = curKind {
-                raw.append(IntervalPhaseSegment(
-                    startSeconds: segStart,
-                    endSeconds: elapsed,
-                    kind: activeKind,
-                    avgPaceSecondsPerKm: count > 0 ? pSum / count : 0,
-                    avgCadenceSPM: count > 0 ? cSum / count : 0,
-                    avgHeartRateBPM: hrCount > 0 ? hrSum / hrCount : 0
-                ))
+                let pace = count > 0 ? pSum / count : 0
+                let cad = count > 0 ? cSum / count : 0
+                let hr = hrCount > 0 ? hrSum / hrCount : 0
+                raw.append(IntervalPhaseSegment(startSeconds: segStart, endSeconds: elapsed, kind: activeKind, avgPaceSecondsPerKm: pace, avgCadenceSPM: cad, avgHeartRateBPM: hr))
                 curKind = kind
                 segStart = elapsed
                 pSum = 0; cSum = 0; hrSum = 0; count = 0; hrCount = 0
@@ -311,14 +302,10 @@ public enum IntervalSegmenterCore {
         }
 
         if let activeKind = curKind, elapsed > segStart {
-            raw.append(IntervalPhaseSegment(
-                startSeconds: segStart,
-                endSeconds: elapsed,
-                kind: activeKind,
-                avgPaceSecondsPerKm: count > 0 ? pSum / count : 0,
-                avgCadenceSPM: count > 0 ? cSum / count : 0,
-                avgHeartRateBPM: hrCount > 0 ? hrSum / hrCount : 0
-            ))
+            let pace = count > 0 ? pSum / count : 0
+            let cad = count > 0 ? cSum / count : 0
+            let hr = hrCount > 0 ? hrSum / hrCount : 0
+            raw.append(IntervalPhaseSegment(startSeconds: segStart, endSeconds: elapsed, kind: activeKind, avgPaceSecondsPerKm: pace, avgCadenceSPM: cad, avgHeartRateBPM: hr))
         }
 
         var consolidated = consolidatePhaseSegments(raw)
@@ -327,17 +314,9 @@ public enum IntervalSegmenterCore {
         let workSegmentsCount = consolidated.filter { $0.kind == .work }.count
         if workSegmentsCount < 2 {
             consolidated = consolidated.map { seg in
-                if seg.kind == .work || seg.kind == .recovery {
-                    return IntervalPhaseSegment(
-                        startSeconds: seg.startSeconds,
-                        endSeconds: seg.endSeconds,
-                        kind: .steady,
-                        avgPaceSecondsPerKm: seg.avgPaceSecondsPerKm,
-                        avgCadenceSPM: seg.avgCadenceSPM,
-                        avgHeartRateBPM: seg.avgHeartRateBPM
-                    )
-                }
-                return seg
+                (seg.kind == .work || seg.kind == .recovery)
+                    ? IntervalPhaseSegment(startSeconds: seg.startSeconds, endSeconds: seg.endSeconds, kind: .steady, avgPaceSecondsPerKm: seg.avgPaceSecondsPerKm, avgCadenceSPM: seg.avgCadenceSPM, avgHeartRateBPM: seg.avgHeartRateBPM)
+                    : seg
             }
 
             var coalesced: [IntervalPhaseSegment] = []
@@ -355,7 +334,7 @@ public enum IntervalSegmenterCore {
     }
 
     /// Merges fragmented work segments separated by brief dips and filters out stray warmup/cooldown surges.
-    private static func consolidatePhaseSegments(_ segments: [IntervalPhaseSegment]) -> [IntervalPhaseSegment] {
+    public static func consolidatePhaseSegments(_ segments: [IntervalPhaseSegment]) -> [IntervalPhaseSegment] {
         guard !segments.isEmpty else { return [] }
 
         // Step 1: Gap bridging: merge work segments separated by brief momentary flutter (<= 15s)
@@ -378,8 +357,49 @@ public enum IntervalSegmenterCore {
             }
         }
 
-        // Step 2: Speed contrast validation between candidate work and recovery
+        // Step 2: Outlier rejection: remove stray pickups vastly slower or shorter than true work reps
+        let workPaces = bridged.filter { $0.kind == .work && $0.avgPaceSecondsPerKm > 0 }.map(\.avgPaceSecondsPerKm).sorted()
         var filtered = bridged
+        if workPaces.count >= 4 {
+            let medWork = workPaces[workPaces.count / 2]
+            filtered = bridged.map { seg in
+                guard seg.kind == .work else { return seg }
+                let isVastlySlower = (seg.avgPaceSecondsPerKm > medWork + 45.0 && seg.avgCadenceSPM < 162.0)
+                let isMicroGlitch = seg.durationSeconds <= 20.0 && seg.avgPaceSecondsPerKm > medWork + 20.0
+                let isTooBrief = seg.durationSeconds < 14.0
+                if isVastlySlower || isMicroGlitch || isTooBrief {
+                    return IntervalPhaseSegment(startSeconds: seg.startSeconds, endSeconds: seg.endSeconds, kind: .steady, avgPaceSecondsPerKm: seg.avgPaceSecondsPerKm, avgCadenceSPM: seg.avgCadenceSPM, avgHeartRateBPM: seg.avgHeartRateBPM)
+                }
+                return seg
+            }
+        }
+
+        // Step 3: Isolated Warmup / Cooldown Strides (separated by >= 240s-300s from clustered work set)
+        let workIdxs = filtered.enumerated().filter { $0.element.kind == .work }.map(\.offset)
+        if workIdxs.count >= 4 {
+            let workDurs = workIdxs.map { filtered[$0].durationSeconds }
+            let medWorkDur = workDurs.sorted()[workDurs.count / 2]
+
+            let firstWork = workIdxs[0], secondWork = workIdxs[1]
+            let gapBeforeSet = filtered[secondWork].startSeconds - filtered[firstWork].endSeconds
+            var gaps: [Double] = []
+            for i in 1..<(workIdxs.count - 1) {
+                gaps.append(filtered[workIdxs[i + 1]].startSeconds - filtered[workIdxs[i]].endSeconds)
+            }
+            let medGap = gaps.isEmpty ? 90.0 : gaps.sorted()[gaps.count / 2]
+            if gapBeforeSet >= 240.0 && medGap <= 150.0 && filtered[firstWork].durationSeconds <= medWorkDur * 0.65 {
+                let w = filtered[firstWork]
+                filtered[firstWork] = IntervalPhaseSegment(startSeconds: w.startSeconds, endSeconds: w.endSeconds, kind: .steady, avgPaceSecondsPerKm: w.avgPaceSecondsPerKm, avgCadenceSPM: w.avgCadenceSPM, avgHeartRateBPM: w.avgHeartRateBPM)
+            }
+            let lastWork = workIdxs[workIdxs.count - 1], penWork = workIdxs[workIdxs.count - 2]
+            let gapAfterSet = filtered[lastWork].startSeconds - filtered[penWork].endSeconds
+            if gapAfterSet >= 300.0 && medGap <= 150.0 && filtered[lastWork].durationSeconds <= medWorkDur * 0.65 {
+                let w = filtered[lastWork]
+                filtered[lastWork] = IntervalPhaseSegment(startSeconds: w.startSeconds, endSeconds: w.endSeconds, kind: .steady, avgPaceSecondsPerKm: w.avgPaceSecondsPerKm, avgCadenceSPM: w.avgCadenceSPM, avgHeartRateBPM: w.avgHeartRateBPM)
+            }
+        }
+
+        // Step 4: Speed contrast validation between candidate work and recovery
         let candidateWorks = filtered.filter { $0.kind == .work && $0.avgPaceSecondsPerKm > 0 }
         let candidateRecs = filtered.filter { $0.kind == .recovery && $0.avgPaceSecondsPerKm > 0 }
         if !candidateWorks.isEmpty && !candidateRecs.isEmpty {
@@ -389,21 +409,14 @@ public enum IntervalSegmenterCore {
             if contrast < 20.0 {
                 filtered = filtered.map { seg in
                     if seg.kind == .work || seg.kind == .recovery {
-                        return IntervalPhaseSegment(
-                            startSeconds: seg.startSeconds,
-                            endSeconds: seg.endSeconds,
-                            kind: .steady,
-                            avgPaceSecondsPerKm: seg.avgPaceSecondsPerKm,
-                            avgCadenceSPM: seg.avgCadenceSPM,
-                            avgHeartRateBPM: seg.avgHeartRateBPM
-                        )
+                        return IntervalPhaseSegment(startSeconds: seg.startSeconds, endSeconds: seg.endSeconds, kind: .steady, avgPaceSecondsPerKm: seg.avgPaceSecondsPerKm, avgCadenceSPM: seg.avgCadenceSPM, avgHeartRateBPM: seg.avgHeartRateBPM)
                     }
                     return seg
                 }
             }
         }
 
-        // Step 3: Coalesce adjacent identical kinds
+        // Step 5: Coalesce adjacent identical kinds
         var finalSegments: [IntervalPhaseSegment] = []
         for seg in filtered {
             if let last = finalSegments.last, last.kind == seg.kind {
@@ -416,7 +429,7 @@ public enum IntervalSegmenterCore {
         return finalSegments
     }
 
-    private static func mergeSegments(_ a: IntervalPhaseSegment, _ b: IntervalPhaseSegment) -> IntervalPhaseSegment {
+    public static func mergeSegments(_ a: IntervalPhaseSegment, _ b: IntervalPhaseSegment) -> IntervalPhaseSegment {
         let durA = a.durationSeconds
         let durB = b.durationSeconds
         let activeDur = durA + durB

@@ -400,3 +400,36 @@ public enum RunDirective: Sendable, Codable, Equatable {
         }
     }
 }
+
+// MARK: - Telemetry Split Ingot (Distance Split Aggregates)
+
+/// Represents a continuous distance split (e.g. 1-kilometer or 1-mile segment) calculated from telemetry.
+public struct TelemetrySplit: Sendable, Codable, Equatable, Identifiable {
+    public var id: Int { index }
+    public let index: Int
+    public let distanceMeters: Double
+    public let durationSeconds: TimeInterval
+    public let paceSecondsPerKm: Double
+    public let avgHeartRateBPM: Double
+    public let avgCadenceSPM: Double
+    public let elevationGainMeters: Double
+
+    public init(
+        index: Int,
+        distanceMeters: Double,
+        durationSeconds: TimeInterval,
+        paceSecondsPerKm: Double,
+        avgHeartRateBPM: Double,
+        avgCadenceSPM: Double,
+        elevationGainMeters: Double = 0.0
+    ) {
+        self.index = index
+        self.distanceMeters = distanceMeters
+        self.durationSeconds = durationSeconds
+        self.paceSecondsPerKm = paceSecondsPerKm
+        self.avgHeartRateBPM = avgHeartRateBPM
+        self.avgCadenceSPM = avgCadenceSPM
+        self.elevationGainMeters = elevationGainMeters
+    }
+}
+

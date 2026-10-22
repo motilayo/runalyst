@@ -302,6 +302,100 @@ public enum FramboiseCore {
         return tags
     }
 
+    // MARK: - Distance Splits Engine
+
+    /// Computes authentic distance splits (e.g. 1-kilometer splits) from continuous time-series buckets.
+    public static func calculateSplits(
+        from buckets: [TelemetryBucket],
+        splitDistanceMeters: Double = 1000.0
+    ) -> [TelemetrySplit] {
+        guard !buckets.isEmpty, splitDistanceMeters > 0 else { return [] }
+
+        var splits: [TelemetrySplit] = []
+        var currentSplitIndex = 1
+
+        var accumulatedDistance = 0.0, accumulatedDuration = 0.0
+        var accumulatedWeightedHR = 0.0, accumulatedHRDuration = 0.0
+        var accumulatedWeightedCadence = 0.0, accumulatedCadenceDuration = 0.0
+        var accumulatedElevation = 0.0
+
+        func flushSplit() {
+            guard accumulatedDistance > 0 else { return }
+            let pace = accumulatedDuration / (accumulatedDistance / 1000.0)
+            let hr = accumulatedHRDuration > 0 ? (accumulatedWeightedHR / accumulatedHRDuration) : 0.0
+            let cad = accumulatedCadenceDuration > 0 ? (accumulatedWeightedCadence / accumulatedCadenceDuration) : 0.0
+            splits.append(TelemetrySplit(
+                index: currentSplitIndex,
+                distanceMeters: accumulatedDistance,
+                durationSeconds: accumulatedDuration,
+                paceSecondsPerKm: pace,
+                avgHeartRateBPM: hr,
+                avgCadenceSPM: cad,
+                elevationGainMeters: accumulatedElevation
+            ))
+            currentSplitIndex += 1
+            accumulatedDistance = 0
+            accumulatedDuration = 0
+            accumulatedWeightedHR = 0
+            accumulatedHRDuration = 0
+            accumulatedWeightedCadence = 0
+            accumulatedCadenceDuration = 0
+            accumulatedElevation = 0
+        }
+
+        for bucket in buckets {
+            var bucketDistance = bucket.distanceMeters
+            var bucketDuration = bucket.durationSeconds
+            guard bucketDistance > 0 || bucketDuration > 0 else { continue }
+            let bucketHR = bucket.heartRateBPM
+            let bucketCadence = bucket.cadenceSPM
+            var bucketElevation = bucket.elevationGainMeters ?? 0.0
+
+            while bucketDistance > 0 {
+                let distanceNeeded = splitDistanceMeters - accumulatedDistance
+                if bucketDistance <= distanceNeeded {
+                    accumulatedDistance += bucketDistance
+                    accumulatedDuration += bucketDuration
+                    if bucketHR >= 40.0 {
+                        accumulatedWeightedHR += bucketHR * bucketDuration
+                        accumulatedHRDuration += bucketDuration
+                    }
+                    if bucketCadence > 0.0 {
+                        accumulatedWeightedCadence += bucketCadence * bucketDuration
+                        accumulatedCadenceDuration += bucketDuration
+                    }
+                    accumulatedElevation += bucketElevation
+                    if accumulatedDistance >= splitDistanceMeters { flushSplit() }
+                    break
+                } else {
+                    let fraction = distanceNeeded / bucketDistance
+                    let splitDurationPart = bucketDuration * fraction
+                    let splitElevationPart = bucketElevation * fraction
+
+                    accumulatedDistance += distanceNeeded
+                    accumulatedDuration += splitDurationPart
+                    if bucketHR >= 40.0 {
+                        accumulatedWeightedHR += bucketHR * splitDurationPart
+                        accumulatedHRDuration += splitDurationPart
+                    }
+                    if bucketCadence > 0.0 {
+                        accumulatedWeightedCadence += bucketCadence * splitDurationPart
+                        accumulatedCadenceDuration += splitDurationPart
+                    }
+                    accumulatedElevation += splitElevationPart
+                    flushSplit()
+
+                    bucketDistance -= distanceNeeded
+                    bucketDuration -= splitDurationPart
+                    bucketElevation -= splitElevationPart
+                }
+            }
+        }
+
+        if accumulatedDistance >= 100.0 { flushSplit() }
+        return splits
+    }
+
     // MARK: - Ingot Primary Orchestrator
 
     /// Computes complete WorkingStats from raw telemetry buckets.
