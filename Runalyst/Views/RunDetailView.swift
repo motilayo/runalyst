@@ -199,6 +199,7 @@ struct RunDetailView: View {
                 tag.hasPrefix("drillWorkCadence:") ||
                 tag.hasPrefix("drillRecCadence:") ||
                 tag.hasPrefix("drillReps:") ||
+                tag.hasPrefix("drillRepDetails:") ||
                 allIds.contains(tag) ||
                 allTitles.contains(tag)
             }
@@ -1111,7 +1112,8 @@ struct RunDetailView: View {
                                     $0.hasPrefix("drillIntervals:") ||
                                     $0.hasPrefix("drillWorkCadence:") ||
                                     $0.hasPrefix("drillRecCadence:") ||
-                                    $0.hasPrefix("drillReps:")
+                                    $0.hasPrefix("drillReps:") ||
+                                    $0.hasPrefix("drillRepDetails:")
                                 }
                                 for tag in intervalSummary.framboiseTags where !runRecord.framboiseTags.contains(tag) {
                                     runRecord.framboiseTags.append(tag)

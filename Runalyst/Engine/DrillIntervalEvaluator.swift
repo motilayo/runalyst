@@ -9,6 +9,14 @@ struct DrillIntervalRep: Sendable, Equatable {
     let recoveryCadence: Int
     let recoveryHeartRate: Int
     let isMet: Bool
+    var durationSeconds: Double?
+    var workPaceSecondsPerKm: Double?
+    var recoveryPaceSecondsPerKm: Double?
+
+    var recoveryHeartRateDrop: Int? {
+        guard workHeartRate > 0, recoveryHeartRate > 0 else { return nil }
+        return workHeartRate - recoveryHeartRate
+    }
 }
 
 /// The complete interval-by-interval performance scorecard for a prescribed drill.
@@ -35,6 +43,22 @@ struct DrillIntervalSummary: Sendable, Equatable {
         tags.append("drillRecCadence:\(recoveryCadenceAvg)")
         let repBits = reps.map { $0.isMet ? "1" : "0" }.joined(separator: ",")
         tags.append("drillReps:\(repBits)")
+
+        let hasRichReps = reps.contains { $0.durationSeconds != nil || $0.workPaceSecondsPerKm != nil || $0.workHeartRate > 0 }
+        if hasRichReps {
+            let details = reps.map { rep in
+                let wCad = rep.workCadence
+                let wHR = rep.workHeartRate
+                let wPace = rep.workPaceSecondsPerKm.map { String(format: "%.1f", $0) } ?? ""
+                let dur = rep.durationSeconds.map { String(format: "%.0f", $0) } ?? ""
+                let rCad = rep.recoveryCadence
+                let rHR = rep.recoveryHeartRate
+                let rPace = rep.recoveryPaceSecondsPerKm.map { String(format: "%.1f", $0) } ?? ""
+                let metBit = rep.isMet ? "1" : "0"
+                return "\(rep.repIndex):\(wCad):\(wHR):\(wPace):\(dur):\(rCad):\(rHR):\(rPace):\(metBit)"
+            }.joined(separator: ";")
+            tags.append("drillRepDetails:\(details)")
+        }
         return tags
     }
 
@@ -52,7 +76,37 @@ struct DrillIntervalSummary: Sendable, Equatable {
             .flatMap { Int($0.replacingOccurrences(of: "drillRecCadence:", with: "")) } ?? 0
 
         var reps: [DrillIntervalRep] = []
-        if let repTag = tags.first(where: { $0.hasPrefix("drillReps:") }) {
+        if let detailsTag = tags.first(where: { $0.hasPrefix("drillRepDetails:") }) {
+            let rawDetails = detailsTag.replacingOccurrences(of: "drillRepDetails:", with: "")
+            let repEntries = rawDetails.split(separator: ";")
+            for entry in repEntries {
+                let parts = entry.split(separator: ":", omittingEmptySubsequences: false)
+                guard parts.count >= 9,
+                      let idx = Int(parts[0]),
+                      let wCad = Int(parts[1]),
+                      let wHR = Int(parts[2]),
+                      let rCad = Int(parts[5]),
+                      let rHR = Int(parts[6]) else { continue }
+                let wPace = Double(parts[3])
+                let dur = Double(parts[4])
+                let rPace = Double(parts[7])
+                let isMet = parts[8] == "1"
+
+                reps.append(DrillIntervalRep(
+                    repIndex: idx,
+                    workCadence: wCad,
+                    workHeartRate: wHR,
+                    recoveryCadence: rCad,
+                    recoveryHeartRate: rHR,
+                    isMet: isMet,
+                    durationSeconds: dur,
+                    workPaceSecondsPerKm: wPace,
+                    recoveryPaceSecondsPerKm: rPace
+                ))
+            }
+        }
+
+        if reps.isEmpty, let repTag = tags.first(where: { $0.hasPrefix("drillReps:") }) {
             let bits = repTag.replacingOccurrences(of: "drillReps:", with: "").split(separator: ",")
             for (idx, bit) in bits.enumerated() {
                 reps.append(DrillIntervalRep(
@@ -210,6 +264,7 @@ enum DrillIntervalEvaluator {
         let avgHR: Double
         let duration: TimeInterval
         let isWorkHint: Bool?
+        var avgPace: Double?
     }
 
     private static func evaluateContinuous(
@@ -258,6 +313,7 @@ enum DrillIntervalEvaluator {
     ) -> DrillIntervalSummary? {
         let stepType = HKQuantityType.quantityType(forIdentifier: .stepCount)
         let hrType = HKQuantityType.quantityType(forIdentifier: .heartRate)
+        let distType = HKQuantityType.quantityType(forIdentifier: .distanceWalkingRunning)
 
         let sortedActivities = activities.sorted { $0.startDate < $1.startDate }
         var segments: [DrillSegment] = []
@@ -268,14 +324,17 @@ enum DrillIntervalEvaluator {
             let hrVal = hrType.flatMap {
                 act.allStatistics[$0]?.averageQuantity()?.doubleValue(for: HKUnit.count().unitDivided(by: .minute()))
             } ?? 0
+            let distM = distType.flatMap { act.allStatistics[$0]?.sumQuantity()?.doubleValue(for: .meter()) } ?? 0
 
             let avgC: Double
             let avgH: Double
+            let avgP: Double?
 
             if steps > 0 {
                 // Priority 1: Exact native Apple Watch hardware statistics for this activity segment
                 avgC = steps / (act.duration / 60.0)
                 avgH = hrVal
+                avgP = distM > 0 ? (act.duration / (distM / 1000.0)) : nil
             } else {
                 // Priority 2: Fallback to time-series bucket interpolation (e.g. test mocks without allStatistics)
                 let actEnd = act.endDate ?? act.startDate.addingTimeInterval(act.duration)
@@ -285,9 +344,12 @@ enum DrillIntervalEvaluator {
                     avgC = validCadences.isEmpty ? 0 : (validCadences.reduce(0, +) / Double(validCadences.count))
                     let validHRs = actBuckets.map(\.meanHR).filter { $0 > 0 }
                     avgH = validHRs.isEmpty ? 0 : (validHRs.reduce(0, +) / Double(validHRs.count))
+                    let validPaces = actBuckets.map(\.meanPaceSecPerKm).filter { $0 > 0 }
+                    avgP = validPaces.isEmpty ? nil : (validPaces.reduce(0, +) / Double(validPaces.count))
                 } else {
                     avgC = 0
                     avgH = hrVal
+                    avgP = nil
                 }
             }
 
@@ -309,7 +371,8 @@ enum DrillIntervalEvaluator {
                 avgCadence: avgC,
                 avgHR: avgH,
                 duration: act.duration,
-                isWorkHint: hint
+                isWorkHint: hint,
+                avgPace: avgP
             ))
         }
 
@@ -537,7 +600,10 @@ enum DrillIntervalEvaluator {
             workHeartRate: repWorkHR,
             recoveryCadence: repRecCadence,
             recoveryHeartRate: repRecHR,
-            isMet: isMet
+            isMet: isMet,
+            durationSeconds: work.duration > 0 ? work.duration : nil,
+            workPaceSecondsPerKm: work.avgPace,
+            recoveryPaceSecondsPerKm: recovery?.avgPace
         )
     }
 

@@ -223,14 +223,21 @@ public enum IntervalSegmenterCore {
         guard !buckets.isEmpty else { return [] }
 
         let moving = buckets.filter { $0.cadenceSPM >= 135.0 }
-        let medCad = moving.isEmpty ? 160.0 : moving.map(\.cadenceSPM).sorted()[moving.count / 2]
+        let activeBuckets = buckets.filter { $0.cadenceSPM >= 60.0 }
+        let cadPool = (moving.count >= buckets.count / 3) ? moving : (activeBuckets.isEmpty ? buckets : activeBuckets)
+        let allCads = cadPool.map(\.cadenceSPM).sorted()
+        let cadP20 = allCads[allCads.count / 5]
+        let cadP90 = allCads[min(allCads.count - 1, (allCads.count * 9) / 10)]
+        let hasCadenceSurges = (cadP90 - cadP20) >= 14.0
+        let movingCads = moving.map(\.cadenceSPM).sorted()
+        let medCad = movingCads.isEmpty ? (allCads.isEmpty ? 160.0 : allCads[allCads.count / 2]) : movingCads[movingCads.count / 2]
         let validPaces = moving.map(\.paceSecondsPerKm).filter { $0 > 0 }.sorted()
         let medPace = validPaces.isEmpty ? 300.0 : validPaces[validPaces.count / 2]
         let p20 = validPaces.isEmpty ? medPace : validPaces[validPaces.count / 5]
         let paceCV = FramboiseCore.calculatePaceCV(bucketPaces: validPaces)
         let hasLargePaceRange = (medPace - p20) >= 30.0
 
-        let isUniformSteady = paceCV < 0.10 && (medPace - p20) < 20.0
+        let isUniformSteady = paceCV < 0.10 && (medPace - p20) < 20.0 && !hasCadenceSurges
         let surgePaceThreshold = hasLargePaceRange ? min(medPace - 30.0, p20 + 20.0) : (medPace - 20.0)
 
         var raw: [IntervalPhaseSegment] = []
@@ -242,7 +249,8 @@ public enum IntervalSegmenterCore {
             let windowSize = 20
             let windowStart = max(0, index - windowSize / 2)
             let windowEnd = min(buckets.count - 1, index + windowSize / 2)
-            let localWindow = buckets[windowStart...windowEnd].filter { $0.cadenceSPM >= 135.0 }
+            let rawWindow = buckets[windowStart...windowEnd]
+            let localWindow = hasCadenceSurges ? Array(rawWindow.filter { $0.cadenceSPM >= 60.0 }) : rawWindow.filter { $0.cadenceSPM >= 135.0 }
 
             let localMedCad: Double = {
                 guard !localWindow.isEmpty else { return medCad }
@@ -259,21 +267,23 @@ public enum IntervalSegmenterCore {
                 (b.paceSecondsPerKm > 0 && b.paceSecondsPerKm <= (localMedPace - 15.0) && b.cadenceSPM >= localMedCad - 1.0)
                 || (b.cadenceSPM >= (localMedCad + 2.0) && b.paceSecondsPerKm > 0 && b.paceSecondsPerKm <= localMedPace)
                 || (b.paceSecondsPerKm > 0 && b.paceSecondsPerKm <= surgePaceThreshold && b.cadenceSPM >= cadenceFloor)
+                || (hasCadenceSurges && b.cadenceSPM >= localMedCad + 6.0 && b.cadenceSPM >= cadenceFloor && (b.paceSecondsPerKm <= 0 || b.paceSecondsPerKm <= localMedPace + 5.0))
             )
 
             let isRec = !isUniformSteady && (
                 b.paceSecondsPerKm >= (localMedPace + 15.0)
                 || (b.cadenceSPM <= localMedCad - 2.0)
                 || (b.cadenceSPM < cadenceFloor)
+                || (hasCadenceSurges && b.cadenceSPM <= localMedCad - 6.0)
             )
 
             let kind: IntervalPhaseKind
-            if b.cadenceSPM < cadenceFloor && b.cadenceSPM < 135.0 {
-                kind = .walking
-            } else if isSurge {
+            if isSurge {
                 kind = .work
             } else if isRec {
                 kind = .recovery
+            } else if b.cadenceSPM < cadenceFloor && b.cadenceSPM < 135.0 {
+                kind = .walking
             } else {
                 kind = .steady
             }
@@ -399,19 +409,21 @@ public enum IntervalSegmenterCore {
             }
         }
 
-        // Step 4: Speed contrast validation between candidate work and recovery
+        // Step 4: Speed & cadence contrast validation between candidate work and recovery
         let candidateWorks = filtered.filter { $0.kind == .work && $0.avgPaceSecondsPerKm > 0 }
         let candidateRecs = filtered.filter { $0.kind == .recovery && $0.avgPaceSecondsPerKm > 0 }
         if !candidateWorks.isEmpty && !candidateRecs.isEmpty {
             let avgWorkPace = candidateWorks.map(\.avgPaceSecondsPerKm).reduce(0, +) / Double(candidateWorks.count)
             let avgRecPace = candidateRecs.map(\.avgPaceSecondsPerKm).reduce(0, +) / Double(candidateRecs.count)
+            let avgWorkCad = candidateWorks.map(\.avgCadenceSPM).reduce(0, +) / Double(candidateWorks.count)
+            let avgRecCad = candidateRecs.map(\.avgCadenceSPM).reduce(0, +) / Double(candidateRecs.count)
             let contrast = avgRecPace - avgWorkPace
-            if contrast < 20.0 {
+            let cadContrast = avgWorkCad - avgRecCad
+            if contrast < 20.0 && cadContrast < 14.0 {
                 filtered = filtered.map { seg in
-                    if seg.kind == .work || seg.kind == .recovery {
-                        return IntervalPhaseSegment(startSeconds: seg.startSeconds, endSeconds: seg.endSeconds, kind: .steady, avgPaceSecondsPerKm: seg.avgPaceSecondsPerKm, avgCadenceSPM: seg.avgCadenceSPM, avgHeartRateBPM: seg.avgHeartRateBPM)
-                    }
-                    return seg
+                    (seg.kind == .work || seg.kind == .recovery)
+                        ? IntervalPhaseSegment(startSeconds: seg.startSeconds, endSeconds: seg.endSeconds, kind: .steady, avgPaceSecondsPerKm: seg.avgPaceSecondsPerKm, avgCadenceSPM: seg.avgCadenceSPM, avgHeartRateBPM: seg.avgHeartRateBPM)
+                        : seg
                 }
             }
         }
@@ -467,17 +479,7 @@ public enum IntervalSegmenterCore {
 
         let avgCycleContrast = cycles.isEmpty ? 0.0 : (cycles.map { $0.recoveryPaceSecondsPerKm - $0.workPaceSecondsPerKm }.reduce(0, +) / Double(cycles.count))
 
-        let isIntermittent: Bool = {
-            guard !isProgression else { return false }
-            guard avgCycleContrast >= 25.0 else { return false }
-            if cycles.count >= 3 {
-                return true
-            }
-            if cycles.count == 2 && cv >= 0.12 && !isUniformSteady {
-                return true
-            }
-            return false
-        }()
+        let isIntermittent = !isProgression && avgCycleContrast >= 25.0 && (cycles.count >= 3 || (cycles.count == 2 && cv >= 0.12 && !isUniformSteady))
 
         return IntervalSegmentationReport(
             phases: phases,

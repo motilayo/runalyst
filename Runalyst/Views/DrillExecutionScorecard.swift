@@ -816,6 +816,13 @@ extension DrillExecutionScorecard {
                 }()
                 let sched = DrillSchedule.schedule(for: drillId, duration: durationCategory)
 
+                let fallbackDuration: Double? = {
+                    if drillObj.intervalSpec.workSeconds > 0 {
+                        return Double(drillObj.intervalSpec.workSeconds)
+                    }
+                    return sched.workSeconds > 0 ? Double(sched.workSeconds) : nil
+                }()
+
                 return summary.reps.map { rep in
                     let matchedEval = intervalEvals.first(where: { $0.repIndex == rep.repIndex })
                         ?? (rep.repIndex - 1 >= 0 && rep.repIndex - 1 < intervalEvals.count ? intervalEvals[rep.repIndex - 1] : nil)
@@ -824,25 +831,40 @@ extension DrillExecutionScorecard {
                     let workCadence = evalWorkCad > 0
                         ? evalWorkCad
                         : (rep.workCadence > 0 ? rep.workCadence : actualCadence)
-                    let workHR = rep.workHeartRate > 0 ? rep.workHeartRate : (matchedEval?.workHeartRate ?? actualHR)
+                    let workHR = (matchedEval?.workHeartRate ?? 0) > 0
+                        ? (matchedEval?.workHeartRate ?? 0)
+                        : (rep.workHeartRate > 0 ? rep.workHeartRate : actualHR)
                     let evalRecCad = matchedEval?.recoveryCadence ?? 0
                     let recCadence = evalRecCad > 0
                         ? evalRecCad
                         : (rep.recoveryCadence > 0 ? rep.recoveryCadence : 0)
-                    let recHR = rep.recoveryHeartRate > 0 ? rep.recoveryHeartRate : (matchedEval?.recoveryHeartRate ?? 0)
+                    let recHR = (matchedEval?.recoveryHeartRate ?? 0) > 0
+                        ? (matchedEval?.recoveryHeartRate ?? 0)
+                        : (rep.recoveryHeartRate > 0 ? rep.recoveryHeartRate : 0)
                     let hrDrop: Int? = {
                         if let drop = matchedEval?.recoveryHeartRateDrop { return drop }
+                        if let drop = rep.recoveryHeartRateDrop { return drop }
                         if workHR > 0 && recHR > 0 { return workHR - recHR }
                         return nil
                     }()
 
-                    let fallbackDuration = sched.workSeconds > 0 ? sched.workSeconds : nil
                     let fallbackWorkPace: String? = {
                         if runRecord.workingAvgPace > 0 {
                             return PaceFormatter.formatPace(secondsPerKilometer: runRecord.workingAvgPace)
                         }
                         return nil
                     }()
+
+                    let workPaceFormatted = matchedEval?.workPaceFormatted
+                        ?? rep.workPaceSecondsPerKm.map { PaceFormatter.formatPace(secondsPerKilometer: $0) }
+                        ?? fallbackWorkPace
+
+                    let recoveryPaceFormatted = matchedEval?.recoveryPaceFormatted
+                        ?? rep.recoveryPaceSecondsPerKm.map { PaceFormatter.formatPace(secondsPerKilometer: $0) }
+
+                    let repDuration = matchedEval?.durationSeconds
+                        ?? rep.durationSeconds
+                        ?? fallbackDuration
 
                     let evaluatedIsMet: Bool = {
                         if let range = drillObj.effectiveTargetCadence, workCadence > 0 {
@@ -854,12 +876,12 @@ extension DrillExecutionScorecard {
 
                     return DrillDisplayRep(
                         repIndex: rep.repIndex,
-                        durationSeconds: matchedEval?.durationSeconds ?? fallbackDuration,
+                        durationSeconds: repDuration,
                         isFastest: matchedEval?.observation.starts(with: "Fastest") ?? false,
-                        workPaceFormatted: matchedEval?.workPaceFormatted ?? fallbackWorkPace,
+                        workPaceFormatted: workPaceFormatted,
                         workCadence: workCadence,
                         workHeartRate: workHR,
-                        recoveryPaceFormatted: matchedEval?.recoveryPaceFormatted,
+                        recoveryPaceFormatted: recoveryPaceFormatted,
                         recoveryCadence: recCadence,
                         recoveryHeartRate: recHR,
                         recoveryHeartRateDrop: hrDrop,

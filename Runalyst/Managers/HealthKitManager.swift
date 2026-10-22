@@ -761,7 +761,8 @@ class HealthKitManager: ObservableObject {
                     $0.hasPrefix("drillIntervals:") ||
                     $0.hasPrefix("drillWorkCadence:") ||
                     $0.hasPrefix("drillRecCadence:") ||
-                    $0.hasPrefix("drillReps:")
+                    $0.hasPrefix("drillReps:") ||
+                    $0.hasPrefix("drillRepDetails:")
                 }
                 for tag in intervalSummary.framboiseTags where !tags.contains(tag) {
                     tags.append(tag)
@@ -839,64 +840,137 @@ class HealthKitManager: ObservableObject {
         let activities = workout.workoutActivities.sorted { $0.startDate < $1.startDate }
         guard activities.count >= 4 else { return nil }
 
+        let stepType = HKQuantityType.quantityType(forIdentifier: .stepCount)
+        let distType = HKQuantityType.quantityType(forIdentifier: .distanceWalkingRunning)
+        let hrType = HKQuantityType.quantityType(forIdentifier: .heartRate)
+
         let workoutStart = workout.startDate
-        var segments: [PhaseSegment] = []
+
+        struct ActivityDraft {
+            let startSec: Double
+            let endSec: Double
+            let duration: Double
+            let avgCadence: Double
+            let avgPace: Double
+            let avgHR: Double
+            let isWorkHint: Bool?
+        }
 
         let moving = buckets.filter { $0.meanCadence >= 120 }
-        let medCad = moving.isEmpty ? 160.0 : moving.map(\.meanCadence).sorted()[moving.count / 2]
+        let fallbackCad = moving.isEmpty ? 160.0 : moving.map(\.meanCadence).sorted()[moving.count / 2]
         let validPaces = moving.map(\.meanPaceSecPerKm).filter { $0 > 0 }.sorted()
-        let medPace = validPaces.isEmpty ? 300.0 : validPaces[validPaces.count / 2]
+        let fallbackPace = validPaces.isEmpty ? 300.0 : validPaces[validPaces.count / 2]
 
+        var drafts: [ActivityDraft] = []
         for act in activities {
+            guard act.duration > 0 else { continue }
             let startSec = max(0, act.startDate.timeIntervalSince(workoutStart))
             let actEnd = act.endDate ?? act.startDate.addingTimeInterval(act.duration)
             let endSec = max(startSec + 1, actEnd.timeIntervalSince(workoutStart))
+
+            let steps = stepType.flatMap { act.allStatistics[$0]?.sumQuantity()?.doubleValue(for: .count()) } ?? 0
+            let distM = distType.flatMap { act.allStatistics[$0]?.sumQuantity()?.doubleValue(for: .meter()) } ?? 0
+            let hrVal = hrType.flatMap { act.allStatistics[$0]?.averageQuantity()?.doubleValue(for: HKUnit.count().unitDivided(by: .minute())) } ?? 0
+
             let actBuckets = buckets.filter { $0.startTime >= act.startDate && $0.startTime < actEnd }
 
-            let pSum = actBuckets.map(\.meanPaceSecPerKm).filter { $0 > 0 }
-            let avgP = pSum.isEmpty ? medPace : pSum.reduce(0, +) / Double(pSum.count)
+            let avgC: Double = {
+                if steps > 0 { return steps / (act.duration / 60.0) }
+                let cSum = actBuckets.map(\.meanCadence).filter { $0 > 0 }
+                return cSum.isEmpty ? fallbackCad : (cSum.reduce(0, +) / Double(cSum.count))
+            }()
 
-            let cSum = actBuckets.map(\.meanCadence).filter { $0 > 0 }
-            let avgC = cSum.isEmpty ? medCad : cSum.reduce(0, +) / Double(cSum.count)
+            let avgP: Double = {
+                if distM > 0 { return act.duration / (distM / 1000.0) }
+                let pSum = actBuckets.map(\.meanPaceSecPerKm).filter { $0 > 0 }
+                return pSum.isEmpty ? fallbackPace : (pSum.reduce(0, +) / Double(pSum.count))
+            }()
 
-            let hSum = actBuckets.map(\.meanHR).filter { $0 > 0 }
-            let avgH = hSum.isEmpty ? 0.0 : hSum.reduce(0, +) / Double(hSum.count)
+            let avgH: Double = {
+                if hrVal > 0 { return hrVal }
+                let hSum = actBuckets.map(\.meanHR).filter { $0 > 0 }
+                return hSum.isEmpty ? 0.0 : (hSum.reduce(0, +) / Double(hSum.count))
+            }()
 
-            var kind = "steady"
+            var hint: Bool?
             if let meta = act.metadata {
                 for (_, v) in meta {
                     let str = String(describing: v).lowercased()
                     if str.contains("work") || str.contains("push") || str.contains("interval") || str.contains("surge") {
-                        kind = "work"
+                        hint = true
                         break
-                    } else if str.contains("recovery") || str.contains("rest") {
-                        kind = "recovery"
+                    } else if str.contains("recovery") || str.contains("rest") || str.contains("walk") {
+                        hint = false
                         break
                     }
                 }
             }
 
-            if kind == "steady" {
-                if avgC >= medCad || (avgP > 0 && avgP <= medPace - 10.0) {
-                    kind = "work"
-                } else {
-                    kind = "recovery"
-                }
+            drafts.append(ActivityDraft(
+                startSec: startSec,
+                endSec: endSec,
+                duration: act.duration,
+                avgCadence: avgC,
+                avgPace: avgP,
+                avgHR: avgH,
+                isWorkHint: hint
+            ))
+        }
+
+        guard drafts.count >= 4 else { return nil }
+
+        // Classify into Warmup, Cooldown, Work, Recovery
+        let hasWarmup = drafts[0].duration >= 100.0 || drafts[0].isWorkHint == false
+        let hasCooldown = (drafts.last?.duration ?? 0) >= 45.0 || drafts.last?.isWorkHint == false
+
+        let startIndex = hasWarmup ? 1 : 0
+        let endIndex = hasCooldown ? (drafts.count - 1) : drafts.count
+
+        guard endIndex > startIndex + 1 else { return nil }
+
+        let middleDrafts = Array(drafts[startIndex..<endIndex])
+        let midCads = middleDrafts.map(\.avgCadence).filter { $0 > 0 }.sorted()
+        let cadThreshold: Double = {
+            guard !midCads.isEmpty else { return fallbackCad }
+            let minC = midCads.first ?? fallbackCad
+            let maxC = midCads.last ?? fallbackCad
+            return (minC + maxC) / 2.0
+        }()
+        let midPaces = middleDrafts.map(\.avgPace).filter { $0 > 0 }.sorted()
+        let paceThreshold: Double = {
+            guard !midPaces.isEmpty else { return fallbackPace }
+            let minP = midPaces.first ?? fallbackPace
+            let maxP = midPaces.last ?? fallbackPace
+            return (minP + maxP) / 2.0
+        }()
+
+        var segments: [PhaseSegment] = []
+        for (i, d) in drafts.enumerated() {
+            let kind: String
+            if i < startIndex {
+                kind = "steady" // Warmup
+            } else if i >= endIndex {
+                kind = "steady" // Cooldown
+            } else if let hint = d.isWorkHint {
+                kind = hint ? "work" : "recovery"
+            } else {
+                let isWork = d.avgCadence >= cadThreshold || (d.avgPace > 0 && d.avgPace <= paceThreshold - 10.0)
+                kind = isWork ? "work" : "recovery"
             }
 
             segments.append(PhaseSegment(
-                startSeconds: startSec,
-                endSeconds: endSec,
+                startSeconds: d.startSec,
+                endSeconds: d.endSec,
                 kind: kind,
-                avgPace: avgP,
-                avgCadence: avgC,
-                avgHR: avgH
+                avgPace: d.avgPace,
+                avgCadence: d.avgCadence,
+                avgHR: d.avgHR
             ))
         }
 
         let workCount = segments.filter { $0.kind == "work" }.count
         guard workCount >= 2 else { return nil }
-        return FramboiseEngine.consolidatePhaseSegments(segments)
+        return segments
     }
 
     func refreshWorkoutMetrics(for record: RunRecord, in context: ModelContext) async throws {
