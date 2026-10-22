@@ -1,0 +1,59 @@
+name: Runalyst Assay & CI Gate
+
+on:
+  pull_request:
+    branches: [ main, master ]
+  push:
+    branches: [ main, master ]
+
+jobs:
+  assay-gate:
+    name: Reference Core Assay & Foundry Test Suite
+    runs-on: macos-26
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+
+      - name: Install Dependencies
+        run: |
+          if ! which swiftlint >/dev/null; then
+            brew install swiftlint
+          fi
+          brew install xcbeautify || true
+
+      - name: Make Assay Script Executable
+        run: chmod +x ./assay.sh
+
+      - name: Execute Reference Core Assay (./assay.sh)
+        run: ./assay.sh
+
+      - name: Discover Available iOS Simulator
+        id: simulator
+        run: |
+          DEVICE_NAME=$(xcrun simctl list devices available | grep -m 1 "iPhone" | sed -E 's/^[[:space:]]+//; s/ \([A-F0-9-]+\).*//')
+          echo "Using simulator device: $DEVICE_NAME"
+          echo "device=$DEVICE_NAME" >> $GITHUB_OUTPUT
+
+      - name: Run Foundry Test Suite & Continuous Mill Assay
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project Runalyst.xcodeproj \
+            -scheme Runalyst \
+            -sdk iphonesimulator \
+            -destination "platform=iOS Simulator,name=${{ steps.simulator.outputs.device }}" \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO | xcbeautify || \
+          xcodebuild test \
+            -project Runalyst.xcodeproj \
+            -scheme Runalyst \
+            -sdk iphonesimulator \
+            -destination "platform=iOS Simulator,name=${{ steps.simulator.outputs.device }}" \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO

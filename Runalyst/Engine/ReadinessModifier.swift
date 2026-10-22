@@ -353,7 +353,7 @@ enum ReadinessModifier {
         // from SessionSynthesisEngine), preserve that exact adapted range and derive the unadapted
         // standard target from the drill template.
         if rawTarget.localizedCaseInsensitiveContains("adapted") {
-            let standard = DrillTemplate.template(for: drillId).calculateTargetCadence(baselineCadence ?? 155) ?? normalizedTarget
+            let standard = DrillTemplate.template(for: drillId).calculateTargetCadence(baselineCadence ?? 155)
             return AdaptiveDrillTarget(standardTargetCadence: standard, targetCadence: normalizedTarget)
         }
 

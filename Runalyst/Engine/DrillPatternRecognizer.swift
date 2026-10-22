@@ -139,7 +139,7 @@ enum DrillPatternRecognizer {
         }
 
         let globalThreshold = (rawMinC + rawMaxC) / 2.0
-        var (workReps, recReps, intervalSegments) = buildSegments(withThreshold: globalThreshold)
+        var (workReps, recReps, _) = buildSegments(withThreshold: globalThreshold)
 
         // Pass 2: High-cadence float recovery search
         // When a slow warmup pulls globalThreshold below recovery cadence,
@@ -162,11 +162,10 @@ enum DrillPatternRecognizer {
                 let medValley = elevatedValleys.sorted()[elevatedValleys.count / 2]
                 if (medPeak - medValley) >= 3.5 {
                     let floatThreshold = (medPeak + medValley) / 2.0
-                    let (pass2Work, pass2Rec, pass2Intervals) = buildSegments(withThreshold: floatThreshold)
+                    let (pass2Work, pass2Rec, _) = buildSegments(withThreshold: floatThreshold)
                     if pass2Work.count >= 3 && pass2Rec.count >= 2 {
                         workReps = pass2Work
                         recReps = pass2Rec
-                        intervalSegments = pass2Intervals
                     }
                 }
             }

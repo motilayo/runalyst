@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		D4E5F60718293A0100000003 /* RunalystCore in Frameworks */ = {isa = PBXBuildFile; productRef = D4E5F60718293A0100000002 /* RunalystCore */; };
+		D4E5F60718293A0100000004 /* RunalystCore in Frameworks */ = {isa = PBXBuildFile; productRef = D4E5F60718293A0100000002 /* RunalystCore */; };
 		075FD91D330B77E5867419C9 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0C58A0BCEA50BA9ED3463C4 /* ContentView.swift */; };
 		0B18257CB15134E50E06CFC5 /* PaceFormatterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00D99981A310B02F2B8044D6 /* PaceFormatterTests.swift */; };
 		109644F6A12FCEE27F8160DA /* RunalystClassifier.mlmodel in Sources */ = {isa = PBXBuildFile; fileRef = B06944F28CDA8831E8FA559D /* RunalystClassifier.mlmodel */; };
@@ -114,6 +116,7 @@
 		B34F9612C3224FC787FE1029 /* DrillTemplate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F216137F6DD0451D940D3AF6 /* DrillTemplate.swift */; };
 		B9C0D1E2F3A4B5C6D7E80102 /* ReadinessModifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8B9C0D1E2F3A4B5C6D7E801 /* ReadinessModifier.swift */; };
 		BCCC58D89E55F0E512F2AA77 /* FramboiseEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF6702113B57AA6128E0FBEF /* FramboiseEngineTests.swift */; };
+		BB1100019E55F0E512345678 /* ContinuousMillAssayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11000128E0FBEF12345678 /* ContinuousMillAssayTests.swift */; };
 		CE739F8BEC86FD28A3B81019 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B29A62CEEC0D478BA7CAB794 /* Foundation.framework */; };
 		D1E2F3A4B5C6D7E801020304 /* ReadinessModifierTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D1E2F3A4B5C6D7E8010203 /* ReadinessModifierTests.swift */; };
 		D4199BCA5EEC404CA22EC9CA /* HealthKitSeeder.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCEEDA06759A48099F6A59F2 /* HealthKitSeeder.swift */; };
@@ -273,6 +276,7 @@
 		F3A3B3C3D3E3F30313233343 /* DrillReadoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrillReadoutTests.swift; sourceTree = "<group>"; };
 		FCEEDA06759A48099F6A59F2 /* HealthKitSeeder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HealthKitSeeder.swift; path = Runalyst/Utilities/HealthKitSeeder.swift; sourceTree = SOURCE_ROOT; };
 		FF6702113B57AA6128E0FBEF /* FramboiseEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FramboiseEngineTests.swift; sourceTree = "<group>"; };
+		AA11000128E0FBEF12345678 /* ContinuousMillAssayTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContinuousMillAssayTests.swift; sourceTree = "<group>"; };
 		Q1W2E3R4T5Y6U7I8O9P0A1S2 /* Runalyst/Views/RunDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/RunDetailView.swift; sourceTree = SOURCE_ROOT; };
 		Z1X2C3V4B5N6M7L8K9J0H1G2 /* Runalyst/CoachingEngine/CoachingEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/CoachingEngine/CoachingEngine.swift; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
@@ -282,6 +286,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D4E5F60718293A0100000003 /* RunalystCore in Frameworks */,
 				CE739F8BEC86FD28A3B81019 /* Foundation.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -290,6 +295,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D4E5F60718293A0100000004 /* RunalystCore in Frameworks */,
 				9DEC99887D72772D3AB524D1 /* Foundation.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -316,6 +322,7 @@
 		0CE070311479D8F538A56EF6 /* Engine */ = {
 			isa = PBXGroup;
 			children = (
+				AA11000128E0FBEF12345678 /* ContinuousMillAssayTests.swift */,
 				FF6702113B57AA6128E0FBEF /* FramboiseEngineTests.swift */,
 				B5C4F20AE97B4554C7EF2CAA /* SafeTargetCalculatorTests.swift */,
 				C0D1E2F3A4B5C6D7E8010203 /* ReadinessModifierTests.swift */,
@@ -544,6 +551,9 @@
 			dependencies = (
 			);
 			name = Runalyst;
+			packageProductDependencies = (
+				D4E5F60718293A0100000002 /* RunalystCore */,
+			);
 			productName = Runalyst;
 			productReference = DD66FA54810DAEAB1B57337A /* Runalyst.app */;
 			productType = "com.apple.product-type.application";
@@ -562,6 +572,9 @@
 				7564C1715440F9D6ED11D05A /* PBXTargetDependency */,
 			);
 			name = RunalystTests;
+			packageProductDependencies = (
+				D4E5F60718293A0100000002 /* RunalystCore */,
+			);
 			productName = RunalystTests;
 			productReference = 3EF4AE46EBF2F38F6B44624C /* RunalystTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
@@ -590,6 +603,9 @@
 				Base,
 			);
 			mainGroup = AECDF6AF529E503EF8331ED7;
+			packageReferences = (
+				D4E5F60718293A0100000001 /* XCLocalSwiftPackageReference "RunalystCore" */,
+			);
 			productRefGroup = 86C3E3CDC03F671C6EE600C2 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -729,6 +745,7 @@
 				695AB71B15A216F6DE67C683 /* HealthKitManagerTests.swift in Sources */,
 				912022DFB3EE8B3DA99DDB78 /* HealthKitManagerSeedingTests.swift in Sources */,
 				BCCC58D89E55F0E512F2AA77 /* FramboiseEngineTests.swift in Sources */,
+				BB1100019E55F0E512345678 /* ContinuousMillAssayTests.swift in Sources */,
 				5A1725D2EAD5FC515C5326B4 /* SafeTargetCalculatorTests.swift in Sources */,
 				D1E2F3A4B5C6D7E801020304 /* ReadinessModifierTests.swift in Sources */,
 				EA1EEE590D98ECC58149601F /* CardiacGuardrailTests.swift in Sources */,
@@ -1012,6 +1029,21 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		D4E5F60718293A0100000001 /* XCLocalSwiftPackageReference "RunalystCore" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = RunalystCore;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		D4E5F60718293A0100000002 /* RunalystCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = D4E5F60718293A0100000001 /* XCLocalSwiftPackageReference "RunalystCore" */;
+			productName = RunalystCore;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = EF32A70DD7FC6FB6AB476E75 /* Project object */;
 }

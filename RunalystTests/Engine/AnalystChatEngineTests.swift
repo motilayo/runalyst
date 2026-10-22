@@ -50,10 +50,6 @@ final class AnalystChatEngineTests: XCTestCase {
     // MARK: - 1. Compact Schedule Projection
 
     func testCompactScheduleProjectionFormat() {
-        let monday = makeDate(year: 2026, month: 10, day: 19)
-        let tuesday = makeDate(year: 2026, month: 10, day: 20)
-        let wednesday = makeDate(year: 2026, month: 10, day: 21)
-
         let completedSummary = CompletedWorkoutSummary(
             type: "Fartlek",
             minutes: 32.5,
