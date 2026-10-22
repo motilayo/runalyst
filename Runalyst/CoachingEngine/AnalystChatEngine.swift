@@ -433,14 +433,14 @@ class AnalystChatEngine: ObservableObject {
         \(contextBlock)\(recentContextBlock)
 
         TOOLS:
-        • `getTrainingSchedule`: Dates ('yyyy-MM-dd').
+        • `getTrainingSchedule`: Dates.
         • `getReadinessAndWorkload`: Recovery, ACWR.
         • `queryWorkoutHistory`: Compare.
         • `inspectWorkout`: Splits.
-        • `executeCoachAction`: display_drill, display_schedule, display_explainer, update_goal.
+        • `executeCoachAction`: ('display_drill', 'display_schedule', 'display_explainer', 'update_goal', 'export_to_watch', 'record_feedback').
 
         RULES:
-        • Dates: Ground in CONTEXT. Units: SPM, min/km. No LaTeX.
+        • Outside Running: Refocus. Units: SPM, min/km. No LaTeX.
         • Medical Safety: Urge rest on pain/rest days; state upcoming run when asked.
         • ACWR: Acute:Chronic Workload Ratio (<0.8=low, >1.4=spike). Low ACWR is not overload.
         • Proactive Cards: Never ask permission to show drills/schedule; trigger directly.
