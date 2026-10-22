@@ -209,121 +209,162 @@ struct DrillCardView: View {
             let drillIcon = PreRunDrill.iconName(for: drill.preRunDrillId, title: displayTitle)
             let drillColor = PreRunDrill.iconColor(for: drill.preRunDrillId, title: displayTitle)
 
-            HStack(spacing: 8) {
-                Image(systemName: drillIcon)
-                    .foregroundColor(drillColor)
-                    .font(.headline)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(displayTitle)
-                        .font(.headline)
-                        .foregroundColor(.primary)
-                    Text(currentDrill.dynamicDurationTitle)
-                        .font(.caption)
+            // Header Row: Icon badge + Category + Duration Capsule + Preview Button
+            HStack(alignment: .center, spacing: 8) {
+                HStack(spacing: 6) {
+                    ZStack {
+                        Circle()
+                            .fill(drillColor.opacity(0.14))
+                            .frame(width: 24, height: 24)
+                        Image(systemName: drillIcon)
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(drillColor)
+                    }
+
+                    Text(preRunId.isHeartRateTargeted ? "AEROBIC RUN" : "TECHNIQUE DRILL")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(drillColor)
+
+                    Text("•")
+                        .font(.system(size: 10))
                         .foregroundColor(.secondary)
+
+                    Text(currentDrill.duration.title.uppercased())
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(drillColor)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 2)
+                        .background(drillColor.opacity(0.12))
+                        .clipShape(Capsule())
                 }
 
                 Spacer()
-            }
 
-            if !purpose.isEmpty {
-                Text(purpose)
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            HStack(spacing: 16) {
-                if !work.isEmpty {
-                    Label(work, systemImage: "repeat")
-                        .font(.caption.bold())
-                        .foregroundColor(.primary)
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    openDrillReadout(displayTitle: displayTitle, coachingCue: cue)
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "applewatch")
+                            .font(.system(size: 9, weight: .bold))
+                        Text("Preview")
+                            .font(.caption.bold())
+                    }
+                    .padding(.horizontal, 10)
+                    .frame(height: 28)
+                    .background(Color(UIColor.secondarySystemFill))
+                    .foregroundColor(.primary)
+                    .clipShape(Capsule())
                 }
-                if !recovery.isEmpty {
-                    Label(recovery, systemImage: "moon.zzz")
+            }
+
+            // Title & Subtitle
+            VStack(alignment: .leading, spacing: 2) {
+                Text(displayTitle)
+                    .font(.subheadline.weight(.bold))
+                    .foregroundColor(.primary)
+
+                if !purpose.isEmpty {
+                    Text(purpose)
                         .font(.caption)
                         .foregroundColor(.secondary)
-                }
-                if !effort.isEmpty {
-                    Label(effort, systemImage: "bolt.fill")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
                 }
             }
 
-            if let cue = cue, !cue.isEmpty {
-                DrillCoachingCueBox(cue: cue)
-            }
-
-            let isZone1 = preRunId == .aerobicFlush || preRunId == .recoveryJog
-            let isZone2 = preRunId == .zone2Run
-            let targetExplainerTitle: String? = {
-                if isZone1 { return "Zone 1 Heart Rate" }
-                if isZone2 { return "Zone 2 Heart Rate" }
-                if drill.targetCadence?.isEmpty == false { return "Target Cadence" }
-                return nil
-            }()
-            let targetText: String? = {
-                if isZone1 {
-                    return "Target: Zone 1 HR"
+            let displayTargetClean: String = {
+                if preRunId == .aerobicFlush || preRunId == .recoveryJog {
+                    return "Zone 1 HR"
                 }
-                if isZone2 {
-                    return "Target: Zone 2 HR"
+                if preRunId == .zone2Run {
+                    return "Zone 2 HR"
                 }
                 let targetCadenceValue = currentDrill.computedCadence ?? drill.targetCadence ?? ""
                 if !targetCadenceValue.isEmpty {
-                    let formattedTarget = targetCadenceValue.contains("SPM") ? targetCadenceValue : "\(targetCadenceValue) SPM"
-                    return "Target: \(formattedTarget)"
+                    return targetCadenceValue.contains("SPM") ? targetCadenceValue : "\(targetCadenceValue) SPM"
                 }
-                return nil
+                return "Dynamic"
             }()
 
-            DrillPrescriptionPanel(
-                targetText: targetText,
-                targetExplainerTitle: targetExplainerTitle,
-                runRecords: runRecords
-            )
-
-            WorkoutPhaseTimelineView(phases: currentDrill.generatePhases())
-
-            HStack(spacing: 12) {
-                Button(action: {
-                    openDrillReadout(displayTitle: displayTitle, coachingCue: cue)
-                }) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "play.fill")
-                        Text("Start")
-                    }
-                    .font(.subheadline.bold())
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(Color(UIColor.tertiarySystemFill))
-                    .foregroundColor(.primary)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                }
-
-                Button(action: {
-                    drill.isCompleted.toggle()
-                    try? drill.modelContext?.save()
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                }) {
-                    HStack(spacing: 6) {
-                        Image(systemName: drill.isCompleted ? "checkmark.circle.fill" : "circle")
-                        Text(drill.isCompleted ? "Completed ✓" : "Mark completed")
-                    }
-                    .font(.subheadline.bold())
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(drill.isCompleted ? Color.green.opacity(0.15) : Color.orange)
-                    .foregroundColor(drill.isCompleted ? .green : .white)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                }
+            // 2x2 Metric Grid (matching Main Run Standard)
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
+                deckMetricCell(
+                    icon: "stopwatch.fill",
+                    title: "Duration",
+                    value: currentDrill.duration.title,
+                    color: .secondary
+                )
+                deckMetricCell(
+                    icon: preRunId.isHeartRateTargeted ? "heart.fill" : "metronome.fill",
+                    title: preRunId.isHeartRateTargeted ? "Target HR" : "Cadence",
+                    value: displayTargetClean,
+                    color: preRunId.isHeartRateTargeted ? Color(red: 1.0, green: 0.18, blue: 0.55) : Color(red: 0.0, green: 0.8, blue: 0.65)
+                )
+                deckMetricCell(
+                    icon: "repeat",
+                    title: "Intervals",
+                    value: currentDrill.shortWorkSummary,
+                    color: Color(red: 1.0, green: 0.58, blue: 0.0)
+                )
+                deckMetricCell(
+                    icon: "figure.walk",
+                    title: "Recovery",
+                    value: currentDrill.shortRecoverySummary,
+                    color: Color(red: 0.20, green: 0.72, blue: 0.92)
+                )
             }
-            .padding(.top, 4)
+
+            // Sleek 4pt Phase Mini-Bar
+            let phases = currentDrill.generatePhases()
+            let totalDuration = max(1, phases.reduce(0) { $0 + $1.durationSeconds })
+
+            VStack(alignment: .leading, spacing: 4) {
+                GeometryReader { geo in
+                    HStack(spacing: 2) {
+                        ForEach(phases) { phase in
+                            let ratio = CGFloat(phase.durationSeconds) / CGFloat(totalDuration)
+                            let w = max(4, (geo.size.width - CGFloat(phases.count - 1) * 2) * ratio)
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(phase.kind.color)
+                                .frame(width: w, height: 4)
+                        }
+                    }
+                }
+                .frame(height: 4)
+
+                Text(currentDrill.structureSummary)
+                    .font(.system(size: 10, weight: .medium))
+                    .monospacedDigit()
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            .padding(.top, 2)
+
+            // Mark Completed Button
+            Button(action: {
+                drill.isCompleted.toggle()
+                try? drill.modelContext?.save()
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            }) {
+                HStack(spacing: 6) {
+                    Image(systemName: drill.isCompleted ? "checkmark.circle.fill" : "circle")
+                    Text(drill.isCompleted ? "Completed ✓" : "Mark completed")
+                }
+                .font(.caption.bold())
+                .frame(maxWidth: .infinity)
+                .frame(height: 36)
+                .background(drill.isCompleted ? Color.green.opacity(0.15) : Color(UIColor.secondarySystemFill))
+                .foregroundColor(drill.isCompleted ? .green : .primary)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            }
+            .padding(.top, 2)
         }
         .frame(maxWidth: .infinity, minHeight: 1)
-        .padding()
-        .background(Color(UIColor.secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .padding(12)
+        .background(Color(UIColor.tertiarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .stroke(Color(UIColor.separator).opacity(0.15), lineWidth: 0.5)
@@ -362,5 +403,31 @@ struct DrillCardView: View {
             readiness: readiness,
             customCoachingTip: coachingCue
         )
+    }
+
+    private func deckMetricCell(icon: String, title: String, value: String, color: Color) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 11, weight: .bold))
+                .foregroundColor(color)
+                .frame(width: 14)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title.uppercased())
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundColor(.secondary)
+                Text(value)
+                    .font(.system(size: 11, weight: .bold))
+                    .monospacedDigit()
+                    .foregroundColor(.primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(Color(UIColor.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 }

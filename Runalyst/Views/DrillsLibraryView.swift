@@ -443,18 +443,7 @@ struct DrillPrimerCardView: View {
         let template = DrillTemplate.template(for: drillId)
         let displayTitle = customTitle ?? template.title
         let purpose = customPurpose ?? template.defaultPurpose
-        let work = template.workString(for: selectedDuration)
-        let recovery = template.recoveryString(for: selectedDuration)
-        let effort = template.defaultEffort
         let targetCadence: String? = baselineCadence.map { template.calculateTargetCadence($0) }
-        let rawCue = template.generateInstructionalCue(targetCadence)
-        let cue: String = {
-            guard preferredWorkoutIsIndoor else { return rawCue }
-            if drillId == .hillBounds {
-                return "Set treadmill incline to 4–6%. Focus on driving knees high, quick ground contact, and tall posture."
-            }
-            return rawCue
-        }()
         let icon = drillId.iconName
         let iconColor = drillId.iconColor
 
@@ -465,45 +454,155 @@ struct DrillPrimerCardView: View {
         let displayTargetText: String? = {
             if let customTarget = customTarget { return customTarget }
             if isZone1 {
-                return "Target: Zone 1 HR"
+                return "Zone 1 HR"
             }
             if isZone2 {
-                return "Target: Zone 2 HR"
+                return "Zone 2 HR"
             }
             if hasCadenceTarget {
                 if let target = targetCadence {
-                    return "Target: \(target) SPM"
+                    return "\(target) SPM"
                 } else {
-                    return "Target: Dynamic cadence"
+                    return "Dynamic"
                 }
             }
             return nil
         }()
 
-        VStack(alignment: .leading, spacing: 14) {
-            // Header
-            HStack(spacing: 8) {
-                Image(systemName: icon)
-                    .foregroundColor(iconColor)
-                    .font(.headline)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(displayTitle)
-                        .font(.headline)
-                        .foregroundColor(.primary)
-                    Text("\(selectedDuration.rawValue) min • \(preferredWorkoutIsIndoor ? "Indoor (Treadmill)" : "Outdoor")")
-                        .font(.caption)
+        let previewDrill = PreRunDrill(
+            id: drillId,
+            previousCadence: baselineCadence,
+            targetCadence: targetCadence,
+            duration: selectedDuration,
+            hapticMode: selectedHapticMode,
+            isIndoor: preferredWorkoutIsIndoor
+        )
+        let phases = previewDrill.generatePhases()
+        let totalDuration = max(1, phases.reduce(0) { $0 + $1.durationSeconds })
+
+        VStack(alignment: .leading, spacing: 10) {
+            // Header Row: Icon badge + Category + Duration Capsule + Preview Button
+            HStack(alignment: .center, spacing: 8) {
+                HStack(spacing: 6) {
+                    ZStack {
+                        Circle()
+                            .fill(iconColor.opacity(0.14))
+                            .frame(width: 24, height: 24)
+                        Image(systemName: icon)
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(iconColor)
+                    }
+
+                    Text(drillId.isHeartRateTargeted ? "AEROBIC RUN" : "TECHNIQUE DRILL")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(iconColor)
+
+                    Text("•")
+                        .font(.system(size: 10))
                         .foregroundColor(.secondary)
+
+                    Text(selectedDuration.title.uppercased())
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(iconColor)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 2)
+                        .background(iconColor.opacity(0.12))
+                        .clipShape(Capsule())
                 }
+
                 Spacer()
+
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    startDrill(title: displayTitle, purpose: purpose, targetCadence: targetCadence)
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "applewatch")
+                            .font(.system(size: 9, weight: .bold))
+                        Text("Preview")
+                            .font(.caption.bold())
+                    }
+                    .padding(.horizontal, 10)
+                    .frame(height: 28)
+                    .background(Color(UIColor.secondarySystemFill))
+                    .foregroundColor(.primary)
+                    .clipShape(Capsule())
+                }
+            }
+
+            // Title & Subtitle
+            VStack(alignment: .leading, spacing: 2) {
+                Text(displayTitle)
+                    .font(.subheadline.weight(.bold))
+                    .foregroundColor(.primary)
+
+                Text(purpose)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+            }
+
+            // Duration Selector (Scoped strictly to supported durations for this drill)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text("DURATION")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(.secondary)
+                    Spacer()
+                    Picker("Duration", selection: $selectedDuration) {
+                        ForEach(drillId.supportedDurations, id: \.self) { dur in
+                            Text(dur.title).tag(dur)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(maxWidth: drillId.supportedDurations.count > 3 ? 280 : 210)
+                    .onChange(of: selectedDuration) { _, _ in
+                        UISelectionFeedbackGenerator().selectionChanged()
+                    }
+                }
+            }
+            .padding(.vertical, 2)
+
+            // 2x2 Metric Grid (matching Main Run Standard)
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
+                drillMetricCell(
+                    icon: "stopwatch.fill",
+                    title: "Duration",
+                    value: selectedDuration.title,
+                    color: .secondary
+                )
+                drillMetricCell(
+                    icon: drillId.isHeartRateTargeted ? "heart.fill" : "metronome.fill",
+                    title: drillId.isHeartRateTargeted ? "Target HR" : "Cadence",
+                    value: displayTargetText ?? "Dynamic",
+                    color: drillId.isHeartRateTargeted ? Color(red: 1.0, green: 0.18, blue: 0.55) : Color(red: 0.0, green: 0.8, blue: 0.65)
+                )
+                drillMetricCell(
+                    icon: "repeat",
+                    title: "Intervals",
+                    value: previewDrill.shortWorkSummary,
+                    color: Color(red: 1.0, green: 0.58, blue: 0.0)
+                )
+                drillMetricCell(
+                    icon: "figure.walk",
+                    title: "Recovery",
+                    value: previewDrill.shortRecoverySummary,
+                    color: Color(red: 0.20, green: 0.72, blue: 0.92)
+                )
+            }
+
+            // Indoor / Outdoor Switch
+            HStack(spacing: 6) {
                 Button {
                     preferredWorkoutIsIndoor.toggle()
                     UISelectionFeedbackGenerator().selectionChanged()
                 } label: {
                     HStack(spacing: 4) {
                         Image(systemName: preferredWorkoutIsIndoor ? "figure.run.square.stack" : "sun.max.fill")
-                            .font(.system(size: 10, weight: .bold))
-                        Text(preferredWorkoutIsIndoor ? "Indoor" : "Outdoor")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.system(size: 9, weight: .bold))
+                        Text(preferredWorkoutIsIndoor ? "Indoor (Treadmill)" : "Outdoor Road")
+                            .font(.system(size: 10, weight: .semibold))
                     }
                     .foregroundColor(preferredWorkoutIsIndoor ? .purple : .blue)
                     .padding(.horizontal, 8)
@@ -511,136 +610,64 @@ struct DrillPrimerCardView: View {
                     .background((preferredWorkoutIsIndoor ? Color.purple : Color.blue).opacity(0.12))
                     .clipShape(Capsule())
                 }
-            }
 
-            // Purpose
-            if !purpose.isEmpty {
-                Text(purpose)
-                    .font(.subheadline)
+                Spacer()
+            }
+            .padding(.top, 1)
+
+            // Sleek 4pt Phase Mini-Bar
+            VStack(alignment: .leading, spacing: 4) {
+                GeometryReader { geo in
+                    HStack(spacing: 2) {
+                        ForEach(phases) { phase in
+                            let ratio = CGFloat(phase.durationSeconds) / CGFloat(totalDuration)
+                            let w = max(4, (geo.size.width - CGFloat(phases.count - 1) * 2) * ratio)
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(phase.kind.color)
+                                .frame(width: w, height: 4)
+                        }
+                    }
+                }
+                .frame(height: 4)
+
+                Text(previewDrill.structureSummary)
+                    .font(.system(size: 10, weight: .medium))
+                    .monospacedDigit()
                     .foregroundColor(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            // Repeat / Rest / Effort Badges
-            HStack(spacing: 16) {
-                if !work.isEmpty {
-                    Label(work, systemImage: "repeat")
-                        .font(.caption.bold())
-                        .foregroundColor(.primary)
-                }
-                if !recovery.isEmpty {
-                    Label(recovery, systemImage: "moon.zzz")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                if !effort.isEmpty {
-                    Label(effort, systemImage: "bolt.fill")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-            }
-
-            // Cue
-            if !cue.isEmpty {
-                DrillCoachingCueBox(cue: cue)
-            }
-
-            let targetExplainerTitle: String? = {
-                if isZone1 { return "Zone 1 Heart Rate" }
-                if isZone2 { return "Zone 2 Heart Rate" }
-                if hasCadenceTarget { return "Target Cadence" }
-                return nil
-            }()
-
-            DrillPrescriptionPanel(
-                targetText: displayTargetText,
-                targetExplainerTitle: targetExplainerTitle,
-                runRecords: runRecords
-            )
-
-            // Duration Selector
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    Text("Duration")
-                        .font(.caption.bold())
-                        .foregroundColor(.secondary)
-                    Spacer()
-                    Picker("Duration", selection: $selectedDuration) {
-                        ForEach(DrillDuration.allCases, id: \.self) { dur in
-                            Text(dur.title).tag(dur)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .frame(maxWidth: 220)
-                    .onChange(of: selectedDuration) { _, _ in
-                        UISelectionFeedbackGenerator().selectionChanged()
-                    }
-                }
-            }
-
-            // Haptic Feedback
-            VStack(alignment: .leading, spacing: 6) {
-                    HStack {
-                        HStack(spacing: 4) {
-                            Image(systemName: "waveform")
-                                .font(.caption)
-                                .foregroundColor(.teal)
-                            Text("Haptic Feedback")
-                                .font(.caption.bold())
-                                .foregroundColor(.secondary)
-                        }
-                        Spacer()
-                        Picker("Haptic Feedback", selection: Binding(
-                            get: { selectedHapticMode },
-                            set: { selectedHapticMode = $0 }
-                        )) {
-                            ForEach(HapticFeedbackMode.allCases, id: \.self) { mode in
-                                Text(mode.rawValue).tag(mode)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-                        .frame(maxWidth: 130)
-                    }
-                }
-
-            // Workout Phase Visual Timeline
-            let previewDrill = PreRunDrill(
-                id: drillId,
-                previousCadence: baselineCadence,
-                targetCadence: targetCadence,
-                duration: selectedDuration,
-                hapticMode: selectedHapticMode,
-                isIndoor: preferredWorkoutIsIndoor
-            )
-            WorkoutPhaseTimelineView(phases: previewDrill.generatePhases())
-
-            // Single Action Button: Start Drill
-            Button(action: {
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                startDrill(title: displayTitle, purpose: purpose, targetCadence: targetCadence)
-            }) {
-                HStack(spacing: 6) {
-                    Image(systemName: "play.fill")
-                    Text("Start Drill")
-                }
-                .font(.subheadline.bold())
-                .frame(maxWidth: .infinity)
-                .frame(minHeight: 44)
-                .padding(.vertical, 14)
-                .background(Color.accentColor)
-                .foregroundColor(.white)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
             }
             .padding(.top, 2)
         }
-        .padding(16)
+        .padding(12)
+        .background(Color(UIColor.tertiarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private func drillMetricCell(icon: String, title: String, value: String, color: Color) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 11, weight: .bold))
+                .foregroundColor(color)
+                .frame(width: 14)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title.uppercased())
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundColor(.secondary)
+                Text(value)
+                    .font(.system(size: 11, weight: .bold))
+                    .monospacedDigit()
+                    .foregroundColor(.primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
         .background(Color(UIColor.secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(Color(UIColor.separator).opacity(0.15), lineWidth: 0.5)
-        )
-        .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
     private func startDrill(title: String, purpose: String, targetCadence: String?) {

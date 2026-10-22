@@ -693,6 +693,7 @@ struct InlineChatDrillCard: View {
     let onOpenReadout: () -> Void
 
     @Query(sort: \RunRecord.date, order: .reverse) private var runRecords: [RunRecord]
+    @AppStorage("preferredWorkoutIsIndoor") private var preferredWorkoutIsIndoor: Bool = false
 
     private var effectiveRun: RunRecord? {
         runRecord ?? runRecords.first
@@ -762,18 +763,6 @@ struct InlineChatDrillCard: View {
         return drillId.defaultDuration.title
     }
 
-    private var drillCategorySubtitle: String {
-        if drillId.isAerobicContinuous {
-            return "\(durationDisplay) • \(drillId.correspondingClassification)"
-        } else {
-            return "\(drillId.defaultDuration.title) • Form & Biomechanics"
-        }
-    }
-
-    private var targetBadgeIcon: String {
-        drillId.isHeartRateTargeted ? "heart.fill" : "target"
-    }
-
     private var targetBadgeText: String {
         if drillId.isHeartRateTargeted {
             return "Zone 1 HR"
@@ -783,119 +772,163 @@ struct InlineChatDrillCard: View {
     }
 
     private var targetBadgeColor: Color {
-        drillId.isHeartRateTargeted ? Color(red: 1.0, green: 0.18, blue: 0.55) : Color(red: 0.18, green: 0.82, blue: 0.35)
-    }
-
-    private var displayCue: String? {
-        if let cue = matchingDrillRec?.drillCues, !cue.isEmpty {
-            return cue
-        }
-        let template = DrillTemplate.template(for: drillId)
-        let cue = template.generateInstructionalCue(targetCadenceDisplay)
-        return cue.isEmpty ? nil : cue
+        drillId.isHeartRateTargeted ? Color(red: 1.0, green: 0.18, blue: 0.55) : Color(red: 0.0, green: 0.8, blue: 0.65)
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            // Header: Icon + Title + Duration + Target Badge
-            HStack(spacing: 10) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(drillId.iconColor.opacity(0.15))
-                        .frame(width: 38, height: 38)
-                    Image(systemName: drillId.iconName)
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundColor(drillId.iconColor)
-                }
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(displayTitle)
-                        .font(.headline)
-                        .foregroundColor(.primary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.85)
-                    Text(drillCategorySubtitle)
-                        .font(.caption2.weight(.medium))
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.85)
-                }
-
-                Spacer(minLength: 4)
-
-                HStack(spacing: 4) {
-                    Image(systemName: targetBadgeIcon)
-                        .font(.caption2.bold())
-                    Text(targetBadgeText)
-                        .font(.caption2.bold().monospacedDigit())
-                        .lineLimit(1)
-                }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(targetBadgeColor.opacity(0.15))
-                .foregroundColor(targetBadgeColor)
-                .clipShape(Capsule())
-            }
-
-            // Coaching Cue Box
-            if let cue = displayCue {
-                HStack(alignment: .top, spacing: 6) {
-                    Image(systemName: "sparkles")
-                        .font(.caption2)
-                        .foregroundColor(drillId.iconColor)
-                        .padding(.top, 2)
-                    Text(cue)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .padding(8)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color(UIColor.tertiarySystemGroupedBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            }
-
-            // Visual Phase Timeline
-            WorkoutPhaseTimelineView(phases: PreRunDrill(id: drillId).generatePhases(), showHeader: false)
-                .padding(.vertical, 2)
-
-            // Primary Action Button (Sweaty Hands minimum 44pt height target)
-            Button(action: {
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                onOpenReadout()
-            }) {
-                HStack(spacing: 8) {
-                    Image(systemName: "applewatch")
-                        .font(.subheadline.weight(.semibold))
-                    Text("Preview & Start on Watch")
-                        .font(.subheadline.weight(.semibold))
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.caption.bold())
-                }
-                .foregroundColor(.white)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .frame(minHeight: 44)
-                .background(
-                    LinearGradient(
-                        colors: [Color.purple, Color.indigo],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                )
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(14)
-        .background(Color(UIColor.secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(drillId.iconColor.opacity(0.3), lineWidth: 1)
+        let drill = PreRunDrill(
+            id: drillId,
+            previousCadence: baselineCadence,
+            targetCadence: targetCadenceDisplay,
+            isIndoor: preferredWorkoutIsIndoor
         )
-        .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
+        let phases = drill.generatePhases()
+        let totalDuration = max(1, phases.reduce(0) { $0 + $1.durationSeconds })
+
+        VStack(alignment: .leading, spacing: 10) {
+            // Header Row: Icon badge + Category + Duration Capsule + Preview Button
+            HStack(alignment: .center, spacing: 8) {
+                HStack(spacing: 6) {
+                    ZStack {
+                        Circle()
+                            .fill(drillId.iconColor.opacity(0.14))
+                            .frame(width: 24, height: 24)
+                        Image(systemName: drillId.iconName)
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(drillId.iconColor)
+                    }
+
+                    Text(drillId.isHeartRateTargeted ? "AEROBIC RUN" : "TECHNIQUE DRILL")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(drillId.iconColor)
+
+                    Text("•")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+
+                    Text(durationDisplay.uppercased())
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(drillId.iconColor)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 2)
+                        .background(drillId.iconColor.opacity(0.12))
+                        .clipShape(Capsule())
+                }
+
+                Spacer()
+
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    onOpenReadout()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "applewatch")
+                            .font(.system(size: 9, weight: .bold))
+                        Text("Preview")
+                            .font(.caption.bold())
+                    }
+                    .padding(.horizontal, 10)
+                    .frame(height: 28)
+                    .background(Color(UIColor.secondarySystemFill))
+                    .foregroundColor(.primary)
+                    .clipShape(Capsule())
+                }
+            }
+
+            // Title & Subtitle
+            VStack(alignment: .leading, spacing: 2) {
+                Text(displayTitle)
+                    .font(.subheadline.weight(.bold))
+                    .foregroundColor(.primary)
+
+                Text(DrillTemplate.template(for: drillId).defaultPurpose)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+            }
+
+            // 2x2 Metric Grid (matching Main Run Card)
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
+                chatMetricCell(
+                    icon: "stopwatch.fill",
+                    title: "Duration",
+                    value: durationDisplay,
+                    color: .secondary
+                )
+                chatMetricCell(
+                    icon: drillId.isHeartRateTargeted ? "heart.fill" : "metronome.fill",
+                    title: drillId.isHeartRateTargeted ? "Target HR" : "Cadence",
+                    value: targetBadgeText,
+                    color: targetBadgeColor
+                )
+                chatMetricCell(
+                    icon: "repeat",
+                    title: "Intervals",
+                    value: drill.shortWorkSummary,
+                    color: Color(red: 1.0, green: 0.58, blue: 0.0)
+                )
+                chatMetricCell(
+                    icon: "figure.walk",
+                    title: "Recovery",
+                    value: drill.shortRecoverySummary,
+                    color: Color(red: 0.20, green: 0.72, blue: 0.92)
+                )
+            }
+
+            // Sleek 4pt Phase Mini-Bar
+            VStack(alignment: .leading, spacing: 4) {
+                GeometryReader { geo in
+                    HStack(spacing: 2) {
+                        ForEach(phases) { phase in
+                            let ratio = CGFloat(phase.durationSeconds) / CGFloat(totalDuration)
+                            let w = max(4, (geo.size.width - CGFloat(phases.count - 1) * 2) * ratio)
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(phase.kind.color)
+                                .frame(width: w, height: 4)
+                        }
+                    }
+                }
+                .frame(height: 4)
+
+                Text(drill.structureSummary)
+                    .font(.system(size: 10, weight: .medium))
+                    .monospacedDigit()
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            .padding(.top, 2)
+        }
+        .padding(12)
+        .background(Color(UIColor.tertiarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private func chatMetricCell(icon: String, title: String, value: String, color: Color) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 11, weight: .bold))
+                .foregroundColor(color)
+                .frame(width: 14)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title.uppercased())
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundColor(.secondary)
+                Text(value)
+                    .font(.system(size: 11, weight: .bold))
+                    .monospacedDigit()
+                    .foregroundColor(.primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(Color(UIColor.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 }
 
