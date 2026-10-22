@@ -1039,50 +1039,6 @@ struct RunDetailView: View {
                 }
                 .padding(.horizontal)
                 .id("metricsGrid")
-
-                // MARK: Drills Section (Only on runs <= 7 days old)
-                let isOlderThan7Days = (Calendar.current.dateComponents([.day], from: runRecord.date, to: Date()).day ?? 0) > 7
-                let hasBiometrics = runRecord.workingAvgCadence > 0 || runRecord.workingAvgHeartRate > 0
-
-                if !isOlderThan7Days {
-                    if let insight = runRecord.insight {
-                        if let drills = insight.drillRecommendations, !drills.isEmpty {
-                            VStack(alignment: .leading, spacing: 12) {
-                                HStack {
-                                    Text("Recommended Drills")
-                                        .font(.headline)
-                                        .foregroundColor(.primary)
-                                    Spacer()
-                                    NavigationLink(destination: DrillsLibraryView()) {
-                                        HStack(spacing: 2) {
-                                            Text("All Drills")
-                                            Image(systemName: "chevron.right")
-                                        }
-                                        .font(.caption.bold())
-                                        .foregroundColor(.accentColor)
-                                    }
-                                }
-                                .padding(.horizontal)
-
-                                DrillDeckView(drills: drills)
-                            }
-                            .padding(.top, 12)
-                        }
-                    } else if hasBiometrics {
-                        AnimatedLoadingView(
-                            text: "Generating Coaching Insight...",
-                            isHorizontal: false,
-                            imageSize: 60,
-                            textFont: .subheadline,
-                            textColor: .secondary,
-                            iconColor: .purple,
-                            spacing: 20
-                        )
-                        .multilineTextAlignment(.center)
-                        .frame(minHeight: 1)
-                        .padding(32)
-                    }
-                }
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical)
