@@ -80,6 +80,12 @@ struct HeartRateTrajectoryMapView: View {
 
         // Strategy A: Authentic Splits Progression (Warmup, Splits, Drift)
         if validSplits.count >= 2 {
+            let totalSplitSec = validSplits.map(\.durationSeconds).reduce(0, +)
+            let targetSec = workoutDuration ?? totalSplitSec
+            let timeScale = (targetSec > totalSplitSec && totalSplitSec > 0 && abs(targetSec - totalSplitSec) > 60.0)
+                ? (targetSec / totalSplitSec)
+                : 1.0
+
             var elapsedSec = 0.0
             let firstSplitHR = validSplits[0].avgHeartRate
             // Warm-up ramp anchor at minute 0
@@ -96,7 +102,7 @@ struct HeartRateTrajectoryMapView: View {
             for split in validSplits {
                 let startSec = elapsedSec
                 elapsedSec += split.durationSeconds
-                let midMin = (startSec + elapsedSec) / 120.0
+                let midMin = ((startSec + elapsedSec) / 2.0 * timeScale) / 60.0
                 points.append(
                     HRPlotPoint(
                         id: "split-\(split.index)",
@@ -175,26 +181,7 @@ struct HeartRateTrajectoryMapView: View {
             ]
         }
 
-        let sorted = points.sorted(by: { $0.minute < $1.minute })
-
-        // Historical Data Calibration:
-        // If persisted PhaseSegments had zero-bucket diluted HR (e.g. 130 vs 154 working HR),
-        // scale points to match authentic workingAvgHeartRate.
-        let meanHR = sorted.map(\.heartRate).reduce(0, +) / Double(sorted.count)
-        if meanHR > 0 && workingAvgHeartRate > 0 && meanHR < (workingAvgHeartRate * 0.90) {
-            let scaleFactor = workingAvgHeartRate / meanHR
-            return sorted.map {
-                HRPlotPoint(
-                    id: $0.id,
-                    minute: $0.minute,
-                    heartRate: $0.heartRate * scaleFactor,
-                    kind: $0.kind,
-                    isAnchor: $0.isAnchor
-                )
-            }
-        }
-
-        return sorted
+        return points.sorted(by: { $0.minute < $1.minute })
     }
 
     private var yMin: Double {

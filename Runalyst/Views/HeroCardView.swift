@@ -160,7 +160,7 @@ struct HeroCardView: View {
                 )
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-                let hrValue = runRecord.workingAvgHeartRate > 0 ? "\(Int(runRecord.workingAvgHeartRate)) BPM" : "--"
+                let hrValue = runRecord.workingAvgHeartRate > 0 ? "\(Int(round(runRecord.workingAvgHeartRate))) BPM" : "--"
                 MetricView(
                     title: "Avg HR",
                     value: hrValue,
@@ -170,7 +170,7 @@ struct HeroCardView: View {
                 )
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-                let cadValue = runRecord.workingAvgCadence > 0 ? "\(Int(runRecord.workingAvgCadence)) SPM" : "--"
+                let cadValue = runRecord.workingAvgCadence > 0 ? "\(Int(round(runRecord.workingAvgCadence))) SPM" : "--"
                 MetricView(
                     title: "Avg Cadence",
                     value: cadValue,

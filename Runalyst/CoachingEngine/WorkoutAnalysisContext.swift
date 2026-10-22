@@ -206,8 +206,8 @@ struct WorkoutAnalysisContext {
 
         self.workingPaceSec = runRecord.workingAvgPace
         self.workingPaceFormatted = PaceFormatter.formatPace(secondsPerKilometer: runRecord.workingAvgPace)
-        self.workingCadence = Int(runRecord.workingAvgCadence)
-        self.workingHR = Int(runRecord.workingAvgHeartRate)
+        self.workingCadence = Int(round(runRecord.workingAvgCadence))
+        self.workingHR = Int(round(runRecord.workingAvgHeartRate))
         self.percentZone4 = Int((runRecord.percentZone4 * 100).rounded())
         self.isIndoor = runRecord.isIndoor ?? false
         self.detectedType = !runRecord.detectedTypeRaw.isEmpty ? runRecord.detectedTypeRaw : (sig?.classification ?? "Run")

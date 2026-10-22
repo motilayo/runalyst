@@ -676,8 +676,8 @@ struct HistoricalRunMatcher {
 
         let currentType = run.detectedTypeRaw.isEmpty ? run.normalizedClassification : run.detectedTypeRaw
         let currentPace = run.workingAvgPace > 0 ? run.workingAvgPace : run.rawAvgPace
-        let currentCad = Int(run.workingAvgCadence > 0 ? run.workingAvgCadence : run.rawAvgCadence)
-        let currentHR = Int(run.workingAvgHeartRate > 0 ? run.workingAvgHeartRate : run.rawAvgHeartRate)
+        let currentCad = Int(round(run.workingAvgCadence > 0 ? run.workingAvgCadence : run.rawAvgCadence))
+        let currentHR = Int(round(run.workingAvgHeartRate > 0 ? run.workingAvgHeartRate : run.rawAvgHeartRate))
         let currentPaceStr = PaceFormatter.formatPace(secondsPerKilometer: currentPace)
 
         return TelemetryData(
@@ -866,8 +866,8 @@ struct HistoricalRunMatcher {
             let distKm = String(format: "%.2f km", run.totalDistanceMeters / 1000.0)
             let durMin = "\(Int(run.duration / 60)) min"
             let pace = run.workingAvgPace > 0 ? PaceFormatter.formatPace(secondsPerKilometer: run.workingAvgPace) : PaceFormatter.formatPace(secondsPerKilometer: run.rawAvgPace)
-            let cad = Int(run.workingAvgCadence > 0 ? run.workingAvgCadence : run.rawAvgCadence)
-            let hr = Int(run.workingAvgHeartRate > 0 ? run.workingAvgHeartRate : run.rawAvgHeartRate)
+            let cad = Int(round(run.workingAvgCadence > 0 ? run.workingAvgCadence : run.rawAvgCadence))
+            let hr = Int(round(run.workingAvgHeartRate > 0 ? run.workingAvgHeartRate : run.rawAvgHeartRate))
             let type = run.detectedTypeRaw.isEmpty ? run.normalizedClassification : run.detectedTypeRaw
             let dateStr = dateFormatter.string(from: run.date)
             lines.append("• \(dateStr) - \(type) (\(env))\(marker): \(distKm) in \(durMin) @ \(pace), \(cad) SPM, \(hr) BPM")

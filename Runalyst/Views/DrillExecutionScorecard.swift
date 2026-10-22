@@ -294,18 +294,32 @@ struct DrillExecutionScorecard: View {
                 }
             } else if isHRTarget {
                 // Heart Rate Hero Metric (Target Zone, Actual HR, Turnover)
+                let targetSubtitle: String = {
+                    if drillId.targetHeartRateZone == 2 {
+                        return "Aerobic Base"
+                    } else {
+                        return "Active Recovery"
+                    }
+                }()
+                let hrSubtitle: String = {
+                    if drillId.targetHeartRateZone == 2 {
+                        return actualHR <= 144 ? "Steady Zone 2" : "Elevated strain (Zone 3)"
+                    } else {
+                        return actualHR <= 135 ? "Zero cardiac strain" : "Elevated strain"
+                    }
+                }()
                 HStack(spacing: 8) {
                     metricTile(
                         label: "TARGET ZONE",
                         value: drillId.targetHeartRateZoneName ?? "Zone 1",
                         valueColor: .primary,
-                        subtitle: "Active Recovery"
+                        subtitle: targetSubtitle
                     )
                     metricTile(
                         label: "ACTUAL HEART RATE",
                         value: actualHR > 0 ? "\(actualHR) BPM" : "--",
                         valueColor: Color(red: 1.0, green: 0.22, blue: 0.55),
-                        subtitle: actualHR <= 135 ? "Zero cardiac strain" : "Elevated strain"
+                        subtitle: hrSubtitle
                     )
                     metricTile(
                         label: "TURNOVER",
@@ -750,8 +764,8 @@ extension DrillExecutionScorecard {
         let targetCadence = runRecord.effectivePrescribedTargetCadence(drillId: drillId, baselineCadence: thirtyDayCadence)
             ?? template.calculateTargetCadence(thirtyDayCadence)
         let drillObj = PreRunDrill(id: drillId, previousCadence: thirtyDayCadence, targetCadence: targetCadence)
-        let actualCadence = Int(runRecord.workingAvgCadence)
-        let actualHR = Int(runRecord.workingAvgHeartRate)
+        let actualCadence = Int(round(runRecord.workingAvgCadence))
+        let actualHR = Int(round(runRecord.workingAvgHeartRate))
 
         let isHRTarget = drillId.isHeartRateTargeted
         let isDualTarget = (drillId == .tempoSurges)
@@ -980,18 +994,19 @@ extension DrillExecutionScorecard {
             if let zone = drillId.targetHeartRateZone {
                 if zone == 2 {
                     if actualHR > 0 {
-                        if runRecord.percentZone4 <= 0.04 && actualCadence >= 155 {
+                        let zone2Ceiling = 144
+                        if actualHR <= zone2Ceiling && actualCadence >= 155 && runRecord.percentZone4 <= 0.02 {
                             tier = .exceeded
                             tierDescription = "Preserved Zone 2 ceiling with crisp turnover (≥155 SPM)."
-                        } else if runRecord.percentZone4 <= 0.08 {
+                        } else if actualHR <= zone2Ceiling && runRecord.percentZone4 <= 0.05 {
                             tier = .met
                             tierDescription = "Successfully maintained steady Zone 2 aerobic intensity."
-                        } else if runRecord.percentZone4 <= 0.20 {
+                        } else if actualHR <= zone2Ceiling + 8 && runRecord.percentZone4 <= 0.10 {
                             tier = .partiallyMet
-                            tierDescription = "Moderate intensity drift; spent partial duration above Zone 2."
+                            tierDescription = "Moderate intensity drift; effort rose above Zone 2 aerobic ceiling into Zone 3."
                         } else {
                             tier = .notMet
-                            tierDescription = "Cardiac drift exceeded aerobic threshold into Zones 3 and 4."
+                            tierDescription = "Cardiac drift exceeded Zone 2 aerobic ceiling into sustained Zone 3 strain."
                         }
                     } else {
                         tier = .met
@@ -999,13 +1014,14 @@ extension DrillExecutionScorecard {
                     }
                 } else { // zone 1
                     if actualHR > 0 {
+                        let zone1Ceiling = 135
                         if runRecord.percentZone4 == 0 && actualHR <= 125 {
                             tier = .exceeded
                             tierDescription = "Flawless active recovery with zero cardiac strain."
-                        } else if runRecord.percentZone4 <= 0.03 && actualHR <= 135 {
+                        } else if runRecord.percentZone4 <= 0.03 && actualHR <= zone1Ceiling {
                             tier = .met
                             tierDescription = "Controlled intensity within the Zone 1 recovery envelope."
-                        } else if runRecord.percentZone4 <= 0.10 {
+                        } else if runRecord.percentZone4 <= 0.10 && actualHR <= zone1Ceiling + 6 {
                             tier = .partiallyMet
                             tierDescription = "Effort drifted slightly higher than target recovery ceiling."
                         } else {
