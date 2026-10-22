@@ -166,7 +166,7 @@ actor RunAnalyzerActor {
             } else {
                 hrSummary = "Heart rate remained stable, matching baseline."
             }
-            hrContext = "Current: \(Int(run.workingAvgHeartRate)) BPM, Baseline: \(Int(base.avgHR)) BPM, Deltas: \(Int(hrDelta)). \(hrSummary)"
+            hrContext = "Current: \(Int(round(run.workingAvgHeartRate))) BPM, Baseline: \(Int(round(base.avgHR))) BPM, Deltas: \(Int(round(hrDelta))). \(hrSummary)"
 
             let trainingGoal = UserDefaults.standard.string(forKey: "trainingGoal") ?? "Base Building"
             let goalSuffix = " Runner goal: \(trainingGoal)."
@@ -226,7 +226,7 @@ actor RunAnalyzerActor {
             let cadenceStatus = isSubFloor ? "BELOW the \(cadenceFloor) SPM floor (slow turnover; do not praise form)" : "ABOVE the \(cadenceFloor) SPM floor"
             cadenceContext = "\(Int(run.workingAvgCadence)) SPM (\(cadenceStatus). No baseline available)."
             paceContext = "\(PaceFormatter.formatPace(secondsPerKilometer: run.workingAvgPace)) (No baseline available)."
-            hrContext = "\(Int(run.workingAvgHeartRate)) BPM (No baseline available)."
+            hrContext = "\(Int(round(run.workingAvgHeartRate))) BPM (No baseline available)."
         }
 
         // Check for recognized drill or previously prescribed drill execution

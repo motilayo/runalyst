@@ -505,7 +505,14 @@ struct RunDetailView: View {
                         return "Pre-Run Primer • Target Met"
                     }
                 } else {
-                    return "Aerobic Base • Zero Cardiac Strain"
+                    let hr = Int(round(runRecord.workingAvgHeartRate))
+                    if isRecovery || (hr > 0 && hr <= 135) {
+                        return "Aerobic Base • Zero Cardiac Strain"
+                    } else if hr > 0 && hr <= 144 {
+                        return "Aerobic Base • Steady Aerobic Control"
+                    } else {
+                        return "Aerobic Base • Elevated Cardiac Strain"
+                    }
                 }
             }()
 
@@ -984,7 +991,7 @@ struct RunDetailView: View {
                     let hrBaseline = (showRawMetrics || currentHR <= 0) ? nil : baselineHR
                     StatBox(title: "Avg HR", value: hrValue, unit: hrUnit, currentValue: hrCurrent, baselineValue: hrBaseline, polarity: .lowerIsBetter, isWorkoutStats: showRawMetrics)
 
-                    let cadValue = currentCadence > 0 ? "\(Int(currentCadence))" : "--"
+                    let cadValue = currentCadence > 0 ? "\(Int(round(currentCadence)))" : "--"
                     let cadUnit = currentCadence > 0 ? "SPM" : ""
                     let cadCurrent = currentCadence > 0 ? currentCadence : nil
                     let cadBaseline = (showRawMetrics || currentCadence <= 0) ? nil : baselineCadence
