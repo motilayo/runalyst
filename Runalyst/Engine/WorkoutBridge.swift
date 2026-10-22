@@ -122,6 +122,29 @@ final class WorkoutBridge {
         return result
     }
 
+    nonisolated private static func resolveTargetCadence(
+        for drillId: PreRunDrillId?,
+        text: String? = nil,
+        workoutDate: Date
+    ) -> String? {
+        if let text = text {
+            if let openP = text.range(of: "("), let closeP = text.range(of: ")", range: openP.upperBound..<text.endIndex) {
+                let inside = String(text[openP.upperBound..<closeP.lowerBound])
+                if inside.localizedCaseInsensitiveContains("spm") {
+                    return inside
+                }
+            }
+        }
+        if let drillId = drillId {
+            return recentIntents().first(where: {
+                $0.preRunDrillId == drillId.rawValue &&
+                abs(workoutDate.timeIntervalSince($0.scheduledDate)) <= 48 * 3600 &&
+                $0.targetCadence != nil
+            })?.targetCadence
+        }
+        return nil
+    }
+
     nonisolated public static func matchDrill(
         workout: HKWorkout,
         durationSeconds: Double
@@ -174,7 +197,8 @@ final class WorkoutBridge {
                     drillTitle: resolved.title,
                     preRunDrillId: resolved.rawValue,
                     scheduledDate: workoutDate,
-                    durationMinutes: max(1, Int(round(durationSeconds / 60.0)))
+                    durationMinutes: max(1, Int(round(durationSeconds / 60.0))),
+                    targetCadence: resolveTargetCadence(for: resolved, text: text, workoutDate: workoutDate)
                 )
             }
             for candidate in PreRunDrillId.techniqueDrills {
@@ -186,7 +210,8 @@ final class WorkoutBridge {
                         drillTitle: candidate.title,
                         preRunDrillId: candidate.rawValue,
                         scheduledDate: workoutDate,
-                        durationMinutes: max(1, Int(round(durationSeconds / 60.0)))
+                        durationMinutes: max(1, Int(round(durationSeconds / 60.0))),
+                        targetCadence: resolveTargetCadence(for: candidate, text: text, workoutDate: workoutDate)
                     )
                 }
             }
@@ -199,7 +224,8 @@ final class WorkoutBridge {
                     drillTitle: resolved.title,
                     preRunDrillId: resolved.rawValue,
                     scheduledDate: workoutDate,
-                    durationMinutes: max(1, Int(round(durationSeconds / 60.0)))
+                    durationMinutes: max(1, Int(round(durationSeconds / 60.0))),
+                    targetCadence: resolveTargetCadence(for: resolved, text: name, workoutDate: workoutDate)
                 )
             }
             for candidate in PreRunDrillId.techniqueDrills {
@@ -211,7 +237,8 @@ final class WorkoutBridge {
                         drillTitle: candidate.title,
                         preRunDrillId: candidate.rawValue,
                         scheduledDate: workoutDate,
-                        durationMinutes: max(1, Int(round(durationSeconds / 60.0)))
+                        durationMinutes: max(1, Int(round(durationSeconds / 60.0))),
+                        targetCadence: resolveTargetCadence(for: candidate, text: name, workoutDate: workoutDate)
                     )
                 }
             }
@@ -230,7 +257,8 @@ final class WorkoutBridge {
                     drillTitle: activityMatch.drillId.title,
                     preRunDrillId: activityMatch.drillId.rawValue,
                     scheduledDate: workoutDate,
-                    durationMinutes: max(1, Int(round(durationSeconds / 60.0)))
+                    durationMinutes: max(1, Int(round(durationSeconds / 60.0))),
+                    targetCadence: resolveTargetCadence(for: activityMatch.drillId, workoutDate: workoutDate)
                 )
             }
         }
@@ -245,14 +273,14 @@ final class WorkoutBridge {
                     drillTitle: eventMatch.drillId.title,
                     preRunDrillId: eventMatch.drillId.rawValue,
                     scheduledDate: workoutDate,
-                    durationMinutes: max(1, Int(round(durationSeconds / 60.0)))
+                    durationMinutes: max(1, Int(round(durationSeconds / 60.0))),
+                    targetCadence: resolveTargetCadence(for: eventMatch.drillId, workoutDate: workoutDate)
                 )
             }
         }
 
         // 4. Intent Heuristic Fallback (scheduled drill within 48h of workout)
-        let intents = recentIntents()
-        let matchingIntents = intents.filter { intent in
+        let matchingIntents = recentIntents().filter { intent in
             if let matchedID = intent.matchedWorkoutID, matchedID != workout.uuid { return false }
             let timeDiff = workoutDate.timeIntervalSince(intent.scheduledDate)
             guard timeDiff >= -3600 && timeDiff <= 48 * 3600 else { return false }
@@ -285,7 +313,8 @@ final class WorkoutBridge {
                     drillTitle: patternMatch.drillId.title,
                     preRunDrillId: patternMatch.drillId.rawValue,
                     scheduledDate: workoutDate,
-                    durationMinutes: max(1, Int(round(durationSeconds / 60.0)))
+                    durationMinutes: max(1, Int(round(durationSeconds / 60.0))),
+                    targetCadence: resolveTargetCadence(for: patternMatch.drillId, workoutDate: workoutDate)
                 )
             }
         }
@@ -316,7 +345,8 @@ final class WorkoutBridge {
                     drillTitle: resolved.title,
                     preRunDrillId: resolved.rawValue,
                     scheduledDate: workoutDate,
-                    durationMinutes: max(1, Int(round(durationSeconds / 60.0)))
+                    durationMinutes: max(1, Int(round(durationSeconds / 60.0))),
+                    targetCadence: resolveTargetCadence(for: resolved, text: text, workoutDate: workoutDate)
                 )
             }
             for candidate in PreRunDrillId.techniqueDrills {
@@ -328,7 +358,8 @@ final class WorkoutBridge {
                         drillTitle: candidate.title,
                         preRunDrillId: candidate.rawValue,
                         scheduledDate: workoutDate,
-                        durationMinutes: max(1, Int(round(durationSeconds / 60.0)))
+                        durationMinutes: max(1, Int(round(durationSeconds / 60.0))),
+                        targetCadence: resolveTargetCadence(for: candidate, text: text, workoutDate: workoutDate)
                     )
                 }
             }
@@ -371,7 +402,8 @@ final class WorkoutBridge {
                     drillTitle: patternMatch.drillId.title,
                     preRunDrillId: patternMatch.drillId.rawValue,
                     scheduledDate: workoutDate,
-                    durationMinutes: max(1, Int(round(durationSeconds / 60.0)))
+                    durationMinutes: max(1, Int(round(durationSeconds / 60.0))),
+                    targetCadence: resolveTargetCadence(for: patternMatch.drillId, workoutDate: workoutDate)
                 )
             }
         }
@@ -441,6 +473,7 @@ final class WorkoutBridge {
             $0.hasPrefix("drillWorkCadence:") ||
             $0.hasPrefix("drillRecCadence:") ||
             $0.hasPrefix("drillReps:") ||
+            $0.hasPrefix("drillRepDetails:") ||
             $0 == "prescribedDrill" ||
             $0 == "userLinkedDrill" ||
             $0 == "userUnlinkedDrill" ||
@@ -537,7 +570,8 @@ final class WorkoutBridge {
                     $0.hasPrefix("drillIntervals:") ||
                     $0.hasPrefix("drillWorkCadence:") ||
                     $0.hasPrefix("drillRecCadence:") ||
-                    $0.hasPrefix("drillReps:")
+                    $0.hasPrefix("drillReps:") ||
+                    $0.hasPrefix("drillRepDetails:")
                 }
                 for tag in summary.framboiseTags where !runRecord.framboiseTags.contains(tag) {
                     runRecord.framboiseTags.append(tag)
@@ -559,6 +593,7 @@ final class WorkoutBridge {
             $0.hasPrefix("drillWorkCadence:") ||
             $0.hasPrefix("drillRecCadence:") ||
             $0.hasPrefix("drillReps:") ||
+            $0.hasPrefix("drillRepDetails:") ||
             $0 == "prescribedDrill" ||
             $0 == "userLinkedDrill" ||
             $0 == "userUnlinkedDrill" ||

@@ -1,6 +1,7 @@
 import XCTest
 import HealthKit
 import SwiftData
+import RunalystCore
 @testable import Runalyst
 
 @MainActor
@@ -1402,5 +1403,203 @@ final class PrescribedDrillRecognitionTests: XCTestCase {
         XCTAssertEqual(summary?.totalIntervals, 9, "Must evaluate all 9 intervals, not cap or prune to 8")
         XCTAssertEqual(summary?.reps.count, 9, "Reps array must contain exactly 9 intervals")
         XCTAssertEqual(summary?.intervalsMet, 9, "All 9 intervals met stride cadence target")
+    }
+
+    func testRichRepDetailsSerializationAndDeserialization() {
+        let rep1 = DrillIntervalRep(
+            repIndex: 1,
+            workCadence: 166,
+            workHeartRate: 98,
+            recoveryCadence: 121,
+            recoveryHeartRate: 127,
+            isMet: true,
+            durationSeconds: 20.0,
+            workPaceSecondsPerKm: 308.0,
+            recoveryPaceSecondsPerKm: 628.0
+        )
+        let rep2 = DrillIntervalRep(
+            repIndex: 2,
+            workCadence: 163,
+            workHeartRate: 116,
+            recoveryCadence: 120,
+            recoveryHeartRate: 134,
+            isMet: true,
+            durationSeconds: 20.0,
+            workPaceSecondsPerKm: 328.0,
+            recoveryPaceSecondsPerKm: 640.0
+        )
+        let rep3 = DrillIntervalRep(
+            repIndex: 3,
+            workCadence: 157,
+            workHeartRate: 113,
+            recoveryCadence: 121,
+            recoveryHeartRate: 130,
+            isMet: false,
+            durationSeconds: 20.0,
+            workPaceSecondsPerKm: 368.0,
+            recoveryPaceSecondsPerKm: 623.0
+        )
+
+        let summary = DrillIntervalSummary(
+            drillId: .strides,
+            intervalsMet: 2,
+            totalIntervals: 3,
+            workCadenceAvg: 162,
+            recoveryCadenceAvg: 121,
+            reps: [rep1, rep2, rep3],
+            tier: .partiallyMet,
+            verdict: "Strong turnover adherence"
+        )
+
+        let tags = summary.framboiseTags
+        XCTAssertTrue(tags.contains(where: { $0.hasPrefix("drillRepDetails:") }))
+
+        let reconstructed = DrillIntervalSummary.from(tags: tags, drillId: .strides)
+        XCTAssertNotNil(reconstructed)
+        XCTAssertEqual(reconstructed?.totalIntervals, 3)
+        XCTAssertEqual(reconstructed?.intervalsMet, 2)
+        XCTAssertEqual(reconstructed?.reps.count, 3)
+
+        let r1 = reconstructed?.reps[0]
+        XCTAssertEqual(r1?.workCadence, 166)
+        XCTAssertEqual(r1?.workHeartRate, 98)
+        XCTAssertEqual(r1?.recoveryCadence, 121)
+        XCTAssertEqual(r1?.recoveryHeartRate, 127)
+        XCTAssertEqual(r1?.durationSeconds, 20.0)
+        XCTAssertEqual(r1?.workPaceSecondsPerKm, 308.0)
+        XCTAssertEqual(r1?.recoveryPaceSecondsPerKm, 628.0)
+        XCTAssertEqual(r1?.isMet, true)
+    }
+
+    func testIndoorStridesScorecardCalculationAdherence() {
+        let rep1 = DrillIntervalRep(
+            repIndex: 1,
+            workCadence: 166,
+            workHeartRate: 98,
+            recoveryCadence: 121,
+            recoveryHeartRate: 127,
+            isMet: true,
+            durationSeconds: 20.0,
+            workPaceSecondsPerKm: 308.0,
+            recoveryPaceSecondsPerKm: 628.0
+        )
+        let rep2 = DrillIntervalRep(
+            repIndex: 2,
+            workCadence: 163,
+            workHeartRate: 116,
+            recoveryCadence: 120,
+            recoveryHeartRate: 134,
+            isMet: true,
+            durationSeconds: 20.0,
+            workPaceSecondsPerKm: 328.0,
+            recoveryPaceSecondsPerKm: 640.0
+        )
+        let rep3 = DrillIntervalRep(
+            repIndex: 3,
+            workCadence: 157,
+            workHeartRate: 113,
+            recoveryCadence: 121,
+            recoveryHeartRate: 130,
+            isMet: false,
+            durationSeconds: 20.0,
+            workPaceSecondsPerKm: 368.0,
+            recoveryPaceSecondsPerKm: 623.0
+        )
+
+        let summary = DrillIntervalSummary(
+            drillId: .strides,
+            intervalsMet: 2,
+            totalIntervals: 3,
+            workCadenceAvg: 162,
+            recoveryCadenceAvg: 121,
+            reps: [rep1, rep2, rep3],
+            tier: .partiallyMet,
+            verdict: "Strong turnover adherence"
+        )
+
+        var tags = summary.framboiseTags
+        tags.append("drill:strides")
+        tags.append("drillTarget:165-173")
+
+        let runRecord = RunRecord(
+            hkWorkoutID: UUID(),
+            date: Date(),
+            totalDistanceMeters: 800,
+            duration: 660,
+            rawAvgPace: 388,
+            rawAvgHeartRate: 110,
+            rawAvgCadence: 151,
+            workingAvgPace: 388,
+            workingAvgCadence: 151,
+            workingAvgHeartRate: 110,
+            isIndoor: true,
+            paceCV: 0.05,
+            paceSlope: 0.0,
+            percentZone4: 0.0,
+            detectedTypeRaw: "Intervals",
+            framboiseTags: tags
+        )
+
+        let calc = DrillExecutionScorecard.calculateAdherence(
+            runRecord: runRecord,
+            drillId: .strides,
+            baselineCadence: 155
+        )
+
+        XCTAssertEqual(calc.displayReps.count, 3)
+        XCTAssertEqual(calc.metCount, 2)
+        XCTAssertEqual(calc.totalCount, 3)
+
+        let first = calc.displayReps[0]
+        XCTAssertEqual(first.durationSeconds, 20.0, "Must show authentic 20s duration, not hardcoded 15s")
+        XCTAssertEqual(first.workCadence, 166, "Rep 1 must reflect true 166 SPM, not average 161")
+        XCTAssertEqual(first.workHeartRate, 98, "Rep 1 must reflect true 98 BPM, not run average 110")
+        XCTAssertEqual(first.workPaceFormatted, "5:08/km", "Rep 1 must reflect true 5:08/km, not run average 6:28/km")
+        XCTAssertTrue(first.isMet, "166 SPM meets the 165-173 SPM target band")
+    }
+
+    func testIndoorCadenceSurgesSegmentPhasesWithUniformPace() {
+        var buckets: [TelemetryBucket] = []
+        let now = Date()
+        // 5 min warmup at 120 SPM, flat pace 388 s/km
+        for i in 0..<20 {
+            buckets.append(TelemetryBucket(
+                timestamp: now.addingTimeInterval(Double(i * 15)),
+                durationSeconds: 15.0,
+                distanceMeters: 38.6,
+                paceSecondsPerKm: 388.0,
+                cadenceSPM: 120.0,
+                heartRateBPM: 90.0
+            ))
+        }
+        // 3x (20s work at 166 SPM + 60s rec at 120 SPM), all with flat pace 388 s/km
+        for _ in 0..<3 {
+            // Work (2 buckets ~30s for 15s discretization)
+            for _ in 0..<2 {
+                buckets.append(TelemetryBucket(
+                    timestamp: now.addingTimeInterval(Double(buckets.count * 15)),
+                    durationSeconds: 15.0,
+                    distanceMeters: 38.6,
+                    paceSecondsPerKm: 388.0,
+                    cadenceSPM: 166.0,
+                    heartRateBPM: 110.0
+                ))
+            }
+            // Recovery (4 buckets = 60s)
+            for _ in 0..<4 {
+                buckets.append(TelemetryBucket(
+                    timestamp: now.addingTimeInterval(Double(buckets.count * 15)),
+                    durationSeconds: 15.0,
+                    distanceMeters: 38.6,
+                    paceSecondsPerKm: 388.0,
+                    cadenceSPM: 120.0,
+                    heartRateBPM: 125.0
+                ))
+            }
+        }
+
+        let segments = IntervalSegmenterCore.segmentPhases(buckets: buckets, cadenceFloor: 145.0)
+        let workSegments = segments.filter { $0.kind == .work }
+        XCTAssertGreaterThanOrEqual(workSegments.count, 2, "Cadence surges must not be suppressed when pace is uniform on treadmill")
     }
 }
