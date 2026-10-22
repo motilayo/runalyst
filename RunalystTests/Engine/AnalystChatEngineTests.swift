@@ -460,4 +460,54 @@ final class AnalystChatEngineTests: XCTestCase {
         let analystMsg = engine.messages[1]
         XCTAssertNotNil(analystMsg.attachedSession, "Session card should attach proactively even without an anchored runRecord")
     }
+
+    // MARK: - 15. Proactive Attachment Deduplication & Temporal Grounding
+
+    func testWhenNextRunQueryRecommendsDrillAlignsPrimerAndDeduplicatesCard() async {
+        let engine = AnalystChatEngine(modelContext: nil, runRecord: nil, mode: .macroCoach)
+
+        engine.modelResponder = { _, _ in
+            "Your next run is scheduled for Friday—a 30-minute easy aerobic base. Warm up with Cadence Pyramids to prime your stride."
+        }
+
+        await engine.sendMessage("When should I run next, and what kind of session should I focus on?")
+
+        XCTAssertEqual(engine.messages.count, 2)
+        let analystMsg = engine.messages[1]
+
+        // 1. Session card should be attached
+        XCTAssertNotNil(analystMsg.attachedSession, "Session card should be attached for next run query")
+        XCTAssertEqual(analystMsg.attachedSession?.primerDrillId, .cadencePyramids, "Pre-run primer should align to the recommended drill")
+        XCTAssertEqual(analystMsg.attachedSession?.primerDrillTitle, "Cadence Pyramids")
+
+        // 2. Standalone drill card should be suppressed to prevent dual conflicting cards
+        XCTAssertNil(analystMsg.attachedDrillId, "Standalone drill card must be deduplicated when session card is attached")
+    }
+
+    func testExplicitDrillQueryPreservesStandaloneDrillCard() async {
+        let engine = AnalystChatEngine(modelContext: nil, runRecord: nil, mode: .macroCoach)
+
+        engine.modelResponder = { _, _ in
+            "Try Cadence Pyramids to develop light, quick foot strikes and reduce knee stress."
+        }
+
+        await engine.sendMessage("Which drill would help improve my running form and cadence?")
+
+        XCTAssertEqual(engine.messages.count, 2)
+        let analystMsg = engine.messages[1]
+
+        XCTAssertEqual(analystMsg.attachedDrillId, .cadencePyramids, "Explicit drill query should surface the standalone drill card")
+        XCTAssertNil(analystMsg.attachedSession, "Explicit drill query should not attach a full daily session card")
+    }
+
+    func testMacroCoachInstructionsIncludeExplicitCalendarDateGrounding() {
+        if #available(iOS 26.0, *) {
+            let engine = AnalystChatEngine(modelContext: nil, runRecord: nil, mode: .macroCoach)
+            let instructions = engine.buildLeanSystemInstructions()
+
+            let cal = Calendar(identifier: .gregorian)
+            let year = cal.component(.year, from: Date())
+            XCTAssertTrue(instructions.contains("\(year)"), "System instructions must include the current year for temporal grounding")
+        }
+    }
 }

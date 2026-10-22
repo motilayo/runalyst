@@ -125,7 +125,7 @@ struct AnalystChatView: View {
                             }
 
                             Color.clear
-                                .frame(height: 12)
+                                .frame(height: 28)
                                 .id("bottom_anchor")
                         }
                         .padding(.vertical, 12)
@@ -535,15 +535,39 @@ struct AnalystChatView: View {
         let splitChipPrompt = isInterval ? "Grade my performance in each interval of this run" : "Grade my performance in each split of this run"
         let splitChipIcon = isInterval ? "waveform.path.ecg" : "chart.bar.xaxis"
 
-        let candidates: [(title: String, prompt: String, icon: String, color: Color)] = [
-            ("Tomorrow's Plan", "Should I run tomorrow, and what kind of session should I focus on?", "calendar", .purple),
-            (splitChipTitle, splitChipPrompt, splitChipIcon, Color(red: 0.0, green: 0.55, blue: 1.0)),
-            ("Recommended Drill", "Which drill would help improve my running form and cadence?", "figure.run", Color(red: 0.18, green: 0.82, blue: 0.35)),
-            ("What to Improve", "What is the key area I should focus on improving?", "arrow.up.forward.circle", .orange),
-            ("Running Economy", "How was my running economy and stride efficiency during this run?", "bolt.heart", Color(red: 1.0, green: 0.18, blue: 0.55)),
-            ("Arm Drive", "How does arm drive help with rhythm and form?", "figure.walk", Color(red: 0.18, green: 0.82, blue: 0.35))
-        ].filter { item in
-            !askedText.contains(item.title.lowercased()) && !askedText.contains(item.prompt.lowercased())
+        let isMacro = (mode == .macroCoach) || (runRecord == nil)
+
+        let candidates: [(title: String, prompt: String, icon: String, color: Color)]
+        if isMacro {
+            candidates = [
+                ("Weekly Schedule", "What does my training schedule look like for the rest of the week?", "calendar", .purple),
+                ("Tomorrow's Plan", "Should I run tomorrow, and what kind of session should I focus on?", "calendar.badge.clock", .purple),
+                ("Training Readiness", "How is my recovery status and overall training load looking?", "heart.text.square.fill", Color(red: 1.0, green: 0.18, blue: 0.55)),
+                ("Recommended Drill", "Which drill would help improve my running form and cadence?", "figure.run", Color(red: 0.18, green: 0.82, blue: 0.35)),
+                ("What to Improve", "What is the key area I should focus on improving right now?", "arrow.up.forward.circle", .orange),
+                ("Training Balance", "How is my weekly mileage and overall training balance?", "chart.bar.fill", Color(red: 0.0, green: 0.55, blue: 1.0))
+            ].filter { item in
+                let titleLower = item.title.lowercased()
+                let promptLower = item.prompt.lowercased()
+                if titleLower.contains("tomorrow") && (askedText.contains("tomorrow") || askedText.contains("next run") || askedText.contains("run next") || askedText.contains("when should i run")) {
+                    return false
+                }
+                if titleLower.contains("schedule") && (askedText.contains("schedule") || askedText.contains("calendar")) {
+                    return false
+                }
+                return !askedText.contains(titleLower) && !askedText.contains(promptLower)
+            }
+        } else {
+            candidates = [
+                ("Tomorrow's Plan", "Should I run tomorrow, and what kind of session should I focus on?", "calendar", .purple),
+                (splitChipTitle, splitChipPrompt, splitChipIcon, Color(red: 0.0, green: 0.55, blue: 1.0)),
+                ("Recommended Drill", "Which drill would help improve my running form and cadence?", "figure.run", Color(red: 0.18, green: 0.82, blue: 0.35)),
+                ("What to Improve", "What is the key area I should focus on improving?", "arrow.up.forward.circle", .orange),
+                ("Running Economy", "How was my running economy and stride efficiency during this run?", "bolt.heart", Color(red: 1.0, green: 0.18, blue: 0.55)),
+                ("Arm Drive", "How does arm drive help with rhythm and form?", "figure.walk", Color(red: 0.18, green: 0.82, blue: 0.35))
+            ].filter { item in
+                !askedText.contains(item.title.lowercased()) && !askedText.contains(item.prompt.lowercased())
+            }
         }
 
         return Group {
