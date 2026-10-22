@@ -1,0 +1,44 @@
+name: Runalyst Assay & CI Gate
+
+on:
+  pull_request:
+    branches: [ main, master ]
+  push:
+    branches: [ main, master ]
+
+jobs:
+  assay-gate:
+    name: Reference Core Assay & Foundry Test Suite
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Install Dependencies
+        run: |
+          brew install swiftlint
+          # Optional: install xcbeautify for clean test log formatting if desired
+          brew install xcbeautify || true
+
+      - name: Make Assay Script Executable
+        run: chmod +x ./assay.sh
+
+      - name: Execute Reference Core Assay (./assay.sh)
+        run: ./assay.sh
+
+      - name: Run Foundry Test Suite & Continuous Mill Assay
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -scheme Runalyst \
+            -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
+            CODE_SIGNING_ALLOWED=NO | xcbeautify || xcodebuild test \
+              -scheme Runalyst \
+              -destination 'platform=iOS Simulator,name=iPhone 17' \
+              CODE_SIGNING_ALLOWED=NO
