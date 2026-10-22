@@ -900,9 +900,14 @@ struct InlineChatDrillCard: View {
             }
             .padding(.top, 2)
         }
-        .padding(12)
-        .background(Color(UIColor.tertiarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .padding(14)
+        .background(Color(UIColor.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(Color(UIColor.separator).opacity(0.18), lineWidth: 0.5)
+        )
+        .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
     }
 
     private func chatMetricCell(icon: String, title: String, value: String, color: Color) -> some View {
@@ -927,7 +932,7 @@ struct InlineChatDrillCard: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
-        .background(Color(UIColor.secondarySystemGroupedBackground))
+        .background(Color(UIColor.tertiarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 }

@@ -362,12 +362,12 @@ struct DrillCardView: View {
             .padding(.top, 2)
         }
         .frame(maxWidth: .infinity, minHeight: 1)
-        .padding(12)
-        .background(Color(UIColor.tertiarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .padding(14)
+        .background(Color(UIColor.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(Color(UIColor.separator).opacity(0.15), lineWidth: 0.5)
+                .stroke(Color(UIColor.separator).opacity(0.18), lineWidth: 0.5)
         )
         .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
         .sheet(item: $activeReadoutItem) { item in
@@ -427,7 +427,7 @@ struct DrillCardView: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
-        .background(Color(UIColor.secondarySystemGroupedBackground))
+        .background(Color(UIColor.tertiarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 }

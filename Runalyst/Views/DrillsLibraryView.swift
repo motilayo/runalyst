@@ -154,7 +154,7 @@ struct DrillsLibraryView: View {
                                 DrillPrimerCardView(
                                     drillId: .recoveryJog,
                                     customTitle: "Recovery Jog",
-                                    customTarget: "Target: Zone 1 HR",
+                                    customTarget: "Zone 1 HR",
                                     baselineCadence: baselineCadence,
                                     onStart: handleStartDrill
                                 )
@@ -162,7 +162,7 @@ struct DrillsLibraryView: View {
                                 DrillPrimerCardView(
                                     drillId: .zone2Run,
                                     customTitle: "Zone 2 Run",
-                                    customTarget: "Target: Zone 2 HR",
+                                    customTarget: "Zone 2 HR",
                                     baselineCadence: baselineCadence,
                                     onStart: handleStartDrill
                                 )
@@ -172,7 +172,7 @@ struct DrillsLibraryView: View {
                             DrillPrimerCardView(
                                 drillId: .recoveryJog,
                                 customTitle: "Recovery Jog",
-                                customTarget: "Target: Zone 1 HR",
+                                customTarget: "Zone 1 HR",
                                 baselineCadence: baselineCadence,
                                 onStart: handleStartDrill
                             )
@@ -181,7 +181,7 @@ struct DrillsLibraryView: View {
                             DrillPrimerCardView(
                                 drillId: .zone2Run,
                                 customTitle: "Zone 2 Run",
-                                customTarget: "Target: Zone 2 HR",
+                                customTarget: "Zone 2 HR",
                                 baselineCadence: baselineCadence,
                                 onStart: handleStartDrill
                             )
@@ -592,28 +592,23 @@ struct DrillPrimerCardView: View {
                 )
             }
 
-            // Indoor / Outdoor Switch
-            HStack(spacing: 6) {
-                Button {
-                    preferredWorkoutIsIndoor.toggle()
-                    UISelectionFeedbackGenerator().selectionChanged()
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: preferredWorkoutIsIndoor ? "figure.run.square.stack" : "sun.max.fill")
-                            .font(.system(size: 9, weight: .bold))
-                        Text(preferredWorkoutIsIndoor ? "Indoor (Treadmill)" : "Outdoor Road")
-                            .font(.system(size: 10, weight: .semibold))
-                    }
-                    .foregroundColor(preferredWorkoutIsIndoor ? .purple : .blue)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background((preferredWorkoutIsIndoor ? Color.purple : Color.blue).opacity(0.12))
-                    .clipShape(Capsule())
+            // Treadmill Hint Footnote
+            if preferredWorkoutIsIndoor {
+                HStack(spacing: 5) {
+                    Image(systemName: "info.circle.fill")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(.purple)
+                    Text(
+                        drillId == .hillBounds
+                        ? "Treadmill: Set 4–6% incline • Launches as Indoor Run on Watch"
+                        : "Treadmill: Set 0.5–1.0% incline • Focus on HR & Cadence over wrist pace"
+                    )
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
                 }
-
-                Spacer()
+                .padding(.top, 1)
             }
-            .padding(.top, 1)
 
             // Sleek 4pt Phase Mini-Bar
             VStack(alignment: .leading, spacing: 4) {
@@ -639,9 +634,14 @@ struct DrillPrimerCardView: View {
             }
             .padding(.top, 2)
         }
-        .padding(12)
-        .background(Color(UIColor.tertiarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .padding(14)
+        .background(Color(UIColor.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(Color(UIColor.separator).opacity(0.18), lineWidth: 0.5)
+        )
+        .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
     }
 
     private func drillMetricCell(icon: String, title: String, value: String, color: Color) -> some View {
@@ -666,7 +666,7 @@ struct DrillPrimerCardView: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
-        .background(Color(UIColor.secondarySystemGroupedBackground))
+        .background(Color(UIColor.tertiarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
