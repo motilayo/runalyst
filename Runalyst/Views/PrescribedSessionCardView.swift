@@ -192,7 +192,7 @@ struct PrescribedSessionCardView: View {
             id: session.primerDrillId,
             previousCadence: session.cadenceFloor,
             targetCadence: session.primerTargetCadence,
-            readinessState: session.isTrimmed ? .acuteFatigue : .productive,
+            readinessState: session.resolvedReadinessState,
             isIndoor: preferredWorkoutIsIndoor
         )
         let primerPhases = primerDrill.generatePhases()
@@ -203,7 +203,7 @@ struct PrescribedSessionCardView: View {
             previousCadence: session.cadenceFloor,
             targetCadence: session.mainSessionTemplateId.isHeartRateTargeted ? nil : "\(session.cadenceFloor)-\(session.cadenceFloor + 6)",
             duration: DrillDuration(rawValue: session.mainRunDurationMinutes) ?? .thirtyMinutes,
-            readinessState: session.isTrimmed ? .acuteFatigue : .productive,
+            readinessState: session.resolvedReadinessState,
             isIndoor: preferredWorkoutIsIndoor
         )
         let mainPhases = mainRunDrill.generatePhases()
@@ -500,10 +500,21 @@ struct PrescribedSessionCardView: View {
     }
 
     private func cleanPrimerDuration(session: PrescribedDailySession) -> String {
-        session.primerPhasesDuration
-            .replacingOccurrences(of: " drill", with: "")
-            .replacingOccurrences(of: " (Adapted)", with: "")
-            .trimmingCharacters(in: .whitespaces)
+        let primerDrill = PreRunDrill(
+            id: session.primerDrillId,
+            previousCadence: session.cadenceFloor,
+            targetCadence: session.primerTargetCadence,
+            readinessState: session.resolvedReadinessState,
+            isIndoor: preferredWorkoutIsIndoor
+        )
+        let totalSeconds = primerDrill.generatePhases().reduce(0) { $0 + $1.durationSeconds }
+        let mins = totalSeconds / 60
+        let secs = totalSeconds % 60
+        if secs == 0 {
+            return "\(mins) min"
+        } else {
+            return "\(mins)m \(secs)s"
+        }
     }
 
     private func cleanPrimerTarget(session: PrescribedDailySession) -> String {

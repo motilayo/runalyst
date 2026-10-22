@@ -1123,7 +1123,8 @@ class AnalystChatEngine: ObservableObject {
                         completedPrimerRun: session.completedPrimerRun,
                         isRestDay: session.isRestDay,
                         dayLabel: session.dayLabel,
-                        isToday: session.isToday
+                        isToday: session.isToday,
+                        readinessState: session.readinessState
                     )
                     self.sessionRecommendedThisTurn = alignedSession
 

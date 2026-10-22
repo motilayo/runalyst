@@ -202,7 +202,8 @@ extension PreRunDrill {
             recoveryGoal = nil
         case .zone2Run:
             iterations = 1
-            workGoal = .time(Double(duration.rawValue), .minutes)
+            let steadySeconds = standardIntervalSpec.workSeconds
+            workGoal = .time(Double(steadySeconds), .seconds)
             recoveryGoal = nil
         }
 

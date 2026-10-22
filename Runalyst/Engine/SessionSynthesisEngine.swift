@@ -76,6 +76,21 @@ struct PrescribedDailySession: Sendable, Equatable {
     var isRestDay: Bool = false
     var dayLabel: String?
     var isToday: Bool = false
+    var readinessState: ReadinessState = .productive
+
+    /// Resolves the canonical readiness state deterministically from explicit state or status text.
+    var resolvedReadinessState: ReadinessState {
+        if readinessState != .productive {
+            return readinessState
+        }
+        if readinessStateText.localizedCaseInsensitiveContains("Deload") {
+            return .deload
+        }
+        if isTrimmed || readinessStateText.localizedCaseInsensitiveContains("Fatigue") || readinessStateText.localizedCaseInsensitiveContains("Recovery") {
+            return .acuteFatigue
+        }
+        return .productive
+    }
 
     /// Backwards compatibility alias for code expecting `mainRunDrillId`.
     var mainRunDrillId: PreRunDrillId {
@@ -296,7 +311,7 @@ enum SessionSynthesisEngine {
         let primerDrillId: PreRunDrillId
         let primerTitle: String
         let primerWork: String
-        let primerDuration: String
+        var primerDuration: String
         let isTrimmed: Bool
         let mainSessionTemplateId: PreRunDrillId
         let mainRunDurationMinutes: Int
@@ -394,7 +409,8 @@ enum SessionSynthesisEngine {
                 completedPrimerRun: nil,
                 isRestDay: true,
                 dayLabel: "Today",
-                isToday: true
+                isToday: true,
+                readinessState: .acuteFatigue
             )
         }
 
@@ -450,7 +466,7 @@ enum SessionSynthesisEngine {
             primerDrillId = .strides
             primerTitle = "Strides"
             primerWork = "3 x 20 sec strides • 90 sec walk"
-            primerDuration = "7m 30s"
+            primerDuration = "12m 30s"
             isTrimmed = true
         } else if readyForQuality {
             // Cleared for Quality Stimulus
@@ -578,7 +594,30 @@ enum SessionSynthesisEngine {
             primerDuration = "10 min drill"
         }
 
-        let primerTarget = targetCadenceBand(for: primerDrillId, state: readiness.state, baseCadence: baseCadence)
+        let resolvedTodayReadiness: ReadinessState = {
+            if readiness.state == .acuteFatigue || hadCardiacDrift {
+                return .acuteFatigue
+            } else if readiness.state == .deload {
+                return .deload
+            } else {
+                return .productive
+            }
+        }()
+
+        let primerTarget = targetCadenceBand(for: primerDrillId, state: resolvedTodayReadiness, baseCadence: baseCadence)
+
+        // Deterministically compute exact primer duration directly from biomechanical phase geometry
+        let dynamicPrimer = PreRunDrill(
+            id: primerDrillId,
+            previousCadence: calibratedCadenceFloor,
+            targetCadence: primerTarget,
+            readinessState: resolvedTodayReadiness,
+            isIndoor: false
+        )
+        let totalPrimerSecs = dynamicPrimer.generatePhases().reduce(0) { $0 + $1.durationSeconds }
+        let primerMins = totalPrimerSecs / 60
+        let primerSecsRemainder = totalPrimerSecs % 60
+        primerDuration = primerSecsRemainder == 0 ? "\(primerMins) min" : "\(primerMins)m \(primerSecsRemainder)s"
 
         let isRecovery = (readiness.state == .acuteFatigue || hadCardiacDrift)
         let threeDaysAgo = cal.date(byAdding: .day, value: -3, to: now) ?? now.addingTimeInterval(-3 * 86400)
@@ -616,7 +655,8 @@ enum SessionSynthesisEngine {
             mainRunDurationMinutes: mainRunDurationMinutes,
             completedPrimerRun: nil,
             dayLabel: "Today",
-            isToday: true
+            isToday: true,
+            readinessState: resolvedTodayReadiness
         )
     }
 
@@ -726,7 +766,8 @@ enum SessionSynthesisEngine {
                 completedPrimerRun: nil,
                 isRestDay: true,
                 dayLabel: tomorrowWeekday,
-                isToday: false
+                isToday: false,
+                readinessState: .acuteFatigue
             )
         }
 
@@ -764,7 +805,18 @@ enum SessionSynthesisEngine {
         let primerTitle = wasHardSession ? "Cadence Pyramids" : "Rhythm Intervals"
         let primerTarget = wasHardSession ? "\(baseCadence - 2)–\(baseCadence + 4) SPM" : "\(baseCadence + 6)–\(baseCadence + 12) SPM"
         let primerWork = wasHardSession ? "2 x 30 sec work • 45 sec walk • Gentle" : "3 x 30 sec work • 45 sec jog"
-        let primerDuration = wasHardSession ? "7m 30s" : "10 min drill"
+
+        let tomorrowPrimerDrill = PreRunDrill(
+            id: primerDrillId,
+            previousCadence: calibratedCadenceFloor,
+            targetCadence: primerTarget,
+            readinessState: wasHardSession ? .acuteFatigue : .productive,
+            isIndoor: false
+        )
+        let totalTomorrowPrimerSecs = tomorrowPrimerDrill.generatePhases().reduce(0) { $0 + $1.durationSeconds }
+        let tomorrowPrimerMins = totalTomorrowPrimerSecs / 60
+        let tomorrowPrimerSecs = totalTomorrowPrimerSecs % 60
+        let primerDuration = tomorrowPrimerSecs == 0 ? "\(tomorrowPrimerMins) min" : "\(tomorrowPrimerMins)m \(tomorrowPrimerSecs)s"
 
         let tomorrowDate = Calendar.current.date(byAdding: .day, value: 1, to: context.now) ?? context.now
         let tomorrowWeekday = TrainingCalendar.weekdayFormatter.string(from: tomorrowDate)
@@ -802,7 +854,8 @@ enum SessionSynthesisEngine {
             completedPrimerRun: nil,
             isRestDay: false,
             dayLabel: tomorrowWeekday,
-            isToday: false
+            isToday: false,
+            readinessState: wasHardSession ? .acuteFatigue : .productive
         )
     }
 

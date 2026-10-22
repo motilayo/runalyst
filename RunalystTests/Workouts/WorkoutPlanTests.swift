@@ -90,4 +90,48 @@ final class WorkoutPlanTests: XCTestCase {
             }
         }
     }
+
+    func testZone2RunWorkoutPlanDurationIntegrity() {
+        let drill = PreRunDrill(id: .zone2Run, duration: .thirtyMinutes)
+        let plan = drill.buildWorkoutPlan()
+        if case .custom(let customWorkout) = plan.workout {
+            XCTAssertEqual(customWorkout.warmup?.goal, .time(5, .minutes))
+            XCTAssertEqual(customWorkout.cooldown?.goal, .time(5, .minutes))
+            XCTAssertEqual(customWorkout.blocks.count, 1)
+            XCTAssertEqual(customWorkout.blocks.first?.iterations, 1)
+            XCTAssertEqual(customWorkout.blocks.first?.steps.first?.step.goal, .time(1200, .seconds))
+        } else {
+            XCTFail("Expected custom workout for Zone 2 run")
+        }
+    }
+
+    func testStridesReadinessWorkoutPlanDurationAlignment() {
+        // Deload strides: 5m warmup + 3 x (20s sprint / 90s walk = 330s) + 2m cooldown = 750s (12m 30s)
+        let deloadDrill = PreRunDrill(id: .strides, duration: .fifteenMinutes, readinessState: .deload)
+        let deloadPlan = deloadDrill.buildWorkoutPlan()
+        if case .custom(let customWorkout) = deloadPlan.workout {
+            XCTAssertEqual(customWorkout.warmup?.goal, .time(5, .minutes))
+            XCTAssertEqual(customWorkout.cooldown?.goal, .time(2, .minutes))
+            XCTAssertEqual(customWorkout.blocks.first?.iterations, 3)
+            XCTAssertEqual(customWorkout.blocks.first?.steps.count, 2)
+            XCTAssertEqual(customWorkout.blocks.first?.steps[0].step.goal, .time(20, .seconds))
+            XCTAssertEqual(customWorkout.blocks.first?.steps[1].step.goal, .time(90, .seconds))
+        } else {
+            XCTFail("Expected custom workout for deload Strides")
+        }
+
+        // Acute fatigue strides: 5m warmup + 3 x (20s sprint / 60s walk = 240s) + 2m cooldown = 660s (11m)
+        let fatigueDrill = PreRunDrill(id: .strides, duration: .fifteenMinutes, readinessState: .acuteFatigue)
+        let fatiguePlan = fatigueDrill.buildWorkoutPlan()
+        if case .custom(let customWorkout) = fatiguePlan.workout {
+            XCTAssertEqual(customWorkout.warmup?.goal, .time(5, .minutes))
+            XCTAssertEqual(customWorkout.cooldown?.goal, .time(2, .minutes))
+            XCTAssertEqual(customWorkout.blocks.first?.iterations, 3)
+            XCTAssertEqual(customWorkout.blocks.first?.steps.count, 2)
+            XCTAssertEqual(customWorkout.blocks.first?.steps[0].step.goal, .time(20, .seconds))
+            XCTAssertEqual(customWorkout.blocks.first?.steps[1].step.goal, .time(60, .seconds))
+        } else {
+            XCTFail("Expected custom workout for fatigue Strides")
+        }
+    }
 }

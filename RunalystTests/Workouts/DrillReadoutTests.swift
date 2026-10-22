@@ -238,4 +238,58 @@ final class DrillReadoutTests: XCTestCase {
         XCTAssertFalse(readout.overview.contains("7m 30s"), "Overview must not contain duration")
         XCTAssertFalse(readout.overview.contains("10-minute"), "Overview must not contain duration")
     }
+
+    func testStridesFromPrescriptionDeloadReadoutCohesion() {
+        let dto = DrillPrescriptionDTO(
+            title: "Strides",
+            preRunDrillId: PreRunDrillId.strides.rawValue,
+            purpose: "Deload turnover",
+            targetCadence: "165 SPM",
+            previousCadence: 160,
+            durationMinutes: 15,
+            readinessState: ReadinessState.deload.rawValue
+        )
+
+        let activeItem = ActiveDrillReadoutItem.fromPrescription(
+            dto: dto,
+            customCoachingTip: "Deload phase in progress."
+        )
+
+        let readout = activeItem.readout
+        // Phase math: 5m warmup (300s) + 3 x (20s sprint + 90s walk = 330s) + 2m cooldown (120s) = 750s = 12m 30s
+        XCTAssertEqual(readout.totalDurationSeconds, 750)
+        XCTAssertEqual(readout.formattedDuration, "12m 30s")
+        XCTAssertTrue(readout.subtitle.contains("12m 30s"))
+        XCTAssertFalse(readout.subtitle.contains("15 min"))
+        XCTAssertTrue(readout.breakdown.contains("3 sets of 20-second strides"))
+        XCTAssertTrue(readout.breakdown.contains("90 seconds of walk recovery"))
+        XCTAssertEqual(readout.readinessState, .deload)
+    }
+
+    func testStridesFromPrescriptionAcuteFatigueReadoutCohesion() {
+        let dto = DrillPrescriptionDTO(
+            title: "Strides",
+            preRunDrillId: PreRunDrillId.strides.rawValue,
+            purpose: "Active recovery turnover",
+            targetCadence: "165 SPM",
+            previousCadence: 160,
+            durationMinutes: 15,
+            readinessState: ReadinessState.acuteFatigue.rawValue
+        )
+
+        let activeItem = ActiveDrillReadoutItem.fromPrescription(
+            dto: dto,
+            customCoachingTip: "Acute fatigue recovery."
+        )
+
+        let readout = activeItem.readout
+        // Phase math: 5m warmup (300s) + 3 x (20s sprint + 60s walk = 240s) + 2m cooldown (120s) = 660s = 11 min
+        XCTAssertEqual(readout.totalDurationSeconds, 660)
+        XCTAssertEqual(readout.formattedDuration, "11 min")
+        XCTAssertTrue(readout.subtitle.contains("11 min"))
+        XCTAssertFalse(readout.subtitle.contains("15 min"))
+        XCTAssertTrue(readout.breakdown.contains("3 sets of 20-second strides"))
+        XCTAssertTrue(readout.breakdown.contains("1 minute of walk recovery"))
+        XCTAssertEqual(readout.readinessState, .acuteFatigue)
+    }
 }

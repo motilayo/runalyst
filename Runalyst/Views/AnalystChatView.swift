@@ -673,6 +673,7 @@ struct AnalystChatView: View {
     }
 
     private func openPrimerReadout(for session: PrescribedDailySession) {
+        let state = session.resolvedReadinessState
         let dto = DrillPrescriptionDTO(
             title: session.primerDrillTitle,
             preRunDrillId: session.primerDrillId.rawValue,
@@ -681,7 +682,7 @@ struct AnalystChatView: View {
             previousCadence: session.cadenceFloor,
             durationMinutes: session.primerDrillId.defaultDuration.rawValue,
             hapticMode: "On",
-            readinessState: session.isTrimmed ? ReadinessState.acuteFatigue.rawValue : nil,
+            readinessState: state == .productive ? nil : state.rawValue,
             isIndoor: preferredWorkoutIsIndoor
         )
         activeReadoutItem = ActiveDrillReadoutItem.fromPrescription(
@@ -692,6 +693,7 @@ struct AnalystChatView: View {
 
     private func openMainRunReadout(for session: PrescribedDailySession) {
         let mainDrillId = session.mainSessionTemplateId
+        let state = session.resolvedReadinessState
         let dto = DrillPrescriptionDTO(
             title: session.sessionTitle,
             preRunDrillId: mainDrillId.rawValue,
@@ -700,7 +702,7 @@ struct AnalystChatView: View {
             previousCadence: session.cadenceFloor,
             durationMinutes: session.mainRunDurationMinutes,
             hapticMode: "On",
-            readinessState: session.isTrimmed ? ReadinessState.acuteFatigue.rawValue : nil,
+            readinessState: state == .productive ? nil : state.rawValue,
             isIndoor: preferredWorkoutIsIndoor
         )
         activeReadoutItem = ActiveDrillReadoutItem.fromPrescription(

@@ -604,7 +604,7 @@ extension ActiveDrillReadoutItem {
             customDisplayName: dto.title
         )
 
-        let readout = DrillReadout.readout(
+        var readout = DrillReadout.readout(
             for: drillId,
             customTitle: dto.title,
             targetCadence: dto.targetCadence,
@@ -612,6 +612,49 @@ extension ActiveDrillReadoutItem {
             customDuration: duration,
             customCoachingTip: customCoachingTip ?? dto.purpose
         )
+
+        if drill.readinessAdjustedIntervalSpec != nil {
+            let adaptedPhases = drill.generatePhases()
+            let totalSeconds = adaptedPhases.map(\.durationSeconds).reduce(0, +)
+            let formattedTotal: String = {
+                let mins = totalSeconds / 60
+                let secs = totalSeconds % 60
+                if secs == 0 {
+                    return "\(mins) min"
+                } else {
+                    return "\(mins)m \(secs)s"
+                }
+            }()
+            let standardDrill = PreRunDrill(
+                id: drillId,
+                previousCadence: dto.previousCadence,
+                targetCadence: dto.targetCadence,
+                duration: duration,
+                hapticMode: haptic,
+                readinessState: .productive,
+                isIndoor: isIndoor,
+                customDisplayName: dto.title
+            )
+            readout = DrillReadout(
+                drillId: drillId,
+                title: dto.title ?? readout.title,
+                subtitle: readout.subtitle.replacingOccurrences(of: "\(readout.durationMinutes) min", with: formattedTotal),
+                overview: readout.overview,
+                breakdown: DrillReadout.readinessBreakdown(phases: adaptedPhases, drillId: drillId),
+                coachingTip: readout.coachingTip,
+                phases: adaptedPhases,
+                durationMinutes: readout.durationMinutes,
+                targetCadence: dto.targetCadence ?? readout.targetCadence,
+                targetZone: readout.targetZone,
+                readinessState: state,
+                standardTargetCadence: standardDrill.computedCadence ?? readout.targetCadence,
+                standardWork: standardDrill.defaultWorkString,
+                adaptedWork: drill.defaultWorkString,
+                standardRecovery: standardDrill.defaultRecoveryString,
+                adaptedRecovery: drill.defaultRecoveryString,
+                readinessContext: customCoachingTip ?? dto.purpose
+            )
+        }
 
         return ActiveDrillReadoutItem(
             readout: readout,
