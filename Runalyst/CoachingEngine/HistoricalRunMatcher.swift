@@ -318,7 +318,6 @@ struct HistoricalRunMatcher {
         /// Natural language synthesized comparison for fallback and offline coaching contexts.
         var coachingComparisonSummary: String {
             let envCurrent = current.isIndoor ? "Indoor Treadmill" : "Outdoor"
-            let envPrior = prior.isIndoor ? "Indoor Treadmill" : "Outdoor"
 
             let cal = Calendar.current
             let daysDiff = cal.dateComponents([.day], from: cal.startOfDay(for: prior.date), to: cal.startOfDay(for: current.date)).day ?? 0
@@ -839,7 +838,7 @@ struct HistoricalRunMatcher {
         limit: Int = 10
     ) -> String {
         guard let context = context else {
-            if let currentRun {
+            if currentRun != nil {
                 return "Only the current run is available in stored records."
             }
             return "No workouts found in stored records."

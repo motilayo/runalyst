@@ -497,7 +497,6 @@ class AnalystChatEngine: ObservableObject {
             let allRuns = (try? self.modelContext?.fetch(FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)]))) ?? (self.runRecord.map { [$0] } ?? [])
             let activeGoal = UserDefaults.standard.string(forKey: "trainingGoal") ?? "Base Building"
             let profile = RunnerProfile.compute(from: allRuns)
-            let useMetric = (UserDefaults.standard.object(forKey: "useMetricSystem") as? Bool) ?? true
 
             let cal = Calendar.current
             let todayRuns = allRuns.filter { cal.isDateInToday($0.date) && !$0.isDeleted }
@@ -1168,7 +1167,7 @@ public enum AnalystResponseSanitizer {
         // Clean up markdown ticks around removed commands and collapse blank lines
         let cleanedLines = working.components(separatedBy: .newlines)
             .map { line -> String in
-                var trimmed = line.trimmingCharacters(in: .whitespaces)
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
                 if trimmed == "``" || trimmed == "`" {
                     return ""
                 }
