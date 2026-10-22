@@ -4,18 +4,31 @@ import SwiftUI
 /// Renders Pre-Run Primer + Main Run, or Rest & Structural Recovery with optional override.
 struct PrescribedSessionCardView: View {
     let session: PrescribedDailySession
-    var isToday: Bool = false
+    var isToday: Bool?
     var dayLabel: String?
     @Binding var preferredWorkoutIsIndoor: Bool
     var onPreviewPrimer: (() -> Void)?
     var onPreviewMainRun: (() -> Void)?
     var onScheduleFlushOverride: (() -> Void)?
 
+    private var effectiveIsToday: Bool {
+        if let isToday {
+            return isToday
+        }
+        if session.isToday {
+            return true
+        }
+        if let label = dayLabel ?? session.dayLabel {
+            return label.caseInsensitiveCompare("Today") == .orderedSame
+        }
+        return false
+    }
+
     private var headerDayText: String {
-        if isToday {
+        if effectiveIsToday {
             return "Today"
-        } else if let dayLabel, !dayLabel.isEmpty {
-            return dayLabel
+        } else if let label = dayLabel ?? session.dayLabel, !label.isEmpty {
+            return label
         } else {
             let calendar = Calendar.current
             let tomorrow = calendar.date(byAdding: .day, value: 1, to: Date()) ?? Date()
@@ -27,11 +40,11 @@ struct PrescribedSessionCardView: View {
     }
 
     private var timingBadgeIcon: String {
-        isToday ? "sparkles" : "calendar.badge.clock"
+        effectiveIsToday ? "sparkles" : "calendar.badge.clock"
     }
 
     private var timingBadgeColor: Color {
-        isToday ? Color(red: 0.0, green: 0.75, blue: 0.65) : .blue
+        effectiveIsToday ? Color(red: 0.0, green: 0.75, blue: 0.65) : .blue
     }
 
     var body: some View {

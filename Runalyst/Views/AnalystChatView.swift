@@ -361,9 +361,16 @@ struct AnalystChatView: View {
                         }
 
                         if let session = message.attachedSession {
+                            let isSessionToday: Bool = {
+                                if let label = session.dayLabel {
+                                    return label.caseInsensitiveCompare("Today") == .orderedSame
+                                }
+                                return session.isToday || !isRunToday
+                            }()
                             PrescribedSessionCardView(
                                 session: session,
-                                isToday: !isRunToday,
+                                isToday: isSessionToday,
+                                dayLabel: session.dayLabel,
                                 preferredWorkoutIsIndoor: $preferredWorkoutIsIndoor,
                                 onPreviewPrimer: {
                                     openPrimerReadout(for: session)
