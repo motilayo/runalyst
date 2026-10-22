@@ -639,6 +639,39 @@ class AnalystChatEngine: ObservableObject {
                 )
 
                 if query.action == .displaySession || schedule.count == 1 {
+                    if fromDate > today, let day = schedule.first, day.planned.kind != .rest, let date = calendar.parseISO(day.date) {
+                        let primerTitle = day.planned.primerTitle ?? "Cadence Pyramids"
+                        let primerId = PreRunDrillId.resolve(from: primerTitle) ?? .cadencePyramids
+                        let dateStr = TrainingCalendar.weekdayFormatter.string(from: date)
+                        let isToday = calendar.calendar.isDateInToday(date)
+                        let session = PrescribedDailySession(
+                            targetGoal: activeGoal,
+                            sessionTitle: day.planned.title,
+                            durationBand: "\(day.planned.minutesLow)–\(day.planned.minutesHigh) min",
+                            paceBand: day.planned.paceBand ?? "Easy Aerobic",
+                            hrCap: day.planned.hrCap ?? "< 152 BPM",
+                            cadenceFloor: day.planned.cadenceFloor ?? 155,
+                            groundedRationale: "Scheduled workout on your training calendar.",
+                            readinessStateText: "Upcoming Planned Session",
+                            readinessTriggerLead: nil,
+                            primerDrillId: primerId,
+                            primerDrillTitle: primerTitle,
+                            primerTargetCadence: "155-165 SPM",
+                            primerWorkDescription: "Pre-run technique primer.",
+                            primerPhasesDuration: "10 min",
+                            isTrimmed: false,
+                            microcycle: [],
+                            mainSessionTemplateId: .zone2Run,
+                            mainRunDurationMinutes: day.planned.minutesHigh,
+                            completedPrimerRun: nil,
+                            isRestDay: false,
+                            dayLabel: isToday ? "Today" : dateStr,
+                            isToday: isToday
+                        )
+                        self.sessionRecommendedThisTurn = session
+                        return "{\"session_title\":\"\(session.sessionTitle)\",\"status\":\"session_card_displayed\"}"
+                    }
+
                     let dailyState = SessionSynthesisEngine.evaluateDailyState(
                         runRecords: allRuns,
                         activeGoal: activeGoal,
@@ -989,9 +1022,10 @@ class AnalystChatEngine: ObservableObject {
                     let primerTitle = day.planned.primerTitle ?? "Cadence Pyramids"
                     let primerId = PreRunDrillId.resolve(from: primerTitle) ?? .cadencePyramids
                     let dateStr = TrainingCalendar.weekdayFormatter.string(from: next.date)
+                    let isToday = Calendar.current.isDateInToday(next.date)
                     self.sessionRecommendedThisTurn = PrescribedDailySession(
                         targetGoal: UserDefaults.standard.string(forKey: "trainingGoal") ?? "Base Building",
-                        sessionTitle: "\(day.planned.title) (\(dateStr))",
+                        sessionTitle: day.planned.title,
                         durationBand: "\(day.planned.minutesLow)–\(day.planned.minutesHigh) min",
                         paceBand: day.planned.paceBand ?? "Easy Aerobic",
                         hrCap: day.planned.hrCap ?? "< 152 BPM",
@@ -1009,7 +1043,9 @@ class AnalystChatEngine: ObservableObject {
                         mainSessionTemplateId: .zone2Run,
                         mainRunDurationMinutes: day.planned.minutesHigh,
                         completedPrimerRun: nil,
-                        isRestDay: false
+                        isRestDay: false,
+                        dayLabel: isToday ? "Today" : dateStr,
+                        isToday: isToday
                     )
                 } else {
                     applyFallbackCoachAction(action: .displaySession, payload: nil)

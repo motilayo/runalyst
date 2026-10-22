@@ -74,6 +74,8 @@ struct PrescribedDailySession: Sendable, Equatable {
     var mainRunDurationMinutes: Int = 30
     var completedPrimerRun: RunRecordSnapshot?
     var isRestDay: Bool = false
+    var dayLabel: String?
+    var isToday: Bool = false
 
     /// Backwards compatibility alias for code expecting `mainRunDrillId`.
     var mainRunDrillId: PreRunDrillId {
@@ -390,7 +392,9 @@ enum SessionSynthesisEngine {
                 mainSessionTemplateId: .aerobicFlush,
                 mainRunDurationMinutes: 20,
                 completedPrimerRun: nil,
-                isRestDay: true
+                isRestDay: true,
+                dayLabel: "Today",
+                isToday: true
             )
         }
 
@@ -610,7 +614,9 @@ enum SessionSynthesisEngine {
             microcycle: microcycle,
             mainSessionTemplateId: mainSessionTemplateId,
             mainRunDurationMinutes: mainRunDurationMinutes,
-            completedPrimerRun: nil
+            completedPrimerRun: nil,
+            dayLabel: "Today",
+            isToday: true
         )
     }
 
@@ -685,6 +691,7 @@ enum SessionSynthesisEngine {
             let primerDuration = "20 min (Optional)"
 
             let tomorrowDate = Calendar.current.date(byAdding: .day, value: 1, to: context.now) ?? context.now
+            let tomorrowWeekday = TrainingCalendar.weekdayFormatter.string(from: tomorrowDate)
             let microcycle = generateMicrocycle(
                 activeGoal: context.activeGoal,
                 now: tomorrowDate,
@@ -717,7 +724,9 @@ enum SessionSynthesisEngine {
                 mainSessionTemplateId: .aerobicFlush,
                 mainRunDurationMinutes: 20,
                 completedPrimerRun: nil,
-                isRestDay: true
+                isRestDay: true,
+                dayLabel: tomorrowWeekday,
+                isToday: false
             )
         }
 
@@ -758,6 +767,7 @@ enum SessionSynthesisEngine {
         let primerDuration = wasHardSession ? "7m 30s" : "10 min drill"
 
         let tomorrowDate = Calendar.current.date(byAdding: .day, value: 1, to: context.now) ?? context.now
+        let tomorrowWeekday = TrainingCalendar.weekdayFormatter.string(from: tomorrowDate)
         let microcycle = generateMicrocycle(
             activeGoal: context.activeGoal,
             now: tomorrowDate,
@@ -790,7 +800,9 @@ enum SessionSynthesisEngine {
             mainSessionTemplateId: wasHardSession ? .aerobicFlush : .zone2Run,
             mainRunDurationMinutes: mainRunDurationMinutes,
             completedPrimerRun: nil,
-            isRestDay: false
+            isRestDay: false,
+            dayLabel: tomorrowWeekday,
+            isToday: false
         )
     }
 

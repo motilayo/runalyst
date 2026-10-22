@@ -189,6 +189,17 @@ enum PreRunDrillId: String, CaseIterable, Codable, Sendable {
         }
     }
 
+    /// Supported and physiologically meaningful duration options for this drill.
+    /// Primers/technique drills support 5, 10, or 15 min.
+    /// Continuous aerobic runs support 15, 30, 40, or 50 min.
+    public var supportedDurations: [DrillDuration] {
+        if isHeartRateTargeted {
+            return [.fifteenMinutes, .thirtyMinutes, .fortyMinutes, .fiftyMinutes]
+        } else {
+            return [.fiveMinutes, .tenMinutes, .fifteenMinutes]
+        }
+    }
+
     /// The standard run classification this drill belongs to.
     var correspondingClassification: String {
         switch self {

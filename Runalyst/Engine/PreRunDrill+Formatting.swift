@@ -210,4 +210,55 @@ extension PreRunDrill {
         case .strides, .neuromuscularPrimer, .hillBounds: return "Sprint / Zone 5"
         }
     }
+
+    /// Structured plain-English phase summary line (e.g. "5m in • 20m steady • 5m out" or "2m in • 4x (30s / 45s) • 3m out").
+    var structureSummary: String {
+        let phases = generatePhases()
+        let warmup = phases.first(where: { $0.kind == .warmup })?.durationSeconds ?? 0
+        let cooldown = phases.first(where: { $0.kind == .cooldown })?.durationSeconds ?? 0
+        let workReps = phases.filter { $0.kind == .work }
+        let repCount = workReps.count
+        let repWorkDuration = workReps.first?.durationSeconds ?? 0
+        let repRecDuration = phases.first(where: { if case .recovery = $0.kind { return true } else { return false } })?.durationSeconds ?? 0
+
+        var parts: [String] = []
+        if warmup > 0 { parts.append("\(warmup / 60)m in") }
+        if repCount > 0 {
+            if repRecDuration > 0 {
+                parts.append("\(repCount)x (\(repWorkDuration)s / \(repRecDuration)s)")
+            } else {
+                parts.append("\(repCount)x \(repWorkDuration)s")
+            }
+        } else if let steadyPhase = phases.first(where: { $0.kind == .steady }) {
+            let steadyMinutes = steadyPhase.durationSeconds / 60
+            parts.append("\(steadyMinutes)m steady")
+        }
+        if cooldown > 0 { parts.append("\(cooldown / 60)m out") }
+        return parts.joined(separator: " • ")
+    }
+
+    /// Punchy work representation suitable for compact 2x2 metric cells (e.g. "4x 30s", "Zone 2 Base").
+    var shortWorkSummary: String {
+        let spec = intervalSpec
+        if spec.iterations > 1 {
+            return "\(spec.iterations)x \(spec.workSeconds)s"
+        } else {
+            if id == .zone2Run {
+                return "Zone 2 Base"
+            } else if id == .aerobicFlush || id == .recoveryJog {
+                return "Zone 1 Flush"
+            }
+            return "\(spec.workSeconds / 60)m steady"
+        }
+    }
+
+    /// Punchy recovery representation suitable for compact 2x2 metric cells (e.g. "45s Jog", "45s Walk", "Continuous").
+    var shortRecoverySummary: String {
+        let spec = intervalSpec
+        if let rec = spec.recoverySeconds {
+            return "\(rec)s \(spec.isWalk ? "Walk" : "Jog")"
+        } else {
+            return "Continuous"
+        }
+    }
 }

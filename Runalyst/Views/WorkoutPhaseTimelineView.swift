@@ -25,17 +25,35 @@ struct WorkoutPhaseTimelineView: View {
                 }
             } else {
                 HStack(spacing: 8) {
-                    HStack(spacing: 3) {
-                        Circle().fill(Color.blue).frame(width: 6, height: 6)
-                        Text("Warm-up").font(.system(size: 9)).foregroundColor(.secondary)
+                    if phases.contains(where: { $0.kind == .warmup }) {
+                        HStack(spacing: 3) {
+                            Circle().fill(WorkoutPhase.Kind.warmup.color).frame(width: 6, height: 6)
+                            Text("Warm-up").font(.system(size: 9)).foregroundColor(.secondary)
+                        }
                     }
-                    HStack(spacing: 3) {
-                        Circle().fill(Color.orange).frame(width: 6, height: 6)
-                        Text("Work").font(.system(size: 9)).foregroundColor(.secondary)
+                    if phases.contains(where: { $0.kind == .work }) {
+                        HStack(spacing: 3) {
+                            Circle().fill(WorkoutPhase.Kind.work.color).frame(width: 6, height: 6)
+                            Text("Work").font(.system(size: 9)).foregroundColor(.secondary)
+                        }
                     }
-                    HStack(spacing: 3) {
-                        Circle().fill(Color(UIColor.systemGray4)).frame(width: 6, height: 6)
-                        Text("Walk / Rest").font(.system(size: 9)).foregroundColor(.secondary)
+                    if phases.contains(where: { $0.kind == .steady }) {
+                        HStack(spacing: 3) {
+                            Circle().fill(WorkoutPhase.Kind.steady.color).frame(width: 6, height: 6)
+                            Text("Steady").font(.system(size: 9)).foregroundColor(.secondary)
+                        }
+                    }
+                    if phases.contains(where: { if case .recovery = $0.kind { return true } else { return false } }) {
+                        HStack(spacing: 3) {
+                            Circle().fill(WorkoutPhase.Kind.recovery(isWalk: false).color).frame(width: 6, height: 6)
+                            Text(recoveryLegendTitle).font(.system(size: 9)).foregroundColor(.secondary)
+                        }
+                    }
+                    if phases.contains(where: { $0.kind == .cooldown }) {
+                        HStack(spacing: 3) {
+                            Circle().fill(WorkoutPhase.Kind.cooldown.color).frame(width: 6, height: 6)
+                            Text("Cool-down").font(.system(size: 9)).foregroundColor(.secondary)
+                        }
                     }
                     Spacer()
                     Text(totalDurationString)
@@ -87,19 +105,26 @@ struct WorkoutPhaseTimelineView: View {
         }
     }
 
-    private func blockColor(for kind: WorkoutPhase.Kind) -> Color {
-        switch kind {
-        case .warmup:
-            return Color.blue
-        case .work:
-            return Color.orange
-        case .recovery:
-            return Color(UIColor.systemGray4)
-        case .cooldown:
-            return Color.blue.opacity(0.7)
-        case .steady:
-            return Color.blue
+    private var recoveryLegendTitle: String {
+        let hasJog = phases.contains(where: {
+            if case .recovery(let isWalk) = $0.kind { return !isWalk }
+            return false
+        })
+        let hasWalk = phases.contains(where: {
+            if case .recovery(let isWalk) = $0.kind { return isWalk }
+            return false
+        })
+        if hasJog && !hasWalk {
+            return "Jog / Rest"
+        } else if hasWalk && !hasJog {
+            return "Walk / Rest"
+        } else {
+            return "Recovery"
         }
+    }
+
+    private func blockColor(for kind: WorkoutPhase.Kind) -> Color {
+        kind.color
     }
 
     private func blockHeight(for kind: WorkoutPhase.Kind) -> CGFloat {

@@ -413,6 +413,11 @@ final class AnalystChatEngineTests: XCTestCase {
         let analystMsg = engine.messages[1]
         XCTAssertNotNil(analystMsg.attachedSession, "Session card must be attached when runner asks for next scheduled run")
         XCTAssertFalse(analystMsg.attachedSession?.isRestDay ?? true, "Attached session must be an actual run, not a rest day")
+        XCTAssertNotNil(analystMsg.attachedSession?.dayLabel)
+        if let dayLabel = analystMsg.attachedSession?.dayLabel {
+            XCTAssertFalse(analystMsg.attachedSession?.sessionTitle.hasSuffix(" (\(dayLabel))") ?? false, "Session title should not append day in parentheses")
+        }
+        XCTAssertFalse(analystMsg.attachedSession?.isToday ?? true, "Upcoming next run must not be marked as today")
     }
 
     // MARK: - 13. Sanitizer Strips Trailing Repetitive Offers

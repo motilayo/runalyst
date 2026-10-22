@@ -376,12 +376,7 @@ struct WorkoutsView: View {
     }
 
     private func phaseColor(_ kind: WorkoutPhase.Kind) -> Color {
-        switch kind {
-        case .warmup, .cooldown: return .blue
-        case .work: return .orange
-        case .recovery: return Color(UIColor.systemGray4)
-        case .steady: return Color(red: 0.0, green: 0.55, blue: 1.0)
-        }
+        kind.color
     }
 
     private func openPrimerReadout(for session: PrescribedDailySession) {

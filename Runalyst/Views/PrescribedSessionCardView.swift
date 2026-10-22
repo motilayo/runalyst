@@ -4,18 +4,31 @@ import SwiftUI
 /// Renders Pre-Run Primer + Main Run, or Rest & Structural Recovery with optional override.
 struct PrescribedSessionCardView: View {
     let session: PrescribedDailySession
-    var isToday: Bool = false
+    var isToday: Bool?
     var dayLabel: String?
     @Binding var preferredWorkoutIsIndoor: Bool
     var onPreviewPrimer: (() -> Void)?
     var onPreviewMainRun: (() -> Void)?
     var onScheduleFlushOverride: (() -> Void)?
 
+    private var effectiveIsToday: Bool {
+        if let isToday {
+            return isToday
+        }
+        if session.isToday {
+            return true
+        }
+        if let label = dayLabel ?? session.dayLabel {
+            return label.caseInsensitiveCompare("Today") == .orderedSame
+        }
+        return false
+    }
+
     private var headerDayText: String {
-        if isToday {
+        if effectiveIsToday {
             return "Today"
-        } else if let dayLabel, !dayLabel.isEmpty {
-            return dayLabel
+        } else if let label = dayLabel ?? session.dayLabel, !label.isEmpty {
+            return label
         } else {
             let calendar = Calendar.current
             let tomorrow = calendar.date(byAdding: .day, value: 1, to: Date()) ?? Date()
@@ -27,11 +40,11 @@ struct PrescribedSessionCardView: View {
     }
 
     private var timingBadgeIcon: String {
-        isToday ? "sparkles" : "calendar.badge.clock"
+        effectiveIsToday ? "sparkles" : "calendar.badge.clock"
     }
 
     private var timingBadgeColor: Color {
-        isToday ? Color(red: 0.0, green: 0.75, blue: 0.65) : .blue
+        effectiveIsToday ? Color(red: 0.0, green: 0.75, blue: 0.65) : .blue
     }
 
     var body: some View {
@@ -261,6 +274,34 @@ struct PrescribedSessionCardView: View {
                         .minimumScaleFactor(0.85)
                 }
 
+                // Integrated 4-Target Grid (matching Main Run)
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
+                    metricCell(
+                        icon: "stopwatch.fill",
+                        title: "Duration",
+                        value: cleanPrimerDuration(session: session),
+                        color: .secondary
+                    )
+                    metricCell(
+                        icon: "metronome.fill",
+                        title: "Cadence",
+                        value: cleanPrimerTarget(session: session),
+                        color: Color(red: 0.0, green: 0.8, blue: 0.65)
+                    )
+                    metricCell(
+                        icon: "repeat",
+                        title: "Intervals",
+                        value: primerDrill.shortWorkSummary,
+                        color: Color(red: 1.0, green: 0.58, blue: 0.0)
+                    )
+                    metricCell(
+                        icon: "figure.walk",
+                        title: "Recovery",
+                        value: primerDrill.shortRecoverySummary,
+                        color: Color(red: 0.20, green: 0.72, blue: 0.92)
+                    )
+                }
+
                 // Primer phase bar
                 VStack(alignment: .leading, spacing: 4) {
                     GeometryReader { geo in
@@ -276,7 +317,7 @@ struct PrescribedSessionCardView: View {
                     }
                     .frame(height: 4)
 
-                    Text(drillStructureSummary(drill: primerDrill))
+                    Text(primerDrill.structureSummary)
                         .font(.system(size: 10, weight: .medium))
                         .monospacedDigit()
                         .foregroundColor(.secondary)
@@ -411,7 +452,7 @@ struct PrescribedSessionCardView: View {
                     }
                     .frame(height: 4)
 
-                    Text(drillStructureSummary(drill: mainRunDrill))
+                    Text(mainRunDrill.structureSummary)
                         .font(.system(size: 10, weight: .medium))
                         .monospacedDigit()
                         .foregroundColor(.secondary)
@@ -455,38 +496,7 @@ struct PrescribedSessionCardView: View {
     }
 
     private func phaseColor(_ kind: WorkoutPhase.Kind) -> Color {
-        switch kind {
-        case .warmup:
-            return Color(red: 0.0, green: 0.8, blue: 0.65).opacity(0.8)
-        case .work, .steady:
-            return Color(red: 0.0, green: 0.55, blue: 1.0)
-        case .recovery:
-            return Color(UIColor.systemGray4)
-        case .cooldown:
-            return Color.purple.opacity(0.7)
-        }
-    }
-
-    private func drillStructureSummary(drill: PreRunDrill) -> String {
-        let phases = drill.generatePhases()
-        let warmup = phases.first(where: { $0.kind == .warmup })?.durationSeconds ?? 0
-        let cooldown = phases.first(where: { $0.kind == .cooldown })?.durationSeconds ?? 0
-        let workReps = phases.filter { $0.kind == .work }
-        let repCount = workReps.count
-        let repWorkDuration = workReps.first?.durationSeconds ?? 0
-        let repRecDuration = phases.first(where: { if case .recovery = $0.kind { return true } else { return false } })?.durationSeconds ?? 0
-
-        var parts: [String] = []
-        if warmup > 0 { parts.append("\(warmup / 60)m in") }
-        if repCount > 0 {
-            if repRecDuration > 0 {
-                parts.append("\(repCount)x (\(repWorkDuration)s / \(repRecDuration)s)")
-            } else {
-                parts.append("\(repCount)x \(repWorkDuration)s")
-            }
-        }
-        if cooldown > 0 { parts.append("\(cooldown / 60)m out") }
-        return parts.joined(separator: " • ")
+        kind.color
     }
 
     private func cleanPrimerDuration(session: PrescribedDailySession) -> String {
