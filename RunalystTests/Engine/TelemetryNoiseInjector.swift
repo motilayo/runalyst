@@ -59,4 +59,19 @@ struct TelemetryNoiseInjector: Sendable {
             )
         }
     }
+
+    /// Injects chaotic adversarial noise (+/- 1.5 SPM, +/- 2.0 BPM, +/- 4.0 s/km pace jitter)
+    /// to stress-test data ingestion pipelines and bit-for-bit equivalence.
+    static func injectChaos(
+        into buckets: [BucketData],
+        seed: UInt64 = 42
+    ) -> [BucketData] {
+        injectSensorJitter(
+            to: buckets,
+            cadenceNoiseRange: -1.5...1.5,
+            hrNoiseRange: -2.0...2.0,
+            paceNoiseRange: -4.0...4.0,
+            seed: seed
+        )
+    }
 }

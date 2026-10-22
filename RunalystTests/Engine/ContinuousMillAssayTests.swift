@@ -125,13 +125,147 @@ final class ContinuousMillAssayTests: XCTestCase {
         XCTAssertNotNil(fetched)
 
         // Bit-for-bit assertion: State(System A) == State(System B)
-        XCTAssertEqual(coreWorkingStats.workingAvgPaceSecondsPerKm, fetched?.workingAvgPace ?? 0, accuracy: 0.001)
-        XCTAssertEqual(coreWorkingStats.workingAvgCadenceSPM, fetched?.workingAvgCadence ?? 0, accuracy: 0.001)
-        XCTAssertEqual(coreWorkingStats.workingAvgHeartRateBPM, fetched?.workingAvgHeartRate ?? 0, accuracy: 0.001)
-        XCTAssertEqual(coreWorkingStats.workingDurationSeconds, fetched?.workingDurationSeconds ?? 0, accuracy: 0.001)
-        XCTAssertEqual(coreWorkingStats.workingDistanceMeters, fetched?.workingDistanceMeters ?? 0, accuracy: 0.001)
+        XCTAssertEqual(coreWorkingStats.workingAvgPaceSecondsPerKm, fetched?.workingAvgPace ?? 0, accuracy: 0.0001)
+        XCTAssertEqual(coreWorkingStats.workingAvgCadenceSPM, fetched?.workingAvgCadence ?? 0, accuracy: 0.0001)
+        XCTAssertEqual(coreWorkingStats.workingAvgHeartRateBPM, fetched?.workingAvgHeartRate ?? 0, accuracy: 0.0001)
+        XCTAssertEqual(coreWorkingStats.workingDurationSeconds, fetched?.workingDurationSeconds ?? 0, accuracy: 0.0001)
+        XCTAssertEqual(coreWorkingStats.workingDistanceMeters, fetched?.workingDistanceMeters ?? 0, accuracy: 0.0001)
         XCTAssertEqual(coreClassification, fetched?.detectedTypeRaw)
         XCTAssertEqual(Set(coreWorkingStats.framboiseTags), Set(fetched?.framboiseTags ?? []))
+    }
+
+    // MARK: - Test 1b: Full Golden Suite Differential Fuzzing across All Topologies
+
+    func testContinuousMillAssay_AllGoldenFixtures_DifferentialFuzzing() async throws {
+        let fixtures = GoldenTelemetryFixtures.allFixtures
+        XCTAssertFalse(fixtures.isEmpty, "Golden fixtures must be present for the assay.")
+
+        for (index, fixture) in fixtures.enumerated() {
+            let baseBuckets = fixture.toBucketData()
+            let noisyBuckets = TelemetryNoiseInjector.injectChaos(
+                into: baseBuckets,
+                seed: UInt64(index + 1) * 0x1337BEEF
+            )
+
+            // System A: The Reference Core (In-Memory Pure Oracle)
+            let coreTelemetry = noisyBuckets.map { $0.toTelemetryBucket() }
+            let coreWorkingStats = FramboiseCore.computeWorkingStats(buckets: coreTelemetry)
+            let coreReport = IntervalSegmenterCore.segment(buckets: coreTelemetry)
+            let coreClassification = RunClassifierCore.classifyRun(
+                buckets: coreTelemetry,
+                cv: coreWorkingStats.paceCV,
+                slope: coreWorkingStats.paceSlope,
+                zone4: coreWorkingStats.percentZone4,
+                durationMinutes: coreWorkingStats.workingDurationSeconds / 60.0,
+                cadenceCV: 0.0,
+                averageHR: coreWorkingStats.workingAvgHeartRateBPM,
+                cycles: coreReport.cycles,
+                deadStopsCount: coreWorkingStats.deadStopsCount,
+                isIndoor: false
+            )
+
+            // System B: The Foundry Persistence Rig (FramboiseEngine + SwiftData ModelContext)
+            let trimmed = await engine.trimDeadStops(buckets: noisyBuckets)
+            let workingAvg = await engine.calculateWorkingAverages(
+                trimmed: trimmed,
+                rawWorkoutDuration: noisyBuckets.reduce(0.0) { $0 + $1.durationSeconds },
+                rawWorkoutDistance: noisyBuckets.reduce(0.0) { $0 + $1.distanceMeters },
+                originalBucketCount: noisyBuckets.count
+            )
+            let paceCV = await engine.calculatePaceCV(bucketPaces: trimmed.map(\.meanPaceSecPerKm))
+            let paceSlope = await engine.calculatePaceSlope(bucketPaces: trimmed.map(\.meanPaceSecPerKm))
+            let percentZone4 = await engine.calculatePercentZone4(bucketHRs: trimmed.map(\.meanHR), maxHR: 190.0)
+            let cycles = await engine.extractOscillationCycles(buckets: noisyBuckets)
+            let tags = await engine.generateFramboiseTags(
+                cv: paceCV,
+                slope: paceSlope,
+                deadStopsCount: noisyBuckets.count - trimmed.count,
+                buckets: trimmed,
+                isIndoor: false
+            )
+            let foundryClassification = await engine.classifyRun(
+                buckets: noisyBuckets,
+                cv: paceCV,
+                slope: paceSlope,
+                zone4: percentZone4,
+                durationMinutes: workingAvg.workingDuration / 60.0,
+                cadenceCV: 0.0,
+                averageHR: workingAvg.workingHR,
+                cycles: cycles,
+                deadStopsCount: noisyBuckets.count - trimmed.count,
+                isIndoor: false
+            )
+
+            let workoutID = UUID()
+            let runRecord = RunRecord(
+                hkWorkoutID: workoutID,
+                date: Date(),
+                totalDistanceMeters: workingAvg.workingDistance,
+                duration: workingAvg.workingDuration,
+                rawAvgPace: coreWorkingStats.rawAvgPaceSecondsPerKm,
+                rawAvgHeartRate: coreWorkingStats.rawAvgHeartRateBPM,
+                rawAvgCadence: coreWorkingStats.rawAvgCadenceSPM,
+                workingAvgPace: workingAvg.workingPace,
+                workingAvgCadence: workingAvg.workingCadence,
+                workingAvgHeartRate: workingAvg.workingHR,
+                workingDistanceMeters: workingAvg.workingDistance,
+                workingDurationSeconds: workingAvg.workingDuration,
+                isIndoor: false,
+                paceCV: paceCV,
+                paceSlope: paceSlope,
+                percentZone4: percentZone4,
+                detectedTypeRaw: foundryClassification,
+                framboiseTags: tags
+            )
+            modelContext.insert(runRecord)
+            try modelContext.save()
+
+            let descriptor = FetchDescriptor<RunRecord>(predicate: #Predicate { $0.hkWorkoutID == workoutID })
+            let persisted = try modelContext.fetch(descriptor).first
+            XCTAssertNotNil(persisted, "Persisted record must exist in SwiftData for fixture \(fixture.id)")
+
+            // Bit-for-bit assertion: State(System A) == State(System B)
+            XCTAssertEqual(
+                coreWorkingStats.workingAvgPaceSecondsPerKm,
+                persisted?.workingAvgPace ?? 0,
+                accuracy: 0.0001,
+                "Working pace divergence on fixture \(fixture.id)"
+            )
+            XCTAssertEqual(
+                coreWorkingStats.workingAvgCadenceSPM,
+                persisted?.workingAvgCadence ?? 0,
+                accuracy: 0.0001,
+                "Working cadence divergence on fixture \(fixture.id)"
+            )
+            XCTAssertEqual(
+                coreWorkingStats.workingAvgHeartRateBPM,
+                persisted?.workingAvgHeartRate ?? 0,
+                accuracy: 0.0001,
+                "Working HR divergence on fixture \(fixture.id)"
+            )
+            XCTAssertEqual(
+                coreWorkingStats.workingDurationSeconds,
+                persisted?.workingDurationSeconds ?? 0,
+                accuracy: 0.0001,
+                "Working duration divergence on fixture \(fixture.id)"
+            )
+            XCTAssertEqual(
+                coreWorkingStats.workingDistanceMeters,
+                persisted?.workingDistanceMeters ?? 0,
+                accuracy: 0.0001,
+                "Working distance divergence on fixture \(fixture.id)"
+            )
+            XCTAssertEqual(
+                coreClassification,
+                persisted?.detectedTypeRaw,
+                "Classification divergence on fixture \(fixture.id)"
+            )
+            XCTAssertEqual(
+                Set(coreWorkingStats.framboiseTags),
+                Set(persisted?.framboiseTags ?? []),
+                "Framboise tags divergence on fixture \(fixture.id)"
+            )
+        }
     }
 
     // MARK: - Test 2: Boundary Mutations (Single Bucket, Extreme Dead Stops, 0m Stops)

@@ -300,4 +300,18 @@ enum GoldenTelemetryFixtures {
             samples: samples
         )
     }
+
+    /// All curated golden fixtures representing diverse authentic workout topologies.
+    static var allFixtures: [WorkoutTelemetryFixture] {
+        [
+            authenticIntervals31Min,
+            hillySteadyAerobicRun,
+            monotonicProgressionRun,
+            trueFartlekIrregularRun,
+            fadingCadenceFatigueRun,
+            authenticPyramidsLadder,
+            urbanTrafficCrosswalkRun,
+            authenticHillRepeatsSawtooth
+        ]
+    }
 }
