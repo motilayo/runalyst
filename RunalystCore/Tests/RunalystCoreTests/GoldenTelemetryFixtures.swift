@@ -137,6 +137,16 @@ enum GoldenTelemetryFixtures {
             samples: samples
         )
     }
+
+    /// All curated golden fixtures in Core.
+    static var allFixtures: [WorkoutTelemetryFixture] {
+        [
+            authenticIntervals31Min,
+            hillySteadyAerobicRun,
+            monotonicProgressionRun,
+            cityRunTrafficStops
+        ]
+    }
 }
 
 /// A telemetry-accurate representation of an authentic workout recording.
