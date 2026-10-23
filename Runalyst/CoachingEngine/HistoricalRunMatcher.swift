@@ -413,15 +413,15 @@ struct HistoricalRunMatcher {
             - Date: \(worst.weekday), \(worst.formattedDate)
             - Classification: \(worst.classification) (\(worst.isIndoor ? "Indoor Treadmill" : "Outdoor"))
             - Distance: \(String(format: "%.2f", worst.distanceMeters / 1000.0)) km (\(Int(worst.durationSeconds / 60)) min)
-            - Working Pace: \(worst.paceFormatted) (\(abs(paceDeltaSec))s/km slower than best)
-            - Working Cadence: \(worst.cadenceSPM) SPM (\(abs(cadDelta)) SPM lower turnover)
-            - Working Heart Rate: \(worst.heartRateBPM) BPM (+\(max(0, hrDelta)) BPM higher cardiac load)
+            - Working Pace: \(worst.paceFormatted) (Pace was \(abs(paceDeltaSec))s/km slower compared to best workout's \(best.paceFormatted))
+            - Working Cadence: \(worst.cadenceSPM) SPM (Turnover was \(abs(cadDelta)) SPM lower than best workout's \(best.cadenceSPM) SPM)
+            - Working Heart Rate: \(worst.heartRateBPM) BPM (+\(max(0, hrDelta)) BPM higher cardiac load vs best workout's \(best.heartRateBPM) BPM)
             - Efficiency Factor: \(worstEFStr) (lower running economy under fatigue)
 
             MATHEMATICAL PERFORMANCE DELTAS (Best vs Toughest):
-            - Pace Gap: \(abs(paceDeltaSec))s/km difference
-            - Cadence Gap: \(abs(cadDelta)) SPM difference (turnover strictly in SPM)
-            - Heart Rate Gap: \(abs(hrDelta)) BPM cardiac spread
+            - Pace Gap: Toughest workout was \(abs(paceDeltaSec))s/km slower than best workout (best: \(best.paceFormatted), toughest: \(worst.paceFormatted))
+            - Cadence Gap: Toughest workout had \(abs(cadDelta)) SPM lower turnover than best workout (best: \(best.cadenceSPM) SPM, toughest: \(worst.cadenceSPM) SPM)
+            - Heart Rate Gap: Toughest workout was +\(max(0, hrDelta)) BPM higher cardiac load than best workout (best: \(best.heartRateBPM) BPM, toughest: \(worst.heartRateBPM) BPM)
             """
         }
 
@@ -766,8 +766,15 @@ struct HistoricalRunMatcher {
             )
         }
 
-        let meaningfulRuns = past30DaysRuns.filter { $0.totalDistanceMeters >= 500 && $0.duration >= 180 }
-        let candidateRuns = meaningfulRuns.count >= 2 ? meaningfulRuns : past30DaysRuns
+        // Exclude short primer technique drills and warmups from 30-day endurance progression ranking
+        let enduranceRuns = past30DaysRuns.filter { !$0.isPrimerWorkout && $0.totalDistanceMeters >= 1000 && $0.duration >= 600 }
+        let candidateRuns: [RunRecord]
+        if enduranceRuns.count >= 2 {
+            candidateRuns = enduranceRuns
+        } else {
+            let nonPrimers = past30DaysRuns.filter { !$0.isPrimerWorkout }
+            candidateRuns = nonPrimers.count >= 2 ? nonPrimers : past30DaysRuns
+        }
 
         func efficiencyScore(for run: RunRecord) -> Double {
             if let ef = run.efficiencyFactor, ef > 0 { return ef }
@@ -1271,10 +1278,7 @@ public enum WorkoutMathCalculator {
     }
 
     public static func formatPace(seconds: Double) -> String {
-        let total = Int(seconds.rounded())
-        let mins = total / 60
-        let secs = total % 60
-        return String(format: "%d:%02d/km", mins, secs)
+        PaceFormatter.formatPace(secondsPerKilometer: seconds)
     }
 
     private static func isPaceString(_ string: String) -> Bool {

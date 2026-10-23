@@ -167,13 +167,7 @@ enum SessionSynthesisEngine {
     /// rather than the day's main aerobic or quality run.
     @MainActor
     static func isShortPrimerWorkout(_ run: RunRecord) -> Bool {
-        guard run.duration <= 1200 else { return false } // <= 20 min
-        if let drillName = run.prescribedDrillName,
-           let drillId = PreRunDrillId.resolve(from: drillName),
-           !drillId.isAerobicContinuous {
-            return true
-        }
-        return run.duration <= 960 && run.totalDistanceMeters < 2500
+        run.isPrimerWorkout
     }
 
     /// Synthesizes the athlete's daily state machine deterministically.
@@ -957,19 +951,18 @@ enum SessionSynthesisEngine {
                     adjustmentTriggers: session.isTrimmed ? ["readiness_adjusted"] : [],
                     provisional: false
                 )
-            case .completedToday:
-                let (band, targetMins) = aerobicDurationForExperience(profile.experienceLevel)
-                _ = band
+            case .completedToday(let completedRun, _):
+                let (_, targetMins) = aerobicDurationForExperience(profile.experienceLevel)
                 return PlannedSession(
                     kind: .run,
-                    title: "Zone 2 Easy Aerobic Base",
+                    title: completedRun.workoutType,
                     minutesLow: targetMins > 10 ? (targetMins - 10) : targetMins,
                     minutesHigh: targetMins,
                     paceBand: nil,
                     hrCap: "< 152 BPM",
                     cadenceFloor: profile.heightAdjustedCadenceFloor,
-                    primerTitle: "Cadence Pyramids",
-                    adjustmentTriggers: [],
+                    primerTitle: nil,
+                    adjustmentTriggers: ["completed_today"],
                     provisional: false
                 )
             }

@@ -122,7 +122,8 @@ extension WorkoutAnalysisContext {
                 pacing_trend: pacingTrendDescription,
                 cadence_floor_status: "\(workingCadence) SPM vs \(floor) SPM floor (\(workingCadence >= floor ? "above floor" : "sub-floor"))",
                 fastest_split: fSplitDesc,
-                slowest_split: sSplitDesc
+                slowest_split: sSplitDesc,
+                workout_structure: "Continuous steady run with kilometer splits (not interval reps)"
             )
 
             splitsList = splitEvaluations.prefix(12).map { split in

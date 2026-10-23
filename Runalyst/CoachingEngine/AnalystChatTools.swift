@@ -247,6 +247,7 @@ public struct SteadyStateScorecard: Codable, Sendable {
     public let cadence_floor_status: String
     public let fastest_split: String?
     public let slowest_split: String?
+    public let workout_structure: String?
 
     public init(
         avg_pace: String,
@@ -257,7 +258,8 @@ public struct SteadyStateScorecard: Codable, Sendable {
         pacing_trend: String,
         cadence_floor_status: String,
         fastest_split: String? = nil,
-        slowest_split: String? = nil
+        slowest_split: String? = nil,
+        workout_structure: String? = "Continuous steady run with kilometer splits (not interval reps)"
     ) {
         self.avg_pace = avg_pace
         self.avg_turnover_spm = avg_turnover_spm
@@ -268,6 +270,7 @@ public struct SteadyStateScorecard: Codable, Sendable {
         self.cadence_floor_status = cadence_floor_status
         self.fastest_split = fastest_split
         self.slowest_split = slowest_split
+        self.workout_structure = workout_structure
     }
 }
 

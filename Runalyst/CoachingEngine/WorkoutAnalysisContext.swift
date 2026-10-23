@@ -412,10 +412,10 @@ struct WorkoutAnalysisContext {
             let diff = self.firstHalfPaceSec - self.secondHalfPaceSec // positive = 2nd half faster
             if diff >= 6.0 {
                 let secStr = Int(diff.rounded())
-                self.pacingTrendDescription = "Negative split execution (\(secStr)s/km faster in the second half)"
+                self.pacingTrendDescription = "Negative split execution: second half was \(secStr)s/km faster than first half"
             } else if diff <= -6.0 {
                 let secStr = abs(Int(diff.rounded()))
-                self.pacingTrendDescription = "Positive split fade (\(secStr)s/km slower in the second half)"
+                self.pacingTrendDescription = "Positive split fade: pace slowed by +\(secStr)s/km in the second half"
             } else {
                 self.pacingTrendDescription = "Even, metronomic pacing discipline throughout"
             }
