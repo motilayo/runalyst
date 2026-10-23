@@ -297,6 +297,20 @@ extension RunRecord {
         return computeHistoricalBaselineCadence(in: priorRuns)
     }
 
+    /// Whether this workout is a short pre-run primer or technique drill rather than a main training session.
+    var isPrimerWorkout: Bool {
+        guard duration <= 1200 else { return false } // <= 20 min
+        if let drillName = prescribedDrillName,
+           let drillId = PreRunDrillId.resolve(from: drillName),
+           !drillId.isAerobicContinuous {
+            return true
+        }
+        if framboiseTags.contains("prescribedDrill") {
+            return true
+        }
+        return duration <= 960 && totalDistanceMeters < 2500
+    }
+
     /// Canonical user-facing drill title associated with this run, if any (e.g. "Tempo Surges", "Cadence Pyramids").
     var prescribedDrillName: String? {
         guard !isDeleted else { return nil }

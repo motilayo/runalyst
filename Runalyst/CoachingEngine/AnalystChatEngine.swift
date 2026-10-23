@@ -441,7 +441,7 @@ class AnalystChatEngine: ObservableObject {
 
         RULES:
         • Outside Running: Refocus. Units: SPM, min/km. No LaTeX.
-        • Medical Safety: Urge rest on pain/rest days; state upcoming run when asked.
+        • Medical Safety: Urge rest on pain/fatigue; when 2nd run unadvised, urge rest; state next run.
         • ACWR: Acute:Chronic Workload Ratio (<0.8=low, >1.4=spike). Low ACWR is not overload.
         • Proactive Cards: Never ask permission to show drills/schedule; trigger directly.
         • Silent Tools: Never write commands ('executeCoachAction', 'display_drill', 'Display the drill') in text.
@@ -651,39 +651,6 @@ class AnalystChatEngine: ObservableObject {
                 )
 
                 if query.action == .displaySession || schedule.count == 1 {
-                    if fromDate > today, let day = schedule.first, day.planned.kind != .rest, let date = calendar.parseISO(day.date) {
-                        let primerTitle = day.planned.primerTitle ?? "Cadence Pyramids"
-                        let primerId = PreRunDrillId.resolve(from: primerTitle) ?? .cadencePyramids
-                        let dateStr = TrainingCalendar.weekdayFormatter.string(from: date)
-                        let isToday = calendar.calendar.isDateInToday(date)
-                        let session = PrescribedDailySession(
-                            targetGoal: activeGoal,
-                            sessionTitle: day.planned.title,
-                            durationBand: "\(day.planned.minutesLow)–\(day.planned.minutesHigh) min",
-                            paceBand: day.planned.paceBand ?? "Easy Aerobic",
-                            hrCap: day.planned.hrCap ?? "< 152 BPM",
-                            cadenceFloor: day.planned.cadenceFloor ?? 155,
-                            groundedRationale: "Scheduled workout on your training calendar.",
-                            readinessStateText: "Upcoming Planned Session",
-                            readinessTriggerLead: nil,
-                            primerDrillId: primerId,
-                            primerDrillTitle: primerTitle,
-                            primerTargetCadence: "155-165 SPM",
-                            primerWorkDescription: "Pre-run technique primer.",
-                            primerPhasesDuration: "10 min",
-                            isTrimmed: false,
-                            microcycle: [],
-                            mainSessionTemplateId: .zone2Run,
-                            mainRunDurationMinutes: day.planned.minutesHigh,
-                            completedPrimerRun: nil,
-                            isRestDay: false,
-                            dayLabel: isToday ? "Today" : dateStr,
-                            isToday: isToday
-                        )
-                        self.sessionRecommendedThisTurn = session
-                        return "{\"session_title\":\"\(session.sessionTitle)\",\"status\":\"session_card_displayed\"}"
-                    }
-
                     let dailyState = SessionSynthesisEngine.evaluateDailyState(
                         runRecords: allRuns,
                         activeGoal: activeGoal,
@@ -703,7 +670,10 @@ class AnalystChatEngine: ObservableObject {
                     let title = sessionToAttach?.sessionTitle ?? (schedule.first?.planned.title ?? "Upcoming Workout")
                     return "{\"session_title\":\"\(title)\",\"status\":\"session_card_displayed\"}"
                 } else {
-                    let microcycleDays: [MicrocycleDay] = schedule.map { day in
+                    let microcycleDays: [MicrocycleDay] = schedule.compactMap { day in
+                        if day.relative == .today && day.completion == .completed {
+                            return nil
+                        }
                         let isRest = day.planned.kind == .rest
                         let icon = isRest ? "bed.double.fill" : "figure.run"
                         let durStr = isRest ? "0 min" : "\(day.planned.minutesLow)–\(day.planned.minutesHigh) min"
@@ -720,6 +690,16 @@ class AnalystChatEngine: ObservableObject {
                 }
 
             case .displayDrill:
+                let cal = Calendar.current
+                let todayRuns = allRuns.filter { cal.isDateInToday($0.date) && !$0.isDeleted }
+                let completedMinutes = todayRuns.reduce(0.0) { $0 + $1.duration } / 60.0
+                let (_, targetMinutes) = SessionSynthesisEngine.aerobicDurationForExperience(profile.experienceLevel)
+                let isFatigued = completedMinutes >= Double(targetMinutes) * 0.8 || todayRuns.count >= 2
+
+                if isFatigued {
+                    return "{\"status\":\"drill_blocked_due_to_daily_fatigue\",\"message\":\"Runner already completed daily training volume. Rest is prioritized.\"}"
+                }
+
                 let resolved = PreRunDrillId.resolve(from: query.payload ?? "") ?? .cadencePyramids
                 self.drillRecommendedThisTurn = resolved
                 return "{\"drill_id\":\"\(resolved.rawValue)\",\"status\":\"interactive_drill_card_displayed\"}"
@@ -1011,15 +991,26 @@ class AnalystChatEngine: ObservableObject {
         let lowerUser = userQuestion.lowercased()
         let lowerResponse = sanitizedText.lowercased()
 
+        let allRuns = (try? self.modelContext?.fetch(FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)]))) ?? (self.runRecord.map { [$0] } ?? [])
+        let cal = Calendar.current
+        let todayRuns = allRuns.filter { cal.isDateInToday($0.date) && !$0.isDeleted }
+        let completedMinutes = todayRuns.reduce(0.0) { $0 + $1.duration } / 60.0
+        let profile = RunnerProfile.compute(from: allRuns)
+        let (_, targetMinutes) = SessionSynthesisEngine.aerobicDurationForExperience(profile.experienceLevel)
+        let isTodayDone = completedMinutes >= Double(targetMinutes) * 0.8 || todayRuns.count >= 2
+
         // 1. Proactive Drill Attachment
         if self.drillRecommendedThisTurn == nil {
             if let drill = PreRunDrillId.resolve(from: userQuestion) {
+                // User explicitly requested this drill by name
                 self.drillRecommendedThisTurn = drill
             } else if isAffirmativeOrDisplayCommand(lowerUser) {
+                // User explicitly said "yes" or "display the drill"
                 if let drill = findRecentDrillMentionInHistory() {
                     self.drillRecommendedThisTurn = drill
                 }
-            } else if lowerResponse.contains("drill") || lowerResponse.contains("pyramid") || lowerResponse.contains("tempo surge") {
+            } else if !isTodayDone && (lowerResponse.contains("drill") || lowerResponse.contains("pyramid") || lowerResponse.contains("tempo surge")) {
+                // Proactively attach only if the user hasn't already exhausted today's training capacity
                 if let drill = PreRunDrillId.resolve(from: sanitizedText) {
                     self.drillRecommendedThisTurn = drill
                 }
@@ -1029,26 +1020,35 @@ class AnalystChatEngine: ObservableObject {
         // 2. Proactive Session / Schedule Attachment
         if self.sessionRecommendedThisTurn == nil && self.scheduleRecommendedThisTurn == nil {
             if isNextRunQuery(lowerUser) {
-                if let next = findNextScheduledRun() {
-                    let day = next.day
-                    var primerTitle = day.planned.primerTitle ?? "Cadence Pyramids"
-                    var primerId = PreRunDrillId.resolve(from: primerTitle) ?? .cadencePyramids
-                    let dateStr = TrainingCalendar.weekdayFormatter.string(from: next.date)
-                    let isToday = Calendar.current.isDateInToday(next.date)
-
-                    if let recommendedDrill = self.drillRecommendedThisTurn {
-                        primerId = recommendedDrill
-                        primerTitle = recommendedDrill.title
+                let activeGoal = UserDefaults.standard.string(forKey: "trainingGoal") ?? "Base Building"
+                let useMetric = (UserDefaults.standard.object(forKey: "useMetricSystem") as? Bool) ?? true
+                let dailyState = SessionSynthesisEngine.evaluateDailyState(
+                    runRecords: allRuns,
+                    activeGoal: activeGoal,
+                    experienceLevel: profile.experienceLevel,
+                    useMetric: useMetric,
+                    userHeightCm: profile.userHeightCm,
+                    now: Date()
+                )
+                let tomorrowSession: PrescribedDailySession = {
+                    switch dailyState {
+                    case .preRun(let s): return s
+                    case .completedToday(_, let tomorrow): return tomorrow
                     }
+                }()
 
+                if !tomorrowSession.isRestDay {
+                    self.sessionRecommendedThisTurn = tomorrowSession
+                } else if let next = findNextScheduledRun() {
+                    let day = next.day
+                    let primerTitle = day.planned.primerTitle ?? "Cadence Pyramids"
+                    let primerId = PreRunDrillId.resolve(from: primerTitle) ?? .cadencePyramids
+                    let dateStr = TrainingCalendar.weekdayFormatter.string(from: next.date)
                     let cadenceFloor = day.planned.cadenceFloor ?? 155
-                    let primerTarget: String = {
-                        let template = DrillTemplate.template(for: primerId)
-                        return template.calculateTargetCadence(cadenceFloor)
-                    }()
+                    let primerTarget = DrillTemplate.template(for: primerId).calculateTargetCadence(cadenceFloor)
 
                     self.sessionRecommendedThisTurn = PrescribedDailySession(
-                        targetGoal: UserDefaults.standard.string(forKey: "trainingGoal") ?? "Base Building",
+                        targetGoal: activeGoal,
                         sessionTitle: day.planned.title,
                         durationBand: "\(day.planned.minutesLow)–\(day.planned.minutesHigh) min",
                         paceBand: day.planned.paceBand ?? "Easy Aerobic",
@@ -1068,13 +1068,28 @@ class AnalystChatEngine: ObservableObject {
                         mainRunDurationMinutes: day.planned.minutesHigh,
                         completedPrimerRun: nil,
                         isRestDay: false,
-                        dayLabel: isToday ? "Today" : dateStr,
-                        isToday: isToday
+                        dayLabel: dateStr,
+                        isToday: false
                     )
-                } else {
-                    applyFallbackCoachAction(action: .displaySession, payload: nil)
                 }
-            } else if isTomorrowOrNextRunQuery(lowerUser) || (lowerResponse.contains("tomorrow") && (lowerResponse.contains("rest day") || lowerResponse.contains("plan") || lowerResponse.contains("scheduled"))) {
+            } else if isTomorrowOrNextRunQuery(lowerUser) {
+                let activeGoal = UserDefaults.standard.string(forKey: "trainingGoal") ?? "Base Building"
+                let useMetric = (UserDefaults.standard.object(forKey: "useMetricSystem") as? Bool) ?? true
+                let dailyState = SessionSynthesisEngine.evaluateDailyState(
+                    runRecords: allRuns,
+                    activeGoal: activeGoal,
+                    experienceLevel: profile.experienceLevel,
+                    useMetric: useMetric,
+                    userHeightCm: profile.userHeightCm,
+                    now: Date()
+                )
+                switch dailyState {
+                case .preRun(let session):
+                    self.sessionRecommendedThisTurn = session
+                case .completedToday(_, let tomorrowSession):
+                    self.sessionRecommendedThisTurn = tomorrowSession
+                }
+            } else if lowerResponse.contains("tomorrow") && (lowerResponse.contains("rest day") || lowerResponse.contains("plan") || lowerResponse.contains("scheduled")) {
                 applyFallbackCoachAction(action: .displaySession, payload: nil)
             } else if isWeeklyScheduleQuery(lowerUser) {
                 applyFallbackCoachAction(action: .displaySchedule, payload: nil)

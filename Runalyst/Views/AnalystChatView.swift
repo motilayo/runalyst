@@ -758,43 +758,74 @@ struct InlineChatDrillCard: View {
         return title.isEmpty ? drillId.title : title
     }
 
+    private var currentPrescription: LockedTrainingPrescription? {
+        guard drillId.isAerobicContinuous else { return nil }
+        let useMetric = (UserDefaults.standard.object(forKey: "useMetricSystem") as? Bool) ?? true
+        let readiness = ReadinessEvaluator.assess(runRecords: runRecords)
+        let timeline = RecoveryTimeline.build(
+            runs: runRecords.map { ReadinessRunSnapshot(run: $0) },
+            readiness: readiness,
+            now: Date()
+        )
+        let profile = RunnerProfile.compute(from: runRecords)
+        let pace = (effectiveRun?.workingAvgPace ?? 0) > 0 ? effectiveRun?.workingAvgPace : nil
+        let daysDiff = effectiveRun.map { Calendar.current.dateComponents([.day], from: $0.date, to: Date()).day ?? 0 } ?? 0
+        let tzInput = TrainingZoneInput(
+            baselinePaceSec: pace,
+            workoutPaceSec: pace,
+            activeGoal: UserDefaults.standard.string(forKey: "trainingGoal") ?? "Base Building",
+            experienceLevel: profile.experienceLevel,
+            readyForHard: timeline.readyForHard,
+            daysSinceWorkout: daysDiff,
+            heightAdjustedCadenceFloor: profile.heightAdjustedCadenceFloor,
+            useMetricSystem: useMetric,
+            totalHistoricalRunsCount: runRecords.count
+        )
+        return TrainingZoneEngine.computePrescription(tzInput, runs: runRecords)
+    }
+
     private var durationDisplay: String {
-        if drillId.isAerobicContinuous {
-            let useMetric = (UserDefaults.standard.object(forKey: "useMetricSystem") as? Bool) ?? true
-            let readiness = ReadinessEvaluator.assess(runRecords: runRecords)
-            let timeline = RecoveryTimeline.build(
-                runs: runRecords.map { ReadinessRunSnapshot(run: $0) },
-                readiness: readiness,
-                now: Date()
-            )
-            let profile = RunnerProfile.compute(from: runRecords)
-            let pace = (effectiveRun?.workingAvgPace ?? 0) > 0 ? effectiveRun?.workingAvgPace : nil
-            let daysDiff = effectiveRun.map { Calendar.current.dateComponents([.day], from: $0.date, to: Date()).day ?? 0 } ?? 0
-            let tzInput = TrainingZoneInput(
-                baselinePaceSec: pace,
-                workoutPaceSec: pace,
-                activeGoal: UserDefaults.standard.string(forKey: "trainingGoal") ?? "Base Building",
-                experienceLevel: profile.experienceLevel,
-                readyForHard: timeline.readyForHard,
-                daysSinceWorkout: daysDiff,
-                heightAdjustedCadenceFloor: profile.heightAdjustedCadenceFloor,
-                useMetricSystem: useMetric,
-                totalHistoricalRunsCount: runRecords.count
-            )
-            let rx = TrainingZoneEngine.computePrescription(tzInput, runs: runRecords)
-            if !rx.compactDurationBand.isEmpty && rx.compactDurationBand != "Rest Day" {
-                return rx.compactDurationBand
-            }
+        if let rx = currentPrescription, !rx.compactDurationBand.isEmpty && rx.compactDurationBand != "Rest Day" {
+            return rx.compactDurationBand
         }
         return drillId.defaultDuration.title
     }
 
     private var targetBadgeText: String {
-        if drillId.isHeartRateTargeted {
+        if drillId == .zone2Run {
+            return "Zone 2 HR"
+        } else if drillId == .aerobicFlush || drillId == .recoveryJog {
             return "Zone 1 HR"
+        } else if drillId.isHeartRateTargeted {
+            return drillId.targetHeartRateZoneName ?? "Target HR"
         } else {
             return targetCadenceDisplay.contains("SPM") ? targetCadenceDisplay : "\(targetCadenceDisplay) SPM"
         }
+    }
+
+    private var resolvedDrillDuration: DrillDuration {
+        if let rx = currentPrescription {
+            let band = rx.compactDurationBand
+            let digits = band.components(separatedBy: CharacterSet.decimalDigits.inverted).filter { !$0.isEmpty }
+            if let firstStr = digits.first, let firstVal = Int(firstStr) {
+                let secondVal = digits.count > 1 ? (Int(digits[1]) ?? firstVal) : firstVal
+                let targetMins = (firstVal + secondVal) / 2
+                if targetMins >= 45 {
+                    return .fiftyMinutes
+                } else if targetMins >= 35 {
+                    return .fortyMinutes
+                } else if targetMins >= 25 {
+                    return .thirtyMinutes
+                } else if targetMins >= 12 {
+                    return .fifteenMinutes
+                } else if targetMins >= 8 {
+                    return .tenMinutes
+                } else {
+                    return .fiveMinutes
+                }
+            }
+        }
+        return drillId.defaultDuration
     }
 
     private var targetBadgeColor: Color {
@@ -806,6 +837,7 @@ struct InlineChatDrillCard: View {
             id: drillId,
             previousCadence: baselineCadence,
             targetCadence: targetCadenceDisplay,
+            duration: resolvedDrillDuration,
             isIndoor: preferredWorkoutIsIndoor
         )
         let phases = drill.generatePhases()

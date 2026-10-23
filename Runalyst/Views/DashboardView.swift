@@ -280,6 +280,13 @@ struct DashboardView: View {
         return RecoveryTimeline.build(runs: snapshots, readiness: readiness, now: Date())
     }
 
+    private var isTodayCompleted: Bool {
+        let cal = Calendar.current
+        let todayRuns = runRecords.filter { cal.isDateInToday($0.date) && !$0.isDeleted }
+        guard !todayRuns.isEmpty else { return false }
+        return todayRuns.contains { !$0.isPrimerWorkout && $0.duration >= 1200 } || todayRuns.reduce(0.0) { $0 + $1.duration } >= 1800
+    }
+
     private var deterministicPrescription: LockedTrainingPrescription? {
         guard let latestRun = runRecords.first else { return nil }
         let profile = dashboardRunnerProfile
@@ -369,17 +376,38 @@ struct DashboardView: View {
                         .foregroundColor(.primary)
 
                     if let rx = deterministicPrescription {
+                        let isRestDirective = displayHeadline.localizedCaseInsensitiveContains("Rest") || displayHeadline.localizedCaseInsensitiveContains("Recovery")
                         ViewThatFits(in: .horizontal) {
                             HStack(spacing: 8) {
-                                targetPill(text: rx.compactDurationBand, color: .purple)
-                                targetPill(text: "Pace: \(rx.prescribedPaceBand)", color: Color(red: 0.0, green: 0.55, blue: 1.0))
-                                targetPill(text: hrCapText(for: rx), color: Color(red: 1.0, green: 0.22, blue: 0.55))
-                            }
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(spacing: 6) {
+                                if isTodayCompleted {
+                                    targetPill(text: "Today: Complete ✓", color: .green)
+                                    targetPill(text: "Tomorrow: \(rx.compactDurationBand)", color: .purple)
+                                    targetPill(text: "Pace: \(rx.prescribedPaceBand)", color: Color(red: 0.0, green: 0.55, blue: 1.0))
+                                } else if isRestDirective {
+                                    targetPill(text: "Rest & Recover", color: .green)
+                                    targetPill(text: "Next: \(rx.compactDurationBand)", color: .purple)
+                                    targetPill(text: "Pace: \(rx.prescribedPaceBand)", color: Color(red: 0.0, green: 0.55, blue: 1.0))
+                                } else {
                                     targetPill(text: rx.compactDurationBand, color: .purple)
                                     targetPill(text: "Pace: \(rx.prescribedPaceBand)", color: Color(red: 0.0, green: 0.55, blue: 1.0))
                                     targetPill(text: hrCapText(for: rx), color: Color(red: 1.0, green: 0.22, blue: 0.55))
+                                }
+                            }
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 6) {
+                                    if isTodayCompleted {
+                                        targetPill(text: "Today: Complete ✓", color: .green)
+                                        targetPill(text: "Tomorrow: \(rx.compactDurationBand)", color: .purple)
+                                        targetPill(text: "Pace: \(rx.prescribedPaceBand)", color: Color(red: 0.0, green: 0.55, blue: 1.0))
+                                    } else if isRestDirective {
+                                        targetPill(text: "Rest & Recover", color: .green)
+                                        targetPill(text: "Next: \(rx.compactDurationBand)", color: .purple)
+                                        targetPill(text: "Pace: \(rx.prescribedPaceBand)", color: Color(red: 0.0, green: 0.55, blue: 1.0))
+                                    } else {
+                                        targetPill(text: rx.compactDurationBand, color: .purple)
+                                        targetPill(text: "Pace: \(rx.prescribedPaceBand)", color: Color(red: 0.0, green: 0.55, blue: 1.0))
+                                        targetPill(text: hrCapText(for: rx), color: Color(red: 1.0, green: 0.22, blue: 0.55))
+                                    }
                                 }
                             }
                         }

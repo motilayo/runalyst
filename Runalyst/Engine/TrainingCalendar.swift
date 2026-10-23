@@ -173,7 +173,7 @@ extension TrainingCalendar {
                 let distKm = (run.totalDistanceMeters > 0 ? (run.totalDistanceMeters / 1000.0) : (run.effectiveWorkingDistanceMeters / 1000.0)).rounded(toPlaces: 2)
                 let unit = context.useMetric ? "km" : "mi"
                 let distFinal = context.useMetric ? distKm : (distKm * 0.621371).rounded(toPlaces: 2)
-                let isPrimer = run.framboiseTags.contains("prescribedDrill") || run.prescribedDrillName != nil || (run.duration <= 1200 && run.percentZone4 < 0.25)
+                let isPrimer = run.isPrimerWorkout
                 let targetMet = isPrimer ? true : nil
                 let grade: String? = nil
                 let hr = run.workingAvgHeartRate > 0 ? Int(run.workingAvgHeartRate) : (run.rawAvgHeartRate > 0 ? Int(run.rawAvgHeartRate) : nil)
@@ -206,10 +206,10 @@ extension TrainingCalendar {
             let completion: ScheduleDay.CompletionStatus
             if !runsOnDay.isEmpty {
                 let hasMainRun = runsOnDay.contains { run in
-                    let isPrimer = run.framboiseTags.contains("prescribedDrill") || run.prescribedDrillName != nil || (run.duration <= 1200 && run.percentZone4 < 0.25)
-                    return !isPrimer && run.duration >= 1200
+                    return !run.isPrimerWorkout && run.duration >= 1200
                 }
-                completion = hasMainRun ? .completed : .partial
+                let totalDuration = runsOnDay.reduce(0.0) { $0 + $1.duration }
+                completion = (hasMainRun || totalDuration >= 1800) ? .completed : .partial
             } else if dateStart > today {
                 completion = .upcoming
             } else if planned.kind == .rest {
@@ -273,7 +273,9 @@ extension TrainingCalendar {
                 if let primer = day.planned.primerTitle {
                     plannedDesc += ", Primer: \(primer)"
                 }
-                if day.completion == .missed {
+                if day.completion == .completed {
+                    parts.append("Status: All scheduled training completed for today • Rest & recover")
+                } else if day.completion == .missed {
                     parts.append("Missed: \(plannedDesc)")
                 } else if day.completed.isEmpty {
                     parts.append("Planned: \(plannedDesc)")
