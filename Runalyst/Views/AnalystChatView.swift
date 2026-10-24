@@ -45,22 +45,7 @@ struct AnalystChatView: View {
 
     private var headerSubtitle: String {
         if mode == .macroCoach {
-            if let latest = runRecords.first {
-                let cal = Calendar.current
-                let isRunToday = cal.isDateInToday(latest.date)
-                let typeStr = latest.detectedTypeRaw.isEmpty ? "Run" : latest.detectedTypeRaw
-                let formatter = DateFormatter()
-                formatter.locale = Locale(identifier: "en_US_POSIX")
-                formatter.dateFormat = "EEE, MMM d"
-                let dateStr = formatter.string(from: latest.date)
-                if isRunToday {
-                    return "🔒 On-Device • Today's \(typeStr) Logged"
-                } else {
-                    return "🔒 On-Device • Last Run: \(dateStr)"
-                }
-            } else {
-                return "🔒 On-Device • Daily Training Guidance"
-            }
+            return "🔒 On-Device • Daily Training Guidance"
         } else if let runRecord {
             let formatter = DateFormatter()
             formatter.locale = Locale(identifier: "en_US_POSIX")
@@ -125,7 +110,7 @@ struct AnalystChatView: View {
                                 HStack(spacing: 8) {
                                     ProgressView()
                                         .tint(.purple)
-                                    Text("Looking over your run...")
+                                    Text(mode == .macroCoach ? "Reviewing training guidance..." : "Looking over your run...")
                                         .font(.caption)
                                         .foregroundColor(.secondary)
                                 }
@@ -183,7 +168,7 @@ struct AnalystChatView: View {
 
                     // Text Input Bar
                     HStack(spacing: 10) {
-                        TextField("Ask about pace, heart rate, cadence...", text: $inputText)
+                        TextField(mode == .macroCoach ? "Ask about schedule, readiness, recovery..." : "Ask about pace, heart rate, cadence...", text: $inputText)
                             .font(.subheadline)
                             .padding(.horizontal, 16)
                             .padding(.vertical, 10)
@@ -503,18 +488,12 @@ struct AnalystChatView: View {
                             : "Am I recovered to run today, or should I take a rest day?"
                         submitQuestion()
                     }
-                    if let latest = runRecords.first {
-                        chipButton("Review Last Run", icon: "clock.arrow.circlepath", iconColor: Color(red: 0.18, green: 0.82, blue: 0.35)) {
-                            let df = DateFormatter()
-                            df.locale = Locale(identifier: "en_US_POSIX")
-                            df.dateFormat = "EEEE"
-                            let weekday = df.string(from: latest.date)
-                            inputText = "How was my effort and pacing during \(weekday)'s \(latest.detectedTypeRaw)?"
-                            submitQuestion()
-                        }
-                    }
                     chipButton("Weekly Training Status", icon: "calendar", iconColor: .purple) {
                         inputText = "How is my weekly mileage and overall training balance?"
+                        submitQuestion()
+                    }
+                    chipButton("Goal & Plan", icon: "flag.fill", iconColor: Color(red: 0.18, green: 0.82, blue: 0.35)) {
+                        inputText = "How is my progress toward my training goal?"
                         submitQuestion()
                     }
                 } else if let runRecord {

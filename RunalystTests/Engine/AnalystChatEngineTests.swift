@@ -496,7 +496,18 @@ final class AnalystChatEngineTests: XCTestCase {
 
             XCTAssertFalse(instructions.isEmpty)
             XCTAssertTrue(instructions.contains("Today:"), "System instructions should provide today schedule context")
+            XCTAssertFalse(instructions.contains("inspectWorkout"), "Macro coach prompt must NOT contain inspectWorkout tool")
             XCTAssertTrue(instructions.count < 1200, "System instructions must stay strictly under 1,200 chars (was \(instructions.count))")
+        }
+    }
+
+    func testRunInspectionInstructionsContainInspectWorkoutTool() {
+        if #available(iOS 26.0, *) {
+            let run = makeRunRecord(date: Date())
+            let engine = AnalystChatEngine(runRecord: run, mode: .runInspection)
+            let instructions = engine.buildLeanSystemInstructions()
+
+            XCTAssertTrue(instructions.contains("inspectWorkout"), "Run inspection prompt must contain inspectWorkout tool")
         }
     }
 

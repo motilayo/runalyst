@@ -414,6 +414,17 @@ class AnalystChatEngine: ObservableObject {
             recentContextBlock = "\n\n" + lines.joined(separator: "\n")
         }
 
+        var toolLines: [String] = [
+            "• `getTrainingSchedule`: Timeline.",
+            "• `getReadinessAndWorkload`: Fatigue, ACWR.",
+            "• `queryWorkoutHistory`: History."
+        ]
+        if mode == .runInspection {
+            toolLines.append("• `inspectWorkout`: Splits.")
+        }
+        toolLines.append("• `executeCoachAction`: Actions (prescribe_drill, explain_metric, export_to_watch, record_feedback, update_goal).")
+        let toolsBlock = toolLines.joined(separator: "\n")
+
         return """
         Runalyst coach. Empathy, warmth, brevity.
 
@@ -421,11 +432,7 @@ class AnalystChatEngine: ObservableObject {
         \(contextBlock)\(recentContextBlock)
 
         TOOLS:
-        • `getTrainingSchedule`: Timeline.
-        • `getReadinessAndWorkload`: Fatigue, ACWR.
-        • `queryWorkoutHistory`: History.
-        • `inspectWorkout`: Splits.
-        • `executeCoachAction`: Actions (prescribe_drill, explain_metric, export_to_watch, record_feedback, update_goal).
+        \(toolsBlock)
 
         RULES:
         • Outside Running: Sidestep non-running topics gracefully.
@@ -452,6 +459,9 @@ class AnalystChatEngine: ObservableObject {
         let inspectWorkoutTool = InspectWorkoutTool { [weak self] _ in
             guard let self else { return "" }
             self.toolInvokedDuringActiveTurn = true
+            guard self.mode == .runInspection else {
+                return "{\"status\":\"macro_mode_active\",\"message\":\"No specific workout is currently being inspected. Use queryWorkoutHistory to look up past runs or getTrainingSchedule for upcoming sessions.\"}"
+            }
             if self.runRecord != nil || (try? self.modelContext?.fetchCount(FetchDescriptor<RunRecord>())) ?? 0 > 0 {
                 return self.makeAnalysisContext().compactTelemetryAnalysis()
             }
@@ -504,13 +514,15 @@ class AnalystChatEngine: ObservableObject {
             return await self.executeCoachAction(query: query)
         }
 
-        let tools: [any Tool] = [
-            inspectWorkoutTool,
+        var tools: [any Tool] = [
             getTrainingScheduleTool,
             getReadinessAndWorkloadTool,
             queryWorkoutHistoryTool,
             coachActionTool
         ]
+        if mode == .runInspection {
+            tools.insert(inspectWorkoutTool, at: 0)
+        }
         let instructions = buildLeanSystemInstructions()
         let session = LanguageModelSession(
             model: SystemLanguageModel.default,
