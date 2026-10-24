@@ -496,7 +496,18 @@ final class AnalystChatEngineTests: XCTestCase {
 
             XCTAssertFalse(instructions.isEmpty)
             XCTAssertTrue(instructions.contains("Today:"), "System instructions should provide today schedule context")
+            XCTAssertFalse(instructions.contains("inspectWorkout"), "Macro coach prompt must NOT contain inspectWorkout tool")
             XCTAssertTrue(instructions.count < 1200, "System instructions must stay strictly under 1,200 chars (was \(instructions.count))")
+        }
+    }
+
+    func testRunInspectionInstructionsContainInspectWorkoutTool() {
+        if #available(iOS 26.0, *) {
+            let run = makeRunRecord(date: Date())
+            let engine = AnalystChatEngine(runRecord: run, mode: .runInspection)
+            let instructions = engine.buildLeanSystemInstructions()
+
+            XCTAssertTrue(instructions.contains("inspectWorkout"), "Run inspection prompt must contain inspectWorkout tool")
         }
     }
 
@@ -675,6 +686,9 @@ final class AnalystChatEngineTests: XCTestCase {
             df.dateFormat = "yyyy-MM-dd"
             let todayStr = df.string(from: Date())
 
+            // Set user prompt intent asking for next run
+            engine.currentTurnUserQuestion = "When should I run next, and what kind of session should I focus on?"
+
             // Call getTrainingSchedule with to: nil (unified query)
             let tool = GetTrainingScheduleTool { query in
                 engine.executeTrainingScheduleQuery(query: query)
@@ -684,9 +698,56 @@ final class AnalystChatEngineTests: XCTestCase {
 
             // Tool must return multi-day timeline
             XCTAssertTrue(result.contains("SCHEDULE TIMELINE:"))
-            // Engine must automatically bind the next session card
-            XCTAssertNotNil(engine.sessionRecommendedThisTurn, "Querying the schedule must directly hydrate the next session card")
+            // Engine must bind the next session card when intent asks for next run
+            XCTAssertNotNil(engine.sessionRecommendedThisTurn, "Querying the schedule when asking for next run must hydrate the next session card")
+
+            // But when asking about weekly mileage and overall training balance, session card must NOT attach
+            engine.sessionRecommendedThisTurn = nil
+            engine.currentTurnUserQuestion = "How is my weekly mileage and overall training balance?"
+            _ = try await tool.call(arguments: GetTrainingScheduleQuery(from: todayStr, to: nil))
+            XCTAssertNil(engine.sessionRecommendedThisTurn, "Weekly mileage and balance queries must never attach an unsolicited session card")
         }
         #endif
+    }
+
+    func testWeeklyMileageAndTrainingBalanceDoesNotAttachSessionCard() async {
+        let engine = AnalystChatEngine(modelContext: nil, runRecord: nil, mode: .macroCoach)
+
+        engine.modelResponder = { _, _ in
+            let df = DateFormatter()
+            df.dateFormat = "yyyy-MM-dd"
+            _ = engine.executeTrainingScheduleQuery(query: GetTrainingScheduleQuery(from: df.string(from: Date())))
+            return "Your weekly mileage is steady with 111 minutes logged, keeping you in the underload zone."
+        }
+
+        await engine.sendMessage("How is my weekly mileage and overall training balance?")
+
+        XCTAssertEqual(engine.messages.count, 2)
+        let analystMsg = engine.messages[1]
+        XCTAssertNil(analystMsg.attachedSession, "Asking about weekly mileage must never attach a session card")
+        XCTAssertNil(analystMsg.attachedDrillId, "Asking about weekly mileage must never attach a drill card")
+    }
+
+    func testVisualScheduleIntentClassification() {
+        let engine = AnalystChatEngine(modelContext: nil, runRecord: nil, mode: .macroCoach)
+
+        // Session intents
+        XCTAssertEqual(engine.evaluateVisualScheduleIntent(for: "When should I run next, and what kind of session should I focus on?"), .nextSession)
+        XCTAssertEqual(engine.evaluateVisualScheduleIntent(for: "What is my next workout?"), .nextSession)
+        XCTAssertEqual(engine.evaluateVisualScheduleIntent(for: "Should I run tomorrow?"), .nextSession)
+        XCTAssertEqual(engine.evaluateVisualScheduleIntent(for: "Can I run today?"), .nextSession)
+
+        // Schedule overview intents
+        XCTAssertEqual(engine.evaluateVisualScheduleIntent(for: "Show me my schedule"), .scheduleOverview)
+        XCTAssertEqual(engine.evaluateVisualScheduleIntent(for: "What does my week look like?"), .scheduleOverview)
+        XCTAssertEqual(engine.evaluateVisualScheduleIntent(for: "Weekly schedule"), .scheduleOverview)
+
+        // Pure analytical/informational queries (NO visual card)
+        XCTAssertEqual(engine.evaluateVisualScheduleIntent(for: "How is my weekly mileage and overall training balance?"), .none)
+        XCTAssertEqual(engine.evaluateVisualScheduleIntent(for: "What is the key area I should focus on improving right now?"), .none)
+        XCTAssertEqual(engine.evaluateVisualScheduleIntent(for: "How much volume have I logged this week?"), .none)
+        XCTAssertEqual(engine.evaluateVisualScheduleIntent(for: "Am I in underload?"), .none)
+        XCTAssertEqual(engine.evaluateVisualScheduleIntent(for: nil), .none)
+        XCTAssertEqual(engine.evaluateVisualScheduleIntent(for: ""), .none)
     }
 }
