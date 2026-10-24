@@ -500,19 +500,19 @@ struct RunDetailView: View {
             showingEnvironmentInfo = true
         } label: {
             HStack(spacing: 5) {
-                Image(systemName: isIndoor ? "house.fill" : "figure.run")
+                Image(systemName: isIndoor ? RunalystIcon.indoor : RunalystIcon.outdoor)
                     .font(.caption2.bold())
                 Text(isIndoor ? "Indoor" : "Outdoor")
                     .font(.caption.bold())
             }
-            .foregroundColor(isIndoor ? .purple : .blue)
+            .foregroundColor(isIndoor ? RunalystColor.indoor : RunalystColor.outdoor)
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .background(isIndoor ? Color.purple.opacity(0.12) : Color.blue.opacity(0.12))
+            .background((isIndoor ? RunalystColor.indoor : RunalystColor.outdoor).opacity(0.12))
             .clipShape(Capsule())
             .overlay(
                 Capsule()
-                    .stroke((isIndoor ? Color.purple : Color.blue).opacity(0.3), lineWidth: 1)
+                    .stroke((isIndoor ? RunalystColor.indoor : RunalystColor.outdoor).opacity(0.3), lineWidth: 1)
             )
         }
         .buttonStyle(.plain)

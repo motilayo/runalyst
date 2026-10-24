@@ -14,19 +14,19 @@ public struct CoachPillButton: View {
             action()
         }) {
             HStack(spacing: 5) {
-                Image(systemName: "bubble.left.and.bubble.right.fill")
+                Image(systemName: RunalystIcon.coach)
                     .font(.system(size: 11, weight: .bold))
                 Text("Coach")
                     .font(.subheadline.weight(.bold))
             }
-            .foregroundColor(.purple)
+            .foregroundColor(RunalystColor.coach)
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .background(Color.purple.opacity(0.12))
+            .background(RunalystColor.coach.opacity(0.12))
             .clipShape(Capsule())
             .overlay(
                 Capsule()
-                    .stroke(Color.purple.opacity(0.18), lineWidth: 0.5)
+                    .stroke(RunalystColor.coach.opacity(0.18), lineWidth: 0.5)
             )
         }
         .frame(minHeight: 44)

@@ -96,15 +96,15 @@ struct PrescribedSessionCardView: View {
                     UISelectionFeedbackGenerator().selectionChanged()
                 } label: {
                     HStack(spacing: 3) {
-                        Image(systemName: preferredWorkoutIsIndoor ? "figure.run.square.stack" : "sun.max.fill")
+                        Image(systemName: preferredWorkoutIsIndoor ? RunalystIcon.indoor : RunalystIcon.outdoor)
                             .font(.system(size: 9, weight: .bold))
                         Text(preferredWorkoutIsIndoor ? "Indoor" : "Outdoor")
                             .font(.system(size: 10, weight: .bold))
                     }
-                    .foregroundColor(preferredWorkoutIsIndoor ? .purple : .blue)
+                    .foregroundColor(preferredWorkoutIsIndoor ? RunalystColor.indoor : RunalystColor.outdoor)
                     .padding(.horizontal, 7)
                     .padding(.vertical, 3)
-                    .background((preferredWorkoutIsIndoor ? Color.purple : Color.blue).opacity(0.12))
+                    .background((preferredWorkoutIsIndoor ? RunalystColor.indoor : RunalystColor.outdoor).opacity(0.12))
                     .clipShape(Capsule())
                 }
 
@@ -277,7 +277,7 @@ struct PrescribedSessionCardView: View {
             // Stage 2: Main Run Card
             let mainDuration = DrillDuration.nearest(toMinutes: session.mainRunDurationMinutes)
             let paceTitle = preferredWorkoutIsIndoor ? "Belt Pace" : "Pace"
-            let paceIcon = preferredWorkoutIsIndoor ? "figure.run.square.stack" : "figure.run"
+            let paceIcon = preferredWorkoutIsIndoor ? RunalystIcon.indoor : RunalystIcon.pace
             let maxHrValue = session.hrCap.replacingOccurrences(of: "HR: ", with: "")
 
             DrillPrimerCardView(
@@ -285,15 +285,15 @@ struct PrescribedSessionCardView: View {
                 config: DrillCardConfig(
                     customTitle: session.sessionTitle,
                     customPurpose: session.isTrimmed ? "Low-strain movement & tissue repair" : "Aerobic consistency & conversational pacing",
-                    customTarget: session.mainSessionTemplateId.isHeartRateTargeted ? nil : "\(session.cadenceFloor)-\(session.cadenceFloor + 6) SPM",
+                    customTarget: session.mainSessionTemplateId.isHeartRateTargeted ? nil : "\(session.cadenceFloor)–\(session.cadenceFloor + 6) SPM",
                     categoryLabel: effectiveIsToday ? "MAIN RUN" : "\(headerDayText.uppercased()) MAIN RUN",
                     canChangeDuration: false,
                     lockedDuration: mainDuration,
                     customMetrics: [
                         DrillCardMetric(icon: "stopwatch.fill", title: "Duration", value: cleanMainRunDurationFormatted(session: session), color: .secondary),
-                        DrillCardMetric(icon: paceIcon, title: paceTitle, value: session.paceBand, color: Color(red: 0.0, green: 0.55, blue: 1.0)),
-                        DrillCardMetric(icon: "heart.fill", title: "Max HR", value: maxHrValue, color: Color(red: 1.0, green: 0.22, blue: 0.55)),
-                        DrillCardMetric(icon: "metronome.fill", title: "Cadence", value: "≥ \(session.cadenceFloor) SPM", color: Color(red: 0.0, green: 0.8, blue: 0.65))
+                        DrillCardMetric(icon: paceIcon, title: paceTitle, value: session.paceBand, color: RunalystColor.pace),
+                        DrillCardMetric(icon: RunalystIcon.heartRate, title: "Max HR", value: maxHrValue, color: RunalystColor.heartRate),
+                        DrillCardMetric(icon: RunalystIcon.cadence, title: "Cadence", value: "≥ \(session.cadenceFloor) SPM", color: RunalystColor.cadence)
                     ]
                 ),
                 baselineCadence: session.cadenceFloor,

@@ -8,13 +8,13 @@ extension PreRunDrill {
         }
         let lower = (title ?? drillId ?? "").lowercased()
         if lower.contains("cadence") {
-            return "shoeprints.fill"
+            return "triangle.fill"
         } else if lower.contains("interval") || lower.contains("rhythm") || lower.contains("clock") {
-            return "clock.fill"
+            return "clock.arrow.circlepath"
         } else if lower.contains("surge") || lower.contains("tempo") {
-            return "bolt.fill"
+            return "flame.fill"
         } else if lower.contains("stride") {
-            return "figure.run"
+            return "bolt.horizontal.fill"
         } else if lower.contains("hill") || lower.contains("bound") {
             return "mountain.2.fill"
         } else if lower.contains("flush") || lower.contains("aerobic") {
@@ -22,13 +22,13 @@ extension PreRunDrill {
         } else if lower.contains("zone 2") || lower.contains("zone2") || lower.contains("base builder") {
             return "heart.fill"
         } else if lower.contains("recovery") || lower.contains("jog") || lower.contains("shakeout") {
-            return "figure.walk"
+            return "lungs.fill"
         } else if lower.contains("fartlek") {
             return "waveform.path.ecg"
         } else if lower.contains("neuro") {
-            return "brain.head.profile"
+            return "sparkles"
         }
-        return "shoeprints.fill"
+        return "triangle.fill"
     }
 
     static func iconColor(for drillId: String?, title: String? = nil) -> Color {

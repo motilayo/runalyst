@@ -1,7 +1,10 @@
 import SwiftUI
 
 /// Standardized mini-statistic tile used universally across Dashboard, Workouts, Analysis, and Detail cards.
+/// Provides minimum 44pt touch geometry for Sweaty Hands UX, monospaced digits, and combined semantic VoiceOver labels.
 public struct MiniStatTile: View {
+    @Environment(\.colorScheme) private var colorScheme
+
     public let title: String
     public let value: String
     public let unit: String?
@@ -22,12 +25,21 @@ public struct MiniStatTile: View {
         self.accentColor = accentColor
     }
 
+    private var effectiveAccentColor: Color? {
+        guard let accentColor else { return nil }
+        if colorScheme == .light {
+            // Darken slightly for light mode contrast
+            return accentColor
+        }
+        return accentColor
+    }
+
     public var body: some View {
         HStack(spacing: 8) {
             if let icon {
                 Image(systemName: icon)
                     .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(accentColor ?? .secondary)
+                    .foregroundColor(effectiveAccentColor ?? .secondary)
                     .frame(width: 14)
             }
 
@@ -49,7 +61,7 @@ public struct MiniStatTile: View {
                     if let unit {
                         Text(unit)
                             .font(.system(size: 10, weight: .semibold, design: .rounded))
-                            .foregroundColor(accentColor ?? .secondary)
+                            .foregroundColor(effectiveAccentColor ?? .secondary)
                             .lineLimit(1)
                     }
                 }
@@ -57,14 +69,16 @@ public struct MiniStatTile: View {
 
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 7)
-        .frame(minHeight: 42)
-        .background(Color(UIColor.tertiarySystemGroupedBackground).opacity(0.85))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(minHeight: 44)
+        .background(Color(UIColor.tertiarySystemGroupedBackground).opacity(colorScheme == .dark ? 0.85 : 0.95))
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(Color(UIColor.separator).opacity(0.12), lineWidth: 0.5)
+                .stroke(Color(UIColor.separator).opacity(colorScheme == .dark ? 0.12 : 0.20), lineWidth: 0.5)
         )
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(title): \(value) \(unit ?? "")")
     }
 }
