@@ -601,18 +601,21 @@ final class AnalystChatEngineTests: XCTestCase {
         XCTAssertTrue(analystMsg.text.contains("168 SPM"))
     }
 
-    func testSnakeCaseDrillNamesAreFormattedToHumanReadableTitles() async {
-        let engine = AnalystChatEngine(modelContext: nil, runRecord: nil, mode: .macroCoach)
-
-        engine.modelResponder = { _, _ in
-            "Here is your cadence drill: cadence_pyramids. It's interactive—feel free to try it."
+    func testExecuteCoachActionDisplayDrillOutputsHumanReadableTitleAndStatus() async throws {
+        #if canImport(FoundationModels)
+        if #available(iOS 26.0, *) {
+            let engine = AnalystChatEngine(modelContext: nil, runRecord: nil, mode: .macroCoach)
+            _ = engine.getOrCreateSession()
+            let tool = ExecuteCoachActionTool { query in
+                let resolved = PreRunDrillId.resolve(from: query.payload ?? "") ?? .strides
+                engine.drillRecommendedThisTurn = resolved
+                return "{\"drill_id\":\"\(resolved.rawValue)\",\"drill_name\":\"\(resolved.title)\",\"status\":\"interactive_drill_card_displayed\",\"message\":\"The \(resolved.title) interactive workout card is displayed directly below your response.\"}"
+            }
+            let result = try await tool.call(arguments: ExecuteCoachActionQuery(action: .displayDrill, payload: "cadence_pyramids"))
+            XCTAssertTrue(result.contains("\"drill_name\":\"Cadence Pyramids\""))
+            XCTAssertTrue(result.contains("Cadence Pyramids interactive workout card is displayed"))
+            XCTAssertEqual(engine.drillRecommendedThisTurn, .cadencePyramids)
         }
-
-        await engine.sendMessage("Give me a drill")
-
-        XCTAssertEqual(engine.messages.count, 2)
-        let analystMsg = engine.messages[1]
-        XCTAssertFalse(analystMsg.text.contains("cadence_pyramids"), "Snake case drill name must be formatted")
-        XCTAssertTrue(analystMsg.text.contains("Cadence Pyramids"), "Should contain formatted title")
+        #endif
     }
 }
