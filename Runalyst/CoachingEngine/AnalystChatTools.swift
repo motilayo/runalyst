@@ -799,7 +799,7 @@ public struct InspectWorkoutQuery: Sendable {
 @available(iOS 26.0, *)
 @Generable
 public struct ExecuteCoachActionQuery: Sendable {
-    @Guide(description: "Action to execute: 'prescribe_drill' (prescribes a technique drill), 'explain_metric' (explains a biomechanical metric), 'export_to_watch' (WorkoutKit export), 'update_goal' (training goal update), 'record_feedback' (athlete feedback).")
+    @Guide(description: "Explicit athlete request only: 'update_goal' (change goal), 'export_to_watch' (sync to watch), 'record_feedback' (log notes), 'prescribe_drill' (prescribe drill), 'explain_metric' (explain metric). Never invoke or offer unprompted.")
     public var action: CoachActionType
 
     @Guide(description: "New goal for 'update_goal'.")
@@ -912,7 +912,7 @@ public struct ExecuteCoachActionTool: Tool {
     public typealias Output = String
 
     public let name = "executeCoachAction"
-    public let description = "Executes coaching domain actions: 'prescribe_drill' (prescribes a technique drill for form improvement), 'explain_metric' (explains a biomechanical metric concept), 'update_goal' (updates athlete training goal), 'export_to_watch' (exports workout to Apple Watch), 'record_feedback' (logs athlete notes)."
+    public let description = "Executes explicit athlete commands: 'update_goal', 'export_to_watch', 'record_feedback', 'prescribe_drill', 'explain_metric'. Only invoke when explicitly requested by the athlete."
 
     let provider: @MainActor @Sendable (ExecuteCoachActionQuery) async -> String
 
