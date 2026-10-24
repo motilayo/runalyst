@@ -241,13 +241,7 @@ struct PrescribedSessionCardView: View {
                     customTarget: "Zone 1 HR",
                     categoryLabel: "OPTIONAL",
                     canChangeDuration: false,
-                    lockedDuration: .fifteenMinutes,
-                    customMetrics: [
-                        DrillCardMetric(icon: "stopwatch.fill", title: "Duration", value: "15 min", color: .secondary),
-                        DrillCardMetric(icon: "heart.fill", title: "Target HR", value: "< 135 BPM", color: Color(red: 0.0, green: 0.75, blue: 0.65)),
-                        DrillCardMetric(icon: "figure.walk", title: "Effort", value: "Active Recovery", color: Color(red: 0.20, green: 0.72, blue: 0.92)),
-                        DrillCardMetric(icon: "metronome.fill", title: "Cadence", value: "Relaxed", color: .secondary)
-                    ]
+                    lockedDuration: .fifteenMinutes
                 ),
                 baselineCadence: session.cadenceFloor,
                 onPreview: {

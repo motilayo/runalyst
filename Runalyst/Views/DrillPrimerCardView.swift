@@ -249,18 +249,33 @@ struct DrillPrimerCardView: View {
                         value: displayTargetText ?? "Dynamic",
                         color: drillId.isHeartRateTargeted ? Color(red: 1.0, green: 0.18, blue: 0.55) : Color(red: 0.0, green: 0.8, blue: 0.65)
                     )
-                    drillMetricCell(
-                        icon: "repeat",
-                        title: "Intervals",
-                        value: previewDrill.shortWorkSummary,
-                        color: Color(red: 1.0, green: 0.58, blue: 0.0)
-                    )
-                    drillMetricCell(
-                        icon: "figure.walk",
-                        title: "Recovery",
-                        value: previewDrill.shortRecoverySummary,
-                        color: Color(red: 0.20, green: 0.72, blue: 0.92)
-                    )
+                    if drillId.isAerobicContinuous {
+                        drillMetricCell(
+                            icon: drillId == .zone2Run ? "flame.fill" : "figure.walk",
+                            title: "Effort",
+                            value: drillId == .zone2Run ? "Aerobic Base" : "Active Recovery",
+                            color: drillId == .zone2Run ? Color(red: 1.0, green: 0.58, blue: 0.0) : Color(red: 0.20, green: 0.72, blue: 0.92)
+                        )
+                        drillMetricCell(
+                            icon: "metronome.fill",
+                            title: "Cadence",
+                            value: drillId == .zone2Run ? (targetCadence.map { "\($0) SPM" } ?? "≥ 156 SPM") : "Relaxed",
+                            color: drillId == .zone2Run ? Color(red: 0.0, green: 0.8, blue: 0.65) : Color(UIColor.secondaryLabel)
+                        )
+                    } else {
+                        drillMetricCell(
+                            icon: "repeat",
+                            title: "Intervals",
+                            value: previewDrill.shortWorkSummary,
+                            color: Color(red: 1.0, green: 0.58, blue: 0.0)
+                        )
+                        drillMetricCell(
+                            icon: "figure.walk",
+                            title: "Recovery",
+                            value: previewDrill.shortRecoverySummary,
+                            color: Color(red: 0.20, green: 0.72, blue: 0.92)
+                        )
+                    }
                 }
             }
 
