@@ -293,7 +293,7 @@ struct DrillExecutionScorecard: View {
                     }
                 }
             } else if isHRTarget {
-                // Heart Rate Hero Metric (Target Zone, Actual HR, Turnover)
+                // Heart Rate Target Adherence (Target Zone, Ceiling Control, Cadence Floor)
                 let targetSubtitle: String = {
                     if drillId.targetHeartRateZone == 2 {
                         return "Aerobic Base"
@@ -301,13 +301,17 @@ struct DrillExecutionScorecard: View {
                         return "Active Recovery"
                     }
                 }()
+                let hrCeiling = drillId.targetHeartRateZone == 2 ? 144 : 135
                 let hrSubtitle: String = {
                     if drillId.targetHeartRateZone == 2 {
-                        return actualHR <= 144 ? "Steady Zone 2" : "Elevated strain (Zone 3)"
+                        return actualHR <= 144 ? "Ceiling ≤ 144 held" : "Elevated strain (Zone 3)"
                     } else {
-                        return actualHR <= 135 ? "Zero cardiac strain" : "Elevated strain"
+                        return actualHR <= 135 ? "Ceiling ≤ 135 held" : "Elevated strain"
                     }
                 }()
+                let ceilingValue = actualHR <= hrCeiling ? "Preserved" : "Exceeded"
+                let ceilingColor: Color = actualHR <= hrCeiling ? Color(red: 0.0, green: 0.75, blue: 0.65) : .orange
+
                 HStack(spacing: 8) {
                     metricTile(
                         label: "TARGET ZONE",
@@ -316,16 +320,16 @@ struct DrillExecutionScorecard: View {
                         subtitle: targetSubtitle
                     )
                     metricTile(
-                        label: "ACTUAL HEART RATE",
-                        value: actualHR > 0 ? "\(actualHR) BPM" : "--",
-                        valueColor: Color(red: 1.0, green: 0.22, blue: 0.55),
+                        label: "AEROBIC CEILING",
+                        value: ceilingValue,
+                        valueColor: ceilingColor,
                         subtitle: hrSubtitle
                     )
                     metricTile(
-                        label: "TURNOVER",
+                        label: "MECHANICAL FLOOR",
                         value: actualCadence > 0 ? "\(actualCadence) SPM" : "--",
-                        valueColor: Color(red: 0.0, green: 0.75, blue: 0.65),
-                        subtitle: "Relaxed cadence"
+                        valueColor: actualCadence >= thirtyDayCadence ? Color(red: 0.0, green: 0.75, blue: 0.65) : .orange,
+                        subtitle: actualCadence >= thirtyDayCadence ? "Cushioned stride" : "Turnover dip"
                     )
                 }
             } else {

@@ -233,18 +233,113 @@ struct HeartRateTrajectoryMapView: View {
         return chartPoints.min(by: { abs($0.minute - minute) < abs($1.minute - minute) })
     }
 
+    private var xAxisTicks: [Double] {
+        let mMax = maxMinutes
+        if mMax <= 15 {
+            var ticks = Array(stride(from: 0.0, through: mMax, by: 5.0))
+            if let last = ticks.last, (mMax - last) >= 2.0 {
+                ticks.append(mMax)
+            } else if ticks.count > 1 {
+                ticks[ticks.count - 1] = mMax
+            }
+            return Array(Set(ticks)).sorted()
+        } else if mMax <= 45 {
+            var ticks = Array(stride(from: 0.0, to: mMax, by: 10.0))
+            if let last = ticks.last, (mMax - last) >= 3.0 {
+                ticks.append(mMax)
+            } else if ticks.count > 1 {
+                ticks[ticks.count - 1] = mMax
+            } else {
+                ticks.append(mMax)
+            }
+            return Array(Set(ticks)).sorted()
+        } else {
+            var ticks = Array(stride(from: 0.0, to: mMax, by: 15.0))
+            if let last = ticks.last, (mMax - last) >= 5.0 {
+                ticks.append(mMax)
+            } else if ticks.count > 1 {
+                ticks[ticks.count - 1] = mMax
+            } else {
+                ticks.append(mMax)
+            }
+            return Array(Set(ticks)).sorted()
+        }
+    }
+
+    private func interpolatedHR(at minute: Double) -> Double {
+        guard !chartPoints.isEmpty else { return effectiveWorkingHR }
+        if minute <= chartPoints[0].minute {
+            return chartPoints[0].heartRate
+        }
+        if minute >= chartPoints[chartPoints.count - 1].minute {
+            return chartPoints[chartPoints.count - 1].heartRate
+        }
+        for idx in 0..<(chartPoints.count - 1) {
+            let p1 = chartPoints[idx]
+            let p2 = chartPoints[idx + 1]
+            if minute >= p1.minute && minute <= p2.minute {
+                let range = p2.minute - p1.minute
+                guard range > 0.001 else { return p1.heartRate }
+                let progress = (minute - p1.minute) / range
+                return p1.heartRate + progress * (p2.heartRate - p1.heartRate)
+            }
+        }
+        return effectiveWorkingHR
+    }
+
+    private func zoneLabel(for hr: Double) -> String {
+        if hr <= zone1Ceiling {
+            return "Zone 1 (Recovery)"
+        } else if hr <= zone2Ceiling {
+            return "Zone 2 (Aerobic)"
+        } else if hr <= (zone2Ceiling + 12.0) {
+            return "Zone 3 (Tempo)"
+        } else {
+            return "Zone 4+ (Threshold)"
+        }
+    }
+
+    private func zoneColor(for hr: Double) -> Color {
+        if hr <= zone1Ceiling {
+            return Color.teal
+        } else if hr <= zone2Ceiling {
+            return Color.green
+        } else if hr <= (zone2Ceiling + 12.0) {
+            return Color.orange
+        } else {
+            return Color.red
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(isRecovery ? "Recovery Heart Rate Envelope" : "Heart Rate Trajectory")
-                    .font(.headline)
-                Text(
-                    isRecovery
-                        ? "Gentle active recovery cardiac envelope with minimal strain"
-                        : "Zone 2 aerobic threshold adherence & cardiac stability"
-                )
-                .font(.caption)
-                .foregroundColor(.secondary)
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(isRecovery ? "Recovery Heart Rate Envelope" : "Heart Rate Trajectory")
+                        .font(.headline)
+                    Text(
+                        isRecovery
+                            ? "Gentle active recovery cardiac envelope with minimal strain"
+                            : "Zone 2 aerobic threshold adherence & cardiac stability"
+                    )
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                }
+
+                Spacer()
+
+                HStack(spacing: 5) {
+                    Circle()
+                        .fill(cardiacStabilityColor)
+                        .frame(width: 6, height: 6)
+                    Text(cardiacStabilityText)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundColor(cardiacStabilityColor)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(cardiacStabilityColor.opacity(0.12))
+                .clipShape(Capsule())
             }
 
             if let selectedModality = selectedModality {
@@ -336,26 +431,47 @@ struct HeartRateTrajectoryMapView: View {
                         }
                     }
 
-                    // Interactive Scrub Indicator
-                    if let scrub = scrubbedPoint {
-                        RuleMark(x: .value("Scrubbed Time", scrub.minute))
+                    // Interactive Touch Scrubber
+                    if let minute = selectedMinute {
+                        let hr = interpolatedHR(at: minute)
+                        let zoneText = zoneLabel(for: hr)
+                        let zoneCol = zoneColor(for: hr)
+                        let minInt = Int(minute)
+                        let secInt = Int((minute - Double(minInt)) * 60)
+
+                        RuleMark(x: .value("Scrubbed Time", minute))
                             .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [3, 3]))
                             .foregroundStyle(Color.secondary.opacity(0.8))
                             .annotation(position: .top, alignment: .center) {
-                                VStack(spacing: 2) {
-                                    Text("\(Int(round(scrub.heartRate))) BPM")
-                                        .font(.system(size: 11, weight: .bold).monospacedDigit())
-                                        .foregroundColor(Self.neonPink)
-                                    Text("\(Int(scrub.minute))m")
+                                VStack(spacing: 3) {
+                                    HStack(spacing: 4) {
+                                        Text("\(Int(round(hr))) BPM")
+                                            .font(.system(size: 11, weight: .bold).monospacedDigit())
+                                            .foregroundColor(Self.neonPink)
+                                        Text("•")
+                                            .font(.caption2)
+                                            .foregroundColor(.secondary)
+                                        Text(zoneText)
+                                            .font(.system(size: 10, weight: .semibold))
+                                            .foregroundColor(zoneCol)
+                                    }
+                                    Text(String(format: "%d:%02d min", minInt, secInt))
                                         .font(.system(size: 9).monospacedDigit())
                                         .foregroundColor(.secondary)
                                 }
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 3)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
                                 .background(Color(UIColor.secondarySystemGroupedBackground))
-                                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                                .shadow(color: Color.black.opacity(0.15), radius: 3)
+                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                .shadow(color: Color.black.opacity(0.18), radius: 4, x: 0, y: 2)
                             }
+
+                        PointMark(
+                            x: .value("Time", minute),
+                            y: .value("Heart Rate", hr)
+                        )
+                        .foregroundStyle(Self.neonPink)
+                        .symbolSize(48)
                     }
 
                     // Aerobic Ceiling / Zone Threshold Rule with Apple Health-Style Inline Label
@@ -379,10 +495,24 @@ struct HeartRateTrajectoryMapView: View {
                 .chartXSelection(value: $selectedMinute)
                 .chartXScale(domain: 0...maxMinutes)
                 .chartYScale(domain: yMin...yMax)
+                .chartXAxis {
+                    AxisMarks(values: xAxisTicks) { value in
+                        AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [3, 3]))
+                            .foregroundStyle(Color.secondary.opacity(0.2))
+                        AxisTick()
+                        AxisValueLabel {
+                            if let minVal = value.as(Double.self) {
+                                Text("\(Int(round(minVal)))m")
+                                    .font(.system(size: 10, weight: .medium, design: .rounded).monospacedDigit())
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+                }
                 .frame(height: 200)
 
-                // Clean Adaptive Legend & Cardiac Stability Row (Zero Truncation)
-                HStack(alignment: .center, spacing: 8) {
+                // Clean Adaptive Legend (Bottom Edge Clean)
+                HStack(alignment: .center, spacing: 12) {
                     HStack(spacing: 5) {
                         Circle()
                             .fill(Self.neonPink)
@@ -392,20 +522,16 @@ struct HeartRateTrajectoryMapView: View {
                             .foregroundColor(.secondary)
                     }
 
-                    Spacer()
-
                     HStack(spacing: 5) {
-                        Circle()
-                            .fill(cardiacStabilityColor)
-                            .frame(width: 6, height: 6)
-                        Text(cardiacStabilityText)
-                            .font(.caption2.weight(.semibold))
-                            .foregroundColor(cardiacStabilityColor)
+                        Rectangle()
+                            .fill(isRecovery ? Color.secondary.opacity(0.7) : Color.orange.opacity(0.85))
+                            .frame(width: 10, height: 2)
+                        Text(isRecovery ? "Zone 1 Ceiling (\(Int(effectiveThreshold)) BPM)" : "Zone 2 Ceiling (\(Int(effectiveThreshold)) BPM)")
+                            .font(.caption2.weight(.medium))
+                            .foregroundColor(.secondary)
                     }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(cardiacStabilityColor.opacity(0.12))
-                    .clipShape(Capsule())
+
+                    Spacer()
                 }
                 .padding(.top, 4)
             }

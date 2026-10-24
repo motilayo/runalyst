@@ -20,15 +20,10 @@ struct StatBox: View {
         let explainer = MetricDetailExplainer.explainer(for: title, isWorkoutStats: isWorkoutStats)
 
         VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 4) {
-                Text(title)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .textCase(.uppercase)
-                Image(systemName: "info.circle")
-                    .font(.caption2)
-                    .foregroundColor(.secondary.opacity(0.7))
-            }
+            Text(title)
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .textCase(.uppercase)
 
             HStack(alignment: .firstTextBaseline, spacing: 2) {
                 Text(value)
