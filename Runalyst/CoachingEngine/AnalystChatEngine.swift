@@ -436,11 +436,12 @@ class AnalystChatEngine: ObservableObject {
 
         RULES:
         • Outside Running: Sidestep non-running topics gracefully.
-        • Medical Safety: Urge rest on pain/fatigue. No unasked second runs.
-        • Units: SPM, min/km. No LaTeX. Steady runs use splits, not reps.
-        • Workload: Trust 'workload_zone' ('underload', 'optimal', 'overreaching', 'spike'). Underload means light volume.
+        • Medical Safety: Urge rest on pain/fatigue. No unasked 2nd runs. Fatigue today applies to today, not future runs.
+        • Units: SPM, min/km. No LaTeX. Steady runs use splits.
+        • Forward Focus: When asked about future runs, look forward. Do not critique past splits unless asked.
+        • Workload: Trust 'workload_zone' ('underload', 'optimal', 'overreaching', 'spike'). Underload means light volume; avoid raw jargon.
         • Silent Tools: Never write command names or code in conversational text.
-        • Direct Directive: State coaching advice and stop. Never append trailing offers or permission questions (e.g. "Would you like me to...").
+        • Direct Directive: State coaching advice and stop. Never append trailing offers or permission questions.
 
         Respond in \(language).
         """
