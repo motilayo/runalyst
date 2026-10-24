@@ -116,6 +116,20 @@ struct PrescribedSessionCardView: View {
 
     private var activeSessionHeader: some View {
         VStack(alignment: .leading, spacing: 4) {
+            if !effectiveIsToday {
+                HStack(spacing: 4) {
+                    Image(systemName: "calendar.badge.clock")
+                        .font(.system(size: 10, weight: .bold))
+                    Text("UPCOMING • \(headerDayText.uppercased())")
+                        .font(.system(size: 10, weight: .bold))
+                }
+                .foregroundColor(.purple)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(Color.purple.opacity(0.12))
+                .clipShape(Capsule())
+            }
+
             Text(session.sessionTitle)
                 .font(.title3.weight(.bold))
                 .foregroundColor(.primary)
@@ -247,7 +261,7 @@ struct PrescribedSessionCardView: View {
                     customTitle: session.primerDrillTitle,
                     customPurpose: "Target \(cleanPrimerTarget(session: session))",
                     customTarget: cleanPrimerTarget(session: session),
-                    categoryLabel: "PRE-RUN PRIMER",
+                    categoryLabel: effectiveIsToday ? "PRE-RUN PRIMER" : "\(headerDayText.uppercased()) PRIMER",
                     canChangeDuration: false,
                     lockedDuration: session.primerDrillId.defaultDuration
                 ),
@@ -267,7 +281,7 @@ struct PrescribedSessionCardView: View {
                     customTitle: session.sessionTitle,
                     customPurpose: session.isTrimmed ? "Active Recovery Flush • Easy Aerobic Intensity" : "Aerobic Consistency • Conversational Pacing",
                     customTarget: session.mainSessionTemplateId.isHeartRateTargeted ? nil : "\(session.cadenceFloor)-\(session.cadenceFloor + 6) SPM",
-                    categoryLabel: "MAIN RUN",
+                    categoryLabel: effectiveIsToday ? "MAIN RUN" : "\(headerDayText.uppercased()) MAIN RUN",
                     canChangeDuration: false,
                     lockedDuration: mainDuration,
                     customMetrics: [

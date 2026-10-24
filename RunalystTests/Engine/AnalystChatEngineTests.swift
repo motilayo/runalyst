@@ -221,106 +221,102 @@ final class AnalystChatEngineTests: XCTestCase {
         XCTAssertTrue(engine.messages.isEmpty)
     }
 
-    // MARK: - 6. Leaked Tool Syntax Sanitization and Fallback Action Execution
+    // MARK: - 6. Native Tool-Calling Architecture & Zero Response-Sniffing
 
-    func testLeakedExecuteCoachActionDisplayDrillIsSanitizedAndAttachesDrillCard() async {
-        let run = makeRunRecord(date: Date())
+    func testNativeToolExecutionAttachesDrillCard() async {
+        let run = makeRunRecord(date: Date().addingTimeInterval(-86400))
         let engine = AnalystChatEngine(runRecord: run, mode: .macroCoach)
 
         engine.modelResponder = { _, _ in
-            """
-            With your 48-hour volume compressing gently and no limiting factors beyond a mild cardiac drift, a tempo-surge session is ideal—it builds strength while keeping intensity manageable. I'll display the tempo-surge drill for you right now.
-
-            Next run recommendation: tempo-surge session.
-
-            executeCoachAction:display_drill:tempo_surges
-            """
+            await engine.executeCoachAction(query: ExecuteCoachActionQuery(action: .displayDrill, payload: "tempo_surges"))
+            return "With your 48-hour volume compressing gently, a tempo-surge session is ideal to build turnover."
         }
 
-        await engine.sendMessage("When should I run next, and what kind of session should I focus on?")
+        await engine.sendMessage("What kind of session should I focus on?")
 
         XCTAssertEqual(engine.messages.count, 2)
         let analystMsg = engine.messages[1]
         XCTAssertEqual(analystMsg.sender, .analyst)
-
-        // Raw action token must be stripped from visible text
-        XCTAssertFalse(analystMsg.text.contains("executeCoachAction"))
-        XCTAssertFalse(analystMsg.text.contains("display_drill"))
-
-        // Drill card must be seamlessly attached via fallback
         XCTAssertEqual(analystMsg.attachedDrillId, .tempoSurges)
+        XCTAssertEqual(analystMsg.text, "With your 48-hour volume compressing gently, a tempo-surge session is ideal to build turnover.")
     }
 
-    func testLeakedDirectDisplayDrillIsSanitized() async {
+    func testPureConversationalResponseWithoutToolCallAttachesZeroCards() async {
         let run = makeRunRecord(date: Date())
         let engine = AnalystChatEngine(runRecord: run, mode: .macroCoach)
 
         engine.modelResponder = { _, _ in
-            """
-            Focus: A 45-minute easy-pace run to reinforce your progress.
-
-            I'll display the easy-pace drill to guide you.
-
-            display_drill: easy_pace_drill
-            """
+            "Focus: A 45-minute easy-pace run to reinforce your progress and build aerobic capacity."
         }
 
         await engine.sendMessage("When should I run next?")
 
         XCTAssertEqual(engine.messages.count, 2)
         let analystMsg = engine.messages[1]
-        XCTAssertFalse(analystMsg.text.contains("display_drill"))
-        XCTAssertFalse(analystMsg.text.contains("easy_pace_drill"))
+        XCTAssertNil(analystMsg.attachedDrillId, "Without tool invocation, drill card must be nil")
+        XCTAssertNil(analystMsg.attachedSession, "Without tool invocation, session card must be nil")
+        XCTAssertNil(analystMsg.attachedSchedule, "Without tool invocation, schedule card must be nil")
+        XCTAssertNil(analystMsg.attachedExplainerKey, "Without tool invocation, explainer card must be nil")
+        XCTAssertEqual(analystMsg.text, "Focus: A 45-minute easy-pace run to reinforce your progress and build aerobic capacity.")
     }
 
-    func testLeakedToolSyntaxInHistoryIsSanitizedFromRecentDialoguePrompt() {
+    func testRecentDialogueInSystemInstructionsFormatsCleanly() {
         let run = makeRunRecord(date: Date())
         let engine = AnalystChatEngine(runRecord: run, mode: .macroCoach)
 
-        // Simulate an earlier message that had raw leaked tokens
         engine.messages.append(AnalystChatMessage(sender: .user, text: "What drill should I do?", status: .delivered))
-        engine.messages.append(
-            AnalystChatMessage(
-                sender: .analyst,
-                text: "Here is your plan. executeCoachAction:display_drill:tempo_surges",
-                status: .delivered
-            )
-        )
+        engine.messages.append(AnalystChatMessage(sender: .analyst, text: "Here is your plan for today.", status: .delivered))
         engine.messages.append(AnalystChatMessage(sender: .user, text: "Should I run tomorrow?", status: .delivered))
 
         if #available(iOS 26.0, *) {
             let instructions = engine.buildLeanSystemInstructions()
-
-            // Reference dialogue block must NOT contain the leaked action strings
             let recentDialogue = instructions.components(separatedBy: "RECENT DIALOGUE (Reference Only):").last?
                 .components(separatedBy: "TOOLS:").first ?? ""
-            XCTAssertFalse(recentDialogue.contains("executeCoachAction"))
-            XCTAssertFalse(recentDialogue.contains("display_drill"))
-            XCTAssertTrue(recentDialogue.contains("Coach: \"Here is your plan.\""))
+            XCTAssertTrue(recentDialogue.contains("Coach: \"Here is your plan for today.\""))
         }
     }
 
-    // MARK: - 7. Standalone "Display the drill." Sanitization & Action Detection
+    // MARK: - 7. Native Tool-Calling: Session & Schedule Cards
 
-    func testSanitizerCleansStandaloneDisplayTheDrillAndProvidesCleanText() {
-        if #available(iOS 26.0, *) {
-            let sanitized = AnalystResponseSanitizer.sanitize(text: "Display the drill.")
-            XCTAssertEqual(sanitized.detectedAction, .displayDrill)
-            XCTAssertEqual(sanitized.text, "Here is the drill to focus on.")
-
-            let sanitizedWithSpecific = AnalystResponseSanitizer.sanitize(text: "Display drill: cadence_pyramids")
-            XCTAssertEqual(sanitizedWithSpecific.detectedAction, .displayDrill)
-            XCTAssertEqual(sanitizedWithSpecific.text, "Here is the Cadence Pyramids drill to focus on.")
-        }
-    }
-
-    // MARK: - 8. Proactive Drill Attachment on Demand
-
-    func testExplicitUserDrillRequestAttachesDrillCardEvenWithoutToolCall() async {
+    func testNativeToolExecutionAttachesSessionCard() async {
         let run = makeRunRecord(date: Date())
         let engine = AnalystChatEngine(runRecord: run, mode: .macroCoach)
 
-        // Model returns pure prose with no tool call and no leaked token
+        engine.modelResponder = { _, _ in
+            await engine.executeCoachAction(query: ExecuteCoachActionQuery(action: .displaySession))
+            return "Here is your planned workout session."
+        }
+
+        await engine.sendMessage("What is my next workout session?")
+
+        XCTAssertEqual(engine.messages.count, 2)
+        let analystMsg = engine.messages[1]
+        XCTAssertNotNil(analystMsg.attachedSession, "Session card must be attached when tool executes displaySession")
+    }
+
+    func testNativeToolExecutionAttachesScheduleCard() async {
+        let run = makeRunRecord(date: Date())
+        let engine = AnalystChatEngine(runRecord: run, mode: .macroCoach)
+
+        engine.modelResponder = { _, _ in
+            await engine.executeCoachAction(query: ExecuteCoachActionQuery(action: .displaySchedule))
+            return "Here is your upcoming training schedule for the week."
+        }
+
+        await engine.sendMessage("Show me my schedule for this week")
+
+        XCTAssertEqual(engine.messages.count, 2)
+        let analystMsg = engine.messages[1]
+        XCTAssertNotNil(analystMsg.attachedSchedule, "Schedule card must be attached when tool executes displaySchedule")
+        XCTAssertFalse(analystMsg.attachedSchedule?.isEmpty ?? true)
+    }
+
+    // MARK: - 8. Zero Guessing: Text Mention Without Tool Call Attaches Zero Cards
+
+    func testConversationalDrillDiscussionWithoutToolCallAttachesZeroCards() async {
+        let run = makeRunRecord(date: Date())
+        let engine = AnalystChatEngine(runRecord: run, mode: .macroCoach)
+
         engine.modelResponder = { _, _ in
             "Cadence pyramids are a fantastic way to train a lighter foot strike and keep your bounce controlled."
         }
@@ -330,55 +326,50 @@ final class AnalystChatEngineTests: XCTestCase {
         XCTAssertEqual(engine.messages.count, 2)
         let analystMsg = engine.messages[1]
         XCTAssertEqual(analystMsg.sender, .analyst)
-        XCTAssertEqual(analystMsg.attachedDrillId, .cadencePyramids, "Drill card must be attached proactively when user asks for cadence pyramids")
+        XCTAssertNil(analystMsg.attachedDrillId, "Pure conversational text mentioning a drill must never attach a card without tool invocation")
     }
 
-    // MARK: - 9. Affirmative Confirmation ("Display the drill." / "Yes") Attaches Prior Mentioned Drill
-
-    func testAffirmativeConfirmationFollowingDrillMentionAttachesDrillCard() async {
-        let run = makeRunRecord(date: Date())
+    func testAffirmativeConfirmationWithToolCallAttachesDrillCard() async {
+        let run = makeRunRecord(date: Date().addingTimeInterval(-86400))
         let engine = AnalystChatEngine(runRecord: run, mode: .macroCoach)
 
-        // Turn 1: Coach recommends Cadence Pyramids
         engine.messages.append(AnalystChatMessage(sender: .user, text: "How can I improve my rhythm?", status: .delivered))
         engine.messages.append(AnalystChatMessage(sender: .analyst, text: "I recommend trying the Cadence Pyramids drill before your next easy run.", status: .delivered))
 
-        // Turn 2: User responds "Display the drill."
         engine.modelResponder = { _, _ in
-            "Here is the workout structure for you."
+            await engine.executeCoachAction(query: ExecuteCoachActionQuery(action: .displayDrill, payload: "cadence_pyramids"))
+            return "Here is the workout structure for you."
         }
 
         await engine.sendMessage("Display the drill.")
 
         XCTAssertEqual(engine.messages.count, 4)
         let lastMsg = engine.messages[3]
-        XCTAssertEqual(lastMsg.attachedDrillId, .cadencePyramids, "Affirmative command must attach the drill mentioned in dialogue")
+        XCTAssertEqual(lastMsg.attachedDrillId, .cadencePyramids, "Tool execution attaches the prescribed drill card")
     }
 
-    // MARK: - 10. Tomorrow Run Query Proactively Attaches Session Card
-
-    func testTomorrowRunQueryProactivelyAttachesSessionCard() async {
+    func testTomorrowRunQueryWithToolCallAttachesSessionCard() async {
         let run = makeRunRecord(date: Date())
         let engine = AnalystChatEngine(runRecord: run, mode: .macroCoach)
 
         engine.modelResponder = { _, _ in
-            "Tomorrow is planned as a scheduled rest day to allow your legs to recover fully."
+            await engine.executeCoachAction(query: ExecuteCoachActionQuery(action: .displaySession))
+            return "Tomorrow is planned as a scheduled session to allow steady adaptation."
         }
 
         await engine.sendMessage("Can I run tomorrow?")
 
         XCTAssertEqual(engine.messages.count, 2)
         let analystMsg = engine.messages[1]
-        XCTAssertNotNil(analystMsg.attachedSession, "Session card must be attached when runner asks about tomorrow's schedule")
+        XCTAssertNotNil(analystMsg.attachedSession, "Session card must attach when tool executes displaySession")
     }
 
-    // MARK: - 11. System Prompt Characters Strictly Under 1200 With Full History
+    // MARK: - 9. System Prompt Character Budget (< 1200)
 
     func testSystemInstructionsUnder1200CharactersWithFourTurns() {
         let run = makeRunRecord(date: Date())
         let engine = AnalystChatEngine(runRecord: run, mode: .macroCoach)
 
-        // Populate 4 full turns of dialogue
         for i in 1...4 {
             engine.messages.append(AnalystChatMessage(sender: .user, text: "Question number \(i) about my workout pacing and heart rate recovery?", status: .delivered))
             engine.messages.append(AnalystChatMessage(sender: .analyst, text: "Answer number \(i) explaining the physiological reason why pacing was stable.", status: .delivered))
@@ -387,31 +378,29 @@ final class AnalystChatEngineTests: XCTestCase {
         if #available(iOS 26.0, *) {
             let instructions = engine.buildLeanSystemInstructions()
 
-            // Verify prompt rules
             XCTAssertTrue(instructions.contains("ACWR: Acute:Chronic Workload Ratio"), "Prompt must ground ACWR acronym")
             XCTAssertTrue(instructions.contains("Proactive Cards: Never ask permission"), "Prompt must ban permission asking")
             XCTAssertTrue(instructions.contains("Display the drill"), "Prompt must explicitly forbid echoing display the drill")
-
-            // TN3193 character budget ceiling
             XCTAssertTrue(instructions.count < 1200, "System instructions must stay strictly under 1,200 chars (was \(instructions.count))")
         }
     }
 
-    // MARK: - 12. Next Scheduled Run Resolution (Not Tomorrow's Rest Day)
+    // MARK: - 10. Next Scheduled Run Resolution via Tool Execution
 
     func testWhenIsMyNextScheduledRunAttachesUpcomingRunSessionCardNotRestDay() async {
         let run = makeRunRecord(date: Date())
         let engine = AnalystChatEngine(runRecord: run, mode: .macroCoach)
 
         engine.modelResponder = { _, _ in
-            "Your next scheduled run is on Thursday: a 30-minute Easy Aerobic run."
+            await engine.executeCoachAction(query: ExecuteCoachActionQuery(action: .displaySession))
+            return "Your next scheduled run is on Thursday: a 30-minute Easy Aerobic run."
         }
 
         await engine.sendMessage("So when is my next scheduled run?")
 
         XCTAssertEqual(engine.messages.count, 2)
         let analystMsg = engine.messages[1]
-        XCTAssertNotNil(analystMsg.attachedSession, "Session card must be attached when runner asks for next scheduled run")
+        XCTAssertNotNil(analystMsg.attachedSession, "Session card must be attached when tool executes displaySession")
         XCTAssertFalse(analystMsg.attachedSession?.isRestDay ?? true, "Attached session must be an actual run, not a rest day")
         XCTAssertNotNil(analystMsg.attachedSession?.dayLabel)
         if let dayLabel = analystMsg.attachedSession?.dayLabel {
@@ -420,30 +409,23 @@ final class AnalystChatEngineTests: XCTestCase {
         XCTAssertFalse(analystMsg.attachedSession?.isToday ?? true, "Upcoming next run must not be marked as today")
     }
 
-    // MARK: - 13. Sanitizer Strips Trailing Repetitive Offers
+    // MARK: - 11. Pure Conversational Delivery (Zero Regex Hacking)
 
-    func testSanitizerStripsTrailingSharpenFormOffers() {
-        if #available(iOS 26.0, *) {
-            let input1 = "Tomorrow is a rest day—no run scheduled. Take this time to recover and prepare for your next session. Would you like a drill to sharpen your running form or anything else?"
-            let cleaned1 = AnalystResponseSanitizer.sanitize(text: input1).text
-            XCTAssertEqual(cleaned1, "Tomorrow is a rest day—no run scheduled. Take this time to recover and prepare for your next session.")
+    func testModelConversationalResponsePreservedPurelyWithoutMutilation() async {
+        let run = makeRunRecord(date: Date())
+        let engine = AnalystChatEngine(runRecord: run, mode: .macroCoach)
 
-            let input2 = "Your readiness is strong—great! But tomorrow is a rest day for recovery. Would you like me to display your current readiness and workload overview?"
-            let cleaned2 = AnalystResponseSanitizer.sanitize(text: input2).text
-            XCTAssertEqual(cleaned2, "Your readiness is strong—great! But tomorrow is a rest day for recovery.")
-
-            let input3 = "In your schedule, there's a Form Primer drill designed to reinforce efficient mechanics without adding fatigue. Would you like me to show you the cadence drill to reinforce this rhythm?"
-            let cleaned3 = AnalystResponseSanitizer.sanitize(text: input3).text
-            XCTAssertEqual(cleaned3, "In your schedule, there's a Form Primer drill designed to reinforce efficient mechanics without adding fatigue.")
-
-            let input4 = "The pre-run primer is designed to wake up your neuromuscular system. Would you like me to display the Cadence Pyramids drill so you can review the steps?"
-            let cleaned4 = AnalystResponseSanitizer.sanitize(text: input4).text
-            XCTAssertEqual(cleaned4, "The pre-run primer is designed to wake up your neuromuscular system.")
-
-            let input5 = "Solid work today. Let me know if you'd like a drill to sharpen your turnover."
-            let cleaned5 = AnalystResponseSanitizer.sanitize(text: input5).text
-            XCTAssertEqual(cleaned5, "Solid work today.")
+        let originalProse = "Tomorrow is a rest day—no run scheduled. Take this time to recover and prepare for your next session."
+        engine.modelResponder = { _, _ in
+            originalProse
         }
+
+        await engine.sendMessage("Can I run tomorrow?")
+
+        XCTAssertEqual(engine.messages.count, 2)
+        let analystMsg = engine.messages[1]
+        XCTAssertEqual(analystMsg.text, originalProse, "Conversational prose must be delivered exactly as emitted without regex mutilation")
+        XCTAssertNil(analystMsg.attachedSession, "Without tool invocation, no session card is attached")
     }
 
     func testInformationalPrimerQueryDoesNotAttachDrillCard() async {
@@ -459,7 +441,7 @@ final class AnalystChatEngineTests: XCTestCase {
         XCTAssertEqual(engine.messages.count, 2)
         let analystMsg = engine.messages[1]
         XCTAssertEqual(analystMsg.sender, .analyst)
-        XCTAssertNil(analystMsg.attachedDrillId, "Informational query about primers must not proactively attach an interactive drill card")
+        XCTAssertNil(analystMsg.attachedDrillId, "Informational query about primers must not attach an interactive drill card")
     }
 
     func testInformationalCadenceQueryDoesNotAttachDrillCard() async {
@@ -475,15 +457,16 @@ final class AnalystChatEngineTests: XCTestCase {
         XCTAssertEqual(engine.messages.count, 2)
         let analystMsg = engine.messages[1]
         XCTAssertEqual(analystMsg.sender, .analyst)
-        XCTAssertNil(analystMsg.attachedDrillId, "Informational cadence query must not proactively attach an interactive drill card")
+        XCTAssertNil(analystMsg.attachedDrillId, "Informational cadence query must not attach an interactive drill card")
     }
 
-    func testExplicitStridesRequestAttachesStridesCard() async {
-        let run = makeRunRecord(date: Date())
+    func testExplicitStridesRequestWithToolCallAttachesStridesCard() async {
+        let run = makeRunRecord(date: Date().addingTimeInterval(-86400))
         let engine = AnalystChatEngine(runRecord: run, mode: .macroCoach)
 
         engine.modelResponder = { _, _ in
-            "Strides help activate your nervous system and encourage light, quick turnover."
+            await engine.executeCoachAction(query: ExecuteCoachActionQuery(action: .displayDrill, payload: "strides"))
+            return "Strides help activate your nervous system and encourage light, quick turnover."
         }
 
         await engine.sendMessage("Can you show me strides?")
@@ -491,10 +474,10 @@ final class AnalystChatEngineTests: XCTestCase {
         XCTAssertEqual(engine.messages.count, 2)
         let analystMsg = engine.messages[1]
         XCTAssertEqual(analystMsg.sender, .analyst)
-        XCTAssertEqual(analystMsg.attachedDrillId, .strides, "Explicit request for strides must attach Strides drill card")
+        XCTAssertEqual(analystMsg.attachedDrillId, .strides, "Explicit tool call for strides must attach Strides drill card")
     }
 
-    // MARK: - 14. Decoupled Macro Coach (Zero Runs / No RunRecord Anchor)
+    // MARK: - 12. Decoupled Macro Coach
 
     func testMacroCoachDecoupledFromRunRecordInitializesAndGeneratesInstructionsUnder1200Chars() {
         if #available(iOS 26.0, *) {
@@ -511,36 +494,33 @@ final class AnalystChatEngineTests: XCTestCase {
         let engine = AnalystChatEngine(modelContext: nil, runRecord: nil, mode: .macroCoach)
 
         engine.modelResponder = { _, _ in
-            "Tomorrow is a scheduled rest day. Take time to recover."
+            await engine.executeCoachAction(query: ExecuteCoachActionQuery(action: .displaySession))
+            return "Tomorrow is a scheduled session. Take time to prepare."
         }
 
         await engine.sendMessage("Should I run tomorrow?")
 
         XCTAssertEqual(engine.messages.count, 2)
         let analystMsg = engine.messages[1]
-        XCTAssertNotNil(analystMsg.attachedSession, "Session card should attach proactively even without an anchored runRecord")
+        XCTAssertNotNil(analystMsg.attachedSession, "Session card should attach when tool executes displaySession")
     }
 
-    // MARK: - 15. Proactive Attachment Deduplication & Temporal Grounding
+    // MARK: - 13. Tool Attachment Deduplication
 
     func testWhenNextRunQueryRecommendsDrillAlignsPrimerAndDeduplicatesCard() async {
         let engine = AnalystChatEngine(modelContext: nil, runRecord: nil, mode: .macroCoach)
 
         engine.modelResponder = { _, _ in
-            "Your next run is scheduled for Friday—a 30-minute easy aerobic base. Warm up with Cadence Pyramids to prime your stride."
+            await engine.executeCoachAction(query: ExecuteCoachActionQuery(action: .displaySession))
+            await engine.executeCoachAction(query: ExecuteCoachActionQuery(action: .displayDrill, payload: "strides"))
+            return "Your next run is scheduled for Friday. Warm up with strides."
         }
 
         await engine.sendMessage("When should I run next, and what kind of session should I focus on?")
 
         XCTAssertEqual(engine.messages.count, 2)
         let analystMsg = engine.messages[1]
-
-        // 1. Session card should be attached
         XCTAssertNotNil(analystMsg.attachedSession, "Session card should be attached for next run query")
-        XCTAssertEqual(analystMsg.attachedSession?.primerDrillId, .cadencePyramids, "Pre-run primer should align to the recommended drill")
-        XCTAssertEqual(analystMsg.attachedSession?.primerDrillTitle, "Cadence Pyramids")
-
-        // 2. Standalone drill card should be suppressed to prevent dual conflicting cards
         XCTAssertNil(analystMsg.attachedDrillId, "Standalone drill card must be deduplicated when session card is attached")
     }
 
@@ -548,16 +528,16 @@ final class AnalystChatEngineTests: XCTestCase {
         let engine = AnalystChatEngine(modelContext: nil, runRecord: nil, mode: .macroCoach)
 
         engine.modelResponder = { _, _ in
-            "Try Cadence Pyramids to develop light, quick foot strikes and reduce knee stress."
+            await engine.executeCoachAction(query: ExecuteCoachActionQuery(action: .displayDrill, payload: "cadence_pyramids"))
+            return "Try Cadence Pyramids to develop light, quick foot strikes and reduce knee stress."
         }
 
         await engine.sendMessage("Which drill would help improve my running form and cadence?")
 
         XCTAssertEqual(engine.messages.count, 2)
         let analystMsg = engine.messages[1]
-
-        XCTAssertEqual(analystMsg.attachedDrillId, .cadencePyramids, "Explicit drill query should surface the standalone drill card")
-        XCTAssertNil(analystMsg.attachedSession, "Explicit drill query should not attach a full daily session card")
+        XCTAssertEqual(analystMsg.attachedDrillId, .cadencePyramids, "Explicit drill tool call surfaces standalone drill card")
+        XCTAssertNil(analystMsg.attachedSession, "Explicit drill tool call does not attach a session card")
     }
 
     func testMacroCoachInstructionsIncludeExplicitCalendarDateGrounding() {
@@ -582,23 +562,8 @@ final class AnalystChatEngineTests: XCTestCase {
 
         XCTAssertEqual(engine.messages.count, 2)
         let analystMsg = engine.messages[1]
-        XCTAssertNil(analystMsg.attachedDrillId, "Informational query must not proactively attach a drill card")
+        XCTAssertNil(analystMsg.attachedDrillId, "Informational query must not attach a drill card")
         XCTAssertNil(analystMsg.attachedSession, "Informational query must not attach a full workout session card")
-    }
-
-    func testTrailingOfferIsSanitizedFromAnalystMessage() async {
-        let engine = AnalystChatEngine(modelContext: nil, runRecord: nil, mode: .macroCoach)
-
-        engine.modelResponder = { _, _ in
-            "Your cadence was 168 SPM, right on target for your aerobic pace. Would you like me to display the cadence drill to reinforce this rhythm?"
-        }
-
-        await engine.sendMessage("How was my cadence?")
-
-        XCTAssertEqual(engine.messages.count, 2)
-        let analystMsg = engine.messages[1]
-        XCTAssertFalse(analystMsg.text.contains("Would you like"), "Trailing offer must be stripped")
-        XCTAssertTrue(analystMsg.text.contains("168 SPM"))
     }
 
     func testExecuteCoachActionDisplayDrillOutputsHumanReadableTitleAndStatus() async throws {

@@ -203,17 +203,11 @@ class AnalystChatEngine: ObservableObject {
             if let responder = modelResponder {
                 do {
                     let responseText = try await responder(buildLeanSystemInstructions(), userQuestion)
-                    let sanitized = AnalystResponseSanitizer.sanitize(text: responseText)
-                    var wasExplicitToolDrill = false
-                    if let action = sanitized.detectedAction {
-                        if action == .displayDrill { wasExplicitToolDrill = true }
-                        applyFallbackCoachAction(action: action, payload: sanitized.detectedPayload)
-                    }
-                    resolveProactiveAttachments(userQuestion: userQuestion, sanitizedText: sanitized.text, wasExplicitToolDrill: wasExplicitToolDrill)
+                    let cleaned = responseText.trimmingCharacters(in: .whitespacesAndNewlines)
                     messages.append(
                         AnalystChatMessage(
                             sender: .analyst,
-                            text: sanitized.text,
+                            text: cleaned,
                             attachedDrillId: drillRecommendedThisTurn,
                             attachedSession: sessionRecommendedThisTurn,
                             attachedExplainerKey: explainerRecommendedThisTurn,
@@ -242,17 +236,11 @@ class AnalystChatEngine: ObservableObject {
             if SystemLanguageModel.default.isAvailable {
                 do {
                     let responseText = try await generateFoundationModelResponse(for: userQuestion)
-                    let sanitized = AnalystResponseSanitizer.sanitize(text: responseText)
-                    var wasExplicitToolDrill = false
-                    if let action = sanitized.detectedAction {
-                        if action == .displayDrill { wasExplicitToolDrill = true }
-                        applyFallbackCoachAction(action: action, payload: sanitized.detectedPayload)
-                    }
-                    resolveProactiveAttachments(userQuestion: userQuestion, sanitizedText: sanitized.text, wasExplicitToolDrill: wasExplicitToolDrill)
+                    let cleaned = responseText.trimmingCharacters(in: .whitespacesAndNewlines)
                     messages.append(
                         AnalystChatMessage(
                             sender: .analyst,
-                            text: sanitized.text,
+                            text: cleaned,
                             attachedDrillId: drillRecommendedThisTurn,
                             attachedSession: sessionRecommendedThisTurn,
                             attachedExplainerKey: explainerRecommendedThisTurn,
@@ -419,7 +407,7 @@ class AnalystChatEngine: ObservableObject {
             var lines: [String] = ["RECENT DIALOGUE (Reference Only):"]
             for msg in recentTurns {
                 let role = msg.sender == .user ? "Runner" : "Coach"
-                let cleaned = AnalystResponseSanitizer.sanitize(text: msg.text).text.replacingOccurrences(of: "\n", with: " ")
+                let cleaned = msg.text.replacingOccurrences(of: "\n", with: " ")
                 let truncated = cleaned.count > 30 ? "\(cleaned.prefix(28))..." : cleaned
                 lines.append("• \(role): \"\(truncated)\"")
             }
@@ -624,146 +612,8 @@ class AnalystChatEngine: ObservableObject {
         }
 
         let coachActionTool = ExecuteCoachActionTool { [weak self] query in
-            guard let self else { return "{}" }
-            self.toolInvokedDuringActiveTurn = true
-            let allRuns = (try? self.modelContext?.fetch(FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)]))) ?? (self.runRecord.map { [$0] } ?? [])
-            let activeGoal = UserDefaults.standard.string(forKey: "trainingGoal") ?? "Base Building"
-            let profile = RunnerProfile.compute(from: allRuns)
-            let useMetric = (UserDefaults.standard.object(forKey: "useMetricSystem") as? Bool) ?? true
-            let calendar = TrainingCalendar(calendar: Calendar.current)
-
-            switch query.action {
-            case .displaySession, .displaySchedule:
-                let today = calendar.startOfDay(for: Date())
-                let fromDate = query.from.flatMap(calendar.parseISO) ?? today
-                let toDate = query.to.flatMap(calendar.parseISO) ?? fromDate
-
-                let context = ScheduleEvaluationContext(
-                    runRecords: allRuns,
-                    activeGoal: activeGoal,
-                    profile: profile,
-                    useMetric: useMetric
-                )
-
-                let schedule = calendar.evaluateSchedule(
-                    from: fromDate,
-                    to: toDate,
-                    context: context
-                )
-
-                if query.action == .displaySession || schedule.count == 1 {
-                    let dailyState = SessionSynthesisEngine.evaluateDailyState(
-                        runRecords: allRuns,
-                        activeGoal: activeGoal,
-                        experienceLevel: profile.experienceLevel,
-                        useMetric: useMetric,
-                        userHeightCm: profile.userHeightCm,
-                        now: Date()
-                    )
-                    let sessionToAttach: PrescribedDailySession?
-                    switch dailyState {
-                    case .preRun(let session):
-                        sessionToAttach = session
-                    case .completedToday(_, let tomorrowSession):
-                        sessionToAttach = tomorrowSession
-                    }
-                    self.sessionRecommendedThisTurn = sessionToAttach
-                    let title = sessionToAttach?.sessionTitle ?? (schedule.first?.planned.title ?? "Upcoming Workout")
-                    return "{\"session_title\":\"\(title)\",\"status\":\"interactive_session_card_displayed\",\"message\":\"The \(title) workout session card is displayed directly below your response.\"}"
-                } else {
-                    let microcycleDays: [MicrocycleDay] = schedule.compactMap { day in
-                        if day.relative == .today && day.completion == .completed {
-                            return nil
-                        }
-                        let isRest = day.planned.kind == .rest
-                        let icon = isRest ? "bed.double.fill" : "figure.run"
-                        let title = isRest ? day.planned.title : "\(day.planned.title) • \(day.planned.minutesLow)–\(day.planned.minutesHigh) min"
-                        return MicrocycleDay(
-                            id: "\(day.date)-\(day.planned.title)",
-                            dayLabel: day.weekday,
-                            sessionTitle: title,
-                            iconName: icon,
-                            isRestDay: isRest
-                        )
-                    }
-                    self.scheduleRecommendedThisTurn = microcycleDays
-                    return "{\"days_count\":\(microcycleDays.count),\"status\":\"interactive_schedule_card_displayed\",\"message\":\"The training schedule timeline card is displayed directly below your response.\"}"
-                }
-
-            case .displayDrill:
-                let cal = Calendar.current
-                let todayRuns = allRuns.filter { cal.isDateInToday($0.date) && !$0.isDeleted }
-                let completedMinutes = todayRuns.reduce(0.0) { $0 + $1.duration } / 60.0
-                let (_, targetMinutes) = SessionSynthesisEngine.aerobicDurationForExperience(profile.experienceLevel)
-                let isFatigued = completedMinutes >= Double(targetMinutes) * 0.8 || todayRuns.count >= 2
-
-                if isFatigued {
-                    return "{\"status\":\"drill_blocked_due_to_daily_fatigue\",\"message\":\"Runner already completed daily training volume. Rest is prioritized.\"}"
-                }
-
-                let resolved = PreRunDrillId.resolve(from: query.payload ?? "") ?? .strides
-                self.drillRecommendedThisTurn = resolved
-                return "{\"drill_id\":\"\(resolved.rawValue)\",\"drill_name\":\"\(resolved.title)\",\"status\":\"interactive_drill_card_displayed\",\"message\":\"The \(resolved.title) interactive workout card is displayed directly below your response.\"}"
-
-            case .exportToWatch:
-                let resolved = PreRunDrillId.resolve(from: query.payload ?? "") ?? .strides
-                let template = DrillTemplate.template(for: resolved)
-                let baseCadence = Int(self.runRecord?.workingAvgCadence ?? 0) > 0 ? Int(self.runRecord?.workingAvgCadence ?? 0) : 155
-                let target = template.calculateTargetCadence(baseCadence)
-                let dto = DrillPrescriptionDTO(
-                    title: template.title,
-                    preRunDrillId: resolved.rawValue,
-                    purpose: template.defaultPurpose,
-                    targetCadence: target,
-                    previousCadence: baseCadence
-                )
-                Task {
-                    let bridge = WorkoutBridge()
-                    try? await bridge.scheduleDrill(dto: dto)
-                }
-                return "{\"drill_id\":\"\(resolved.rawValue)\",\"status\":\"exported_to_watch\"}"
-
-            case .updateGoal:
-                let newGoal: String
-                if let directGoal = query.goal {
-                    newGoal = directGoal.rawValue
-                } else if let payloadGoal = query.payload?.trimmingCharacters(in: .whitespacesAndNewlines), !payloadGoal.isEmpty {
-                    let lower = payloadGoal.lowercased()
-                    if lower.contains("marathon") && !lower.contains("half") {
-                        newGoal = "Marathon"
-                    } else if lower.contains("half") {
-                        newGoal = "Half Marathon"
-                    } else if lower.contains("10k") {
-                        newGoal = "10K Race"
-                    } else if lower.contains("5k") {
-                        newGoal = "5K Race"
-                    } else if lower.contains("fun") {
-                        newGoal = "Just for Fun"
-                    } else if lower.contains("injury") {
-                        newGoal = "Injury Recovery"
-                    } else {
-                        newGoal = payloadGoal
-                    }
-                } else {
-                    newGoal = "Base Building"
-                }
-                UserDefaults.standard.set(newGoal, forKey: "trainingGoal")
-                return "{\"goal\":\"\(newGoal)\",\"status\":\"training_goal_updated\"}"
-
-            case .displayExplainer:
-                let rawKey = query.payload?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                let asset = CoachingAssetLibrary.resolve(key: rawKey) ?? CoachingAssetLibrary.defaultAsset(for: rawKey)
-                self.explainerRecommendedThisTurn = asset.key
-                return "{\"explainer_key\":\"\(asset.key)\",\"title\":\"\(asset.title)\",\"status\":\"interactive_explainer_card_displayed\",\"message\":\"The \(asset.title) explainer card is displayed directly below your response.\"}"
-
-            case .recordFeedback:
-                let feedback = query.payload ?? ""
-                if !feedback.isEmpty, let run = self.runRecord {
-                    run.framboiseTags.append("feedback:\(feedback.prefix(40))")
-                    try? run.modelContext?.save()
-                }
-                return "{\"status\":\"feedback_recorded\"}"
-            }
+            guard let self else { return "{\"error\":\"engine_deallocated\"}" }
+            return await self.executeCoachAction(query: query)
         }
 
         let tools: [any Tool] = [
@@ -904,136 +754,66 @@ class AnalystChatEngine: ObservableObject {
         return RunnerProfile.compute(from: historicalRuns, now: Date())
     }
 
-    #if canImport(FoundationModels)
-    @available(iOS 26.0, *)
-    func applyFallbackCoachAction(action: CoachActionType, payload: String?) {
-        switch action {
-        case .displayDrill:
-            if self.drillRecommendedThisTurn == nil {
-                let drillStr = payload ?? ""
-                if let resolved = PreRunDrillId.resolve(from: drillStr) {
-                    self.drillRecommendedThisTurn = resolved
-                } else if drillStr.contains("tempo") || drillStr.contains("surge") {
-                    self.drillRecommendedThisTurn = .tempoSurges
-                } else if drillStr.contains("pyramid") || drillStr.contains("cadence") {
-                    self.drillRecommendedThisTurn = .cadencePyramids
-                } else if drillStr.contains("stride") {
-                    self.drillRecommendedThisTurn = .strides
-                } else if drillStr.contains("rhythm") {
-                    self.drillRecommendedThisTurn = .rhythmIntervals
-                } else if drillStr.contains("hill") {
-                    self.drillRecommendedThisTurn = .hillBounds
-                } else {
-                    self.drillRecommendedThisTurn = .strides
-                }
+    func findNextScheduledRun() -> (date: Date, day: ScheduleDay)? {
+        let allRuns = (try? self.modelContext?.fetch(FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)]))) ?? (self.runRecord.map { [$0] } ?? [])
+        let activeGoal = UserDefaults.standard.string(forKey: "trainingGoal") ?? "Base Building"
+        let profile = RunnerProfile.compute(from: allRuns)
+        let useMetric = (UserDefaults.standard.object(forKey: "useMetricSystem") as? Bool) ?? true
+        let calendar = TrainingCalendar(calendar: Calendar.current)
+        let today = calendar.startOfDay(for: Date())
+        let tomorrow = calendar.calendar.date(byAdding: .day, value: 1, to: today) ?? today
+        let schedule = calendar.evaluateSchedule(
+            from: tomorrow,
+            to: calendar.calendar.date(byAdding: .day, value: 7, to: today) ?? today,
+            context: ScheduleEvaluationContext(runRecords: allRuns, activeGoal: activeGoal, profile: profile, useMetric: useMetric)
+        )
+        for day in schedule {
+            if day.planned.kind != .rest, let date = calendar.parseISO(day.date) {
+                return (date, day)
             }
-        case .displaySchedule:
-            if self.scheduleRecommendedThisTurn == nil {
-                let allRuns = (try? self.modelContext?.fetch(FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)]))) ?? (self.runRecord.map { [$0] } ?? [])
-                let activeGoal = UserDefaults.standard.string(forKey: "trainingGoal") ?? "Base Building"
-                let profile = RunnerProfile.compute(from: allRuns)
-                let useMetric = (UserDefaults.standard.object(forKey: "useMetricSystem") as? Bool) ?? true
-                let calendar = TrainingCalendar(calendar: Calendar.current)
-                let today = calendar.startOfDay(for: Date())
-                let toDate: Date = {
-                    if payload == "rest_of_week" {
-                        let weekEnd = calendar.weekInterval(containing: today).end
-                        return weekEnd > today ? weekEnd : (calendar.calendar.date(byAdding: .day, value: 4, to: today) ?? today)
-                    }
-                    return calendar.calendar.date(byAdding: .day, value: 5, to: today) ?? today
-                }()
-                let schedule = calendar.evaluateSchedule(
-                    from: today,
-                    to: toDate,
-                    context: ScheduleEvaluationContext(runRecords: allRuns, activeGoal: activeGoal, profile: profile, useMetric: useMetric)
-                )
-                self.scheduleRecommendedThisTurn = schedule.compactMap { day in
-                    if day.relative == .today && day.completion == .completed {
-                        return nil
-                    }
-                    let isRest = day.planned.kind == .rest
-                    let icon = isRest ? "bed.double.fill" : "figure.run"
-                    let title = isRest ? day.planned.title : "\(day.planned.title) • \(day.planned.minutesLow)–\(day.planned.minutesHigh) min"
-                    return MicrocycleDay(
-                        id: "\(day.date)-\(day.planned.title)",
-                        dayLabel: day.weekday,
-                        sessionTitle: title,
-                        iconName: icon,
-                        isRestDay: isRest
-                    )
-                }
-            }
-        case .displaySession:
-            if self.sessionRecommendedThisTurn == nil {
-                let allRuns = (try? self.modelContext?.fetch(FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)]))) ?? (self.runRecord.map { [$0] } ?? [])
-                let activeGoal = UserDefaults.standard.string(forKey: "trainingGoal") ?? "Base Building"
-                let profile = RunnerProfile.compute(from: allRuns)
-                let useMetric = (UserDefaults.standard.object(forKey: "useMetricSystem") as? Bool) ?? true
-                let dailyState = SessionSynthesisEngine.evaluateDailyState(
-                    runRecords: allRuns,
-                    activeGoal: activeGoal,
-                    experienceLevel: profile.experienceLevel,
-                    useMetric: useMetric,
-                    userHeightCm: profile.userHeightCm,
-                    now: Date()
-                )
-                switch dailyState {
-                case .preRun(let session):
-                    self.sessionRecommendedThisTurn = session
-                case .completedToday(_, let tomorrowSession):
-                    self.sessionRecommendedThisTurn = tomorrowSession
-                }
-            }
-        case .displayExplainer:
-            if self.explainerRecommendedThisTurn == nil, let rawKey = payload?.trimmingCharacters(in: .whitespacesAndNewlines), !rawKey.isEmpty {
-                let asset = CoachingAssetLibrary.resolve(key: rawKey) ?? CoachingAssetLibrary.defaultAsset(for: rawKey)
-                self.explainerRecommendedThisTurn = asset.key
-            }
-        case .updateGoal:
-            if let newGoal = payload?.trimmingCharacters(in: .whitespacesAndNewlines), !newGoal.isEmpty {
-                UserDefaults.standard.set(newGoal, forKey: "trainingGoal")
-            }
-        case .exportToWatch, .recordFeedback:
-            break
         }
+        return nil
     }
 
-    private func resolveProactiveAttachments(userQuestion: String, sanitizedText: String, wasExplicitToolDrill: Bool = false) {
-        let lowerUser = userQuestion.lowercased()
-        let lowerResponse = sanitizedText.lowercased()
-
+    #if canImport(FoundationModels)
+    @available(iOS 26.0, *)
+    @discardableResult
+    func executeCoachAction(query: ExecuteCoachActionQuery) async -> String {
+        self.toolInvokedDuringActiveTurn = true
         let allRuns = (try? self.modelContext?.fetch(FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)]))) ?? (self.runRecord.map { [$0] } ?? [])
-        let cal = Calendar.current
-        let todayRuns = allRuns.filter { cal.isDateInToday($0.date) && !$0.isDeleted }
-        let completedMinutes = todayRuns.reduce(0.0) { $0 + $1.duration } / 60.0
+        let activeGoal = UserDefaults.standard.string(forKey: "trainingGoal") ?? "Base Building"
         let profile = RunnerProfile.compute(from: allRuns)
-        let (_, targetMinutes) = SessionSynthesisEngine.aerobicDurationForExperience(profile.experienceLevel)
-        let isTodayDone = completedMinutes >= Double(targetMinutes) * 0.8 || todayRuns.count >= 2
+        let useMetric = (UserDefaults.standard.object(forKey: "useMetricSystem") as? Bool) ?? true
+        let calendar = TrainingCalendar(calendar: Calendar.current)
 
-        // 1. Standalone Drill Attachment
-        if self.drillRecommendedThisTurn == nil {
-            if isAffirmativeOrDisplayCommand(lowerUser) {
-                // User explicitly said "yes" or "display the drill"
-                if let drill = findRecentDrillMentionInHistory() {
-                    self.drillRecommendedThisTurn = drill
+        switch query.action {
+        case .displaySession, .displaySchedule:
+            let today = calendar.startOfDay(for: Date())
+            let fromDate = query.from.flatMap(calendar.parseISO) ?? today
+            let toDate: Date = {
+                if let directTo = query.to.flatMap(calendar.parseISO) {
+                    return directTo
                 }
-            } else if isNextRunQuery(lowerUser) {
-                // When answering next run, check if coach specifically recommended a primer drill in response
-                if let drill = PreRunDrillId.resolve(from: sanitizedText) {
-                    self.drillRecommendedThisTurn = drill
+                if query.action == .displaySchedule {
+                    return calendar.calendar.date(byAdding: .day, value: 6, to: fromDate) ?? fromDate
                 }
-            } else if lowerUser.contains("which drill") || lowerUser.contains("what drill") || lowerUser.contains("suggest a drill") || lowerUser.contains("give me a drill") || lowerUser.contains("recommend a drill") || lowerUser.contains("show me a drill") || lowerUser.contains("need a drill") || lowerUser.contains("drill to") || lowerUser.contains("drill for") || lowerUser.contains("drill would") || lowerUser.contains("strides") || lowerUser.contains("cadence pyramid") || lowerUser.contains("tempo surge") || lowerUser.contains("rhythm interval") {
-                if let drill = PreRunDrillId.resolve(from: userQuestion) ?? PreRunDrillId.resolve(from: sanitizedText) {
-                    self.drillRecommendedThisTurn = drill
-                }
-            }
-        }
+                return fromDate
+            }()
 
-        // 2. Proactive Session / Schedule Attachment
-        if self.sessionRecommendedThisTurn == nil && self.scheduleRecommendedThisTurn == nil {
-            if isNextRunQuery(lowerUser) {
-                let activeGoal = UserDefaults.standard.string(forKey: "trainingGoal") ?? "Base Building"
-                let useMetric = (UserDefaults.standard.object(forKey: "useMetricSystem") as? Bool) ?? true
+            let context = ScheduleEvaluationContext(
+                runRecords: allRuns,
+                activeGoal: activeGoal,
+                profile: profile,
+                useMetric: useMetric
+            )
+
+            let schedule = calendar.evaluateSchedule(
+                from: fromDate,
+                to: toDate,
+                context: context
+            )
+
+            if query.action == .displaySession {
                 let dailyState = SessionSynthesisEngine.evaluateDailyState(
                     runRecords: allRuns,
                     activeGoal: activeGoal,
@@ -1042,16 +822,15 @@ class AnalystChatEngine: ObservableObject {
                     userHeightCm: profile.userHeightCm,
                     now: Date()
                 )
-                let tomorrowSession: PrescribedDailySession = {
-                    switch dailyState {
-                    case .preRun(let s): return s
-                    case .completedToday(_, let tomorrow): return tomorrow
-                    }
-                }()
+                let sessionToAttach: PrescribedDailySession?
+                switch dailyState {
+                case .preRun(let session):
+                    sessionToAttach = session
+                case .completedToday(_, let tomorrowSession):
+                    sessionToAttach = tomorrowSession
+                }
 
-                if !tomorrowSession.isRestDay {
-                    self.sessionRecommendedThisTurn = tomorrowSession
-                } else if let next = findNextScheduledRun() {
+                if let session = sessionToAttach, session.isRestDay, let next = findNextScheduledRun() {
                     let day = next.day
                     let primerTitle = day.planned.primerTitle ?? "Strides"
                     let primerId = PreRunDrillId.resolve(from: primerTitle) ?? .strides
@@ -1083,349 +862,121 @@ class AnalystChatEngine: ObservableObject {
                         dayLabel: dateStr,
                         isToday: false
                     )
+                } else {
+                    self.sessionRecommendedThisTurn = sessionToAttach
                 }
-            } else if isTomorrowOrNextRunQuery(lowerUser) {
-                let activeGoal = UserDefaults.standard.string(forKey: "trainingGoal") ?? "Base Building"
-                let useMetric = (UserDefaults.standard.object(forKey: "useMetricSystem") as? Bool) ?? true
-                let dailyState = SessionSynthesisEngine.evaluateDailyState(
-                    runRecords: allRuns,
-                    activeGoal: activeGoal,
-                    experienceLevel: profile.experienceLevel,
-                    useMetric: useMetric,
-                    userHeightCm: profile.userHeightCm,
-                    now: Date()
-                )
-                switch dailyState {
-                case .preRun(let session):
-                    self.sessionRecommendedThisTurn = session
-                case .completedToday(_, let tomorrowSession):
-                    self.sessionRecommendedThisTurn = tomorrowSession
-                }
-            } else if isWeeklyScheduleQuery(lowerUser) {
-                applyFallbackCoachAction(action: .displaySchedule, payload: lowerUser.contains("rest of the week") ? "rest_of_week" : nil)
-            }
-        }
 
-        // 3. Deduplicate and Harmonize Attachments
-        deduplicateAndAlignAttachments(userQuestion: userQuestion, wasExplicitToolDrill: wasExplicitToolDrill)
-    }
-
-    private func deduplicateAndAlignAttachments(userQuestion: String, wasExplicitToolDrill: Bool = false) {
-        let lowerUser = userQuestion.lowercased()
-        let isExplicitStandaloneDrillQuery = wasExplicitToolDrill || (lowerUser.contains("drill") && !isNextRunQuery(lowerUser) && !isTomorrowOrNextRunQuery(lowerUser) && !isWeeklyScheduleQuery(lowerUser))
-
-        if let session = self.sessionRecommendedThisTurn {
-            // When an upcoming or daily session is attached, suppress standalone schedule cards (only show the session)
-            if isNextRunQuery(lowerUser) || isTomorrowOrNextRunQuery(lowerUser) {
-                self.scheduleRecommendedThisTurn = nil
-            }
-
-            if let drill = self.drillRecommendedThisTurn {
-                if !drill.isAerobicContinuous {
-                    let alignedPrimerTarget: String = {
-                        let template = DrillTemplate.template(for: drill)
-                        return template.calculateTargetCadence(session.cadenceFloor)
-                    }()
-                    let alignedSession = PrescribedDailySession(
-                        targetGoal: session.targetGoal,
-                        sessionTitle: session.sessionTitle,
-                        durationBand: session.durationBand,
-                        paceBand: session.paceBand,
-                        hrCap: session.hrCap,
-                        cadenceFloor: session.cadenceFloor,
-                        groundedRationale: session.groundedRationale,
-                        readinessStateText: session.readinessStateText,
-                        readinessTriggerLead: session.readinessTriggerLead,
-                        primerDrillId: drill,
-                        primerDrillTitle: drill.title,
-                        primerTargetCadence: alignedPrimerTarget,
-                        primerWorkDescription: session.primerWorkDescription,
-                        primerPhasesDuration: session.primerPhasesDuration,
-                        isTrimmed: session.isTrimmed,
-                        microcycle: session.microcycle,
-                        mainSessionTemplateId: session.mainSessionTemplateId,
-                        mainRunDurationMinutes: session.mainRunDurationMinutes,
-                        completedPrimerRun: session.completedPrimerRun,
-                        isRestDay: session.isRestDay,
-                        dayLabel: session.dayLabel,
-                        isToday: session.isToday,
-                        readinessState: session.readinessState
-                    )
-                    self.sessionRecommendedThisTurn = alignedSession
-
-                    if !isExplicitStandaloneDrillQuery {
-                        self.drillRecommendedThisTurn = nil
+                let title = self.sessionRecommendedThisTurn?.sessionTitle ?? (schedule.first?.planned.title ?? "Upcoming Workout")
+                harmonizeAttachments()
+                return "{\"session_title\":\"\(title)\",\"status\":\"interactive_session_card_displayed\",\"message\":\"The \(title) workout session card is displayed directly below your response.\"}"
+            } else {
+                let microcycleDays: [MicrocycleDay] = schedule.compactMap { day in
+                    if day.relative == .today && day.completion == .completed {
+                        return nil
                     }
+                    let isRest = day.planned.kind == .rest
+                    let icon = isRest ? "bed.double.fill" : "figure.run"
+                    let title = isRest ? day.planned.title : "\(day.planned.title) • \(day.planned.minutesLow)–\(day.planned.minutesHigh) min"
+                    return MicrocycleDay(
+                        id: "\(day.date)-\(day.planned.title)",
+                        dayLabel: day.weekday,
+                        sessionTitle: title,
+                        iconName: icon,
+                        isRestDay: isRest
+                    )
                 }
+                self.scheduleRecommendedThisTurn = microcycleDays
+                harmonizeAttachments()
+                return "{\"days_count\":\(microcycleDays.count),\"status\":\"interactive_schedule_card_displayed\",\"message\":\"The training schedule timeline card is displayed directly below your response.\"}"
+            }
+
+        case .displayDrill:
+            let cal = Calendar.current
+            let todayRuns = allRuns.filter { cal.isDateInToday($0.date) && !$0.isDeleted }
+            let completedMinutes = todayRuns.reduce(0.0) { $0 + $1.duration } / 60.0
+            let (_, targetMinutes) = SessionSynthesisEngine.aerobicDurationForExperience(profile.experienceLevel)
+            let isFatigued = completedMinutes >= Double(targetMinutes) * 0.8 || todayRuns.count >= 2
+
+            if isFatigued {
+                return "{\"status\":\"drill_blocked_due_to_daily_fatigue\",\"message\":\"Runner already completed daily training volume. Rest is prioritized.\"}"
+            }
+
+            let resolved = PreRunDrillId.resolve(from: query.payload ?? "") ?? .strides
+            self.drillRecommendedThisTurn = resolved
+            harmonizeAttachments()
+            return "{\"drill_id\":\"\(resolved.rawValue)\",\"drill_name\":\"\(resolved.title)\",\"status\":\"interactive_drill_card_displayed\",\"message\":\"The \(resolved.title) interactive workout card is displayed directly below your response.\"}"
+
+        case .exportToWatch:
+            let resolved = PreRunDrillId.resolve(from: query.payload ?? "") ?? .strides
+            let template = DrillTemplate.template(for: resolved)
+            let baseCadence = Int(self.runRecord?.workingAvgCadence ?? 0) > 0 ? Int(self.runRecord?.workingAvgCadence ?? 0) : 155
+            let target = template.calculateTargetCadence(baseCadence)
+            let dto = DrillPrescriptionDTO(
+                title: template.title,
+                preRunDrillId: resolved.rawValue,
+                purpose: template.defaultPurpose,
+                targetCadence: target,
+                previousCadence: baseCadence
+            )
+            Task {
+                let bridge = WorkoutBridge()
+                try? await bridge.scheduleDrill(dto: dto)
+            }
+            return "{\"drill_id\":\"\(resolved.rawValue)\",\"status\":\"exported_to_watch\"}"
+
+        case .updateGoal:
+            let newGoal: String
+            if let directGoal = query.goal {
+                newGoal = directGoal.rawValue
+            } else if let payloadGoal = query.payload?.trimmingCharacters(in: .whitespacesAndNewlines), !payloadGoal.isEmpty {
+                let lower = payloadGoal.lowercased()
+                if lower.contains("marathon") && !lower.contains("half") {
+                    newGoal = "Marathon"
+                } else if lower.contains("half") {
+                    newGoal = "Half Marathon"
+                } else if lower.contains("10k") {
+                    newGoal = "10K Race"
+                } else if lower.contains("5k") {
+                    newGoal = "5K Race"
+                } else if lower.contains("fun") {
+                    newGoal = "Just for Fun"
+                } else if lower.contains("injury") {
+                    newGoal = "Injury Recovery"
+                } else {
+                    newGoal = payloadGoal
+                }
+            } else {
+                newGoal = "Base Building"
+            }
+            UserDefaults.standard.set(newGoal, forKey: "trainingGoal")
+            return "{\"goal\":\"\(newGoal)\",\"status\":\"training_goal_updated\"}"
+
+        case .displayExplainer:
+            let rawKey = query.payload?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let asset = CoachingAssetLibrary.resolve(key: rawKey) ?? CoachingAssetLibrary.defaultAsset(for: rawKey)
+            self.explainerRecommendedThisTurn = asset.key
+            harmonizeAttachments()
+            return "{\"explainer_key\":\"\(asset.key)\",\"title\":\"\(asset.title)\",\"status\":\"interactive_explainer_card_displayed\",\"message\":\"The \(asset.title) explainer card is displayed directly below your response.\"}"
+
+        case .recordFeedback:
+            let feedback = query.payload ?? ""
+            if !feedback.isEmpty, let run = self.runRecord {
+                run.framboiseTags.append("feedback:\(feedback.prefix(40))")
+                try? run.modelContext?.save()
+            }
+            return "{\"status\":\"feedback_recorded\"}"
+        }
+    }
+
+    private func harmonizeAttachments() {
+        if let session = self.sessionRecommendedThisTurn, let drill = self.drillRecommendedThisTurn {
+            if session.primerDrillId == drill {
+                self.drillRecommendedThisTurn = nil
             }
         }
-
-        // 4. Suppress duplicate explainer cards if a drill card or daily session is already attached
-        if let explainer = self.explainerRecommendedThisTurn {
-            let drillAliases = ["pre_run_primer", "primer", "form_primer", "technique_drill", "cadence_pyramids", "rhythm_intervals", "tempo_surges", "strides", "drill", "drills"]
-            if drillAliases.contains(explainer.lowercased()) && (self.drillRecommendedThisTurn != nil || self.sessionRecommendedThisTurn != nil) {
-                self.explainerRecommendedThisTurn = nil
-            }
+        if self.sessionRecommendedThisTurn != nil {
+            self.scheduleRecommendedThisTurn = nil
         }
-    }
-
-    func findNextScheduledRun() -> (date: Date, day: ScheduleDay)? {
-        let allRuns = (try? self.modelContext?.fetch(FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)]))) ?? (self.runRecord.map { [$0] } ?? [])
-        let activeGoal = UserDefaults.standard.string(forKey: "trainingGoal") ?? "Base Building"
-        let profile = RunnerProfile.compute(from: allRuns)
-        let useMetric = (UserDefaults.standard.object(forKey: "useMetricSystem") as? Bool) ?? true
-        let calendar = TrainingCalendar(calendar: Calendar.current)
-        let today = calendar.startOfDay(for: Date())
-        let tomorrow = calendar.calendar.date(byAdding: .day, value: 1, to: today) ?? today
-        let schedule = calendar.evaluateSchedule(
-            from: tomorrow,
-            to: calendar.calendar.date(byAdding: .day, value: 7, to: today) ?? today,
-            context: ScheduleEvaluationContext(runRecords: allRuns, activeGoal: activeGoal, profile: profile, useMetric: useMetric)
-        )
-        for day in schedule {
-            if day.planned.kind != .rest, let date = calendar.parseISO(day.date) {
-                return (date, day)
-            }
-        }
-        return nil
-    }
-
-    private func isNextRunQuery(_ text: String) -> Bool {
-        text.contains("next run") || text.contains("next workout") || text.contains("run next") || text.contains("next scheduled run") || (text.contains("when") && text.contains("run") && !text.contains("last"))
-    }
-
-    private func isAffirmativeOrDisplayCommand(_ text: String) -> Bool {
-        let trimmed = text.trimmingCharacters(in: CharacterSet.punctuationCharacters.union(.whitespacesAndNewlines))
-        let directMatches: Set<String> = [
-            "yes", "yeah", "yep", "sure", "please", "yes please", "ok", "okay",
-            "display the drill", "display drill", "show me", "show it", "show drill",
-            "show the drill", "focus on the cadence pyramid drill", "focus on the drill"
-        ]
-        if directMatches.contains(trimmed) { return true }
-        if trimmed.hasPrefix("show ") || trimmed.hasPrefix("display ") { return true }
-        return trimmed == "yes" || trimmed.hasPrefix("yes ")
-    }
-
-    private func isTomorrowOrNextRunQuery(_ text: String) -> Bool {
-        text.contains("tomorrow") || text.contains("next run") || text.contains("next workout") || text.contains("run next")
-    }
-
-    private func isWeeklyScheduleQuery(_ text: String) -> Bool {
-        text.contains("schedule") || text.contains("this week") || text.contains("rest of the week") || text.contains("calendar") || text.contains("microcycle")
-    }
-
-    private func findRecentDrillMentionInHistory() -> PreRunDrillId? {
-        for msg in messages.reversed() {
-            if let drill = msg.attachedDrillId {
-                return drill
-            }
-            if let resolved = PreRunDrillId.resolve(from: msg.text) {
-                return resolved
-            }
-        }
-        return nil
     }
     #endif
 }
-
-#if canImport(FoundationModels)
-@available(iOS 26.0, *)
-public struct SanitizedAnalystResponse: Equatable {
-    public let text: String
-    public let detectedAction: CoachActionType?
-    public let detectedPayload: String?
-}
-
-@available(iOS 26.0, *)
-public enum AnalystResponseSanitizer {
-    /// Strips leaked tool invocation signatures from the LLM response text and extracts any embedded action.
-    public static func sanitize(text: String) -> SanitizedAnalystResponse {
-        var working = text
-        var detectedAction: CoachActionType?
-        var detectedPayload: String?
-
-        // 1. Check for executeCoachAction:action:payload or executeCoachAction:action
-        let execPattern = #"(?i)executecoachaction:([a-z0-9_\-]+)(?::([a-z0-9_\-]+))?"#
-        if let regex = try? NSRegularExpression(pattern: execPattern) {
-            if let match = regex.firstMatch(in: working, range: NSRange(working.startIndex..., in: working)) {
-                if let actionRange = Range(match.range(at: 1), in: working),
-                   let action = parseActionType(String(working[actionRange])) {
-                    detectedAction = action
-                }
-                if match.numberOfRanges > 2, match.range(at: 2).location != NSNotFound,
-                   let payloadRange = Range(match.range(at: 2), in: working) {
-                    detectedPayload = String(working[payloadRange])
-                }
-            }
-            working = regex.stringByReplacingMatches(in: working, range: NSRange(working.startIndex..., in: working), withTemplate: "")
-        }
-
-        // 2. Check for executeCoachAction('action', ...)
-        let fnPattern = #"(?i)executecoachaction\(\s*['"]?([a-z0-9_\-]+)['"]?(?:\s*,\s*(?:payload:\s*)?['"]?([a-z0-9_\-]+)['"]?)?\s*\)"#
-        if let regex = try? NSRegularExpression(pattern: fnPattern) {
-            if detectedAction == nil, let match = regex.firstMatch(in: working, range: NSRange(working.startIndex..., in: working)) {
-                if let actionRange = Range(match.range(at: 1), in: working),
-                   let action = parseActionType(String(working[actionRange])) {
-                    detectedAction = action
-                }
-                if match.numberOfRanges > 2, match.range(at: 2).location != NSNotFound,
-                   let payloadRange = Range(match.range(at: 2), in: working) {
-                    detectedPayload = String(working[payloadRange])
-                }
-            }
-            working = regex.stringByReplacingMatches(in: working, range: NSRange(working.startIndex..., in: working), withTemplate: "")
-        }
-
-        // 3. Check for direct action: display_drill: easy_pace_drill or display_schedule
-        let directPattern = #"(?i)\b(display_drill|display_schedule|display_session|display_explainer|update_goal|export_to_watch|record_feedback)(?::\s*([a-z0-9_\-]+)|\s+([a-z0-9_\-]+))?"#
-        if let regex = try? NSRegularExpression(pattern: directPattern) {
-            if detectedAction == nil, let match = regex.firstMatch(in: working, range: NSRange(working.startIndex..., in: working)) {
-                if let actionRange = Range(match.range(at: 1), in: working),
-                   let action = parseActionType(String(working[actionRange])) {
-                    detectedAction = action
-                }
-                if match.numberOfRanges > 2, match.range(at: 2).location != NSNotFound,
-                   let payloadRange = Range(match.range(at: 2), in: working) {
-                    detectedPayload = String(working[payloadRange])
-                } else if match.numberOfRanges > 3, match.range(at: 3).location != NSNotFound,
-                          let payloadRange = Range(match.range(at: 3), in: working) {
-                    detectedPayload = String(working[payloadRange])
-                }
-            }
-            working = regex.stringByReplacingMatches(in: working, range: NSRange(working.startIndex..., in: working), withTemplate: "")
-        }
-
-        // 4. Check for standalone command lines like "Display the drill." or "Display drill: ..."
-        let commandLinePattern = #"(?im)^\s*(?:i(?:'ll| will)\s+)?display\s+(?:the\s+)?(drill|schedule|session|explainer)(?:\s*:\s*([a-z0-9_\-]+))?[\.\?!]?\s*$"#
-        if let regex = try? NSRegularExpression(pattern: commandLinePattern) {
-            if detectedAction == nil, let match = regex.firstMatch(in: working, range: NSRange(working.startIndex..., in: working)) {
-                if let actionRange = Range(match.range(at: 1), in: working),
-                   let action = parseActionType("display_" + String(working[actionRange])) {
-                    detectedAction = action
-                }
-                if match.numberOfRanges > 2, match.range(at: 2).location != NSNotFound,
-                   let payloadRange = Range(match.range(at: 2), in: working) {
-                    detectedPayload = String(working[payloadRange])
-                }
-            }
-            working = regex.stringByReplacingMatches(in: working, range: NSRange(working.startIndex..., in: working), withTemplate: "")
-        }
-
-        // Clean up markdown ticks around removed commands and collapse blank lines
-        let cleanedLines = working.components(separatedBy: .newlines)
-            .map { line -> String in
-                let trimmed = line.trimmingCharacters(in: .whitespaces)
-                if trimmed == "``" || trimmed == "`" {
-                    return ""
-                }
-                return trimmed
-            }
-        let joined = cleanedLines.joined(separator: "\n")
-        var cleaned = joined
-            .replacingOccurrences(of: "\n{3,}", with: "\n\n", options: .regularExpression)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-
-        // If the model leaked a pure command with no conversational text, provide a natural coach statement
-        if cleaned.isEmpty, let action = detectedAction {
-            switch action {
-            case .displayDrill:
-                if let payload = detectedPayload, let drill = PreRunDrillId.resolve(from: payload) {
-                    cleaned = "Here is the \(drill.title) drill to focus on."
-                } else {
-                    cleaned = "Here is the drill to focus on."
-                }
-            case .displaySchedule:
-                cleaned = "Here is your upcoming training schedule."
-            case .displaySession:
-                cleaned = "Here is your next planned session."
-            case .displayExplainer:
-                cleaned = "Here is the visual explainer."
-            case .updateGoal:
-                cleaned = "I've updated your training goal."
-            case .exportToWatch:
-                cleaned = "I've sent the workout to your Apple Watch."
-            case .recordFeedback:
-                cleaned = "Thanks for the feedback; I've noted that for your training."
-            }
-        }
-
-        // 5. Strip trailing repetitive calls-to-action (e.g. "Would you like a drill to sharpen your running form?")
-        let trailingOfferPattern = #"(?i)[\.\?!]?\s*(?:(?:would you like|shall i|let me know if you(?:'d| would)? like|do you want me to)[^\.\?!]*(?:drill|schedule|plan|overview|readiness|step|cadence|rhythm|form|turnover|anything)[^\.\?!]*[\.\?!]?)\s*$"#
-        if let regex = try? NSRegularExpression(pattern: trailingOfferPattern) {
-            let nsCleaned = cleaned as NSString
-            let range = NSRange(location: 0, length: nsCleaned.length)
-            let stripped = regex.stringByReplacingMatches(in: cleaned, options: [], range: range, withTemplate: ".")
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            if !stripped.isEmpty && stripped != "." {
-                cleaned = stripped
-            }
-        }
-        cleaned = cleaned.replacingOccurrences(of: #"\.{2,}"#, with: ".", options: .regularExpression)
-
-        return SanitizedAnalystResponse(
-            text: cleaned,
-            detectedAction: detectedAction,
-            detectedPayload: detectedPayload
-        )
-    }
-
-    private static func parseActionType(_ raw: String) -> CoachActionType? {
-        let clean = raw.lowercased().replacingOccurrences(of: "-", with: "_").trimmingCharacters(in: CharacterSet(charactersIn: "'\"() \t"))
-        switch clean {
-        case "display_drill", "displaydrill": return .displayDrill
-        case "display_schedule", "displayschedule": return .displaySchedule
-        case "display_session", "displaysession": return .displaySession
-        case "display_explainer", "displayexplainer": return .displayExplainer
-        case "export_to_watch", "exporttowatch": return .exportToWatch
-        case "update_goal", "updategoal": return .updateGoal
-        case "record_feedback", "recordfeedback": return .recordFeedback
-        default: return nil
-        }
-    }
-
-    private static func parseDirectActionLine(_ line: String) -> (CoachActionType, String?)? {
-        let knownActions: [(String, CoachActionType)] = [
-            ("display_drill", .displayDrill),
-            ("display_schedule", .displaySchedule),
-            ("display_session", .displaySession),
-            ("display_explainer", .displayExplainer),
-            ("export_to_watch", .exportToWatch),
-            ("update_goal", .updateGoal),
-            ("record_feedback", .recordFeedback)
-        ]
-
-        let lower = line.lowercased()
-        for (prefix, action) in knownActions {
-            if lower == prefix {
-                return (action, nil)
-            }
-            if lower.hasPrefix("\(prefix):") {
-                let payload = String(line.dropFirst(prefix.count + 1)).trimmingCharacters(in: .whitespaces)
-                return (action, payload.isEmpty ? nil : payload)
-            }
-            if lower.hasPrefix("\(prefix) ") {
-                let payload = String(line.dropFirst(prefix.count + 1)).trimmingCharacters(in: .whitespaces)
-                return (action, payload.isEmpty ? nil : payload)
-            }
-        }
-        return nil
-    }
-
-    private static func parseFunctionCall(_ line: String) -> (CoachActionType, String?)? {
-        let inner = line.dropFirst("executecoachaction(".count)
-        let clean = inner.trimmingCharacters(in: CharacterSet(charactersIn: ") \t"))
-        let parts = clean.components(separatedBy: ",")
-        guard let first = parts.first else { return nil }
-        guard let action = parseActionType(first) else { return nil }
-        var payload: String?
-        if parts.count > 1 {
-            let second = parts[1].replacingOccurrences(of: "payload:", with: "")
-            let trimmedSecond = second.trimmingCharacters(in: CharacterSet(charactersIn: "'\" \t"))
-            if !trimmedSecond.isEmpty {
-                payload = trimmedSecond
-            }
-        }
-        return (action, payload)
-    }
-}
-#endif
