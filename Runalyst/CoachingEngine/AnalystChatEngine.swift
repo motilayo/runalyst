@@ -93,6 +93,8 @@ class AnalystChatEngine: ObservableObject {
     var explainerRecommendedThisTurn: String?
     /// Tracks an upcoming schedule card recommended during the active conversation turn.
     var scheduleRecommendedThisTurn: [MicrocycleDay]?
+    /// The user question currently being processed during an active chat turn.
+    var currentTurnUserQuestion: String?
 
     // MARK: - Bounded-Memory State Tracking
     private var turnsSinceSessionRecycle: Int = 0
@@ -178,7 +180,11 @@ class AnalystChatEngine: ObservableObject {
     }
 
     private func executeChatTurn(userQuestion: String, isRetry: Bool) async {
-        defer { isResponding = false }
+        self.currentTurnUserQuestion = userQuestion
+        defer {
+            isResponding = false
+            self.currentTurnUserQuestion = nil
+        }
 
         #if canImport(FoundationModels)
         if #available(iOS 26.0, *) {
@@ -404,19 +410,19 @@ class AnalystChatEngine: ObservableObject {
         let recentTurns = completedHistory.suffix(2)
 
         if !recentTurns.isEmpty {
-            var lines: [String] = ["RECENT DIALOGUE (Reference Only):"]
+            var lines: [String] = ["RECENT DIALOGUE:"]
             for msg in recentTurns {
                 let role = msg.sender == .user ? "Runner" : "Coach"
                 let cleaned = msg.text.replacingOccurrences(of: "\n", with: " ")
-                let truncated = cleaned.count > 30 ? "\(cleaned.prefix(28))..." : cleaned
+                let truncated = cleaned.count > 28 ? "\(cleaned.prefix(25))..." : cleaned
                 lines.append("• \(role): \"\(truncated)\"")
             }
             recentContextBlock = "\n\n" + lines.joined(separator: "\n")
         }
 
         var toolLines: [String] = [
-            "• `getTrainingSchedule`: Timeline.",
-            "• `getReadinessAndWorkload`: Fatigue, ACWR.",
+            "• `getTrainingSchedule`: Schedule.",
+            "• `getReadinessAndWorkload`: Readiness.",
             "• `queryWorkoutHistory`: History."
         ]
         if mode == .runInspection {
@@ -435,14 +441,14 @@ class AnalystChatEngine: ObservableObject {
         \(toolsBlock)
 
         RULES:
-        • Voice: Warm coach, not an audit. No "Coaching note:" or raw tokens.
-        • Forward Focus: Look forward on future runs; rest sets up tomorrow. Never critique past splits unasked.
+        • Voice: Warm coach in 2-3 sentences. Never quote raw terms ('underload', 'acute fatigue') or use labels.
+        • Forward Focus: Look forward; never critique past splits unasked.
         • Medical Safety: Urge rest on pain/fatigue. No unasked 2nd runs.
-        • Workload: Trust 'workload_zone' ('underload', 'optimal', 'overreaching', 'spike'). Underload means light volume.
+        • Workload: Trust 'workload_zone'. Underload means light volume; do not diagnose overload.
         • Units: SPM, min/km. No LaTeX.
         • Outside Running: Sidestep non-running topics gracefully.
         • Silent Tools: Never write command names or code in conversational text.
-        • Direct Directive: State advice and stop cleanly.
+        • Direct: State advice and stop cleanly.
 
         Respond in \(language).
         """
@@ -677,6 +683,86 @@ class AnalystChatEngine: ObservableObject {
         return nil
     }
 
+    enum ScheduleVisualIntent: Sendable, Equatable {
+        case nextSession
+        case scheduleOverview
+        case none
+    }
+
+    func evaluateVisualScheduleIntent(for prompt: String?) -> ScheduleVisualIntent {
+        guard let text = prompt?.lowercased().trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else {
+            return .none
+        }
+
+        let isNextSessionQuery = text.contains("when should i run") ||
+                                 text.contains("when do i run") ||
+                                 text.contains("when is my next run") ||
+                                 text.contains("what should i run") ||
+                                 text.contains("what kind of session") ||
+                                 text.contains("what session") ||
+                                 text.contains("which session") ||
+                                 text.contains("next run") ||
+                                 text.contains("next workout") ||
+                                 text.contains("next session") ||
+                                 text.contains("run next") ||
+                                 text.contains("tomorrow's run") ||
+                                 text.contains("tomorrow's workout") ||
+                                 text.contains("run tomorrow") ||
+                                 text.contains("should i run tomorrow") ||
+                                 text.contains("can i run tomorrow") ||
+                                 text.contains("today's run") ||
+                                 text.contains("today's workout") ||
+                                 text.contains("run today") ||
+                                 text.contains("should i run today") ||
+                                 text.contains("can i run today") ||
+                                 text.contains("upcoming run") ||
+                                 text.contains("upcoming workout") ||
+                                 text.contains("upcoming session") ||
+                                 text.contains("planned workout") ||
+                                 text.contains("scheduled run") ||
+                                 text.contains("prescribed workout") ||
+                                 text.contains("workout plan")
+
+        let isScheduleOverviewQuery = text.contains("show me my schedule") ||
+                                      text.contains("show schedule") ||
+                                      text.contains("view schedule") ||
+                                      text.contains("see schedule") ||
+                                      text.contains("what does my week look like") ||
+                                      text.contains("my week look like") ||
+                                      text.contains("weekly schedule") ||
+                                      text.contains("full schedule") ||
+                                      text.contains("calendar schedule")
+
+        let isVolumeOrBalanceQuery = text.contains("mileage") ||
+                                     text.contains("miles") ||
+                                     text.contains("balance") ||
+                                     text.contains("weekly total") ||
+                                     text.contains("total volume") ||
+                                     text.contains("how much") ||
+                                     text.contains("how many") ||
+                                     text.contains("volume") ||
+                                     text.contains("underload") ||
+                                     text.contains("overload") ||
+                                     text.contains("overreaching") ||
+                                     text.contains("acwr") ||
+                                     text.contains("key area") ||
+                                     text.contains("focus on improving")
+
+        if isVolumeOrBalanceQuery && !isNextSessionQuery && !isScheduleOverviewQuery {
+            return .none
+        }
+
+        if isNextSessionQuery {
+            return .nextSession
+        }
+
+        if isScheduleOverviewQuery {
+            return .scheduleOverview
+        }
+
+        return .none
+    }
+
     #if canImport(FoundationModels)
     @available(iOS 26.0, *)
     @discardableResult
@@ -710,15 +796,19 @@ class AnalystChatEngine: ObservableObject {
             context: context
         )
 
-        // Unified Schedule Dance: bind the interactive visual representation alongside the query
-        if !isExplicitWindow {
+        // Unified Schedule Dance: bind the interactive visual representation ONLY when requested by user intent
+        let visualIntent = evaluateVisualScheduleIntent(for: self.currentTurnUserQuestion)
+
+        switch visualIntent {
+        case .nextSession:
+            let evalDate = (isExplicitWindow && schedule.count == 1) ? fromDate : Date()
             let dailyState = SessionSynthesisEngine.evaluateDailyState(
                 runRecords: allRuns,
                 activeGoal: activeGoal,
                 experienceLevel: profile.experienceLevel,
                 useMetric: useMetric,
                 userHeightCm: profile.userHeightCm,
-                now: Date()
+                now: evalDate
             )
             let sessionToAttach: PrescribedDailySession?
             switch dailyState {
@@ -763,22 +853,8 @@ class AnalystChatEngine: ObservableObject {
             } else {
                 self.sessionRecommendedThisTurn = sessionToAttach
             }
-        } else if schedule.count == 1 {
-            let dailyState = SessionSynthesisEngine.evaluateDailyState(
-                runRecords: allRuns,
-                activeGoal: activeGoal,
-                experienceLevel: profile.experienceLevel,
-                useMetric: useMetric,
-                userHeightCm: profile.userHeightCm,
-                now: fromDate
-            )
-            switch dailyState {
-            case .preRun(let session):
-                self.sessionRecommendedThisTurn = session
-            case .completedToday(_, let tomorrowSession):
-                self.sessionRecommendedThisTurn = tomorrowSession
-            }
-        } else {
+
+        case .scheduleOverview:
             let microcycleDays: [MicrocycleDay] = schedule.compactMap { day in
                 if day.relative == .today && day.completion == .completed {
                     return nil
@@ -795,6 +871,10 @@ class AnalystChatEngine: ObservableObject {
                 )
             }
             self.scheduleRecommendedThisTurn = microcycleDays
+
+        case .none:
+            // Pure informational schedule query: return facts to the model without mutating UI card presentation
+            break
         }
         self.harmonizeAttachments()
 
@@ -826,7 +906,7 @@ class AnalystChatEngine: ObservableObject {
         if streakSummary.consecutiveRunDays >= streakSummary.maxConsecutiveDays {
             limitingFactors.append("streak_limit_reached")
         }
-        if streakSummary.volumeRatio48h >= streakSummary.volumeCompressionThreshold {
+        if streakSummary.volumeRatio48h >= streakSummary.volumeCompressionThreshold && streakSummary.last48hDurationMinutes >= 60.0 {
             limitingFactors.append("48h_volume_compression")
         }
         if streakSummary.backToBackHRDecouplingBPM >= 5.0 {
@@ -841,7 +921,7 @@ class AnalystChatEngine: ObservableObject {
             secondRunAdvisable = true
         } else if todayRuns.count == 1 && (todayRuns[0].duration <= 1320 && (todayRuns[0].prescribedDrillName != nil || todayRuns[0].totalDistanceMeters <= 2000)) {
             secondRunAdvisable = true
-        } else if completionPercent >= 80 || streakSummary.shouldRecommendRestDay || streakSummary.volumeRatio48h >= 0.50 {
+        } else if completionPercent >= 80 || streakSummary.shouldRecommendRestDay || (streakSummary.volumeRatio48h >= 0.50 && streakSummary.last48hDurationMinutes >= 60.0) {
             secondRunAdvisable = false
         } else {
             secondRunAdvisable = true
