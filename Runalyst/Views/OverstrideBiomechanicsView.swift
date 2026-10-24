@@ -117,105 +117,168 @@ private struct KinematicPointRow: View {
     }
 }
 
-/// Telemetry Bridge card linking lab biomechanics to wrist-based Apple Watch metrics
+/// Telemetry Bridge card linking lab biomechanics to wrist-based Apple Watch metrics with actionable cards
 struct AppleWatchBiomechanicsBridgeView: View {
+    @State private var activeExplainerInfo: MetricExplainerInfo?
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            // Header
             HStack(spacing: 8) {
                 Image(systemName: "applewatch")
                     .foregroundColor(.purple)
                     .font(.title3)
+
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("How Apple Watch Detects This")
+                    Text("Stride Telemetry Targets")
                         .font(.subheadline.bold())
                         .foregroundColor(.primary)
-                    Text("How your watch tracks your stride from your wrist")
+                    Text("Apple Watch dynamics for forward propulsion")
                         .font(.caption2)
                         .foregroundColor(.secondary)
                 }
+
+                Spacer()
+
+                Text("Tap for science")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(.purple)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(Color.purple.opacity(0.12))
+                    .clipShape(Capsule())
             }
 
-            VStack(alignment: .leading, spacing: 10) {
-                TelemetryComparisonRow(
-                    metricName: "Bounce (Vertical Motion)",
-                    goodRange: "6.0 – 9.0 cm",
-                    overstrideRange: "> 10.0 cm",
-                    explanation: "Landing on a stiff leg sends impact straight up, creating excess vertical bounce instead of forward speed."
-                )
+            // Actionable 2x2 Telemetry Cards Grid
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                strideTargetCard(spec: StrideTargetSpec(
+                    key: "vertical_oscillation",
+                    title: "Vertical Bounce",
+                    icon: "arrow.up.and.down",
+                    accentColor: .teal,
+                    targetRange: "6.0–9.0 cm",
+                    targetStatus: "Optimal",
+                    alertThreshold: "> 10.0 cm High",
+                    actionCue: "Drive force forward, not upward"
+                ))
 
-                Divider()
+                strideTargetCard(spec: StrideTargetSpec(
+                    key: "ground_contact_time",
+                    title: "Ground Contact",
+                    icon: "timer",
+                    accentColor: Color(red: 0.0, green: 0.55, blue: 1.0),
+                    targetRange: "200–240 ms",
+                    targetStatus: "Optimal",
+                    alertThreshold: "> 260 ms Braking",
+                    actionCue: "Land softly beneath your center of mass"
+                ))
 
-                TelemetryComparisonRow(
-                    metricName: "Ground Contact Time",
-                    goodRange: "200 – 240 ms",
-                    overstrideRange: "> 260 ms",
-                    explanation: "When your foot lands too far ahead, it stays on the ground longer as your body slowly rolls over the ankle before pushing off."
-                )
+                strideTargetCard(spec: StrideTargetSpec(
+                    key: "cadence_floor",
+                    title: "Cadence Floor",
+                    icon: "metronome.fill",
+                    accentColor: Color(red: 0.18, green: 0.82, blue: 0.35),
+                    targetRange: "≥ 150 SPM",
+                    targetStatus: "Target",
+                    alertThreshold: "< 150 SPM Overstride",
+                    actionCue: "Rhythm keeps foot strike under hips"
+                ))
 
-                Divider()
-
-                TelemetryComparisonRow(
-                    metricName: "Cadence",
-                    goodRange: "≥ Floor (150+ SPM)",
-                    overstrideRange: "< 150 SPM Floor",
-                    explanation: "A cadence below your calibrated floor (< 150 SPM) gives your lead leg time to reach too far forward. Maintaining your target rhythm naturally encourages your feet to land beneath your center of mass."
-                )
-
-                Divider()
-
-                TelemetryComparisonRow(
-                    metricName: "Vertical Ratio",
-                    goodRange: "< 8.0%",
-                    overstrideRange: "> 9.5%",
-                    explanation: "This measures vertical bounce as a percentage of stride length. Lower percentages mean more of your energy propels you forward rather than upward."
-                )
+                strideTargetCard(spec: StrideTargetSpec(
+                    key: "vertical_ratio",
+                    title: "Vertical Ratio",
+                    icon: "percent",
+                    accentColor: .orange,
+                    targetRange: "< 8.0%",
+                    targetStatus: "Efficient",
+                    alertThreshold: "> 9.5% Wasteful",
+                    actionCue: "Lower ratio = more forward propulsion"
+                ))
             }
-            .padding(12)
-            .background(Color(UIColor.tertiarySystemFill))
-            .cornerRadius(14)
         }
         .padding(14)
         .background(Color(UIColor.secondarySystemGroupedBackground))
         .cornerRadius(18)
+        .sheet(item: $activeExplainerInfo) { info in
+            MetricExplainerSheet(info: info)
+        }
+    }
+
+    private func strideTargetCard(spec: StrideTargetSpec) -> some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            if let info = CoachingAssetLibrary.explainerInfo(for: spec.key) {
+                activeExplainerInfo = info
+            }
+        } label: {
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(spacing: 5) {
+                    ZStack {
+                        Circle()
+                            .fill(spec.accentColor.opacity(0.14))
+                            .frame(width: 22, height: 22)
+                        Image(systemName: spec.icon)
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(spec.accentColor)
+                    }
+
+                    Text(spec.title)
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(.primary)
+                        .lineLimit(1)
+
+                    Spacer(minLength: 0)
+
+                    Image(systemName: "info.circle")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary.opacity(0.6))
+                }
+
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text(spec.targetRange)
+                        .font(.system(size: 12, weight: .bold))
+                        .monospacedDigit()
+                        .foregroundColor(spec.accentColor)
+
+                    Text(spec.targetStatus)
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundColor(spec.accentColor)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(spec.accentColor.opacity(0.12))
+                        .clipShape(Capsule())
+                }
+
+                Text(spec.alertThreshold)
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundColor(Color.red.opacity(0.85))
+                    .lineLimit(1)
+
+                Text(spec.actionCue)
+                    .font(.system(size: 10))
+                    .foregroundColor(Color(UIColor.secondaryLabel))
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, minHeight: 90, alignment: .topLeading)
+            .padding(10)
+            .background(Color(UIColor.tertiarySystemFill))
+            .cornerRadius(12)
+        }
+        .buttonStyle(.plain)
     }
 }
 
-/// A comparison row showing good vs overstride telemetry
-private struct TelemetryComparisonRow: View {
-    let metricName: String
-    let goodRange: String
-    let overstrideRange: String
-    let explanation: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text(metricName)
-                    .font(.caption.bold())
-                    .foregroundColor(.primary)
-
-                Spacer()
-
-                HStack(spacing: 6) {
-                    Text(goodRange)
-                        .font(.caption2.bold())
-                        .foregroundColor(.teal)
-                    Text("vs")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                    Text(overstrideRange)
-                        .font(.caption2.bold())
-                        .foregroundColor(.red)
-                }
-            }
-
-            Text(explanation)
-                .font(.caption2)
-                .foregroundColor(.secondary)
-                .lineSpacing(1.5)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
+/// Specification for a biomechanical stride target card
+private struct StrideTargetSpec {
+    let key: String
+    let title: String
+    let icon: String
+    let accentColor: Color
+    let targetRange: String
+    let targetStatus: String
+    let alertThreshold: String
+    let actionCue: String
 }
 
 /// Visual Mental Cues section helping the athlete apply these corrections during runs

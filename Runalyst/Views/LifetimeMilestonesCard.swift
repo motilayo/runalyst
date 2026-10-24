@@ -192,92 +192,49 @@ struct LifetimeMilestonesCard: View {
                 .cornerRadius(12)
             }
 
-            // Personal Records Grid
+            // Personal Records 2x2 Grid (Eliminates Cramping and Tiny Icons)
             VStack(alignment: .leading, spacing: 8) {
                 Text("PERSONAL RECORDS")
                     .font(.caption2.bold())
                     .foregroundColor(.secondary)
 
-                HStack(spacing: 8) {
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
                     // Longest Run
-                    VStack(alignment: .leading, spacing: 2) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "road.lanes")
-                                .font(.caption2)
-                                .foregroundColor(.indigo)
-                            Text("Longest")
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                                .lineLimit(1)
-                        }
-                        Text(longestRunFormatted)
-                            .font(.subheadline.bold())
-                            .foregroundColor(.primary)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.80)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    personalRecordCell(
+                        icon: "road.lanes",
+                        iconColor: .indigo,
+                        title: "Longest Run",
+                        value: longestRunFormatted,
+                        subtitle: "Single effort"
+                    )
 
                     // Fastest Pace
-                    VStack(alignment: .leading, spacing: 2) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "speedometer")
-                                .font(.caption2)
-                                .foregroundColor(.teal)
-                            Text("Fastest")
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                                .lineLimit(1)
-                        }
-                        Text(fastestPaceFormatted)
-                            .font(.subheadline.bold())
-                            .foregroundColor(.primary)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.80)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    personalRecordCell(
+                        icon: "speedometer",
+                        iconColor: Color(red: 0.0, green: 0.55, blue: 1.0),
+                        title: "Best Pace",
+                        value: fastestPaceFormatted,
+                        subtitle: useMetricSystem ? "Min / km" : "Min / mi"
+                    )
 
-                    // Best Cadence
-                    VStack(alignment: .leading, spacing: 2) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "figure.run")
-                                .font(.caption2)
-                                .foregroundColor(.blue)
-                            Text("Cadence")
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                                .lineLimit(1)
-                        }
-                        Text(highestCadenceFormatted)
-                            .font(.subheadline.bold())
-                            .foregroundColor(.primary)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.80)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    // Peak Cadence
+                    personalRecordCell(
+                        icon: "metronome.fill",
+                        iconColor: Color(red: 0.18, green: 0.82, blue: 0.35),
+                        title: "Peak Cadence",
+                        value: highestCadenceFormatted,
+                        subtitle: "Turnover rhythm"
+                    )
 
-                    // Peak EF
-                    VStack(alignment: .leading, spacing: 2) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "bolt.heart")
-                                .font(.caption2)
-                                .foregroundColor(.pink)
-                            Text("Peak EF")
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                                .lineLimit(1)
-                        }
-                        Text(peakEfficiencyFactorFormatted)
-                            .font(.subheadline.bold())
-                            .foregroundColor(.primary)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.80)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    // Peak Efficiency Factor
+                    personalRecordCell(
+                        icon: "bolt.heart.fill",
+                        iconColor: Color(red: 1.0, green: 0.22, blue: 0.55),
+                        title: "Aerobic EF",
+                        value: peakEfficiencyFactorFormatted,
+                        subtitle: "Speed ÷ HR"
+                    )
                 }
-                .padding(12)
-                .background(Color(UIColor.tertiarySystemFill))
-                .cornerRadius(12)
             }
 
             // Milestone Badges Carousel / Grid
@@ -297,6 +254,7 @@ struct LifetimeMilestonesCard: View {
                     HStack(spacing: 12) {
                         ForEach(milestoneBadges) { badge in
                             Button(action: {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                 selectedBadge = badge
                             }) {
                                 VStack(spacing: 6) {
@@ -310,11 +268,14 @@ struct LifetimeMilestonesCard: View {
                                     }
 
                                     Text(badge.title)
-                                        .font(.caption2.bold())
+                                        .font(.system(size: 11, weight: .bold))
                                         .foregroundColor(badge.isUnlocked ? .primary : .secondary)
-                                        .lineLimit(1)
+                                        .multilineTextAlignment(.center)
+                                        .lineLimit(2)
+                                        .minimumScaleFactor(0.80)
+                                        .frame(height: 28, alignment: .top)
                                 }
-                                .frame(width: 78)
+                                .frame(width: 86)
                                 .padding(.vertical, 8)
                                 .background(badge.isUnlocked ? Color(UIColor.secondarySystemGroupedBackground) : Color.clear)
                                 .cornerRadius(12)
@@ -342,5 +303,49 @@ struct LifetimeMilestonesCard: View {
                 dismissButton: .default(Text("OK"))
             )
         }
+    }
+
+    private func personalRecordCell(
+        icon: String,
+        iconColor: Color,
+        title: String,
+        value: String,
+        subtitle: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 5) {
+                ZStack {
+                    Circle()
+                        .fill(iconColor.opacity(0.12))
+                        .frame(width: 24, height: 24)
+                    Image(systemName: icon)
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(iconColor)
+                }
+
+                Text(title.uppercased())
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+            }
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(value)
+                    .font(.system(size: 17, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundColor(.primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+
+                Text(subtitle)
+                    .font(.system(size: 10))
+                    .foregroundColor(Color(UIColor.secondaryLabel))
+                    .lineLimit(1)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(Color(UIColor.tertiarySystemFill))
+        .cornerRadius(12)
     }
 }

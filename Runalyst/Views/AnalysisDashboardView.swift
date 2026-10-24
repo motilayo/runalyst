@@ -34,10 +34,21 @@ struct AnalysisDashboardView: View {
                         showingAnalystChat = true
                         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     } label: {
-                        Image(systemName: "bubble.left.and.bubble.right.fill")
-                            .foregroundColor(.purple)
+                        HStack(spacing: 5) {
+                            Image(systemName: "bubble.left.and.bubble.right.fill")
+                                .font(.system(size: 12, weight: .bold))
+                            Text("Coach")
+                                .font(.subheadline.weight(.bold))
+                        }
+                        .foregroundColor(.purple)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Color.purple.opacity(0.12))
+                        .clipShape(Capsule())
                     }
-                    .accessibilityLabel("AI Coach")
+                    .frame(minHeight: 44)
+                    .accessibilityLabel("AI Running Coach")
+                    .accessibilityHint("Opens AI Biomechanical Analyst and Coach chat")
                 }
             }
             .toolbarBackground(.visible, for: .navigationBar)

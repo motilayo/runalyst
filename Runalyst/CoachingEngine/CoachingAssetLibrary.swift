@@ -237,11 +237,11 @@ public struct CoachingAssetLibrary: Sendable {
         ),
         Asset(
             key: "longitudinal_progression",
-            title: "Longitudinal Progression",
+            title: "Performance Trends",
             domain: .physiology,
             compactSummary: "Tracks multi-month physiological economy (Efficiency Factor) and speed trends across identical workout types.",
             overview: "Tracks your aerobic fitness evolution over weeks and months by plotting Efficiency Factor (Speed ÷ Heart Rate) or Average Pace for specific run classifications.",
-            modeContext: "Longitudinal Trends: Isolated to identical workout types across 30 days to All Time for true apples-to-apples comparisons.",
+            modeContext: "Performance Trends: Isolated to identical workout types across 30 days to All Time for true apples-to-apples comparisons.",
             whyItMatters: "Long-Term Adaptation: Shows whether your aerobic engine is becoming more efficient—running faster at the same heart rate—or if fatigue is accumulating.",
             targetRange: "Target: Upward or stable trajectory across training cycles. Upward slopes prove cardiovascular expansion; downward dips signal chronic fatigue or heat strain."
         ),
