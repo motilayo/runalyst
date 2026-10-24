@@ -123,7 +123,7 @@ extension WorkoutAnalysisContext {
                 cadence_floor_status: "\(workingCadence) SPM vs \(floor) SPM floor (\(workingCadence >= floor ? "above floor" : "sub-floor"))",
                 fastest_split: fSplitDesc,
                 slowest_split: sSplitDesc,
-                workout_structure: "Continuous steady run with kilometer splits (not interval reps)"
+                workout_structure: "Continuous steady run with individual kilometer splits (NOT interval reps or work bouts)"
             )
 
             splitsList = splitEvaluations.prefix(12).map { split in
@@ -137,8 +137,12 @@ extension WorkoutAnalysisContext {
                 if let s = slowestSplit, s.index == split.index {
                     flags.append("slowest_split")
                 }
+                let splitLabel = "km \(split.index) split"
+                let splitType = "continuous_kilometer_split"
                 return SplitDetail(
                     split_index: split.index,
+                    split_label: splitLabel,
+                    split_type: splitType,
                     pace: split.paceFormatted,
                     cadence_spm: split.cadence,
                     heart_rate_bpm: isLowConfidenceHR ? nil : split.heartRate,
@@ -207,8 +211,8 @@ extension WorkoutAnalysisContext {
             heart_rate_confidence: hrConfidence,
             heart_rate_status: hrStatus,
             duration: durationDetail,
-            duration_summary: "Total elapsed time: \(durMin) minutes",
-            physiological_verdicts: physiologicalVerdicts.promptDescription,
+            duration_summary: nil,
+            physiological_verdicts: nil,
             metric_explainers: nil
         )
     }

@@ -141,8 +141,9 @@ enum PreRunDrillId: String, CaseIterable, Codable, Sendable {
         if clean.contains("fartlek") {
             return .fartlekPrimer
         }
-        if clean.contains("neuromuscular") || clean.contains("form_primer") || clean.contains("primer")
-            || (clean.contains("form") && clean.contains("drill")) {
+        if clean.contains("neuromuscular") || clean.contains("form_primer")
+            || (clean.contains("form") && (clean.contains("drill") || clean.contains("primer")))
+            || clean == "primer" {
             return .neuromuscularPrimer
         }
         if clean.contains("recovery_flush") || clean.contains("aerobic_flush") || clean.contains("flush") {

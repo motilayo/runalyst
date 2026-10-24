@@ -328,6 +328,58 @@ public struct CoachingAssetLibrary: Sendable {
             modeContext: "CoreML & Biometrics: Combines on-device machine learning with physiological rules so physical cardiac strain always takes priority over model guesswork.",
             whyItMatters: "Accuracy: Ensures recovery runs, steady efforts, and high-intensity interval sessions are accurately recognized so your AI training advice stays calibrated.",
             targetRange: "Categories include Easy Run, Steady Effort, Tempo Run, Intervals, Progression Run, Long Run, and Recovery Run. You can tap the menu to override the label anytime."
+        ),
+
+        // --- DRILLS & PRESCRIPTIONS ---
+        Asset(
+            key: "pre_run_primer",
+            title: "Pre-Run Primer",
+            domain: .drills,
+            compactSummary: "Short 5–10 minute neuromuscular activation drill performed before your main run to wake up cadence turnover, optimize ground contact, and lock in running economy.",
+            overview: "A short, low-fatigue neuromuscular activation sequence (5–10 minutes) completed immediately before your main run. It uses progressive cadence intervals to wake up fast-twitch muscle recruitment and lock in smooth running rhythm without tapping aerobic reserves.",
+            modeContext: "Pre-Run Activation: Designed for zero metabolic fatigue. You should finish feeling springy and ready for the main workout.",
+            whyItMatters: "Biomechanical Priming: Cold running often leads to heavy foot strikes, low turnover, and excessive ground braking. Primers activate the stretch-shortening cycle in your calves and Achilles tendons, significantly reducing knee and hip impact forces during the main run.",
+            targetRange: "Target: 5 to 10 minutes total duration.\n\n• Effort: Controlled and snappy; never an all-out sprint.\n• Recovery: Complete walking rest between reps to keep heart rate in Zone 1 before the main workout."
+        ),
+        Asset(
+            key: "cadence_pyramids",
+            title: "Cadence Pyramids",
+            domain: .drills,
+            compactSummary: "Ascending cadence drill stepping through progressive turnover gears to eliminate excessive bounce and lock in efficient foot strikes.",
+            overview: "A progressive turnover drill that steps cadence up in controlled increments (e.g. 160 -> 166 -> 172 SPM) across 30-second work intervals, paired with walking recovery.",
+            modeContext: "Technique Drill: Focus strictly on rhythm and soft landings rather than forward velocity.",
+            whyItMatters: "Overstriding Elimination: Stepping up cadence naturally shortens your stride length and brings foot strikes under your center of mass, mitigating vertical oscillation bounce and joint strain.",
+            targetRange: "Target: 4 x 30s work intervals stepping through +4 to +10 SPM above your baseline, separated by 45s walking rest."
+        ),
+        Asset(
+            key: "rhythm_intervals",
+            title: "Rhythm Intervals",
+            domain: .drills,
+            compactSummary: "Steady cadence interval reps designed to build cadence stamina and prevent late-race cadence fade.",
+            overview: "Repeated 30-second cadence intervals held strictly at a target rhythm (+6 to +12 SPM above baseline) with relaxed jog floats or walk recoveries.",
+            modeContext: "Neuromuscular Rhythm: Trains your nervous system to sustain quick turnover even as aerobic fatigue sets in.",
+            whyItMatters: "Cadence Fade Prevention: Many runners experience a decay in cadence during the final kilometers of a run. Rhythm intervals build neurological fatigue resistance so your turnover stays crisp.",
+            targetRange: "Target: 3–4 x 30s work intervals at target cadence with 45s recovery."
+        ),
+        Asset(
+            key: "tempo_surges",
+            title: "Tempo Surges",
+            domain: .drills,
+            compactSummary: "Controlled pace accelerations bridging easy aerobic running and lactate threshold mechanics.",
+            overview: "Short controlled accelerations held for 30 seconds to 2 minutes, teaching your body to shift gears smoothly between easy base running and lactate threshold effort.",
+            modeContext: "Threshold Priming: Elevates heart rate and metabolic flux under controlled duration.",
+            whyItMatters: "Speed Endurance: Prepares your cardiovascular system and leg muscles to clear lactate efficiently during quality workouts or race days.",
+            targetRange: "Target: 4 x 30s work intervals with equal or slightly longer recovery."
+        ),
+        Asset(
+            key: "strides",
+            title: "Strides (Accelerations)",
+            domain: .drills,
+            compactSummary: "Gradual 15–20 second accelerations reaching ~90% effort with complete recovery to prime fast-twitch recruitment.",
+            overview: "Relaxed accelerations where you smoothly build speed over 15 to 20 seconds, reach top-end turnover with tall posture, and decelerate smoothly, followed by full walking recovery.",
+            modeContext: "Pure Speed & Form: Strides are not sprints; they emphasize relaxation, high knees, and springy ankle mechanics.",
+            whyItMatters: "Neuromuscular Priming: Opens up your hip range of motion and recruits fast-twitch muscle fibers without producing lactic acid fatigue.",
+            targetRange: "Target: 4–6 reps of 15–20s strides with 45–60s walking rest."
         )
     ]
 
@@ -399,6 +451,16 @@ public struct CoachingAssetLibrary: Sendable {
             return asset(for: "target_cadence")
         case "longitudinal", "longitudinal_progression", "progression", "progression_chart":
             return asset(for: "longitudinal_progression")
+        case "primer", "pre_run_primer", "form_primer", "pre_run_drill", "technique_drill", "activation_drill", "drill", "drills":
+            return asset(for: "pre_run_primer")
+        case "cadence_pyramids", "pyramids", "cadence_pyramid":
+            return asset(for: "cadence_pyramids")
+        case "rhythm_intervals", "rhythm", "rhythm_interval":
+            return asset(for: "rhythm_intervals")
+        case "tempo_surges", "tempo_surge", "surges":
+            return asset(for: "tempo_surges")
+        case "strides", "stride_accelerations", "stride_acceleration":
+            return asset(for: "strides")
         default:
             return nil
         }
@@ -546,7 +608,7 @@ public struct CoachingAssetLibrary: Sendable {
 
     /// Converts an asset to `MetricExplainerInfo` for presentation in `MetricExplainerSheet`.
     public static func explainerInfo(for key: String, mode: String? = nil, userMetricDisplay: String? = nil) -> MetricExplainerInfo? {
-        guard let asset = resolve(key: key) else { return nil }
+        let asset = resolve(key: key) ?? defaultAsset(for: key)
         return MetricExplainerInfo(
             title: asset.title,
             mode: mode ?? "Working Stats",

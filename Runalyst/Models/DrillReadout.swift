@@ -637,7 +637,7 @@ extension ActiveDrillReadoutItem {
             )
             readout = DrillReadout(
                 drillId: drillId,
-                title: dto.title ?? readout.title,
+                title: dto.title.isEmpty ? readout.title : dto.title,
                 subtitle: readout.subtitle.replacingOccurrences(of: "\(readout.durationMinutes) min", with: formattedTotal),
                 overview: readout.overview,
                 breakdown: DrillReadout.readinessBreakdown(phases: adaptedPhases, drillId: drillId),

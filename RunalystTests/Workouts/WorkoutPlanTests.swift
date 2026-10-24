@@ -134,4 +134,60 @@ final class WorkoutPlanTests: XCTestCase {
             XCTFail("Expected custom workout for fatigue Strides")
         }
     }
+
+    // MARK: - Upcoming Schedule Card Scannability & Parsing Tests
+
+    @MainActor
+    func testUpcomingScheduleCardView_ParseSessionSchedule() {
+        // Parenthesized format
+        let p1 = UpcomingScheduleCardView.parseSessionSchedule("Aerobic Consistency Run (8 km)")
+        XCTAssertEqual(p1.name, "Aerobic Consistency Run")
+        XCTAssertEqual(p1.detail, "8 km")
+
+        let p2 = UpcomingScheduleCardView.parseSessionSchedule("Zone 2 Steady (45m)")
+        XCTAssertEqual(p2.name, "Zone 2 Steady")
+        XCTAssertEqual(p2.detail, "45m")
+
+        // Leading distance format
+        let p3 = UpcomingScheduleCardView.parseSessionSchedule("6 km Easy Aerobic Run")
+        XCTAssertEqual(p3.name, "Easy Aerobic Run")
+        XCTAssertEqual(p3.detail, "6 km")
+
+        // Trailing distance format
+        let p4 = UpcomingScheduleCardView.parseSessionSchedule("Long Run 14 km")
+        XCTAssertEqual(p4.name, "Long Run")
+        XCTAssertEqual(p4.detail, "14 km")
+
+        let p5 = UpcomingScheduleCardView.parseSessionSchedule("Long Run 8.5 mi")
+        XCTAssertEqual(p5.name, "Long Run")
+        XCTAssertEqual(p5.detail, "8.5 mi")
+
+        // Bullet format
+        let p6 = UpcomingScheduleCardView.parseSessionSchedule("Tempo Surges • 30m")
+        XCTAssertEqual(p6.name, "Tempo Surges")
+        XCTAssertEqual(p6.detail, "30m")
+
+        // Rest Day
+        let p7 = UpcomingScheduleCardView.parseSessionSchedule("Rest Day")
+        XCTAssertEqual(p7.name, "Rest Day")
+        XCTAssertNil(p7.detail)
+    }
+
+    @MainActor
+    func testUpcomingScheduleCardView_ScheduleCategoryScannability() {
+        let restDay = MicrocycleDay(id: "1", dayLabel: "Wed", sessionTitle: "Rest Day", iconName: "bed.double.fill", isRestDay: true)
+        XCTAssertEqual(UpcomingScheduleCardView.ScheduleCategory.category(for: restDay), .rest)
+
+        let longDay = MicrocycleDay(id: "2", dayLabel: "Thu", sessionTitle: "Long Run 14 km", iconName: "figure.run", isRestDay: false)
+        XCTAssertEqual(UpcomingScheduleCardView.ScheduleCategory.category(for: longDay), .longRun)
+
+        let speedDay = MicrocycleDay(id: "3", dayLabel: "Tue", sessionTitle: "Tempo Surges (30m)", iconName: "bolt.fill", isRestDay: false)
+        XCTAssertEqual(UpcomingScheduleCardView.ScheduleCategory.category(for: speedDay), .speedTempo)
+
+        let easyDay = MicrocycleDay(id: "4", dayLabel: "Sun", sessionTitle: "Aerobic Consistency Run (8 km)", iconName: "leaf.fill", isRestDay: false)
+        XCTAssertEqual(UpcomingScheduleCardView.ScheduleCategory.category(for: easyDay), .easyRecovery)
+
+        let steadyDay = MicrocycleDay(id: "5", dayLabel: "Mon", sessionTitle: "Zone 2 Steady (45m)", iconName: "figure.run", isRestDay: false)
+        XCTAssertEqual(UpcomingScheduleCardView.ScheduleCategory.category(for: steadyDay), .steadyAerobic)
+    }
 }

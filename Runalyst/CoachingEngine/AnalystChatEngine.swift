@@ -420,30 +420,29 @@ class AnalystChatEngine: ObservableObject {
             for msg in recentTurns {
                 let role = msg.sender == .user ? "Runner" : "Coach"
                 let cleaned = AnalystResponseSanitizer.sanitize(text: msg.text).text.replacingOccurrences(of: "\n", with: " ")
-                let truncated = cleaned.count > 38 ? "\(cleaned.prefix(35))..." : cleaned
+                let truncated = cleaned.count > 30 ? "\(cleaned.prefix(28))..." : cleaned
                 lines.append("• \(role): \"\(truncated)\"")
             }
             recentContextBlock = "\n\n" + lines.joined(separator: "\n")
         }
 
         return """
-        You are Runalyst—an empathetic running coach. Speak directly with warmth and brevity.
+        Runalyst coach. Empathy and brevity.
 
         CONTEXT:
         \(contextBlock)\(recentContextBlock)
 
         TOOLS:
-        • `getTrainingSchedule`: Dates.
-        • `getReadinessAndWorkload`: Recovery, ACWR.
-        • `queryWorkoutHistory`: Compare.
-        • `inspectWorkout`: Splits.
-        • `executeCoachAction`: ('display_drill', 'display_schedule', 'display_explainer', 'update_goal', 'export_to_watch', 'record_feedback').
+        `getTrainingSchedule`, `getReadinessAndWorkload`, `queryWorkoutHistory`, `inspectWorkout`, `executeCoachAction` (display_drill, display_schedule, display_session, display_explainer, export_to_watch, record_feedback, update_goal).
 
         RULES:
-        • Outside Running: Refocus. Units: SPM, min/km. No LaTeX.
-        • Medical Safety: Urge rest on pain/fatigue; when 2nd run unadvised, urge rest; state next run.
-        • ACWR: Acute:Chronic Workload Ratio (<0.8=low, >1.4=spike). Low ACWR is not overload.
+        • Outside Running: Sidestep non-running topics.
+        • Medical Safety: Urge rest on pain/fatigue.
+        • Units: SPM, min/km. No LaTeX. Splits for steady runs.
+        • ACWR: Acute:Chronic Workload Ratio (<0.8 low, >1.4 spike; low != overload).
+        • Pre-Run Primer: 5–10m warmup (Strides) before runs to prime turnover.
         • Proactive Cards: Never ask permission to show drills/schedule; trigger directly.
+        • No Trailing Offers: Never end with "Would you like a drill...".
         • Silent Tools: Never write commands ('executeCoachAction', 'display_drill', 'Display the drill') in text.
 
         Respond in \(language).
@@ -676,11 +675,11 @@ class AnalystChatEngine: ObservableObject {
                         }
                         let isRest = day.planned.kind == .rest
                         let icon = isRest ? "bed.double.fill" : "figure.run"
-                        let durStr = isRest ? "0 min" : "\(day.planned.minutesLow)–\(day.planned.minutesHigh) min"
+                        let title = isRest ? day.planned.title : "\(day.planned.title) • \(day.planned.minutesLow)–\(day.planned.minutesHigh) min"
                         return MicrocycleDay(
                             id: "\(day.date)-\(day.planned.title)",
                             dayLabel: day.weekday,
-                            sessionTitle: "\(day.planned.title) • \(durStr)",
+                            sessionTitle: title,
                             iconName: icon,
                             isRestDay: isRest
                         )
@@ -700,12 +699,12 @@ class AnalystChatEngine: ObservableObject {
                     return "{\"status\":\"drill_blocked_due_to_daily_fatigue\",\"message\":\"Runner already completed daily training volume. Rest is prioritized.\"}"
                 }
 
-                let resolved = PreRunDrillId.resolve(from: query.payload ?? "") ?? .cadencePyramids
+                let resolved = PreRunDrillId.resolve(from: query.payload ?? "") ?? .strides
                 self.drillRecommendedThisTurn = resolved
                 return "{\"drill_id\":\"\(resolved.rawValue)\",\"status\":\"interactive_drill_card_displayed\"}"
 
             case .exportToWatch:
-                let resolved = PreRunDrillId.resolve(from: query.payload ?? "") ?? .cadencePyramids
+                let resolved = PreRunDrillId.resolve(from: query.payload ?? "") ?? .strides
                 let template = DrillTemplate.template(for: resolved)
                 let baseCadence = Int(self.runRecord?.workingAvgCadence ?? 0) > 0 ? Int(self.runRecord?.workingAvgCadence ?? 0) : 155
                 let target = template.calculateTargetCadence(baseCadence)
@@ -923,7 +922,7 @@ class AnalystChatEngine: ObservableObject {
                 } else if drillStr.contains("hill") {
                     self.drillRecommendedThisTurn = .hillBounds
                 } else {
-                    self.drillRecommendedThisTurn = .cadencePyramids
+                    self.drillRecommendedThisTurn = .strides
                 }
             }
         case .displaySchedule:
@@ -934,19 +933,29 @@ class AnalystChatEngine: ObservableObject {
                 let useMetric = (UserDefaults.standard.object(forKey: "useMetricSystem") as? Bool) ?? true
                 let calendar = TrainingCalendar(calendar: Calendar.current)
                 let today = calendar.startOfDay(for: Date())
+                let toDate: Date = {
+                    if payload == "rest_of_week" {
+                        let weekEnd = calendar.weekInterval(containing: today).end
+                        return weekEnd > today ? weekEnd : (calendar.calendar.date(byAdding: .day, value: 4, to: today) ?? today)
+                    }
+                    return calendar.calendar.date(byAdding: .day, value: 5, to: today) ?? today
+                }()
                 let schedule = calendar.evaluateSchedule(
                     from: today,
-                    to: calendar.calendar.date(byAdding: .day, value: 6, to: today) ?? today,
+                    to: toDate,
                     context: ScheduleEvaluationContext(runRecords: allRuns, activeGoal: activeGoal, profile: profile, useMetric: useMetric)
                 )
-                self.scheduleRecommendedThisTurn = schedule.map { day in
+                self.scheduleRecommendedThisTurn = schedule.compactMap { day in
+                    if day.relative == .today && day.completion == .completed {
+                        return nil
+                    }
                     let isRest = day.planned.kind == .rest
                     let icon = isRest ? "bed.double.fill" : "figure.run"
-                    let durStr = isRest ? "0 min" : "\(day.planned.minutesLow)–\(day.planned.minutesHigh) min"
+                    let title = isRest ? day.planned.title : "\(day.planned.title) • \(day.planned.minutesLow)–\(day.planned.minutesHigh) min"
                     return MicrocycleDay(
                         id: "\(day.date)-\(day.planned.title)",
                         dayLabel: day.weekday,
-                        sessionTitle: "\(day.planned.title) • \(durStr)",
+                        sessionTitle: title,
                         iconName: icon,
                         isRestDay: isRest
                     )
@@ -1001,18 +1010,27 @@ class AnalystChatEngine: ObservableObject {
 
         // 1. Proactive Drill Attachment
         if self.drillRecommendedThisTurn == nil {
-            if let drill = PreRunDrillId.resolve(from: userQuestion) {
-                // User explicitly requested this drill by name
-                self.drillRecommendedThisTurn = drill
-            } else if isAffirmativeOrDisplayCommand(lowerUser) {
-                // User explicitly said "yes" or "display the drill"
-                if let drill = findRecentDrillMentionInHistory() {
-                    self.drillRecommendedThisTurn = drill
+            let isInformationalQuery: Bool = {
+                if lowerUser.contains("what drill") || lowerUser.contains("which drill") || lowerUser.contains("suggest a drill") || lowerUser.contains("recommend a drill") {
+                    return false
                 }
-            } else if !isTodayDone && (lowerResponse.contains("drill") || lowerResponse.contains("pyramid") || lowerResponse.contains("tempo surge")) {
-                // Proactively attach only if the user hasn't already exhausted today's training capacity
-                if let drill = PreRunDrillId.resolve(from: sanitizedText) {
+                return lowerUser.contains("what is") || lowerUser.contains("what's") || lowerUser.contains("purpose") || lowerUser.contains("why ") || lowerUser.contains("why do") || lowerUser.contains("explain") || lowerUser.contains("meaning") || lowerUser.contains("tell me about") || lowerUser.contains("how does")
+            }()
+
+            if !isInformationalQuery {
+                if let drill = PreRunDrillId.resolve(from: userQuestion) {
+                    // User explicitly requested this drill by name
                     self.drillRecommendedThisTurn = drill
+                } else if isAffirmativeOrDisplayCommand(lowerUser) {
+                    // User explicitly said "yes" or "display the drill"
+                    if let drill = findRecentDrillMentionInHistory() {
+                        self.drillRecommendedThisTurn = drill
+                    }
+                } else if !isTodayDone && (lowerResponse.contains("drill") || lowerResponse.contains("pyramid") || lowerResponse.contains("tempo surge")) {
+                    // Proactively attach only if the user hasn't already exhausted today's training capacity
+                    if let drill = PreRunDrillId.resolve(from: sanitizedText) {
+                        self.drillRecommendedThisTurn = drill
+                    }
                 }
             }
         }
@@ -1041,8 +1059,8 @@ class AnalystChatEngine: ObservableObject {
                     self.sessionRecommendedThisTurn = tomorrowSession
                 } else if let next = findNextScheduledRun() {
                     let day = next.day
-                    let primerTitle = day.planned.primerTitle ?? "Cadence Pyramids"
-                    let primerId = PreRunDrillId.resolve(from: primerTitle) ?? .cadencePyramids
+                    let primerTitle = day.planned.primerTitle ?? "Strides"
+                    let primerId = PreRunDrillId.resolve(from: primerTitle) ?? .strides
                     let dateStr = TrainingCalendar.weekdayFormatter.string(from: next.date)
                     let cadenceFloor = day.planned.cadenceFloor ?? 155
                     let primerTarget = DrillTemplate.template(for: primerId).calculateTargetCadence(cadenceFloor)
@@ -1092,7 +1110,7 @@ class AnalystChatEngine: ObservableObject {
             } else if lowerResponse.contains("tomorrow") && (lowerResponse.contains("rest day") || lowerResponse.contains("plan") || lowerResponse.contains("scheduled")) {
                 applyFallbackCoachAction(action: .displaySession, payload: nil)
             } else if isWeeklyScheduleQuery(lowerUser) {
-                applyFallbackCoachAction(action: .displaySchedule, payload: nil)
+                applyFallbackCoachAction(action: .displaySchedule, payload: lowerUser.contains("rest of the week") ? "rest_of_week" : nil)
             }
         }
 
@@ -1147,6 +1165,14 @@ class AnalystChatEngine: ObservableObject {
                         self.drillRecommendedThisTurn = nil
                     }
                 }
+            }
+        }
+
+        // 4. Suppress duplicate explainer cards if a drill card or daily session is already attached
+        if let explainer = self.explainerRecommendedThisTurn {
+            let drillAliases = ["pre_run_primer", "primer", "form_primer", "technique_drill", "cadence_pyramids", "rhythm_intervals", "tempo_surges", "strides", "drill", "drills"]
+            if drillAliases.contains(explainer.lowercased()) && (self.drillRecommendedThisTurn != nil || self.sessionRecommendedThisTurn != nil) {
+                self.explainerRecommendedThisTurn = nil
             }
         }
     }
@@ -1205,7 +1231,7 @@ class AnalystChatEngine: ObservableObject {
                 return resolved
             }
         }
-        return .cadencePyramids
+        return nil
     }
     #endif
 }
@@ -1332,7 +1358,7 @@ public enum AnalystResponseSanitizer {
         }
 
         // 5. Strip trailing repetitive calls-to-action (e.g. "Would you like a drill to sharpen your running form?")
-        let trailingOfferPattern = #"(?i)[\.\?!]?\s*(?:would you like (?:me to display|a drill|to review|to see|anything)[^\.\?!]*[\.\?!]?|shall i (?:display|show|guide)[^\.\?!]*[\.\?!]?)\s*$"#
+        let trailingOfferPattern = #"(?i)[\.\?!]?\s*(?:(?:would you like|shall i|let me know if you(?:'d| would)? like|do you want me to|if you(?:'d| would)? like me to)[^\.\?!]*(?:drill|schedule|plan|explanation|explainer|pace|show|display|review|guide|reinforce|walk through|anything)[^\.\?!]*[\.\?!]?)\s*$"#
         if let regex = try? NSRegularExpression(pattern: trailingOfferPattern) {
             let nsCleaned = cleaned as NSString
             let range = NSRange(location: 0, length: nsCleaned.length)
@@ -1343,6 +1369,19 @@ public enum AnalystResponseSanitizer {
             }
         }
         cleaned = cleaned.replacingOccurrences(of: #"\.{2,}"#, with: ".", options: .regularExpression)
+
+        // 6. Format snake_case drill and tool keys into clean human titles if leaked into prose
+        let snakeCaseReplacements: [(String, String)] = [
+            ("cadence_pyramids", "Cadence Pyramids"),
+            ("rhythm_intervals", "Rhythm Intervals"),
+            ("tempo_surges", "Tempo Surges"),
+            ("strides", "Strides"),
+            ("pre_run_primer", "Pre-Run Primer"),
+            ("neuromuscular_primer", "Pre-Run Primer")
+        ]
+        for (snake, readable) in snakeCaseReplacements {
+            cleaned = cleaned.replacingOccurrences(of: snake, with: readable)
+        }
 
         return SanitizedAnalystResponse(
             text: cleaned,

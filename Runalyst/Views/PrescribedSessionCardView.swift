@@ -49,63 +49,12 @@ struct PrescribedSessionCardView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            // 1. Header Bar: Scheduled Day/Environment on left, Target Goal on right
-            HStack(alignment: .center, spacing: 8) {
-                HStack(spacing: 6) {
-                    Image(systemName: timingBadgeIcon)
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundColor(timingBadgeColor)
-
-                    Text(headerDayText)
-                        .font(.subheadline.weight(.bold))
-                        .foregroundColor(.primary)
-
-                    // Indoor / Outdoor Quick Toggle
-                    Button {
-                        preferredWorkoutIsIndoor.toggle()
-                        UISelectionFeedbackGenerator().selectionChanged()
-                    } label: {
-                        HStack(spacing: 3) {
-                            Image(systemName: preferredWorkoutIsIndoor ? "figure.run.square.stack" : "sun.max.fill")
-                                .font(.system(size: 9, weight: .bold))
-                            Text(preferredWorkoutIsIndoor ? "Indoor" : "Outdoor")
-                                .font(.system(size: 10, weight: .bold))
-                        }
-                        .foregroundColor(preferredWorkoutIsIndoor ? .purple : .blue)
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 3)
-                        .background((preferredWorkoutIsIndoor ? Color.purple : Color.blue).opacity(0.12))
-                        .clipShape(Capsule())
-                    }
-
-                    Text(session.targetGoal)
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(.secondary)
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 3)
-                        .background(Color(UIColor.tertiarySystemGroupedBackground))
-                        .clipShape(Capsule())
-                }
-
-                Spacer(minLength: 4)
-            }
-
-            // 2. Title & Grounded Rationale
-            VStack(alignment: .leading, spacing: 4) {
-                Text(session.sessionTitle)
-                    .font(.title3.weight(.bold))
-                    .foregroundColor(.primary)
-
-                Text(session.groundedRationale)
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                    .lineSpacing(2)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            headerBar
 
             if session.isRestDay {
                 restDayContent
             } else {
+                activeSessionHeader
                 activeSessionContent
             }
         }
@@ -119,70 +68,202 @@ struct PrescribedSessionCardView: View {
         .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
     }
 
-    // MARK: - Rest Day Content
+    // MARK: - Header Bar
 
-    private var restDayContent: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 10) {
-                ZStack {
-                    Circle()
-                        .fill(Color.teal.opacity(0.15))
-                        .frame(width: 36, height: 36)
-                    Image(systemName: "bed.double.fill")
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundColor(.teal)
+    private var headerBar: some View {
+        HStack(alignment: .center, spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: timingBadgeIcon)
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(timingBadgeColor)
+
+                Text(headerDayText)
+                    .font(.subheadline.weight(.bold))
+                    .foregroundColor(.primary)
+
+                // Indoor / Outdoor Quick Toggle
+                Button {
+                    preferredWorkoutIsIndoor.toggle()
+                    UISelectionFeedbackGenerator().selectionChanged()
+                } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: preferredWorkoutIsIndoor ? "figure.run.square.stack" : "sun.max.fill")
+                            .font(.system(size: 9, weight: .bold))
+                        Text(preferredWorkoutIsIndoor ? "Indoor" : "Outdoor")
+                            .font(.system(size: 10, weight: .bold))
+                    }
+                    .foregroundColor(preferredWorkoutIsIndoor ? .purple : .blue)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background((preferredWorkoutIsIndoor ? Color.purple : Color.blue).opacity(0.12))
+                    .clipShape(Capsule())
                 }
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("STRUCTURAL RECOVERY & ADAPTATION")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundColor(.teal)
+                Text(session.targetGoal)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(Color(UIColor.tertiarySystemGroupedBackground))
+                    .clipShape(Capsule())
+            }
 
-                    Text("Tendon remodeling & glycogen restoration")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+            Spacer(minLength: 4)
+        }
+    }
+
+    // MARK: - Active Session Header
+
+    private var activeSessionHeader: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(session.sessionTitle)
+                .font(.title3.weight(.bold))
+                .foregroundColor(.primary)
+
+            let parsed = parseRationale(session.groundedRationale)
+            VStack(alignment: .leading, spacing: 2) {
+                if let headline = parsed.headline {
+                    Text(headline)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(.primary)
+                }
+                Text(parsed.body)
+                    .font(.subheadline)
+                    .foregroundColor(Color(UIColor.label).opacity(0.85))
+                    .lineSpacing(3)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    // MARK: - Rest Day Content (Streamlined & Glanceable with Zero Card-in-Card Nesting)
+
+    private var restDayContent: some View {
+        let parsedRationale = parseRationale(session.groundedRationale)
+
+        return VStack(alignment: .leading, spacing: 12) {
+            // Title & Adaptation Focus
+            VStack(alignment: .leading, spacing: 4) {
+                Text(session.sessionTitle)
+                    .font(.title3.weight(.bold))
+                    .foregroundColor(.primary)
+
+                HStack(spacing: 5) {
+                    Image(systemName: "heart.text.square.fill")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(Color(red: 0.0, green: 0.75, blue: 0.65))
+
+                    Text("Tendon Remodeling & Glycogen Restoration")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(Color(red: 0.0, green: 0.72, blue: 0.62))
                 }
             }
 
-            // Optional Active Recovery Override Button
-            HStack(alignment: .center) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("20m Zone 1 Flush")
+            // Glanceable Micro-Stat Grid (Transforms Text-Heavy Rationale into Quick Metrics)
+            if let metrics = parsedRationale.statMetrics, !metrics.isEmpty {
+                HStack(spacing: 8) {
+                    ForEach(metrics, id: \.title) { metric in
+                        HStack(spacing: 6) {
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(metric.title.uppercased())
+                                    .font(.system(size: 8, weight: .bold))
+                                    .foregroundColor(Color(UIColor.secondaryLabel))
+                                Text(metric.value)
+                                    .font(.system(size: 11, weight: .bold))
+                                    .monospacedDigit()
+                                    .foregroundColor(.primary)
+                            }
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 6)
+                        .background(Color(UIColor.tertiarySystemGroupedBackground).opacity(0.85))
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    }
+                }
+                .padding(.top, 2)
+            }
+
+            // High-Contrast Explanatory Rationale Body
+            VStack(alignment: .leading, spacing: 3) {
+                if let headline = parsedRationale.headline, parsedRationale.statMetrics == nil {
+                    Text(headline)
                         .font(.subheadline.weight(.semibold))
                         .foregroundColor(.primary)
-                    Text("Optional active recovery (<135 BPM)")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
+                }
+                Text(parsedRationale.body)
+                    .font(.subheadline)
+                    .foregroundColor(Color(UIColor.label).opacity(0.85))
+                    .lineSpacing(3)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            // Clean Divider (Eliminates Nested Card-in-Card Container)
+            Divider()
+                .opacity(0.4)
+                .padding(.vertical, 2)
+
+            // Optional Active Recovery Flush Action Row
+            HStack(alignment: .center, spacing: 10) {
+                ZStack {
+                    Circle()
+                        .fill(Color.teal.opacity(0.12))
+                        .frame(width: 34, height: 34)
+
+                    Image(systemName: "figure.walk")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(.teal)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text("20m Zone 1 Flush")
+                            .font(.subheadline.weight(.bold))
+                            .foregroundColor(.primary)
+
+                        Text("OPTIONAL")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundColor(.secondary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color(UIColor.tertiarySystemGroupedBackground))
+                            .clipShape(Capsule())
+                    }
+
+                    Text("Active recovery flush • HR < 135 BPM")
+                        .font(.caption)
+                        .foregroundColor(Color(UIColor.secondaryLabel))
                 }
 
                 Spacer(minLength: 8)
 
+                // High-Clarity Primary Action Button (Electric Blue + Apple Watch Glyph + 44pt Touch Target)
                 Button {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     if let onScheduleFlushOverride {
                         onScheduleFlushOverride()
                     } else {
                         onPreviewMainRun?()
                     }
                 } label: {
-                    HStack(spacing: 4) {
+                    HStack(spacing: 5) {
                         Image(systemName: "applewatch")
-                            .font(.system(size: 9, weight: .bold))
+                            .font(.system(size: 11, weight: .bold))
                         Text("Preview")
-                            .font(.caption.bold())
+                            .font(.system(size: 12, weight: .bold))
                     }
-                    .padding(.horizontal, 10)
-                    .frame(height: 28)
-                    .background(Color(UIColor.secondarySystemFill))
-                    .foregroundColor(.primary)
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(Color(red: 0.0, green: 0.55, blue: 1.0))
                     .clipShape(Capsule())
+                    .shadow(color: Color.blue.opacity(0.2), radius: 3, x: 0, y: 1)
                 }
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+                .accessibilityLabel("Preview 20m Zone 1 Flush on Apple Watch")
             }
-            .padding(.top, 4)
         }
-        .padding(14)
-        .background(Color(UIColor.tertiarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     // MARK: - Active Session Content (Primer + Main Run)
@@ -244,21 +325,24 @@ struct PrescribedSessionCardView: View {
 
                     if let onPreviewPrimer {
                         Button {
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                             onPreviewPrimer()
                         } label: {
-                            HStack(spacing: 4) {
+                            HStack(spacing: 5) {
                                 Image(systemName: "applewatch")
-                                    .font(.system(size: 9, weight: .bold))
+                                    .font(.system(size: 11, weight: .bold))
                                 Text("Preview")
-                                    .font(.caption.bold())
+                                    .font(.system(size: 12, weight: .bold))
                             }
-                            .padding(.horizontal, 10)
-                            .frame(height: 28)
-                            .background(Color(UIColor.secondarySystemFill))
-                            .foregroundColor(.primary)
+                            .foregroundColor(Color(red: 0.0, green: 0.72, blue: 0.58))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Color(red: 0.0, green: 0.8, blue: 0.65).opacity(0.15))
                             .clipShape(Capsule())
                         }
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
+                        .accessibilityLabel("Preview Pre-Run Primer on Apple Watch")
                     }
                 }
 
@@ -364,21 +448,24 @@ struct PrescribedSessionCardView: View {
 
                     if let onPreviewMainRun {
                         Button {
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                             onPreviewMainRun()
                         } label: {
-                            HStack(spacing: 4) {
+                            HStack(spacing: 5) {
                                 Image(systemName: "applewatch")
-                                    .font(.system(size: 9, weight: .bold))
+                                    .font(.system(size: 11, weight: .bold))
                                 Text("Preview")
-                                    .font(.caption.bold())
+                                    .font(.system(size: 12, weight: .bold))
                             }
-                            .padding(.horizontal, 10)
-                            .frame(height: 28)
-                            .background(Color(UIColor.secondarySystemFill))
-                            .foregroundColor(.primary)
+                            .foregroundColor(Color(red: 0.0, green: 0.55, blue: 1.0))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Color(red: 0.0, green: 0.55, blue: 1.0).opacity(0.15))
                             .clipShape(Capsule())
                         }
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
+                        .accessibilityLabel("Preview Main Run on Apple Watch")
                     }
                 }
 
@@ -533,5 +620,64 @@ struct PrescribedSessionCardView: View {
         } else {
             return "\(mins) MIN"
         }
+    }
+
+    struct ParsedRationale {
+        let headline: String?
+        let body: String
+        let statMetrics: [(title: String, value: String)]?
+    }
+
+    private func parseRationale(_ text: String) -> ParsedRationale {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // 1. Check for 48-Hour Volume Compression
+        if trimmed.contains("48-Hour Volume Compression") {
+            var metrics: [(title: String, value: String)] = []
+
+            let minRegex = try? NSRegularExpression(
+                pattern: #"(\d+)\s*min in the last 48 hours"#,
+                options: .caseInsensitive
+            )
+            if let match = minRegex?.firstMatch(in: trimmed, range: NSRange(trimmed.startIndex..., in: trimmed)),
+               let range = Range(match.range(at: 1), in: trimmed) {
+                metrics.append((title: "48h Volume", value: "\(trimmed[range]) min"))
+            }
+
+            let pctRegex = try? NSRegularExpression(
+                pattern: #"\((\d+)%\s*of"#,
+                options: .caseInsensitive
+            )
+            if let match = pctRegex?.firstMatch(in: trimmed, range: NSRange(trimmed.startIndex..., in: trimmed)),
+               let range = Range(match.range(at: 1), in: trimmed) {
+                metrics.append((title: "Weekly Share", value: "\(trimmed[range])%"))
+            }
+
+            metrics.append((title: "Recovery", value: "Recommended"))
+
+            let bodyText: String
+            if let colonIndex = trimmed.firstIndex(of: ":") {
+                bodyText = String(trimmed[trimmed.index(after: colonIndex)...]).trimmingCharacters(in: .whitespacesAndNewlines)
+            } else {
+                bodyText = trimmed
+            }
+
+            return ParsedRationale(
+                headline: "48-Hour Volume Compression",
+                body: bodyText,
+                statMetrics: metrics.isEmpty ? nil : metrics
+            )
+        }
+
+        // 2. Generic "Headline: Body" form
+        if let colonIndex = trimmed.firstIndex(of: ":") {
+            let prefix = String(trimmed[..<colonIndex]).trimmingCharacters(in: .whitespacesAndNewlines)
+            if prefix.count < 35 {
+                let bodyText = String(trimmed[trimmed.index(after: colonIndex)...]).trimmingCharacters(in: .whitespacesAndNewlines)
+                return ParsedRationale(headline: prefix, body: bodyText, statMetrics: nil)
+            }
+        }
+
+        return ParsedRationale(headline: nil, body: trimmed, statMetrics: nil)
     }
 }

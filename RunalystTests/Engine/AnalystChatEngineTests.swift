@@ -431,7 +431,67 @@ final class AnalystChatEngineTests: XCTestCase {
             let input2 = "Your readiness is strong—great! But tomorrow is a rest day for recovery. Would you like me to display your current readiness and workload overview?"
             let cleaned2 = AnalystResponseSanitizer.sanitize(text: input2).text
             XCTAssertEqual(cleaned2, "Your readiness is strong—great! But tomorrow is a rest day for recovery.")
+
+            let input3 = "In your schedule, there's a Form Primer drill designed to reinforce efficient mechanics without adding fatigue. Would you like me to show you the cadence drill to reinforce this rhythm?"
+            let cleaned3 = AnalystResponseSanitizer.sanitize(text: input3).text
+            XCTAssertEqual(cleaned3, "In your schedule, there's a Form Primer drill designed to reinforce efficient mechanics without adding fatigue.")
+
+            let input4 = "The pre-run primer is designed to wake up your neuromuscular system. Would you like me to display the Cadence Pyramids drill so you can review the steps?"
+            let cleaned4 = AnalystResponseSanitizer.sanitize(text: input4).text
+            XCTAssertEqual(cleaned4, "The pre-run primer is designed to wake up your neuromuscular system.")
+
+            let input5 = "Solid work today. Let me know if you'd like a drill to sharpen your turnover."
+            let cleaned5 = AnalystResponseSanitizer.sanitize(text: input5).text
+            XCTAssertEqual(cleaned5, "Solid work today.")
         }
+    }
+
+    func testInformationalPrimerQueryDoesNotAttachDrillCard() async {
+        let run = makeRunRecord(date: Date())
+        let engine = AnalystChatEngine(runRecord: run, mode: .macroCoach)
+
+        engine.modelResponder = { _, _ in
+            "A pre-run primer is an optional 5–10 min neuromuscular activation drill done before main runs to activate turnover and protect joints."
+        }
+
+        await engine.sendMessage("What is the purpose of the pre run primer?")
+
+        XCTAssertEqual(engine.messages.count, 2)
+        let analystMsg = engine.messages[1]
+        XCTAssertEqual(analystMsg.sender, .analyst)
+        XCTAssertNil(analystMsg.attachedDrillId, "Informational query about primers must not proactively attach an interactive drill card")
+    }
+
+    func testInformationalCadenceQueryDoesNotAttachDrillCard() async {
+        let run = makeRunRecord(date: Date())
+        let engine = AnalystChatEngine(runRecord: run, mode: .macroCoach)
+
+        engine.modelResponder = { _, _ in
+            "Your cadence of 156 SPM was consistent with your baseline for this pace. Keep rhythm smooth."
+        }
+
+        await engine.sendMessage("Why is my cadence 156 SPM?")
+
+        XCTAssertEqual(engine.messages.count, 2)
+        let analystMsg = engine.messages[1]
+        XCTAssertEqual(analystMsg.sender, .analyst)
+        XCTAssertNil(analystMsg.attachedDrillId, "Informational cadence query must not proactively attach an interactive drill card")
+    }
+
+    func testExplicitStridesRequestAttachesStridesCard() async {
+        let run = makeRunRecord(date: Date())
+        let engine = AnalystChatEngine(runRecord: run, mode: .macroCoach)
+
+        engine.modelResponder = { _, _ in
+            "Strides help activate your nervous system and encourage light, quick turnover."
+        }
+
+        await engine.sendMessage("Can you show me strides?")
+
+        XCTAssertEqual(engine.messages.count, 2)
+        let analystMsg = engine.messages[1]
+        XCTAssertEqual(analystMsg.sender, .analyst)
+        XCTAssertEqual(analystMsg.attachedDrillId, .strides, "Explicit request for strides must attach Strides drill card")
     }
 
     // MARK: - 14. Decoupled Macro Coach (Zero Runs / No RunRecord Anchor)
@@ -509,5 +569,50 @@ final class AnalystChatEngineTests: XCTestCase {
             let year = cal.component(.year, from: Date())
             XCTAssertTrue(instructions.contains("\(year)"), "System instructions must include the current year for temporal grounding")
         }
+    }
+
+    func testInformationalPrimerQueryDoesNotAttachWorkoutCard() async {
+        let engine = AnalystChatEngine(modelContext: nil, runRecord: nil, mode: .macroCoach)
+
+        engine.modelResponder = { _, _ in
+            "The pre-run primer is a 5-10 minute neuromuscular activation routine done before your run to prime turnover and prepare your stride."
+        }
+
+        await engine.sendMessage("What is the purpose of the pre run primer?")
+
+        XCTAssertEqual(engine.messages.count, 2)
+        let analystMsg = engine.messages[1]
+        XCTAssertNil(analystMsg.attachedDrillId, "Informational query must not proactively attach a drill card")
+        XCTAssertNil(analystMsg.attachedSession, "Informational query must not attach a full workout session card")
+    }
+
+    func testTrailingOfferIsSanitizedFromAnalystMessage() async {
+        let engine = AnalystChatEngine(modelContext: nil, runRecord: nil, mode: .macroCoach)
+
+        engine.modelResponder = { _, _ in
+            "Your cadence was 168 SPM, right on target for your aerobic pace. Would you like me to display the cadence drill to reinforce this rhythm?"
+        }
+
+        await engine.sendMessage("How was my cadence?")
+
+        XCTAssertEqual(engine.messages.count, 2)
+        let analystMsg = engine.messages[1]
+        XCTAssertFalse(analystMsg.text.contains("Would you like"), "Trailing offer must be stripped")
+        XCTAssertTrue(analystMsg.text.contains("168 SPM"))
+    }
+
+    func testSnakeCaseDrillNamesAreFormattedToHumanReadableTitles() async {
+        let engine = AnalystChatEngine(modelContext: nil, runRecord: nil, mode: .macroCoach)
+
+        engine.modelResponder = { _, _ in
+            "Here is your cadence drill: cadence_pyramids. It's interactive—feel free to try it."
+        }
+
+        await engine.sendMessage("Give me a drill")
+
+        XCTAssertEqual(engine.messages.count, 2)
+        let analystMsg = engine.messages[1]
+        XCTAssertFalse(analystMsg.text.contains("cadence_pyramids"), "Snake case drill name must be formatted")
+        XCTAssertTrue(analystMsg.text.contains("Cadence Pyramids"), "Should contain formatted title")
     }
 }

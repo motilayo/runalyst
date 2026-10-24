@@ -349,29 +349,25 @@ struct WorkoutAnalysisContext {
 
                 if isFastestRep {
                     grade = "A+"
-                    observation = self.isIndoor
-                        ? "Fastest interval on belt — peak turnover at \(wCadence) SPM"
-                        : "Fastest interval — peak turnover at \(wCadence) SPM"
+                    observation = "Fastest interval (\(wCadence) SPM)"
                 } else if isSlowestRep && paceDeltaVsMean <= -10 {
                     grade = "B"
-                    observation = self.isIndoor
-                        ? "Pace slowed by \(abs(paceDeltaVsMean))s/km — late fatigue elevated by indoor heat"
-                        : "Pace slowed by \(abs(paceDeltaVsMean))s/km — late-interval fatigue"
+                    observation = "Pace fade (-\(abs(paceDeltaVsMean))s/km)"
                 } else if abs(paceDeltaVsMean) <= 2 && wCadence >= 150 {
                     grade = "A+"
-                    observation = "Locked-in pace — perfectly matched your average interval speed"
+                    observation = "Even pacing (matched average)"
                 } else if abs(paceDeltaVsMean) <= 6 && wCadence >= 150 {
                     grade = "A"
-                    observation = "Controlled effort — steady pacing within \(abs(paceDeltaVsMean))s of your average"
+                    observation = "Controlled effort (within \(abs(paceDeltaVsMean))s)"
                 } else if wCadence < 150 {
                     grade = "B-"
-                    observation = "Cadence slowed to \(wCadence) SPM — keep turnover quick and light under your hips"
+                    observation = "Cadence at \(wCadence) SPM (below floor)"
                 } else if paceDeltaVsMean > 6 {
                     grade = "A"
-                    observation = "Strong surge — \(paceDeltaVsMean)s/km faster than your average rep"
+                    observation = "Pace surge (+\(paceDeltaVsMean)s/km)"
                 } else {
                     grade = "A-"
-                    observation = "Solid effort — steady rhythm at \(wCadence) SPM"
+                    observation = "Steady rhythm (\(wCadence) SPM)"
                 }
 
                 iEvals.append(IntervalRepEvaluation(
@@ -412,10 +408,10 @@ struct WorkoutAnalysisContext {
             let diff = self.firstHalfPaceSec - self.secondHalfPaceSec // positive = 2nd half faster
             if diff >= 6.0 {
                 let secStr = Int(diff.rounded())
-                self.pacingTrendDescription = "Negative split execution: second half was \(secStr)s/km faster than first half"
+                self.pacingTrendDescription = "Negative split execution: second half was \(secStr)s/km faster than first half across continuous splits"
             } else if diff <= -6.0 {
                 let secStr = abs(Int(diff.rounded()))
-                self.pacingTrendDescription = "Positive split fade: pace slowed by +\(secStr)s/km in the second half"
+                self.pacingTrendDescription = "Positive split fade: pace slowed by +\(secStr)s/km across later continuous splits"
             } else {
                 self.pacingTrendDescription = "Even, metronomic pacing discipline throughout"
             }
@@ -560,32 +556,32 @@ struct WorkoutAnalysisContext {
                 if isFast && resolvedSplits.count > 1 {
                     grade = "A"
                     if cadDelta >= 3 {
-                        note = "fastest split with sharp \(cadDelta) SPM cadence surge and decisive pace control"
+                        note = "Fastest split (+\(cadDelta) SPM surge)"
                     } else {
-                        note = "fastest split of the run with strong pace discipline"
+                        note = "Fastest split"
                     }
                 } else if isSlow && resolvedSplits.count > 1 {
                     grade = "B"
                     if i == 0 {
-                        note = "opening kilometer, controlled pace as you settled into your stride"
+                        note = "Opening kilometer"
                     } else {
-                        note = "slowest split, pacing eased back while maintaining turnover"
+                        note = "Slowest split (-\(abs(paceDelta))s/km)"
                     }
                 } else if s.avgCadence < 150 {
                     grade = "B-"
-                    note = "cadence dipped to \(Int(s.avgCadence)) SPM below the 150 SPM floor"
+                    note = "Cadence at \(Int(s.avgCadence)) SPM (below floor)"
                 } else if let hrDelta = hrDeltaVsPrior, hrDelta >= 7 && paceDelta <= -3 {
                     grade = "B"
-                    note = "aerobic decoupling with heart rate climbing +\(hrDelta) BPM despite slower pace"
+                    note = "Aerobic decoupling (+\(hrDelta) BPM)"
                 } else if paceDelta >= 5 {
                     grade = "A-"
-                    note = "strong sustained surge (\(paceDelta)s/km faster than run average)"
+                    note = "Pace surge (+\(paceDelta)s/km)"
                 } else if paceDelta <= -5 {
                     grade = "B"
-                    note = "pacing eased back by \(abs(paceDelta))s/km to manage cardiovascular effort"
+                    note = "Pace eased (-\(abs(paceDelta))s/km)"
                 } else {
                     grade = "A-"
-                    note = "even metronomic pacing at \(pFormatted) with steady \(Int(s.avgCadence)) SPM turnover"
+                    note = "Steady pacing (\(pFormatted), \(Int(s.avgCadence)) SPM)"
                 }
             }
 

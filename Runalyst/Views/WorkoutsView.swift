@@ -79,10 +79,21 @@ struct WorkoutsView: View {
                         showingAnalystChat = true
                         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     } label: {
-                        Image(systemName: "bubble.left.and.bubble.right.fill")
-                            .foregroundColor(.purple)
+                        HStack(spacing: 5) {
+                            Image(systemName: "bubble.left.and.bubble.right.fill")
+                                .font(.system(size: 12, weight: .bold))
+                            Text("Coach")
+                                .font(.subheadline.weight(.bold))
+                        }
+                        .foregroundColor(.purple)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Color.purple.opacity(0.12))
+                        .clipShape(Capsule())
                     }
-                    .accessibilityLabel("AI Coach")
+                    .frame(minHeight: 44)
+                    .accessibilityLabel("AI Running Coach")
+                    .accessibilityHint("Opens AI Biomechanical Analyst and Coach chat")
                 }
             }
             .toolbarBackground(.visible, for: .navigationBar)
@@ -416,29 +427,6 @@ struct WorkoutsView: View {
             dto: dto,
             customCoachingTip: session.groundedRationale
         )
-    }
-
-    // MARK: - This Week's Schedule
-
-    private func parseSessionSchedule(_ title: String) -> (name: String, detail: String?) {
-        // Handle parentheses like "Zone 1 Recovery Flush (40m)" or "(4 km)"
-        if let openParen = title.range(of: " ("), title.hasSuffix(")") {
-            let name = String(title[..<openParen.lowerBound])
-            let detail = String(title[openParen.upperBound...].dropLast())
-            return (name, detail)
-        }
-        // Handle trailing distance/duration like "Tempo Surges 30m" or "Long Run 16 km" or "Zone 2 Steady 45m"
-        let patterns = [
-            " 16 km", " 14 km", " 10 km", " 8 km", " 7 km", " 6 km", " 5 km",
-            " 10 mi", " 8.5 mi", " 6 mi", " 5 mi", " 4.5 mi", " 3.5 mi", " 3 mi",
-            " 50m", " 45m", " 40m", " 35m", " 30m", " 25m", " 20m"
-        ]
-        for pattern in patterns where title.hasSuffix(pattern) {
-            let name = String(title.dropLast(pattern.count))
-            let detail = pattern.trimmingCharacters(in: .whitespaces)
-            return (name, detail)
-        }
-        return (title, nil)
     }
 
     private func microcycleSection(microcycle: [MicrocycleDay]) -> some View {

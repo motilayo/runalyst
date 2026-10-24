@@ -1,5 +1,6 @@
 import Foundation
 import SwiftData
+import RunalystCore
 
 // MARK: - Readiness Domain
 
@@ -179,16 +180,21 @@ enum ReadinessEvaluator {
         let acuteRuns = window.filter { $0.date >= acuteCutoff }
         let trailingRuns = window.filter { $0.date < acuteCutoff }
 
-        // --- ACWR (coupled: chronic window includes the acute week) ---
-        let acuteLoad = acuteRuns.map(\.trainingLoad).reduce(0, +)
-        let chronicWeeklyLoad = window.map(\.trainingLoad).reduce(0, +) / (Double(chronicWindowDays) / 7.0)
-
-        let oldestDate = window.last?.date ?? now
-        let historySpanDays = now.timeIntervalSince(oldestDate) / dayInterval
-        let hasChronicHistory = historySpanDays >= Double(minimumHistorySpanDays)
-            && window.count >= minimumChronicRuns
-            && chronicWeeklyLoad > 0
-        let acwr: Double? = hasChronicHistory ? acuteLoad / chronicWeeklyLoad : nil
+        // --- ACWR (coupled: chronic window includes the acute week) via pure RunalystCore BanisterReadinessCore ---
+        let workloadSessions = window.map {
+            WorkloadSession(
+                date: $0.date,
+                durationMinutes: max(0.0, $0.durationSeconds) / 60.0,
+                distanceMeters: $0.distanceMeters,
+                percentZone4: $0.percentZone4,
+                isHardSession: $0.isHardSession,
+                tags: $0.tags
+            )
+        }
+        let acwrResult = BanisterReadinessCore.calculateACWR(sessions: workloadSessions, now: now)
+        let acuteLoad = acwrResult.acuteLoad
+        let chronicWeeklyLoad = acwrResult.chronicWeeklyLoad
+        let acwr: Double? = acwrResult.acwr
 
         // --- Mileage drop vs trailing 3-week average ---
         let acuteMeters = acuteRuns.map(\.distanceMeters).reduce(0, +)
@@ -204,7 +210,7 @@ enum ReadinessEvaluator {
         if hasConsecutiveHardDays(in: acuteRuns, triggerCutoff: triggerCutoff, calendar: calendar) {
             fatigueTriggers.append(.consecutiveHardDays)
         }
-        if let ratio = acwr, ratio > acwrFatigueThreshold {
+        if let ratio = acwr, acwrResult.zone == .spike || ratio > acwrFatigueThreshold {
             fatigueTriggers.append(.acwrSpike(ratio: ratio))
         }
         let lastTwo = Array(acuteRuns.prefix(2))

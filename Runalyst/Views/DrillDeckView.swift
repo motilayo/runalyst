@@ -2,25 +2,6 @@ import SwiftData
 import SwiftUI
 import WorkoutKit
 
-struct DrillRow: View {
-    var icon: String
-    var text: String
-    var body: some View {
-        if !text.isEmpty {
-            HStack(alignment: .top, spacing: 8) {
-                Image(systemName: icon)
-                    .foregroundColor(.secondary)
-                    .frame(width: 24, alignment: .top)
-                Text(text)
-                    .font(.subheadline)
-                    .foregroundColor(.primary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-        }
-    }
-}
-
 struct DrillDeckView: View {
     var drills: [DrillRecommendation]
     @State private var activeCardIndex: Int = 0
@@ -147,15 +128,10 @@ struct DrillCardView: View {
     }
 
     var body: some View {
-        let readiness = readinessAssessment
         let preRunId = resolvedPreRunId
         let template = DrillTemplate.template(for: preRunId)
         let displayTitle = drill.formattedTitle.isEmpty ? template.title : drill.formattedTitle
         let currentDrill = effectivePreRunDrill
-        let isAdapted = readiness.state.applies(to: preRunId)
-        let work = isAdapted ? currentDrill.defaultWorkString : ((drill.drillWork?.isEmpty == false ? drill.drillWork : nil) ?? template.defaultWork)
-        let recovery = (isAdapted && readiness.state == .deload) ? currentDrill.defaultRecoveryString : ((drill.drillRecovery?.isEmpty == false ? drill.drillRecovery : nil) ?? template.defaultRecovery)
-        let effort = (drill.drillEffort?.isEmpty == false ? drill.drillEffort : nil) ?? template.defaultEffort
         let purpose = (drill.drillPurpose?.isEmpty == false ? drill.drillPurpose : nil) ?? template.defaultPurpose
         let cue: String? = {
             if let cueText = drill.drillCues, !cueText.isEmpty, !cueText.localizedCaseInsensitiveContains("spm") {

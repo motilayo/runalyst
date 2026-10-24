@@ -78,6 +78,25 @@ final class DynamicAssetGroundingTests: XCTestCase {
         XCTAssertNotNil(info?.targetRange)
     }
 
+    func testPreRunPrimerExplainerAssetResolutionAndInfo() {
+        let asset = CoachingAssetLibrary.resolve(key: "pre_run_primer")
+        XCTAssertNotNil(asset)
+        XCTAssertEqual(asset?.domain, .drills)
+        XCTAssertEqual(asset?.title, "Pre-Run Primer")
+
+        let alias = CoachingAssetLibrary.resolve(key: "form_primer")
+        XCTAssertEqual(alias?.key, "pre_run_primer")
+
+        let info = CoachingAssetLibrary.explainerInfo(for: "pre_run_primer")
+        XCTAssertNotNil(info)
+        XCTAssertEqual(info?.title, "Pre-Run Primer")
+        XCTAssertTrue(info?.overview.contains("neuromuscular activation") == true)
+
+        // Non-standard key never returns nil so UI buttons never fail silently
+        let fallback = CoachingAssetLibrary.explainerInfo(for: "unknown_metric")
+        XCTAssertNotNil(fallback)
+    }
+
     // MARK: - AC-2: 3-Tool Facade Payload Grounding
 
     func testDynamicSelectionOfWorkoutExplainers() {

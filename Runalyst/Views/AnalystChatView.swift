@@ -1016,7 +1016,9 @@ struct InlineChatExplainerCard: View {
             return Color(red: 0.18, green: 0.82, blue: 0.35) // Vibrant Green
         case .physiology:
             return .purple
-        case .physics, .drills, .system:
+        case .drills:
+            return Color(red: 0.0, green: 0.8, blue: 0.65) // Drill Teal/Green
+        case .physics, .system:
             return .orange
         }
     }
@@ -1047,6 +1049,8 @@ struct InlineChatExplainerCard: View {
             return "figure.run"
         case "vo2_max":
             return "lungs.fill"
+        case "pre_run_primer", "cadence_pyramids", "rhythm_intervals", "tempo_surges", "strides":
+            return "figure.run.square.stack.fill"
         default:
             return "info.circle.fill"
         }
@@ -1145,9 +1149,16 @@ struct InlineChatExplainerCard: View {
             // Primary Action Button (Sweaty Hands minimum 44pt height target)
             Button(action: {
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                if let info = CoachingAssetLibrary.explainerInfo(for: asset.key, userMetricDisplay: liveMetricDisplay) {
-                    onOpenExplainer(info)
-                }
+                let info = CoachingAssetLibrary.explainerInfo(for: asset.key, userMetricDisplay: liveMetricDisplay) ?? MetricExplainerInfo(
+                    title: asset.title,
+                    mode: "Working Stats",
+                    overview: asset.overview,
+                    modeContext: asset.modeContext,
+                    whyItMatters: asset.whyItMatters,
+                    targetRange: asset.targetRange,
+                    userMetricDisplay: liveMetricDisplay
+                )
+                onOpenExplainer(info)
             }) {
                 HStack(spacing: 8) {
                     Image(systemName: "book.pages")
