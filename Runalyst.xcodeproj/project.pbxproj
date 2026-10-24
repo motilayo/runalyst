@@ -58,6 +58,11 @@
 		B1110055D4E5F60718293A55 /* Runalyst/Views/UpcomingScheduleCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110055D4E5F60718293A55 /* Runalyst/Views/UpcomingScheduleCardView.swift */; };
 		B1110056D4E5F60718293A56 /* Runalyst/Views/DrillPrimerCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110056D4E5F60718293A56 /* Runalyst/Views/DrillPrimerCardView.swift */; };
 		B1110057D4E5F60718293A57 /* Runalyst/Views/GoalReadinessCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110057D4E5F60718293A57 /* Runalyst/Views/GoalReadinessCard.swift */; };
+		E1110001D4E5F60718293A01 /* Runalyst/Views/DesignSystem/LiquidGlassCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1110001D4E5F60718293A01 /* Runalyst/Views/DesignSystem/LiquidGlassCard.swift */; };
+		E1110002D4E5F60718293A02 /* Runalyst/Views/DesignSystem/MiniStatTile.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1110002D4E5F60718293A02 /* Runalyst/Views/DesignSystem/MiniStatTile.swift */; };
+		E1110003D4E5F60718293A03 /* Runalyst/Views/DesignSystem/CoachPillButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1110003D4E5F60718293A03 /* Runalyst/Views/DesignSystem/CoachPillButton.swift */; };
+		E1110004D4E5F60718293A04 /* Runalyst/Views/DesignSystem/GlassBoxExplainerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1110004D4E5F60718293A04 /* Runalyst/Views/DesignSystem/GlassBoxExplainerSheet.swift */; };
+		E1110005D4E5F60718293A05 /* Runalyst/Views/DesignSystem/PillFilterStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1110005D4E5F60718293A05 /* Runalyst/Views/DesignSystem/PillFilterStrip.swift */; };
 		B1110005D4E5F60718293A05 /* Runalyst/Views/RunVarianceMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110005D4E5F60718293A05 /* Runalyst/Views/RunVarianceMapView.swift */; };
 		B1110080D4E5F60718293A80 /* Runalyst/Models/WorkoutTelemetryModality.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110080D4E5F60718293A80 /* Runalyst/Models/WorkoutTelemetryModality.swift */; };
 		B1110081D4E5F60718293A81 /* Runalyst/Views/HeartRateTrajectoryMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110081D4E5F60718293A81 /* Runalyst/Views/HeartRateTrajectoryMapView.swift */; };
@@ -186,6 +191,11 @@
 		A1110055D4E5F60718293A55 /* Runalyst/Views/UpcomingScheduleCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/UpcomingScheduleCardView.swift; sourceTree = SOURCE_ROOT; };
 		A1110056D4E5F60718293A56 /* Runalyst/Views/DrillPrimerCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/DrillPrimerCardView.swift; sourceTree = SOURCE_ROOT; };
 		A1110057D4E5F60718293A57 /* Runalyst/Views/GoalReadinessCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/GoalReadinessCard.swift; sourceTree = SOURCE_ROOT; };
+		D1110001D4E5F60718293A01 /* Runalyst/Views/DesignSystem/LiquidGlassCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/DesignSystem/LiquidGlassCard.swift; sourceTree = SOURCE_ROOT; };
+		D1110002D4E5F60718293A02 /* Runalyst/Views/DesignSystem/MiniStatTile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/DesignSystem/MiniStatTile.swift; sourceTree = SOURCE_ROOT; };
+		D1110003D4E5F60718293A03 /* Runalyst/Views/DesignSystem/CoachPillButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/DesignSystem/CoachPillButton.swift; sourceTree = SOURCE_ROOT; };
+		D1110004D4E5F60718293A04 /* Runalyst/Views/DesignSystem/GlassBoxExplainerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/DesignSystem/GlassBoxExplainerSheet.swift; sourceTree = SOURCE_ROOT; };
+		D1110005D4E5F60718293A05 /* Runalyst/Views/DesignSystem/PillFilterStrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/DesignSystem/PillFilterStrip.swift; sourceTree = SOURCE_ROOT; };
 		A1110005D4E5F60718293A05 /* Runalyst/Views/RunVarianceMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/RunVarianceMapView.swift; sourceTree = SOURCE_ROOT; };
 		A1110080D4E5F60718293A80 /* Runalyst/Models/WorkoutTelemetryModality.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Models/WorkoutTelemetryModality.swift; sourceTree = SOURCE_ROOT; };
 		A1110081D4E5F60718293A81 /* Runalyst/Views/HeartRateTrajectoryMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/HeartRateTrajectoryMapView.swift; sourceTree = SOURCE_ROOT; };
@@ -505,6 +515,11 @@
 				A1110055D4E5F60718293A55 /* Runalyst/Views/UpcomingScheduleCardView.swift */,
 				A1110056D4E5F60718293A56 /* Runalyst/Views/DrillPrimerCardView.swift */,
 				A1110057D4E5F60718293A57 /* Runalyst/Views/GoalReadinessCard.swift */,
+				D1110001D4E5F60718293A01 /* Runalyst/Views/DesignSystem/LiquidGlassCard.swift */,
+				D1110002D4E5F60718293A02 /* Runalyst/Views/DesignSystem/MiniStatTile.swift */,
+				D1110003D4E5F60718293A03 /* Runalyst/Views/DesignSystem/CoachPillButton.swift */,
+				D1110004D4E5F60718293A04 /* Runalyst/Views/DesignSystem/GlassBoxExplainerSheet.swift */,
+				D1110005D4E5F60718293A05 /* Runalyst/Views/DesignSystem/PillFilterStrip.swift */,
 				A1110005D4E5F60718293A05 /* Runalyst/Views/RunVarianceMapView.swift */,
 				A1110080D4E5F60718293A80 /* Runalyst/Models/WorkoutTelemetryModality.swift */,
 				A1110081D4E5F60718293A81 /* Runalyst/Views/HeartRateTrajectoryMapView.swift */,
@@ -685,6 +700,11 @@
 				B1110055D4E5F60718293A55 /* Runalyst/Views/UpcomingScheduleCardView.swift in Sources */,
 				B1110056D4E5F60718293A56 /* Runalyst/Views/DrillPrimerCardView.swift in Sources */,
 				B1110057D4E5F60718293A57 /* Runalyst/Views/GoalReadinessCard.swift in Sources */,
+				E1110001D4E5F60718293A01 /* Runalyst/Views/DesignSystem/LiquidGlassCard.swift in Sources */,
+				E1110002D4E5F60718293A02 /* Runalyst/Views/DesignSystem/MiniStatTile.swift in Sources */,
+				E1110003D4E5F60718293A03 /* Runalyst/Views/DesignSystem/CoachPillButton.swift in Sources */,
+				E1110004D4E5F60718293A04 /* Runalyst/Views/DesignSystem/GlassBoxExplainerSheet.swift in Sources */,
+				E1110005D4E5F60718293A05 /* Runalyst/Views/DesignSystem/PillFilterStrip.swift in Sources */,
 				B1110005D4E5F60718293A05 /* Runalyst/Views/RunVarianceMapView.swift in Sources */,
 				B1110080D4E5F60718293A80 /* Runalyst/Models/WorkoutTelemetryModality.swift in Sources */,
 				B1110081D4E5F60718293A81 /* Runalyst/Views/HeartRateTrajectoryMapView.swift in Sources */,

@@ -137,14 +137,7 @@ struct RunListRowView: View {
                     .foregroundColor(Color.secondary.opacity(0.6))
             }
         }
-        .padding(16)
-        .background(Color(UIColor.secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(Color(UIColor.separator).opacity(0.15), lineWidth: 0.5)
-        )
-        .shadow(color: Color.black.opacity(0.03), radius: 5, x: 0, y: 2)
+        .liquidGlass(cornerRadius: 16, padding: 16, accentColor: workoutColor)
         .padding(.horizontal)
         .accessibilityElement(children: .combine)
     }

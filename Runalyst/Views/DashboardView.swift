@@ -34,6 +34,7 @@ struct DashboardView: View {
 
     @State private var isFetchingInsight = false
     @State private var showingAnalystChat = false
+    @State private var showingTrendsExplainer = false
 
     private var timeRangeRuns: [RunRecord] {
         let now = Date()
@@ -87,6 +88,16 @@ struct DashboardView: View {
             return Int(candidateRuns.map(\.workingAvgCadence).reduce(0, +)) / candidateRuns.count
         }
         return Int(candidateRuns.map { $0.workingAvgCadence * $0.duration }.reduce(0, +) / totalDuration)
+    }
+
+    var baselineHeartRate: Int? {
+        let runs = timeRangeRuns.filter { $0.workingAvgHeartRate > 0 }
+        guard !runs.isEmpty else { return nil }
+        let totalDuration = runs.map(\.duration).reduce(0, +)
+        guard totalDuration > 0 else {
+            return Int(runs.map(\.workingAvgHeartRate).reduce(0, +)) / runs.count
+        }
+        return Int(runs.map { Double($0.workingAvgHeartRate) * $0.duration }.reduce(0, +) / totalDuration)
     }
 
     var canonicalAthleteBaselinePace: Double? {
@@ -366,6 +377,20 @@ struct DashboardView: View {
                                 .foregroundColor(.secondary)
                         }
                     }
+
+                    Spacer()
+
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        showingTrendsExplainer = true
+                    } label: {
+                        Image(systemName: "info.circle")
+                            .font(.system(size: 15))
+                            .foregroundColor(.secondary)
+                            .frame(width: 36, height: 36)
+                            .contentShape(Rectangle())
+                    }
+                    .accessibilityLabel("Learn more about this insight")
                 }
 
                 if is7Day {
@@ -422,32 +447,73 @@ struct DashboardView: View {
                             }
                         }
                     }
-                } else if !headline.isEmpty {
-                    Text(headline)
+                } else {
+                    let displayHeadline = headline.isEmpty ? "Aerobic Base Stabilizing" : headline
+                    Text(displayHeadline)
                         .font(.headline)
                         .foregroundColor(.primary)
+
+                    HStack(spacing: 8) {
+                        if let cad = baselineCadence {
+                            MiniStatTile(
+                                title: "Avg Cadence",
+                                value: "\(cad)",
+                                unit: "SPM",
+                                icon: nil,
+                                accentColor: Color.green
+                            )
+                        }
+
+                        if let pace = baselinePace {
+                            MiniStatTile(
+                                title: "Avg Pace",
+                                value: PaceFormatter.formatPace(secondsPerKilometer: pace),
+                                unit: useMetricSystem ? "/km" : "/mi",
+                                icon: nil,
+                                accentColor: Color.blue
+                            )
+                        }
+
+                        if let hr = baselineHeartRate {
+                            MiniStatTile(
+                                title: "Avg HR",
+                                value: "\(hr)",
+                                unit: "BPM",
+                                icon: nil,
+                                accentColor: Color(red: 1.0, green: 0.18, blue: 0.55)
+                            )
+                        }
+                    }
+                    .padding(.top, 2)
                 }
-
-                let defaultPlaceholder = is7Day
-                    ? "Complete more runs this week to evaluate acute fatigue and recovery trends."
-                    : "Complete more runs over the next 30 days to measure structural aerobic adaptation."
-
-                Text(bodyText.isEmpty ? defaultPlaceholder : bodyText)
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                    .lineSpacing(2)
-                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
-        .background(Color(UIColor.secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(Color(UIColor.separator).opacity(0.2), lineWidth: 0.5)
-        )
-        .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
+        .liquidGlass(cornerRadius: 16, padding: 16, accentColor: is7Day ? .purple : .orange)
+        .sheet(isPresented: $showingTrendsExplainer) {
+            let is7Day = timeRange == "7 Days"
+            let headline = currentHeadline()
+            let bodyText = currentBody()
+            GlassBoxExplainerSheet(
+                title: is7Day ? "Today's Training Directive" : "30-Day Aerobic Profile",
+                categoryBadge: is7Day ? "Acute Readiness" : "Longitudinal Adaptation",
+                whatSummary: headline.isEmpty
+                    ? (is7Day ? "Daily training directive calculated from acute fatigue and recovery balance." : "Your rolling 30-day baseline captures aerobic base stabilization.")
+                    : headline,
+                whyItMatters: bodyText.isEmpty
+                    ? "Consistent volume at conversational heart rates establishes capillary density and neuromuscular economy while protecting joint health."
+                    : bodyText,
+                howItWorks: is7Day
+                    ? "Evaluates your last 48-hour volume against your 28-day chronic workload using Banister impulse-response modeling to lock in today's safe duration and pace bands."
+                    : "Calculates rolling 30-day time-locked medians across pause-trimmed Working Pace, heart rate, and cadence to determine your physiological trajectory.",
+                formula: is7Day
+                    ? "ACWR = Acute Load (7D) ÷ Chronic Load (28D)"
+                    : "Efficiency Factor = Speed (m/s) ÷ (Heart Rate - Resting HR)",
+                targetRange: is7Day
+                    ? "ACWR: 0.8–1.3 (Optimal Zone) • HR Cap: \(deterministicPrescription.map { hrCapText(for: $0) } ?? "< 145")"
+                    : "Cadence Floor: ≥ 156–160 SPM • Stable or Rising Efficiency Factor"
+            )
+        }
         .onAppear {
             if timeRange != "7 Days" && timeRange != "30 Days" {
                 timeRange = "30 Days"
@@ -1007,14 +1073,9 @@ struct DashboardView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
+                    CoachPillButton {
                         showingAnalystChat = true
-                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    } label: {
-                        Image(systemName: "bubble.left.and.bubble.right.fill")
-                            .foregroundColor(.purple)
                     }
-                    .accessibilityLabel("AI Coach")
                 }
             }
             .toolbarBackground(.visible, for: .navigationBar)

@@ -11,6 +11,8 @@ struct PrescribedSessionCardView: View {
     var onPreviewMainRun: (() -> Void)?
     var onScheduleFlushOverride: (() -> Void)?
 
+    @State private var showingRationaleExplainer = false
+
     private var effectiveIsToday: Bool {
         if let isToday {
             return isToday
@@ -58,14 +60,21 @@ struct PrescribedSessionCardView: View {
                 activeSessionContent
             }
         }
-        .padding(16)
-        .background(Color(UIColor.secondarySystemGroupedBackground).opacity(0.92))
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .stroke(Color(UIColor.separator).opacity(0.12), lineWidth: 0.5)
-        )
-        .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
+        .liquidGlass(cornerRadius: 16, padding: 16, accentColor: .purple)
+        .sheet(isPresented: $showingRationaleExplainer) {
+            let parsed = parseRationale(session.groundedRationale)
+            GlassBoxExplainerSheet(
+                title: session.sessionTitle,
+                categoryBadge: session.isRestDay ? "Rest & Recovery" : session.targetGoal,
+                whatSummary: parsed.headline ?? (session.isRestDay ? "Rest & Connective Tissue Remodeling" : "Prescribed Aerobic Training"),
+                whyItMatters: parsed.body,
+                howItWorks: session.isRestDay
+                    ? "Rest days allow deep tendon remodeling, rebuild depleted muscle glycogen stores, and restore neuromuscular readiness without joint impact."
+                    : "Runalyst balances your 48-hour volume, acute-to-chronic workload ratio (ACWR), and rolling 30-day baseline to lock in your safe training envelope.",
+                formula: session.isRestDay ? "Target HR: < 135 BPM (Optional Flush)" : "Cadence Floor: ≥ \(session.cadenceFloor) SPM • HR Cap: \(session.hrCap)",
+                targetRange: session.isRestDay ? "Recovery: Full Rest or 20 min Zone 1" : "Duration: \(session.mainRunDurationMinutes) min • Pace: \(session.paceBand)"
+            )
+        }
     }
 
     // MARK: - Header Bar
@@ -115,7 +124,8 @@ struct PrescribedSessionCardView: View {
     // MARK: - Active Session Header
 
     private var activeSessionHeader: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        let parsed = parseRationale(session.groundedRationale)
+        return VStack(alignment: .leading, spacing: 6) {
             if !effectiveIsToday {
                 HStack(spacing: 4) {
                     Image(systemName: "calendar.badge.clock")
@@ -130,22 +140,30 @@ struct PrescribedSessionCardView: View {
                 .clipShape(Capsule())
             }
 
-            Text(session.sessionTitle)
-                .font(.title3.weight(.bold))
-                .foregroundColor(.primary)
+            HStack(alignment: .center) {
+                Text(session.sessionTitle)
+                    .font(.title3.weight(.bold))
+                    .foregroundColor(.primary)
 
-            let parsed = parseRationale(session.groundedRationale)
-            VStack(alignment: .leading, spacing: 2) {
-                if let headline = parsed.headline {
-                    Text(headline)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundColor(.primary)
+                Spacer()
+
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    showingRationaleExplainer = true
+                } label: {
+                    Image(systemName: "info.circle")
+                        .font(.system(size: 15))
+                        .foregroundColor(.secondary)
+                        .frame(width: 36, height: 36)
+                        .contentShape(Rectangle())
                 }
-                Text(parsed.body)
-                    .font(.subheadline)
-                    .foregroundColor(Color(UIColor.label).opacity(0.85))
-                    .lineSpacing(3)
-                    .fixedSize(horizontal: false, vertical: true)
+                .accessibilityLabel("Learn more about today's prescribed workout")
+            }
+
+            if let headline = parsed.headline {
+                Text(headline)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(.purple)
             }
         }
     }
@@ -156,64 +174,57 @@ struct PrescribedSessionCardView: View {
         let parsedRationale = parseRationale(session.groundedRationale)
 
         return VStack(alignment: .leading, spacing: 12) {
-            // Title & Adaptation Focus
-            VStack(alignment: .leading, spacing: 4) {
-                Text(session.sessionTitle)
-                    .font(.title3.weight(.bold))
-                    .foregroundColor(.primary)
+            // Title & Adaptation Focus with Info Icon
+            HStack(alignment: .center) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(session.sessionTitle)
+                        .font(.title3.weight(.bold))
+                        .foregroundColor(.primary)
 
-                HStack(spacing: 5) {
-                    Image(systemName: "heart.text.square.fill")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundColor(Color(red: 0.0, green: 0.75, blue: 0.65))
+                    HStack(spacing: 5) {
+                        Image(systemName: "heart.text.square.fill")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(Color(red: 0.0, green: 0.75, blue: 0.65))
 
-                    Text("Tendon Remodeling & Glycogen Restoration")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(Color(red: 0.0, green: 0.72, blue: 0.62))
+                        Text("Tendon Remodeling & Glycogen Restoration")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(Color(red: 0.0, green: 0.72, blue: 0.62))
+                    }
                 }
+
+                Spacer()
+
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    showingRationaleExplainer = true
+                } label: {
+                    Image(systemName: "info.circle")
+                        .font(.system(size: 15))
+                        .foregroundColor(.secondary)
+                        .frame(width: 36, height: 36)
+                        .contentShape(Rectangle())
+                }
+                .accessibilityLabel("Learn more about rest day physiology")
             }
 
             // Glanceable Micro-Stat Grid (Transforms Text-Heavy Rationale into Quick Metrics)
             if let metrics = parsedRationale.statMetrics, !metrics.isEmpty {
                 HStack(spacing: 8) {
                     ForEach(metrics, id: \.title) { metric in
-                        HStack(spacing: 6) {
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(metric.title.uppercased())
-                                    .font(.system(size: 8, weight: .bold))
-                                    .foregroundColor(Color(UIColor.secondaryLabel))
-                                    .lineLimit(1)
-                                    .minimumScaleFactor(0.8)
-                                Text(metric.value)
-                                    .font(.system(size: 11, weight: .bold))
-                                    .monospacedDigit()
-                                    .foregroundColor(.primary)
-                                    .lineLimit(1)
-                                    .minimumScaleFactor(0.8)
-                            }
-                            Spacer(minLength: 0)
-                        }
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 6)
-                        .background(Color(UIColor.tertiarySystemGroupedBackground).opacity(0.85))
-                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        MiniStatTile(
+                            title: metric.title,
+                            value: metric.value,
+                            unit: nil,
+                            icon: nil,
+                            accentColor: metric.title.contains("Recovery") ? Color(red: 0.0, green: 0.75, blue: 0.65) : nil
+                        )
                     }
                 }
                 .padding(.top, 2)
-            }
-
-            // High-Contrast Explanatory Rationale Body
-            VStack(alignment: .leading, spacing: 3) {
-                if let headline = parsedRationale.headline, parsedRationale.statMetrics == nil {
-                    Text(headline)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundColor(.primary)
-                }
-                Text(parsedRationale.body)
-                    .font(.subheadline)
-                    .foregroundColor(Color(UIColor.label).opacity(0.85))
-                    .lineSpacing(3)
-                    .fixedSize(horizontal: false, vertical: true)
+            } else if let headline = parsedRationale.headline {
+                Text(headline)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(.purple)
             }
 
             // Clean Divider (Eliminates Nested Card-in-Card Container)

@@ -543,64 +543,41 @@ struct ProgressionChartView: View {
                 .animation(.easeInOut(duration: 0.3), value: selectedMetric)
                 .animation(.easeInOut(duration: 0.3), value: selectedRunType)
             }
-
-            // Descriptive Subtitle / Metric Context (Interactive Explainer Trigger)
-            Button(action: {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                showingInfo = true
-            }) {
-                HStack(spacing: 6) {
-                    Image(systemName: "info.circle")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    if selectedMetric == .efficiencyFactor {
-                        Text("Efficiency Factor (Speed ÷ Heart Rate) tracks physiological economy for \(selectedRunType ?? "this workout type").")
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
-                            .multilineTextAlignment(.leading)
-                    } else {
-                        Text("Pace progression over time reveals pure speed adaptation for \(selectedRunType ?? "this workout type").")
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
-                            .multilineTextAlignment(.leading)
-                    }
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.caption2)
-                        .foregroundColor(.secondary.opacity(0.5))
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Learn more about this metric")
         }
-        .padding(16)
-        .background(Color(UIColor.secondarySystemGroupedBackground))
-        .cornerRadius(18)
-        .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
+        .liquidGlass(
+            cornerRadius: 16,
+            padding: 16,
+            accentColor: selectedMetric == .efficiencyFactor ? Color.purple : Color.blue
+        )
         .padding(.horizontal)
         .onAppear {
             syncDefaultSelectedRunType()
         }
         .sheet(isPresented: $showingInfo) {
             let contextType = selectedRunType ?? "Steady Effort"
-            MetricExplainerSheet(
-                title: selectedMetric == .efficiencyFactor ? "Efficiency Factor Progression" : "Pace Progression",
-                mode: "\(contextType) • \(selectedHorizon.rawValue)",
-                overview: selectedMetric == .efficiencyFactor
-                    ? "Efficiency Factor (Speed ÷ Heart Rate) tracks physiological economy over time. By comparing how fast you run against the cardiovascular effort required, Runalyst shows whether your aerobic engine is becoming more efficient."
-                    : "Pace progression tracks your speed development over time across identical workout classifications, showing true aerobic speed development independent of race-day surges.",
-                modeContext: selectedMetric == .efficiencyFactor
-                    ? "Isolated to \(contextType) runs across \(selectedHorizon.rawValue) to eliminate pacing noise and ensure authentic physiological comparisons."
-                    : "Filtered strictly to \(contextType) runs across \(selectedHorizon.rawValue) using pause-trimmed Working Pace.",
-                whyItMatters: selectedMetric == .efficiencyFactor
-                    ? "Aerobic Economy: As aerobic endurance improves through base training, you run faster at the same heart rate, or maintain the same speed at a lower heart rate. A declining trend signals accumulated fatigue, dehydration, or heat stress."
-                    : "Speed Development: Consistent, unforced speed gains at comfortable heart rates reflect genuine muscular and metabolic adaptation.",
-                targetRange: selectedMetric == .efficiencyFactor
-                    ? "Target: Upward or stable trajectory across training cycles.\n\n• Rising: You are getting fitter and faster with less cardiovascular effort.\n• Dropping: You may be tired, overtraining, or battling heat/dehydration."
-                    : "Target: Steady, gradual progression over 6–12 week mesocycles without spiking cardiovascular strain.",
-                userMetricDisplay: latestMetricDisplay
-            )
+            if selectedMetric == .efficiencyFactor {
+                GlassBoxExplainerSheet(
+                    title: "Efficiency Factor Progression",
+                    categoryBadge: "\(contextType) • \(selectedHorizon.rawValue)",
+                    whatSummary: "Efficiency Factor tracks your aerobic work-to-effort ratio. It measures how much speed you produce for each heartbeat.",
+                    whyItMatters: "Aerobic Economy & Stroke Volume: As endurance develops, your left ventricle pumps more oxygenated blood per beat (stroke volume). A rising line means you are running faster at lower heart rates.",
+                    howItWorks: "Calculated strictly across pause-trimmed Working Pace and continuous heart rate data.",
+                    formula: "Efficiency Factor = Speed (m/s) ÷ (Avg HR - Resting HR)",
+                    targetRange: "Target: Upward or stable trajectory across 4–12 week mesocycles.",
+                    liveMetricDisplay: latestMetricDisplay
+                )
+            } else {
+                GlassBoxExplainerSheet(
+                    title: "Pace Progression",
+                    categoryBadge: "\(contextType) • \(selectedHorizon.rawValue)",
+                    whatSummary: "Pace progression tracks aerobic velocity development across identical workout classifications over time.",
+                    whyItMatters: "Aerobic Speed: Consistent speed gains at comfortable heart rates reflect muscular economy and metabolic efficiency.",
+                    howItWorks: "Filtered strictly to \(contextType) runs across \(selectedHorizon.rawValue) using pause-trimmed Working Pace.",
+                    formula: "Working Pace = Pause-Trimmed Time ÷ Distance",
+                    targetRange: "Target: Steady, gradual progression without spiking cardiovascular strain.",
+                    liveMetricDisplay: latestMetricDisplay
+                )
+            }
         }
     }
 }

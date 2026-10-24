@@ -306,40 +306,17 @@ struct DrillPrimerCardView: View {
             }
             .padding(.top, 2)
         }
-        .padding(14)
-        .background(Color(UIColor.secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(Color(UIColor.separator).opacity(0.18), lineWidth: 0.5)
-        )
-        .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
+        .liquidGlass(cornerRadius: 16, padding: 14, accentColor: iconColor)
     }
 
     private func drillMetricCell(icon: String, title: String, value: String, color: Color) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: icon)
-                .font(.system(size: 11, weight: .bold))
-                .foregroundColor(color)
-                .frame(width: 14)
-
-            VStack(alignment: .leading, spacing: 1) {
-                Text(title.uppercased())
-                    .font(.system(size: 8, weight: .bold))
-                    .foregroundColor(.secondary)
-                Text(value)
-                    .font(.system(size: 11, weight: .bold))
-                    .monospacedDigit()
-                    .foregroundColor(.primary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
-        .background(Color(UIColor.tertiarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        MiniStatTile(
+            title: title,
+            value: value,
+            unit: nil,
+            icon: icon,
+            accentColor: color
+        )
     }
 
     private func startDrill(title: String, purpose: String, targetCadence: String?) {

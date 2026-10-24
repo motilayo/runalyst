@@ -92,6 +92,17 @@ struct PreviewRouterView: View {
             }
         case "DRILL_READOUT":
             drillReadoutPreview
+        case "GLASS_BOX":
+            GlassBoxExplainerSheet(
+                title: "30-Day Aerobic Profile",
+                categoryBadge: "Longitudinal Adaptation",
+                whatSummary: "Your rolling 30-day baseline captures aerobic base stabilization and metabolic efficiency.",
+                whyItMatters: "Consistent volume at conversational heart rates establishes capillary density and neuromuscular economy while protecting joint health from impact spikes.",
+                howItWorks: "Runalyst calculates rolling 30-day time-locked medians across pause-trimmed Working Pace, heart rate, and cadence to determine your physiological trajectory.",
+                formula: "Efficiency Factor = Speed (m/s) ÷ (Heart Rate - Resting HR)",
+                targetRange: "Cadence Floor: ≥ 156–160 SPM • Stable or Rising Efficiency Factor",
+                liveMetricDisplay: "166 SPM • 5:42/km"
+            )
         case "BIOMECHANICS":
             NavigationStack {
                 OverstrideBiomechanicsSheet()

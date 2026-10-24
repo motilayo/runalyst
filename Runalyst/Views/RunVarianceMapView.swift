@@ -314,14 +314,7 @@ struct RunVarianceMapView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
-        .background(Color(UIColor.secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(Color(UIColor.separator).opacity(0.15), lineWidth: 0.5)
-        )
-        .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
+        .liquidGlass(cornerRadius: 16, padding: 16, accentColor: Color(red: 0.0, green: 0.8, blue: 0.65))
     }
 
     private func phaseColor(_ kind: String) -> Color {

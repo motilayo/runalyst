@@ -75,25 +75,9 @@ struct WorkoutsView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
+                    CoachPillButton {
                         showingAnalystChat = true
-                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    } label: {
-                        HStack(spacing: 5) {
-                            Image(systemName: "bubble.left.and.bubble.right.fill")
-                                .font(.system(size: 12, weight: .bold))
-                            Text("Coach")
-                                .font(.subheadline.weight(.bold))
-                        }
-                        .foregroundColor(.purple)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(Color.purple.opacity(0.12))
-                        .clipShape(Capsule())
                     }
-                    .frame(minHeight: 44)
-                    .accessibilityLabel("AI Running Coach")
-                    .accessibilityHint("Opens AI Biomechanical Analyst and Coach chat")
                 }
             }
             .toolbarBackground(.visible, for: .navigationBar)
@@ -275,14 +259,7 @@ struct WorkoutsView: View {
                 }
             }
         }
-        .padding(18)
-        .background(Color(UIColor.secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .stroke(Color.green.opacity(0.35), lineWidth: 1)
-        )
-        .shadow(color: Color.black.opacity(0.08), radius: 6, x: 0, y: 2)
+        .liquidGlass(cornerRadius: 16, padding: 18, accentColor: .green)
 
         // Tomorrow's Session
         VStack(alignment: .leading, spacing: 8) {
@@ -373,14 +350,7 @@ struct WorkoutsView: View {
                     .font(.caption.bold())
                     .foregroundColor(Color(UIColor.tertiaryLabel))
             }
-            .padding(14)
-            .background(Color(UIColor.secondarySystemGroupedBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(Color(UIColor.separator).opacity(0.12), lineWidth: 0.5)
-            )
-            .shadow(color: Color.black.opacity(0.03), radius: 4, x: 0, y: 2)
+            .liquidGlass(cornerRadius: 16, padding: 14, accentColor: Color(red: 0.0, green: 0.55, blue: 1.0))
         }
         .buttonStyle(.plain)
         .padding(.top, 4)
