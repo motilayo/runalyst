@@ -517,8 +517,9 @@ public struct StreakAndVolumeSummary: Sendable, Equatable {
         }
         let trailingWeeklyActiveDays = !uniqueTrailingDays.isEmpty ? (Double(uniqueTrailingDays.count) / 4.0) : 3.5
 
-        // 3. 48-Hour Volume (Includes all runs banked in past 48 hours)
-        let cutoff48h = now.addingTimeInterval(-48 * 3600)
+        // 3. 48-Hour Volume (Includes all runs banked across trailing 2 calendar days leading into today)
+        let startOfToday = calendar.startOfDay(for: now)
+        let cutoff48h = calendar.date(byAdding: .day, value: -2, to: startOfToday) ?? now.addingTimeInterval(-48 * 3600)
         let runs48h = runs.filter { !$0.isDeleted && $0.date <= now && $0.date >= cutoff48h }
         let last48hDurationMinutes = runs48h.map { $0.duration / 60.0 }.reduce(0, +)
         let volumeRatio48h = trailingWeeklyDurationMinutes > 0 ? (last48hDurationMinutes / trailingWeeklyDurationMinutes) : 0.0

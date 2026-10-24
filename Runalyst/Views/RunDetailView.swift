@@ -1172,6 +1172,7 @@ struct RunDetailView: View {
                 // MARK: - Secondary Biomechanics
                 secondaryBiomechanicsCard
             }
+            .frame(maxWidth: horizontalSizeClass == .regular ? 880 : .infinity)
             .frame(maxWidth: .infinity)
             .padding(.vertical)
 

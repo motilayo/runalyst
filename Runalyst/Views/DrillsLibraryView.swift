@@ -302,6 +302,8 @@ struct DrillsLibraryView: View {
                     }
                 }
             }
+            .frame(maxWidth: horizontalSizeClass == .regular ? 1040 : .infinity)
+            .frame(maxWidth: .infinity)
             .padding(.vertical)
         }
         .sheet(item: $activeReadoutItem) { item in

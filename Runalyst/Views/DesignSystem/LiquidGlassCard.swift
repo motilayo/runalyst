@@ -67,25 +67,33 @@ public struct LiquidGlassModifier: ViewModifier {
                             .offset(x: -40, y: -20)
                     }
 
-                    // Translucent optical material base
-                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .fill(effectiveMaterial)
+                    // Card base:
+                    // In Light Mode, use secondarySystemGroupedBackground (#FFFFFF) to provide
+                    // pure white, crisp contrast against systemGroupedBackground (#F2F2F7).
+                    // In Dark Mode, use effective translucent system Material.
+                    if colorScheme == .light {
+                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                            .fill(Color(UIColor.secondarySystemGroupedBackground))
+                    } else {
+                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                            .fill(effectiveMaterial)
+                    }
 
                     // Specular rim gradient (light reflection from top-leading to bottom-trailing)
                     RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .stroke(specularRimGradient, lineWidth: colorScheme == .dark ? 0.75 : 0.6)
+                        .stroke(specularRimGradient, lineWidth: colorScheme == .dark ? 0.75 : 0.75)
 
                     // Subtle hairline structural base border
                     RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .stroke(Color(UIColor.separator).opacity(colorScheme == .dark ? 0.14 : 0.22), lineWidth: 0.5)
+                        .stroke(Color(UIColor.separator).opacity(colorScheme == .dark ? 0.14 : 0.35), lineWidth: 0.5)
                 }
             }
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             .shadow(
-                color: colorScheme == .dark ? Color.black.opacity(0.18) : Color.black.opacity(0.04),
+                color: colorScheme == .dark ? Color.black.opacity(0.18) : Color.black.opacity(0.06),
                 radius: colorScheme == .dark ? 12 : 8,
                 x: 0,
-                y: colorScheme == .dark ? 4 : 2
+                y: colorScheme == .dark ? 4 : 3
             )
     }
 }

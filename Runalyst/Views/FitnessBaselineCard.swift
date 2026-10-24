@@ -10,6 +10,7 @@ struct FitnessBaselineCard: View {
     var workoutDensityTier: String
     var timeRangeRunsCount: Int
     var timeRangeName: String
+    var forceTwoColumnLayout: Bool = false
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var activeExplainer: MetricExplainerInfo?
@@ -240,7 +241,7 @@ struct FitnessBaselineCard: View {
 
     var body: some View {
         VStack(spacing: 16) {
-            if horizontalSizeClass == .regular {
+            if horizontalSizeClass == .regular && !forceTwoColumnLayout {
                 HStack(alignment: .top, spacing: 20) {
                     quadrantVO2Max
                     Divider()
@@ -272,7 +273,6 @@ struct FitnessBaselineCard: View {
             }
         }
         .liquidGlass(cornerRadius: 16, padding: 18, accentColor: Color(red: 1.0, green: 0.22, blue: 0.55))
-        .padding(.horizontal)
         .sheet(item: $activeExplainer) { info in
             GlassBoxExplainerSheet(info: info)
         }

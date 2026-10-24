@@ -855,6 +855,7 @@ struct DashboardView: View {
             timeRangeRunsCount: timeRangeRuns.count,
             timeRangeName: timeRange
         )
+        .padding(.horizontal)
     }
 
     @ViewBuilder
@@ -948,13 +949,35 @@ struct DashboardView: View {
                                 .padding(.horizontal)
                         }
 
-                        // 3. Activity Volume & Training Load Card
-                        if !timeRangeRuns.isEmpty {
-                            activityVolumeSummaryCard
+                        // 3 & 4. Activity Volume & Fitness Baseline Cockpit
+                        if horizontalSizeClass == .regular && !timeRangeRuns.isEmpty {
+                            HStack(alignment: .top, spacing: 16) {
+                                ActivityVolumeSummaryCard(
+                                    runs: timeRangeRuns,
+                                    timeRange: timeRange,
+                                    useMetricSystem: useMetricSystem,
+                                    activeGoal: trainingGoal
+                                )
+                                FitnessBaselineCard(
+                                    globalVO2Max: globalVO2Max,
+                                    baselineVO2Max: baselineVO2Max,
+                                    baselineCadence: baselineCadence,
+                                    previousBaselineCadence: previousBaselineCadence,
+                                    baselinePace: baselinePace,
+                                    previousBaselinePace: previousBaselinePace,
+                                    workoutDensityTier: workoutDensityTier,
+                                    timeRangeRunsCount: timeRangeRuns.count,
+                                    timeRangeName: timeRange,
+                                    forceTwoColumnLayout: true
+                                )
+                            }
+                            .padding(.horizontal)
+                        } else {
+                            if !timeRangeRuns.isEmpty {
+                                activityVolumeSummaryCard
+                            }
+                            fitnessBaselineCard
                         }
-
-                        // 4. Fitness Baseline Quadrant Card
-                        fitnessBaselineCard
 
                         // 4. Past Runs Section Header & Run-Type Filters
                         VStack(alignment: .leading, spacing: 10) {
@@ -1045,8 +1068,10 @@ struct DashboardView: View {
                             .padding(.horizontal)
                             .padding(.top, 8)
                             .padding(.bottom, 16)
-                }
-                .padding(.vertical)
+                    }
+                    .frame(maxWidth: horizontalSizeClass == .regular ? 1040 : .infinity)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical)
             }
             .safeAreaInset(edge: .bottom) {
                 Color.clear.frame(height: 80)

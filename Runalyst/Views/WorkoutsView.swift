@@ -50,7 +50,7 @@ struct WorkoutsView: View {
                         completedTodayContent(completedRun: completedRun, tomorrowSession: tomorrowSession)
                     }
                 }
-                .frame(maxWidth: horizontalSizeClass == .regular ? 720 : .infinity)
+                .frame(maxWidth: horizontalSizeClass == .regular ? 920 : .infinity)
                 .frame(maxWidth: .infinity)
                 .padding(.horizontal, 16)
                 .padding(.top, 14)

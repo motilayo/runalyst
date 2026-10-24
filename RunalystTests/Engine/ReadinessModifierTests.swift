@@ -418,4 +418,71 @@ final class ReadinessModifierTests: XCTestCase {
         let assessment = ReadinessEvaluator.assess(runs: [primer2, primer1], now: now)
         XCTAssertFalse(assessment.triggers.contains(.consecutiveHardDays), "Primers must not trigger consecutive hard days")
     }
+
+    @MainActor
+    func testStreakAndVolumeSummary_MidMorningStability_PreservesRestDayThroughoutDay() {
+        let calendar = Calendar.current
+        var saturdayComponents = DateComponents()
+        saturdayComponents.year = 2026
+        saturdayComponents.month = 10
+        saturdayComponents.day = 24
+        saturdayComponents.hour = 7
+        saturdayComponents.minute = 30
+        guard let saturdayEarly = calendar.date(from: saturdayComponents) else { return }
+
+        saturdayComponents.hour = 10
+        saturdayComponents.minute = 30
+        guard let saturdayMidMorning = calendar.date(from: saturdayComponents) else { return }
+
+        var thurComponents = DateComponents()
+        thurComponents.year = 2026
+        thurComponents.month = 10
+        thurComponents.day = 22
+        thurComponents.hour = 8
+        thurComponents.minute = 14
+        guard let thurDate = calendar.date(from: thurComponents) else { return }
+
+        var friComponents = DateComponents()
+        friComponents.year = 2026
+        friComponents.month = 10
+        friComponents.day = 23
+        friComponents.hour = 8
+        friComponents.minute = 9
+        guard let friDate = calendar.date(from: friComponents) else { return }
+
+        var history: [RunRecord] = []
+        for d in [5, 8, 12, 15, 19, 22] {
+            if let pastDate = calendar.date(byAdding: .day, value: -d, to: thurDate) {
+                history.append(makeTestRunRecord(
+                    date: pastDate,
+                    durationMinutes: 45,
+                    distanceMeters: 6000,
+                    workingAvgCadence: 155,
+                    workingAvgHeartRate: 140
+                ))
+            }
+        }
+
+        let thurRun = makeTestRunRecord(date: thurDate, durationMinutes: 51, distanceMeters: 7000, workingAvgCadence: 155, workingAvgHeartRate: 138)
+        let friRun = makeTestRunRecord(date: friDate, durationMinutes: 37.5, distanceMeters: 5000, workingAvgCadence: 155, workingAvgHeartRate: 136)
+        let runs = [friRun, thurRun] + history
+
+        let earlySummary = StreakAndVolumeSummary.evaluate(
+            runs: runs,
+            experienceLevel: "Intermediate",
+            trainingGoal: "Base Building",
+            now: saturdayEarly
+        )
+
+        let midMorningSummary = StreakAndVolumeSummary.evaluate(
+            runs: runs,
+            experienceLevel: "Intermediate",
+            trainingGoal: "Base Building",
+            now: saturdayMidMorning
+        )
+
+        XCTAssertTrue(earlySummary.shouldRecommendRestDay, "Early morning must recommend rest from 88.5m banked in last 2 days")
+        XCTAssertTrue(midMorningSummary.shouldRecommendRestDay, "Mid-morning must NOT flip to a run just because Thursday run aged past 48 wall-clock hours")
+        XCTAssertEqual(earlySummary.shouldRecommendRestDay, midMorningSummary.shouldRecommendRestDay)
+    }
 }

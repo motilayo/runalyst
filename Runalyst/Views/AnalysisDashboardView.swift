@@ -3,6 +3,7 @@ import SwiftData
 
 /// Dedicated Analysis & Trends destination displaying deep biomechanical and longitudinal progression charts.
 struct AnalysisDashboardView: View {
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Query(sort: \RunRecord.date, order: .reverse) private var existingRuns: [RunRecord]
     @AppStorage("useMetricSystem") private var useMetricSystem: Bool = Locale.current.measurementSystem == .metric
     @State private var showingUserProfile = false
@@ -27,6 +28,8 @@ struct AnalysisDashboardView: View {
                     // Lifetime Milestones Card
                     LifetimeMilestonesCard(allRuns: existingRuns)
                 }
+                .frame(maxWidth: horizontalSizeClass == .regular ? 880 : .infinity)
+                .frame(maxWidth: .infinity)
                 .padding(.top, 16)
                 .padding(.bottom, 100)
             }

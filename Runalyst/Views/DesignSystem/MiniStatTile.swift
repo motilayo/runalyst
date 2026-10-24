@@ -72,11 +72,18 @@ public struct MiniStatTile: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .frame(minHeight: 44)
-        .background(Color(UIColor.tertiarySystemGroupedBackground).opacity(colorScheme == .dark ? 0.85 : 0.95))
+        .background(
+            colorScheme == .light
+                ? Color(UIColor.tertiarySystemGroupedBackground)
+                : Color(UIColor.tertiarySystemGroupedBackground).opacity(0.85)
+        )
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(Color(UIColor.separator).opacity(colorScheme == .dark ? 0.12 : 0.20), lineWidth: 0.5)
+                .stroke(
+                    Color(UIColor.separator).opacity(colorScheme == .dark ? 0.12 : 0.35),
+                    lineWidth: colorScheme == .dark ? 0.5 : 0.75
+                )
         )
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(title): \(value) \(unit ?? "")")

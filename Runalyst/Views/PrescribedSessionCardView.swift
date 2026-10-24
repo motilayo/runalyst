@@ -11,6 +11,7 @@ struct PrescribedSessionCardView: View {
     var onPreviewMainRun: (() -> Void)?
     var onScheduleFlushOverride: (() -> Void)?
 
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var showingRationaleExplainer = false
 
     private var effectiveIsToday: Bool {
@@ -257,48 +258,63 @@ struct PrescribedSessionCardView: View {
 
     // MARK: - Active Session Content (Primer + Main Run)
 
+    @ViewBuilder
+    private var primerCard: some View {
+        DrillPrimerCardView(
+            drillId: session.primerDrillId,
+            config: DrillCardConfig(
+                customTitle: session.primerDrillTitle,
+                customPurpose: "Target \(cleanPrimerTarget(session: session))",
+                customTarget: cleanPrimerTarget(session: session),
+                categoryLabel: effectiveIsToday ? "PRE-RUN PRIMER" : "\(headerDayText.uppercased()) PRIMER",
+                canChangeDuration: false,
+                lockedDuration: session.primerDrillId.defaultDuration
+            ),
+            baselineCadence: session.cadenceFloor,
+            onPreview: onPreviewPrimer
+        )
+    }
+
+    @ViewBuilder
+    private var mainRunCard: some View {
+        let mainDuration = DrillDuration.nearest(toMinutes: session.mainRunDurationMinutes)
+        let paceTitle = preferredWorkoutIsIndoor ? "Belt Pace" : "Pace"
+        let paceIcon = preferredWorkoutIsIndoor ? RunalystIcon.indoor : RunalystIcon.pace
+        let maxHrValue = session.hrCap.replacingOccurrences(of: "HR: ", with: "")
+
+        DrillPrimerCardView(
+            drillId: session.mainSessionTemplateId,
+            config: DrillCardConfig(
+                customTitle: session.sessionTitle,
+                customPurpose: session.isTrimmed ? "Low-strain movement & tissue repair" : "Aerobic consistency & conversational pacing",
+                customTarget: session.mainSessionTemplateId.isHeartRateTargeted ? nil : "\(session.cadenceFloor)–\(session.cadenceFloor + 6) SPM",
+                categoryLabel: effectiveIsToday ? "MAIN RUN" : "\(headerDayText.uppercased()) MAIN RUN",
+                canChangeDuration: false,
+                lockedDuration: mainDuration,
+                customMetrics: [
+                    DrillCardMetric(icon: "stopwatch.fill", title: "Duration", value: cleanMainRunDurationFormatted(session: session), color: .secondary),
+                    DrillCardMetric(icon: paceIcon, title: paceTitle, value: session.paceBand, color: RunalystColor.pace),
+                    DrillCardMetric(icon: RunalystIcon.heartRate, title: "Max HR", value: maxHrValue, color: RunalystColor.heartRate),
+                    DrillCardMetric(icon: RunalystIcon.cadence, title: "Cadence", value: "≥ \(session.cadenceFloor) SPM", color: RunalystColor.cadence)
+                ]
+            ),
+            baselineCadence: session.cadenceFloor,
+            onPreview: onPreviewMainRun
+        )
+    }
+
+    @ViewBuilder
     private var activeSessionContent: some View {
-        VStack(spacing: 12) {
-            // Stage 1: Pre-Run Primer Card
-            DrillPrimerCardView(
-                drillId: session.primerDrillId,
-                config: DrillCardConfig(
-                    customTitle: session.primerDrillTitle,
-                    customPurpose: "Target \(cleanPrimerTarget(session: session))",
-                    customTarget: cleanPrimerTarget(session: session),
-                    categoryLabel: effectiveIsToday ? "PRE-RUN PRIMER" : "\(headerDayText.uppercased()) PRIMER",
-                    canChangeDuration: false,
-                    lockedDuration: session.primerDrillId.defaultDuration
-                ),
-                baselineCadence: session.cadenceFloor,
-                onPreview: onPreviewPrimer
-            )
-
-            // Stage 2: Main Run Card
-            let mainDuration = DrillDuration.nearest(toMinutes: session.mainRunDurationMinutes)
-            let paceTitle = preferredWorkoutIsIndoor ? "Belt Pace" : "Pace"
-            let paceIcon = preferredWorkoutIsIndoor ? RunalystIcon.indoor : RunalystIcon.pace
-            let maxHrValue = session.hrCap.replacingOccurrences(of: "HR: ", with: "")
-
-            DrillPrimerCardView(
-                drillId: session.mainSessionTemplateId,
-                config: DrillCardConfig(
-                    customTitle: session.sessionTitle,
-                    customPurpose: session.isTrimmed ? "Low-strain movement & tissue repair" : "Aerobic consistency & conversational pacing",
-                    customTarget: session.mainSessionTemplateId.isHeartRateTargeted ? nil : "\(session.cadenceFloor)–\(session.cadenceFloor + 6) SPM",
-                    categoryLabel: effectiveIsToday ? "MAIN RUN" : "\(headerDayText.uppercased()) MAIN RUN",
-                    canChangeDuration: false,
-                    lockedDuration: mainDuration,
-                    customMetrics: [
-                        DrillCardMetric(icon: "stopwatch.fill", title: "Duration", value: cleanMainRunDurationFormatted(session: session), color: .secondary),
-                        DrillCardMetric(icon: paceIcon, title: paceTitle, value: session.paceBand, color: RunalystColor.pace),
-                        DrillCardMetric(icon: RunalystIcon.heartRate, title: "Max HR", value: maxHrValue, color: RunalystColor.heartRate),
-                        DrillCardMetric(icon: RunalystIcon.cadence, title: "Cadence", value: "≥ \(session.cadenceFloor) SPM", color: RunalystColor.cadence)
-                    ]
-                ),
-                baselineCadence: session.cadenceFloor,
-                onPreview: onPreviewMainRun
-            )
+        if horizontalSizeClass == .regular {
+            HStack(alignment: .top, spacing: 14) {
+                primerCard
+                mainRunCard
+            }
+        } else {
+            VStack(spacing: 12) {
+                primerCard
+                mainRunCard
+            }
         }
     }
 
