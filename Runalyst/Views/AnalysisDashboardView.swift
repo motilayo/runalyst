@@ -12,6 +12,11 @@ struct AnalysisDashboardView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 20) {
+                    // Goal Readiness & Target Progress
+                    GoalReadinessCard(allRuns: existingRuns, onEditGoal: {
+                        showingUserProfile = true
+                    })
+
                     // Longitudinal Progression Chart
                     ProgressionChartView(allRuns: existingRuns)
 
