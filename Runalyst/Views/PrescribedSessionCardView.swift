@@ -232,18 +232,18 @@ struct PrescribedSessionCardView: View {
                 .opacity(0.4)
                 .padding(.vertical, 2)
 
-            // Optional Active Recovery Flush Workout Card
+            // Optional Active Recovery Jog Card (Unified with Drills & Runs Library)
             DrillPrimerCardView(
-                drillId: .aerobicFlush,
+                drillId: .recoveryJog,
                 config: DrillCardConfig(
-                    customTitle: "Zone 1 Active Flush",
-                    customPurpose: "Active recovery flush • HR < 135 BPM",
+                    customTitle: "Recovery Jog",
+                    customPurpose: "Active recovery jog • HR < 135 BPM",
                     customTarget: "Zone 1 HR",
                     categoryLabel: "OPTIONAL",
                     canChangeDuration: false,
-                    lockedDuration: .nearest(toMinutes: 20),
+                    lockedDuration: .fifteenMinutes,
                     customMetrics: [
-                        DrillCardMetric(icon: "stopwatch.fill", title: "Duration", value: "20 min", color: .secondary),
+                        DrillCardMetric(icon: "stopwatch.fill", title: "Duration", value: "15 min", color: .secondary),
                         DrillCardMetric(icon: "heart.fill", title: "Target HR", value: "< 135 BPM", color: Color(red: 0.0, green: 0.75, blue: 0.65)),
                         DrillCardMetric(icon: "figure.walk", title: "Effort", value: "Active Recovery", color: Color(red: 0.20, green: 0.72, blue: 0.92)),
                         DrillCardMetric(icon: "metronome.fill", title: "Cadence", value: "Relaxed", color: .secondary)

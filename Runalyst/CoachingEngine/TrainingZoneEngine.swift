@@ -275,7 +275,7 @@ enum TrainingZoneEngine {
         let nextCad = session.primerTargetCadence.isEmpty ? "\(input.heightAdjustedCadenceFloor)–\(input.heightAdjustedCadenceFloor + 6) SPM" : session.primerTargetCadence
         let rationale = session.groundedRationale
         let category: String = {
-            if session.isRestDay || session.mainSessionTemplateId == .aerobicFlush {
+            if session.isRestDay || session.mainSessionTemplateId == .aerobicFlush || session.mainSessionTemplateId == .recoveryJog {
                 return "RECOVERY_FLUSH_ZONE_1"
             } else if session.mainSessionTemplateId == .tempoSurges {
                 return "THRESHOLD_ZONE_4"

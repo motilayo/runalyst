@@ -131,6 +131,43 @@ struct PreviewRouterView: View {
             }
         case "WORKOUTS":
             WorkoutsView()
+        case "REST_DAY":
+            let restSession = PrescribedDailySession(
+                targetGoal: "General Fitness",
+                sessionTitle: "Rest & Structural Recovery Day",
+                durationBand: "No Run Prescribed",
+                paceBand: "No Pacing Target",
+                hrCap: "HR: Rest / < 125 BPM",
+                cadenceFloor: 0,
+                groundedRationale: "You've banked 89 min in the last 48 hours (70% of your 126 min/week average). A rest day allows deep recovery, glycogen replenishment, and joint remodeling to prevent cumulative overload.",
+                readinessStateText: "Scheduled Structural Recovery",
+                readinessTriggerLead: "48-Hour Volume Compression (70% of weekly baseline)",
+                primerDrillId: .recoveryJog,
+                primerDrillTitle: "Optional Recovery Jog",
+                primerTargetCadence: "Zone 1 HR",
+                primerWorkDescription: "15 min active recovery jog • Keep HR in Zone 1",
+                primerPhasesDuration: "15 min (Optional)",
+                isTrimmed: true,
+                microcycle: [],
+                mainSessionTemplateId: .recoveryJog,
+                mainRunDurationMinutes: 15,
+                completedPrimerRun: nil,
+                isRestDay: true,
+                dayLabel: "Today",
+                isToday: true,
+                readinessState: .acuteFatigue
+            )
+            NavigationStack {
+                ScrollView {
+                    PrescribedSessionCardView(
+                        session: restSession,
+                        isToday: true,
+                        preferredWorkoutIsIndoor: .constant(true)
+                    )
+                    .padding()
+                }
+                .navigationTitle("Workouts")
+            }
         case "WORKOUTS_COMPLETED_TODAY":
             WorkoutsCompletedTodayPreview(existingRuns: existingRuns)
         case "READINESS":
