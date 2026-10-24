@@ -425,7 +425,7 @@ class AnalystChatEngine: ObservableObject {
         • `getReadinessAndWorkload`: Fatigue, ACWR.
         • `queryWorkoutHistory`: History.
         • `inspectWorkout`: Splits.
-        • `executeCoachAction`: Actions (display_drill, display_schedule, display_session, display_explainer, export_to_watch, record_feedback, update_goal).
+        • `executeCoachAction`: Actions (prescribe_drill, explain_metric, export_to_watch, record_feedback, update_goal).
 
         RULES:
         • Outside Running: Sidestep non-running topics gracefully.
@@ -883,116 +883,10 @@ class AnalystChatEngine: ObservableObject {
     func executeCoachAction(query: ExecuteCoachActionQuery) async -> String {
         self.toolInvokedDuringActiveTurn = true
         let allRuns = (try? self.modelContext?.fetch(FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)]))) ?? (self.runRecord.map { [$0] } ?? [])
-        let activeGoal = UserDefaults.standard.string(forKey: "trainingGoal") ?? "Base Building"
         let profile = RunnerProfile.compute(from: allRuns)
-        let useMetric = (UserDefaults.standard.object(forKey: "useMetricSystem") as? Bool) ?? true
-        let calendar = TrainingCalendar(calendar: Calendar.current)
 
         switch query.action {
-        case .displaySession, .displaySchedule:
-            let today = calendar.startOfDay(for: Date())
-            let fromDate = query.from.flatMap(calendar.parseISO) ?? today
-            let toDate: Date = {
-                if let directTo = query.to.flatMap(calendar.parseISO) {
-                    return directTo
-                }
-                if query.action == .displaySchedule {
-                    return calendar.calendar.date(byAdding: .day, value: 6, to: fromDate) ?? fromDate
-                }
-                return fromDate
-            }()
-
-            let context = ScheduleEvaluationContext(
-                runRecords: allRuns,
-                activeGoal: activeGoal,
-                profile: profile,
-                useMetric: useMetric
-            )
-
-            let schedule = calendar.evaluateSchedule(
-                from: fromDate,
-                to: toDate,
-                context: context
-            )
-
-            if query.action == .displaySession {
-                let dailyState = SessionSynthesisEngine.evaluateDailyState(
-                    runRecords: allRuns,
-                    activeGoal: activeGoal,
-                    experienceLevel: profile.experienceLevel,
-                    useMetric: useMetric,
-                    userHeightCm: profile.userHeightCm,
-                    now: Date()
-                )
-                let sessionToAttach: PrescribedDailySession?
-                switch dailyState {
-                case .preRun(let session):
-                    sessionToAttach = session
-                case .completedToday(_, let tomorrowSession):
-                    sessionToAttach = tomorrowSession
-                }
-
-                if let session = sessionToAttach, session.isRestDay, let next = findNextScheduledRun() {
-                    let day = next.day
-                    let primerTitle = day.planned.primerTitle ?? "Strides"
-                    let primerId = PreRunDrillId.resolve(from: primerTitle) ?? .strides
-                    let dateStr = TrainingCalendar.weekdayFormatter.string(from: next.date)
-                    let cadenceFloor = day.planned.cadenceFloor ?? 155
-                    let primerTarget = DrillTemplate.template(for: primerId).calculateTargetCadence(cadenceFloor)
-
-                    self.sessionRecommendedThisTurn = PrescribedDailySession(
-                        targetGoal: activeGoal,
-                        sessionTitle: day.planned.title,
-                        durationBand: "\(day.planned.minutesLow)–\(day.planned.minutesHigh) min",
-                        paceBand: day.planned.paceBand ?? "Easy Aerobic",
-                        hrCap: day.planned.hrCap ?? "< 152 BPM",
-                        cadenceFloor: cadenceFloor,
-                        groundedRationale: "Scheduled next run on your training calendar.",
-                        readinessStateText: "Upcoming Planned Session",
-                        readinessTriggerLead: nil,
-                        primerDrillId: primerId,
-                        primerDrillTitle: primerTitle,
-                        primerTargetCadence: primerTarget,
-                        primerWorkDescription: "Pre-run technique primer.",
-                        primerPhasesDuration: "10 min",
-                        isTrimmed: false,
-                        microcycle: [],
-                        mainSessionTemplateId: .zone2Run,
-                        mainRunDurationMinutes: day.planned.minutesHigh,
-                        completedPrimerRun: nil,
-                        isRestDay: false,
-                        dayLabel: dateStr,
-                        isToday: false
-                    )
-                } else {
-                    self.sessionRecommendedThisTurn = sessionToAttach
-                }
-
-                let title = self.sessionRecommendedThisTurn?.sessionTitle ?? (schedule.first?.planned.title ?? "Upcoming Workout")
-                harmonizeAttachments()
-                return "{\"session_title\":\"\(title)\",\"status\":\"interactive_session_card_displayed\",\"message\":\"The \(title) workout session card is displayed directly below your response.\"}"
-            } else {
-                let microcycleDays: [MicrocycleDay] = schedule.compactMap { day in
-                    if day.relative == .today && day.completion == .completed {
-                        return nil
-                    }
-                    let isRest = day.planned.kind == .rest
-                    let icon = isRest ? "bed.double.fill" : "figure.run"
-                    let title = isRest ? day.planned.title : "\(day.planned.title) • \(day.planned.minutesLow)–\(day.planned.minutesHigh) min"
-                    return MicrocycleDay(
-                        id: "\(day.date)-\(day.planned.title)",
-                        dayLabel: day.weekday,
-                        sessionTitle: title,
-                        iconName: icon,
-                        isRestDay: isRest
-                    )
-                }
-                self.scheduleRecommendedThisTurn = microcycleDays
-                harmonizeAttachments()
-                return "{\"days_count\":\(microcycleDays.count),\"status\":\"interactive_schedule_card_displayed\",\"message\":\"The training schedule timeline card is displayed directly below your response.\"}"
-            }
-
-        case .displayDrill:
+        case .prescribeDrill:
             let cal = Calendar.current
             let todayRuns = allRuns.filter { cal.isDateInToday($0.date) && !$0.isDeleted }
             let completedMinutes = todayRuns.reduce(0.0) { $0 + $1.duration } / 60.0
@@ -1006,7 +900,7 @@ class AnalystChatEngine: ObservableObject {
             let resolved = PreRunDrillId.resolve(from: query.payload ?? "") ?? .strides
             self.drillRecommendedThisTurn = resolved
             harmonizeAttachments()
-            return "{\"drill_id\":\"\(resolved.rawValue)\",\"drill_name\":\"\(resolved.title)\",\"status\":\"interactive_drill_card_displayed\",\"message\":\"The \(resolved.title) interactive workout card is displayed directly below your response.\"}"
+            return "{\"drill_id\":\"\(resolved.rawValue)\",\"drill_name\":\"\(resolved.title)\",\"status\":\"drill_prescribed\",\"message\":\"The \(resolved.title) technique drill is attached to your recommendation.\"}"
 
         case .exportToWatch:
             let resolved = PreRunDrillId.resolve(from: query.payload ?? "") ?? .strides
@@ -1053,12 +947,12 @@ class AnalystChatEngine: ObservableObject {
             UserDefaults.standard.set(newGoal, forKey: "trainingGoal")
             return "{\"goal\":\"\(newGoal)\",\"status\":\"training_goal_updated\"}"
 
-        case .displayExplainer:
+        case .explainMetric:
             let rawKey = query.payload?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             let asset = CoachingAssetLibrary.resolve(key: rawKey) ?? CoachingAssetLibrary.defaultAsset(for: rawKey)
             self.explainerRecommendedThisTurn = asset.key
             harmonizeAttachments()
-            return "{\"explainer_key\":\"\(asset.key)\",\"title\":\"\(asset.title)\",\"status\":\"interactive_explainer_card_displayed\",\"message\":\"The \(asset.title) explainer card is displayed directly below your response.\"}"
+            return "{\"explainer_key\":\"\(asset.key)\",\"title\":\"\(asset.title)\",\"status\":\"metric_explained\",\"message\":\"The \(asset.title) diagnostic explainer is attached.\"}"
 
         case .recordFeedback:
             let feedback = query.payload ?? ""

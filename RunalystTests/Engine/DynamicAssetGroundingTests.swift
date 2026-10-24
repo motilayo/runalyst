@@ -262,29 +262,29 @@ final class DynamicAssetGroundingTests: XCTestCase {
 
         #if canImport(FoundationModels)
         if #available(iOS 26.0, *) {
-            // 1. Verify ExecuteCoachActionTool with .displayExplainer produces correct JSON and key
+            // 1. Verify ExecuteCoachActionTool with .explainMetric produces correct JSON and key
             let coachActionTool = ExecuteCoachActionTool { query in
                 switch query.action {
-                case .displayExplainer:
+                case .explainMetric:
                     let rawKey = query.payload?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                     let asset = CoachingAssetLibrary.resolve(key: rawKey) ?? CoachingAssetLibrary.defaultAsset(for: rawKey)
                     engine.explainerRecommendedThisTurn = asset.key
-                    return "{\"status\":\"interactive_explainer_card_displayed\",\"explainer_key\":\"\(asset.key)\",\"title\":\"\(asset.title)\"}"
+                    return "{\"status\":\"metric_explained\",\"explainer_key\":\"\(asset.key)\",\"title\":\"\(asset.title)\"}"
                 default:
                     return "{}"
                 }
             }
 
-            let toolResult = try await coachActionTool.call(arguments: ExecuteCoachActionQuery(action: .displayExplainer, payload: "efficiency_factor"))
-            XCTAssertTrue(toolResult.contains("interactive_explainer_card_displayed"))
+            let toolResult = try await coachActionTool.call(arguments: ExecuteCoachActionQuery(action: .explainMetric, payload: "efficiency_factor"))
+            XCTAssertTrue(toolResult.contains("metric_explained"))
             XCTAssertTrue(toolResult.contains("efficiency_factor"))
             XCTAssertEqual(engine.explainerRecommendedThisTurn, "efficiency_factor")
 
             // 2. Verify engine turn cycle: when tool executes during turn, explainer attaches to analyst message
             engine.modelResponder = { (instructions: String, _: String) async throws -> String in
-                XCTAssertTrue(instructions.contains("display_explainer"))
+                XCTAssertTrue(instructions.contains("explain_metric"))
                 // Model calls executeCoachAction during turn:
-                let query = ExecuteCoachActionQuery(action: .displayExplainer, payload: "efficiency_factor")
+                let query = ExecuteCoachActionQuery(action: .explainMetric, payload: "efficiency_factor")
                 _ = try await coachActionTool.call(arguments: query)
                 return "Your aerobic efficiency factor was 1.15 m/beat today, showing strong cardiovascular economy."
             }

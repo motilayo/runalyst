@@ -740,13 +740,14 @@ public enum HistoryScope: String, Sendable {
 @available(iOS 26.0, *)
 @Generable
 public enum CoachActionType: String, Sendable {
-    case displaySession = "display_session"
-    case displaySchedule = "display_schedule"
-    case displayDrill = "display_drill"
-    case displayExplainer = "display_explainer"
+    case prescribeDrill = "prescribe_drill"
+    case explainMetric = "explain_metric"
     case exportToWatch = "export_to_watch"
     case updateGoal = "update_goal"
     case recordFeedback = "record_feedback"
+
+    public static var displayDrill: CoachActionType { .prescribeDrill }
+    public static var displayExplainer: CoachActionType { .explainMetric }
 }
 
 @available(iOS 26.0, *)
@@ -798,31 +799,21 @@ public struct InspectWorkoutQuery: Sendable {
 @available(iOS 26.0, *)
 @Generable
 public struct ExecuteCoachActionQuery: Sendable {
-    @Guide(description: "Action to execute: 'display_drill' (technique drill card), 'display_session' (upcoming session card), 'display_schedule' (multi-day schedule timeline), 'display_explainer' (metric explainer card), 'export_to_watch' (WorkoutKit export), 'update_goal' (training goal update), 'record_feedback' (athlete feedback).")
+    @Guide(description: "Action to execute: 'prescribe_drill' (prescribes a technique drill), 'explain_metric' (explains a biomechanical metric), 'export_to_watch' (WorkoutKit export), 'update_goal' (training goal update), 'record_feedback' (athlete feedback).")
     public var action: CoachActionType
-
-    @Guide(description: "Start date in 'yyyy-MM-dd' format for display_schedule.")
-    public var from: String?
-
-    @Guide(description: "End date in 'yyyy-MM-dd' format for display_schedule.")
-    public var to: String?
 
     @Guide(description: "New goal for 'update_goal'.")
     public var goal: TrainingGoal?
 
-    @Guide(description: "Payload: canonical drill id ('cadence_pyramids', 'rhythm_intervals', 'tempo_surges', 'strides') for 'display_drill' and 'export_to_watch'; metric key for 'display_explainer'; subjective notes for 'record_feedback'.")
+    @Guide(description: "Payload: canonical drill id ('cadence_pyramids', 'rhythm_intervals', 'tempo_surges', 'strides') for 'prescribe_drill' and 'export_to_watch'; metric key for 'explain_metric'; subjective notes for 'record_feedback'.")
     public var payload: String?
 
     public init(
         action: CoachActionType,
-        from: String? = nil,
-        to: String? = nil,
         goal: TrainingGoal? = nil,
         payload: String? = nil
     ) {
         self.action = action
-        self.from = from
-        self.to = to
         self.goal = goal
         self.payload = payload
     }
@@ -921,7 +912,7 @@ public struct ExecuteCoachActionTool: Tool {
     public typealias Output = String
 
     public let name = "executeCoachAction"
-    public let description = "Executes interactive coaching UI actions: 'display_drill' presents an interactive technique drill card directly below your response (only when prescribing or requested); 'display_session' presents the upcoming session card; 'display_schedule' presents the schedule timeline card; 'display_explainer' presents a metric concept card; 'update_goal'; 'export_to_watch'; 'record_feedback'."
+    public let description = "Executes coaching domain actions: 'prescribe_drill' (prescribes a technique drill for form improvement), 'explain_metric' (explains a biomechanical metric concept), 'update_goal' (updates athlete training goal), 'export_to_watch' (exports workout to Apple Watch), 'record_feedback' (logs athlete notes)."
 
     let provider: @MainActor @Sendable (ExecuteCoachActionQuery) async -> String
 

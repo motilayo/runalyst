@@ -283,7 +283,9 @@ final class AnalystChatEngineTests: XCTestCase {
         let engine = AnalystChatEngine(runRecord: run, mode: .macroCoach)
 
         engine.modelResponder = { _, _ in
-            await engine.executeCoachAction(query: ExecuteCoachActionQuery(action: .displaySession))
+            let df = DateFormatter()
+            df.dateFormat = "yyyy-MM-dd"
+            engine.executeTrainingScheduleQuery(query: GetTrainingScheduleQuery(from: df.string(from: Date())))
             return "Here is your planned workout session."
         }
 
@@ -291,7 +293,7 @@ final class AnalystChatEngineTests: XCTestCase {
 
         XCTAssertEqual(engine.messages.count, 2)
         let analystMsg = engine.messages[1]
-        XCTAssertNotNil(analystMsg.attachedSession, "Session card must be attached when tool executes displaySession")
+        XCTAssertNotNil(analystMsg.attachedSession, "Session card must be attached when tool executes schedule query")
     }
 
     func testNativeToolExecutionAttachesScheduleCard() async {
@@ -299,7 +301,11 @@ final class AnalystChatEngineTests: XCTestCase {
         let engine = AnalystChatEngine(runRecord: run, mode: .macroCoach)
 
         engine.modelResponder = { _, _ in
-            await engine.executeCoachAction(query: ExecuteCoachActionQuery(action: .displaySchedule))
+            let df = DateFormatter()
+            df.dateFormat = "yyyy-MM-dd"
+            let today = Date()
+            let future = Calendar.current.date(byAdding: .day, value: 7, to: today) ?? today
+            engine.executeTrainingScheduleQuery(query: GetTrainingScheduleQuery(from: df.string(from: today), to: df.string(from: future)))
             return "Here is your upcoming training schedule for the week."
         }
 
@@ -307,7 +313,7 @@ final class AnalystChatEngineTests: XCTestCase {
 
         XCTAssertEqual(engine.messages.count, 2)
         let analystMsg = engine.messages[1]
-        XCTAssertNotNil(analystMsg.attachedSchedule, "Schedule card must be attached when tool executes displaySchedule")
+        XCTAssertNotNil(analystMsg.attachedSchedule, "Schedule card must be attached when tool executes schedule query")
         XCTAssertFalse(analystMsg.attachedSchedule?.isEmpty ?? true)
     }
 
@@ -353,7 +359,9 @@ final class AnalystChatEngineTests: XCTestCase {
         let engine = AnalystChatEngine(runRecord: run, mode: .macroCoach)
 
         engine.modelResponder = { _, _ in
-            await engine.executeCoachAction(query: ExecuteCoachActionQuery(action: .displaySession))
+            let df = DateFormatter()
+            df.dateFormat = "yyyy-MM-dd"
+            engine.executeTrainingScheduleQuery(query: GetTrainingScheduleQuery(from: df.string(from: Date())))
             return "Tomorrow is planned as a scheduled session to allow steady adaptation."
         }
 
@@ -361,7 +369,7 @@ final class AnalystChatEngineTests: XCTestCase {
 
         XCTAssertEqual(engine.messages.count, 2)
         let analystMsg = engine.messages[1]
-        XCTAssertNotNil(analystMsg.attachedSession, "Session card must attach when tool executes displaySession")
+        XCTAssertNotNil(analystMsg.attachedSession, "Session card must attach when tool executes schedule query")
     }
 
     // MARK: - 9. System Prompt Character Budget (< 1200)
@@ -392,7 +400,9 @@ final class AnalystChatEngineTests: XCTestCase {
         let engine = AnalystChatEngine(runRecord: run, mode: .macroCoach)
 
         engine.modelResponder = { _, _ in
-            await engine.executeCoachAction(query: ExecuteCoachActionQuery(action: .displaySession))
+            let df = DateFormatter()
+            df.dateFormat = "yyyy-MM-dd"
+            engine.executeTrainingScheduleQuery(query: GetTrainingScheduleQuery(from: df.string(from: Date())))
             return "Your next scheduled run is on Thursday: a 30-minute Easy Aerobic run."
         }
 
@@ -400,7 +410,7 @@ final class AnalystChatEngineTests: XCTestCase {
 
         XCTAssertEqual(engine.messages.count, 2)
         let analystMsg = engine.messages[1]
-        XCTAssertNotNil(analystMsg.attachedSession, "Session card must be attached when tool executes displaySession")
+        XCTAssertNotNil(analystMsg.attachedSession, "Session card must be attached when tool executes schedule query")
         XCTAssertFalse(analystMsg.attachedSession?.isRestDay ?? true, "Attached session must be an actual run, not a rest day")
         XCTAssertNotNil(analystMsg.attachedSession?.dayLabel)
         if let dayLabel = analystMsg.attachedSession?.dayLabel {
@@ -494,7 +504,9 @@ final class AnalystChatEngineTests: XCTestCase {
         let engine = AnalystChatEngine(modelContext: nil, runRecord: nil, mode: .macroCoach)
 
         engine.modelResponder = { _, _ in
-            await engine.executeCoachAction(query: ExecuteCoachActionQuery(action: .displaySession))
+            let df = DateFormatter()
+            df.dateFormat = "yyyy-MM-dd"
+            engine.executeTrainingScheduleQuery(query: GetTrainingScheduleQuery(from: df.string(from: Date())))
             return "Tomorrow is a scheduled session. Take time to prepare."
         }
 
@@ -502,7 +514,7 @@ final class AnalystChatEngineTests: XCTestCase {
 
         XCTAssertEqual(engine.messages.count, 2)
         let analystMsg = engine.messages[1]
-        XCTAssertNotNil(analystMsg.attachedSession, "Session card should attach when tool executes displaySession")
+        XCTAssertNotNil(analystMsg.attachedSession, "Session card should attach when tool executes schedule query")
     }
 
     // MARK: - 13. Tool Attachment Deduplication
@@ -511,7 +523,9 @@ final class AnalystChatEngineTests: XCTestCase {
         let engine = AnalystChatEngine(modelContext: nil, runRecord: nil, mode: .macroCoach)
 
         engine.modelResponder = { _, _ in
-            await engine.executeCoachAction(query: ExecuteCoachActionQuery(action: .displaySession))
+            let df = DateFormatter()
+            df.dateFormat = "yyyy-MM-dd"
+            engine.executeTrainingScheduleQuery(query: GetTrainingScheduleQuery(from: df.string(from: Date())))
             await engine.executeCoachAction(query: ExecuteCoachActionQuery(action: .displayDrill, payload: "strides"))
             return "Your next run is scheduled for Friday. Warm up with strides."
         }

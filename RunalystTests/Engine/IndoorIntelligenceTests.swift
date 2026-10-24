@@ -1789,7 +1789,7 @@ final class IndoorIntelligenceTests: XCTestCase {
         #if canImport(FoundationModels)
         if #available(iOS 26.0, *) {
             let instructions = chatEngine.buildLeanSystemInstructions()
-            XCTAssertTrue(instructions.contains("display_drill"))
+            XCTAssertTrue(instructions.contains("prescribe_drill"))
             XCTAssertTrue(instructions.contains("executeCoachAction"))
             XCTAssertTrue(instructions.contains("record_feedback"))
 
@@ -1808,18 +1808,14 @@ final class IndoorIntelligenceTests: XCTestCase {
             let session = chatEngine.getOrCreateSession()
             XCTAssertNotNil(session)
 
-            // Test ExecuteCoachActionTool with display_drill for both drills and full recovery sessions
+            // Test ExecuteCoachActionTool with prescribe_drill for both drills and full recovery sessions
             let coachActionTool = ExecuteCoachActionTool { query in
                 switch query.action {
-                case .displaySession:
-                    return "{\"status\":\"session_card_displayed\"}"
-                case .displaySchedule:
-                    return "{\"status\":\"schedule_card_displayed\"}"
-                case .displayDrill:
+                case .prescribeDrill:
                     let resolved = PreRunDrillId.resolve(from: query.payload ?? "") ?? .cadencePyramids
-                    return "{\"status\":\"interactive_drill_card_displayed\",\"drill_name\":\"\(resolved.title)\"}"
-                case .displayExplainer:
-                    return "{\"status\":\"interactive_explainer_card_displayed\"}"
+                    return "{\"status\":\"drill_prescribed\",\"drill_name\":\"\(resolved.title)\"}"
+                case .explainMetric:
+                    return "{\"status\":\"metric_explained\"}"
                 case .exportToWatch:
                     let resolved = PreRunDrillId.resolve(from: query.payload ?? "") ?? .cadencePyramids
                     return "{\"status\":\"exported_to_watch\",\"drill_name\":\"\(resolved.title)\"}"
@@ -1830,11 +1826,11 @@ final class IndoorIntelligenceTests: XCTestCase {
                 }
             }
 
-            let drillResult = try await coachActionTool.call(arguments: ExecuteCoachActionQuery(action: .displayDrill, payload: "cadence_pyramids"))
-            XCTAssertTrue(drillResult.contains("interactive_drill_card_displayed"))
+            let drillResult = try await coachActionTool.call(arguments: ExecuteCoachActionQuery(action: .prescribeDrill, payload: "cadence_pyramids"))
+            XCTAssertTrue(drillResult.contains("drill_prescribed"))
 
-            let sessionResult = try await coachActionTool.call(arguments: ExecuteCoachActionQuery(action: .displayDrill, payload: "Zone 1 Active Recovery Flush"))
-            XCTAssertTrue(sessionResult.contains("interactive_drill_card_displayed"))
+            let sessionResult = try await coachActionTool.call(arguments: ExecuteCoachActionQuery(action: .prescribeDrill, payload: "Zone 1 Active Recovery Flush"))
+            XCTAssertTrue(sessionResult.contains("drill_prescribed"))
             XCTAssertTrue(sessionResult.contains("Aerobic Flush"))
 
             let feedbackResult = try await coachActionTool.call(arguments: ExecuteCoachActionQuery(action: .recordFeedback, payload: "RPE 8"))
@@ -1897,7 +1893,7 @@ final class IndoorIntelligenceTests: XCTestCase {
             // 2. Verify lean prompt rules and character limit
             let instructions = chatEngine.buildLeanSystemInstructions()
             XCTAssertTrue(instructions.contains("update_goal"), "Prompt must declare update_goal rule")
-            XCTAssertTrue(instructions.contains("display_drill"), "Prompt must declare display_drill rule")
+            XCTAssertTrue(instructions.contains("prescribe_drill"), "Prompt must declare prescribe_drill rule")
             XCTAssertTrue(instructions.contains("export_to_watch"), "Prompt must declare export_to_watch rule")
             XCTAssertTrue(instructions.contains("SPM"), "Prompt must require standard SPM unit notation")
             XCTAssertTrue(instructions.count < 1200, "System instructions must stay strictly under 1,200 chars (was \(instructions.count))")
