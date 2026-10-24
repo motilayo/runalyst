@@ -57,6 +57,7 @@
 		B1110054D4E5F60718293A54 /* Runalyst/Views/PrescribedSessionCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110054D4E5F60718293A54 /* Runalyst/Views/PrescribedSessionCardView.swift */; };
 		B1110055D4E5F60718293A55 /* Runalyst/Views/UpcomingScheduleCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110055D4E5F60718293A55 /* Runalyst/Views/UpcomingScheduleCardView.swift */; };
 		B1110056D4E5F60718293A56 /* Runalyst/Views/DrillPrimerCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110056D4E5F60718293A56 /* Runalyst/Views/DrillPrimerCardView.swift */; };
+		B1110057D4E5F60718293A57 /* Runalyst/Views/GoalReadinessCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110057D4E5F60718293A57 /* Runalyst/Views/GoalReadinessCard.swift */; };
 		B1110005D4E5F60718293A05 /* Runalyst/Views/RunVarianceMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110005D4E5F60718293A05 /* Runalyst/Views/RunVarianceMapView.swift */; };
 		B1110080D4E5F60718293A80 /* Runalyst/Models/WorkoutTelemetryModality.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110080D4E5F60718293A80 /* Runalyst/Models/WorkoutTelemetryModality.swift */; };
 		B1110081D4E5F60718293A81 /* Runalyst/Views/HeartRateTrajectoryMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110081D4E5F60718293A81 /* Runalyst/Views/HeartRateTrajectoryMapView.swift */; };
@@ -184,6 +185,7 @@
 		A1110054D4E5F60718293A54 /* Runalyst/Views/PrescribedSessionCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/PrescribedSessionCardView.swift; sourceTree = SOURCE_ROOT; };
 		A1110055D4E5F60718293A55 /* Runalyst/Views/UpcomingScheduleCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/UpcomingScheduleCardView.swift; sourceTree = SOURCE_ROOT; };
 		A1110056D4E5F60718293A56 /* Runalyst/Views/DrillPrimerCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/DrillPrimerCardView.swift; sourceTree = SOURCE_ROOT; };
+		A1110057D4E5F60718293A57 /* Runalyst/Views/GoalReadinessCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/GoalReadinessCard.swift; sourceTree = SOURCE_ROOT; };
 		A1110005D4E5F60718293A05 /* Runalyst/Views/RunVarianceMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/RunVarianceMapView.swift; sourceTree = SOURCE_ROOT; };
 		A1110080D4E5F60718293A80 /* Runalyst/Models/WorkoutTelemetryModality.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Models/WorkoutTelemetryModality.swift; sourceTree = SOURCE_ROOT; };
 		A1110081D4E5F60718293A81 /* Runalyst/Views/HeartRateTrajectoryMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/HeartRateTrajectoryMapView.swift; sourceTree = SOURCE_ROOT; };
@@ -502,6 +504,7 @@
 				A1110054D4E5F60718293A54 /* Runalyst/Views/PrescribedSessionCardView.swift */,
 				A1110055D4E5F60718293A55 /* Runalyst/Views/UpcomingScheduleCardView.swift */,
 				A1110056D4E5F60718293A56 /* Runalyst/Views/DrillPrimerCardView.swift */,
+				A1110057D4E5F60718293A57 /* Runalyst/Views/GoalReadinessCard.swift */,
 				A1110005D4E5F60718293A05 /* Runalyst/Views/RunVarianceMapView.swift */,
 				A1110080D4E5F60718293A80 /* Runalyst/Models/WorkoutTelemetryModality.swift */,
 				A1110081D4E5F60718293A81 /* Runalyst/Views/HeartRateTrajectoryMapView.swift */,
@@ -681,6 +684,7 @@
 				B1110054D4E5F60718293A54 /* Runalyst/Views/PrescribedSessionCardView.swift in Sources */,
 				B1110055D4E5F60718293A55 /* Runalyst/Views/UpcomingScheduleCardView.swift in Sources */,
 				B1110056D4E5F60718293A56 /* Runalyst/Views/DrillPrimerCardView.swift in Sources */,
+				B1110057D4E5F60718293A57 /* Runalyst/Views/GoalReadinessCard.swift in Sources */,
 				B1110005D4E5F60718293A05 /* Runalyst/Views/RunVarianceMapView.swift in Sources */,
 				B1110080D4E5F60718293A80 /* Runalyst/Models/WorkoutTelemetryModality.swift in Sources */,
 				B1110081D4E5F60718293A81 /* Runalyst/Views/HeartRateTrajectoryMapView.swift in Sources */,
