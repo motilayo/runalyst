@@ -381,7 +381,7 @@ enum SessionSynthesisEngine {
 
         if streakSummary.shouldRecommendRestDay {
             let sessionTitle = "Rest & Structural Recovery Day"
-            let durationBand = "Rest Day (or 20m Walk/Mobility)"
+            let durationBand = "Rest Day (or 15m Walk/Mobility)"
             let paceBand = "No Pacing Target"
             let hrCap = "HR: Rest / < 125 BPM"
             let cadenceFloor = 0
@@ -735,7 +735,7 @@ enum SessionSynthesisEngine {
 
         if streakSummary.shouldRecommendRestDay {
             let tomorrowTitle = "Rest & Structural Recovery Day"
-            let durationBand = "Rest Day (or 20m Walk/Mobility)"
+            let durationBand = "Rest Day (or 15m Walk/Mobility)"
             let paceBand = "No Pacing Target"
             let hrCap = "HR: Rest / < 125 BPM"
             let cadenceFloor = 0

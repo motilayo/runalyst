@@ -71,8 +71,8 @@ struct PrescribedSessionCardView: View {
                 howItWorks: session.isRestDay
                     ? "Rest days allow deep tendon remodeling, rebuild depleted muscle glycogen stores, and restore neuromuscular readiness without joint impact."
                     : "Runalyst balances your 48-hour volume, acute-to-chronic workload ratio (ACWR), and rolling 30-day baseline to lock in your safe training envelope.",
-                formula: session.isRestDay ? "Target HR: < 135 BPM (Optional Flush)" : "Cadence Floor: ≥ \(session.cadenceFloor) SPM • HR Cap: \(session.hrCap)",
-                targetRange: session.isRestDay ? "Recovery: Full Rest or 20 min Zone 1" : "Duration: \(session.mainRunDurationMinutes) min • Pace: \(session.paceBand)"
+                formula: session.isRestDay ? "Target HR: < 135 BPM (Recovery Jog)" : "Cadence Floor: ≥ \(session.cadenceFloor) SPM • HR Cap: \(session.hrCap)",
+                targetRange: session.isRestDay ? "Recovery: Full Rest or \(session.mainRunDurationMinutes) min Zone 1" : "Duration: \(session.mainRunDurationMinutes) min • Pace: \(session.paceBand)"
             )
         }
     }
@@ -241,7 +241,7 @@ struct PrescribedSessionCardView: View {
                     customTarget: "Zone 1 HR",
                     categoryLabel: "OPTIONAL",
                     canChangeDuration: false,
-                    lockedDuration: .fifteenMinutes
+                    lockedDuration: DrillDuration.nearest(toMinutes: session.mainRunDurationMinutes)
                 ),
                 baselineCadence: session.cadenceFloor,
                 onPreview: {

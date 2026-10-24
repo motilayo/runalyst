@@ -244,36 +244,36 @@ struct DrillPrimerCardView: View {
                         color: .secondary
                     )
                     drillMetricCell(
-                        icon: drillId.isHeartRateTargeted ? "heart.fill" : "metronome.fill",
+                        icon: drillId.isHeartRateTargeted ? RunalystIcon.heartRate : RunalystIcon.cadence,
                         title: drillId.isHeartRateTargeted ? "Target HR" : "Cadence",
                         value: displayTargetText ?? "Dynamic",
-                        color: drillId.isHeartRateTargeted ? Color(red: 1.0, green: 0.18, blue: 0.55) : Color(red: 0.0, green: 0.8, blue: 0.65)
+                        color: drillId.isHeartRateTargeted ? RunalystColor.heartRate : RunalystColor.cadence
                     )
                     if drillId.isAerobicContinuous {
                         drillMetricCell(
-                            icon: drillId == .zone2Run ? "flame.fill" : "figure.walk",
+                            icon: drillId == .zone2Run ? RunalystIcon.pace : "figure.walk",
                             title: "Effort",
                             value: drillId == .zone2Run ? "Aerobic Base" : "Active Recovery",
-                            color: drillId == .zone2Run ? Color(red: 1.0, green: 0.58, blue: 0.0) : Color(red: 0.20, green: 0.72, blue: 0.92)
+                            color: drillId == .zone2Run ? RunalystColor.pace : Color.teal
                         )
                         drillMetricCell(
-                            icon: "metronome.fill",
+                            icon: RunalystIcon.cadence,
                             title: "Cadence",
                             value: drillId == .zone2Run ? (targetCadence.map { "\($0) SPM" } ?? "≥ 156 SPM") : "Relaxed",
-                            color: drillId == .zone2Run ? Color(red: 0.0, green: 0.8, blue: 0.65) : Color(UIColor.secondaryLabel)
+                            color: drillId == .zone2Run ? RunalystColor.cadence : Color.secondary
                         )
                     } else {
                         drillMetricCell(
                             icon: "repeat",
                             title: "Intervals",
                             value: previewDrill.shortWorkSummary,
-                            color: Color(red: 1.0, green: 0.58, blue: 0.0)
+                            color: RunalystColor.warning
                         )
                         drillMetricCell(
                             icon: "figure.walk",
                             title: "Recovery",
                             value: previewDrill.shortRecoverySummary,
-                            color: Color(red: 0.20, green: 0.72, blue: 0.92)
+                            color: Color.teal
                         )
                     }
                 }
