@@ -244,23 +244,38 @@ struct DrillPrimerCardView: View {
                         color: .secondary
                     )
                     drillMetricCell(
-                        icon: drillId.isHeartRateTargeted ? "heart.fill" : "metronome.fill",
+                        icon: drillId.isHeartRateTargeted ? RunalystIcon.heartRate : RunalystIcon.cadence,
                         title: drillId.isHeartRateTargeted ? "Target HR" : "Cadence",
                         value: displayTargetText ?? "Dynamic",
-                        color: drillId.isHeartRateTargeted ? Color(red: 1.0, green: 0.18, blue: 0.55) : Color(red: 0.0, green: 0.8, blue: 0.65)
+                        color: drillId.isHeartRateTargeted ? RunalystColor.heartRate : RunalystColor.cadence
                     )
-                    drillMetricCell(
-                        icon: "repeat",
-                        title: "Intervals",
-                        value: previewDrill.shortWorkSummary,
-                        color: Color(red: 1.0, green: 0.58, blue: 0.0)
-                    )
-                    drillMetricCell(
-                        icon: "figure.walk",
-                        title: "Recovery",
-                        value: previewDrill.shortRecoverySummary,
-                        color: Color(red: 0.20, green: 0.72, blue: 0.92)
-                    )
+                    if drillId.isAerobicContinuous {
+                        drillMetricCell(
+                            icon: drillId == .zone2Run ? RunalystIcon.pace : "figure.walk",
+                            title: "Effort",
+                            value: drillId == .zone2Run ? "Aerobic Base" : "Active Recovery",
+                            color: drillId == .zone2Run ? RunalystColor.pace : Color.teal
+                        )
+                        drillMetricCell(
+                            icon: RunalystIcon.cadence,
+                            title: "Cadence",
+                            value: drillId == .zone2Run ? (targetCadence.map { "\($0) SPM" } ?? "≥ 156 SPM") : "Relaxed",
+                            color: drillId == .zone2Run ? RunalystColor.cadence : Color.secondary
+                        )
+                    } else {
+                        drillMetricCell(
+                            icon: "repeat",
+                            title: "Intervals",
+                            value: previewDrill.shortWorkSummary,
+                            color: RunalystColor.warning
+                        )
+                        drillMetricCell(
+                            icon: "figure.walk",
+                            title: "Recovery",
+                            value: previewDrill.shortRecoverySummary,
+                            color: Color.teal
+                        )
+                    }
                 }
             }
 
@@ -306,40 +321,17 @@ struct DrillPrimerCardView: View {
             }
             .padding(.top, 2)
         }
-        .padding(14)
-        .background(Color(UIColor.secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(Color(UIColor.separator).opacity(0.18), lineWidth: 0.5)
-        )
-        .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
+        .liquidGlass(cornerRadius: 16, padding: 14, accentColor: iconColor)
     }
 
     private func drillMetricCell(icon: String, title: String, value: String, color: Color) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: icon)
-                .font(.system(size: 11, weight: .bold))
-                .foregroundColor(color)
-                .frame(width: 14)
-
-            VStack(alignment: .leading, spacing: 1) {
-                Text(title.uppercased())
-                    .font(.system(size: 8, weight: .bold))
-                    .foregroundColor(.secondary)
-                Text(value)
-                    .font(.system(size: 11, weight: .bold))
-                    .monospacedDigit()
-                    .foregroundColor(.primary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
-        .background(Color(UIColor.tertiarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        MiniStatTile(
+            title: title,
+            value: value,
+            unit: nil,
+            icon: icon,
+            accentColor: color
+        )
     }
 
     private func startDrill(title: String, purpose: String, targetCadence: String?) {

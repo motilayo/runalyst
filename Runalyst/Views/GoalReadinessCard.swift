@@ -161,42 +161,20 @@ struct GoalReadinessCard: View {
             .background(Color.purple.opacity(0.06))
             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
-        .padding(16)
-        .background(Color(UIColor.secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(Color(UIColor.separator).opacity(0.2), lineWidth: 0.5)
-        )
-        .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
+        .liquidGlass(cornerRadius: 16, padding: 16, accentColor: .purple)
         .padding(.horizontal)
     }
 
     // MARK: - Subview Helpers
 
     private func telemetryCell(icon: String, title: String, value: String, color: Color) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: icon)
-                .font(.system(size: 11, weight: .bold))
-                .foregroundColor(color)
-                .frame(width: 14)
-
-            VStack(alignment: .leading, spacing: 1) {
-                Text(title)
-                    .font(.system(size: 8, weight: .bold))
-                    .foregroundColor(.secondary)
-                Text(value)
-                    .font(.system(size: 12, weight: .bold))
-                    .monospacedDigit()
-                    .foregroundColor(.primary)
-                    .lineLimit(1)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(Color(UIColor.tertiarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        MiniStatTile(
+            title: title,
+            value: value,
+            unit: nil,
+            icon: icon,
+            accentColor: color
+        )
     }
 
     // MARK: - Deterministic Mathematical Evaluation

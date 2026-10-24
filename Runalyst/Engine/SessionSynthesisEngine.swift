@@ -381,17 +381,17 @@ enum SessionSynthesisEngine {
 
         if streakSummary.shouldRecommendRestDay {
             let sessionTitle = "Rest & Structural Recovery Day"
-            let durationBand = "Rest Day (or 20m Walk/Mobility)"
+            let durationBand = "Rest Day (or 15m Walk/Mobility)"
             let paceBand = "No Pacing Target"
             let hrCap = "HR: Rest / < 125 BPM"
             let cadenceFloor = 0
             let rationale = streakSummary.restDayReason ?? "Scheduled rest day to consolidate aerobic adaptations and protect tendons."
             let readinessStatus = "Scheduled Structural Recovery"
-            let primerDrillId: PreRunDrillId = .aerobicFlush
-            let primerTitle = "Optional 20m Zone 1 Flush"
-            let primerTarget = "\(baseCadence - 4)–\(baseCadence + 2) SPM"
-            let primerWork = "20 min active recovery jog • Keep HR in Zone 1"
-            let primerDuration = "20 min (Optional)"
+            let primerDrillId: PreRunDrillId = .recoveryJog
+            let primerTitle = "Optional Recovery Jog"
+            let primerTarget = "Zone 1 HR"
+            let primerWork = "15 min active recovery jog • Keep HR in Zone 1"
+            let primerDuration = "15 min (Optional)"
 
             let remainingHours = recoveryTimeline.readyForHard ? 0.0 : max(0.0, recoveryTimeline.requiredHours - (recoveryTimeline.hoursSinceLastHard ?? 0.0))
             let microcycle = generateMicrocycle(
@@ -425,8 +425,8 @@ enum SessionSynthesisEngine {
                 primerPhasesDuration: primerDuration,
                 isTrimmed: true,
                 microcycle: microcycle,
-                mainSessionTemplateId: .aerobicFlush,
-                mainRunDurationMinutes: 20,
+                mainSessionTemplateId: .recoveryJog,
+                mainRunDurationMinutes: 15,
                 completedPrimerRun: nil,
                 isRestDay: true,
                 dayLabel: "Today",
@@ -735,7 +735,7 @@ enum SessionSynthesisEngine {
 
         if streakSummary.shouldRecommendRestDay {
             let tomorrowTitle = "Rest & Structural Recovery Day"
-            let durationBand = "Rest Day (or 20m Walk/Mobility)"
+            let durationBand = "Rest Day (or 15m Walk/Mobility)"
             let paceBand = "No Pacing Target"
             let hrCap = "HR: Rest / < 125 BPM"
             let cadenceFloor = 0
@@ -745,11 +745,11 @@ enum SessionSynthesisEngine {
                 ? "48-Hour Volume Compression (\(Int(round(streakSummary.volumeRatio48h * 100)))% of weekly baseline)"
                 : "Consecutive Day Streak Cap Reached (\(streakSummary.consecutiveRunDays) Days)"
 
-            let primerDrillId: PreRunDrillId = .aerobicFlush
-            let primerTitle = "Optional 20m Zone 1 Flush"
-            let primerTarget = "\(baseCadence - 4)–\(baseCadence + 2) SPM"
-            let primerWork = "20 min active recovery jog • Keep HR in Zone 1"
-            let primerDuration = "20 min (Optional)"
+            let primerDrillId: PreRunDrillId = .recoveryJog
+            let primerTitle = "Optional Recovery Jog"
+            let primerTarget = "Zone 1 HR"
+            let primerWork = "15 min active recovery jog • Keep HR in Zone 1"
+            let primerDuration = "15 min (Optional)"
 
             let tomorrowDate = Calendar.current.date(byAdding: .day, value: 1, to: context.now) ?? context.now
             let tomorrowWeekday = TrainingCalendar.weekdayFormatter.string(from: tomorrowDate)
@@ -782,8 +782,8 @@ enum SessionSynthesisEngine {
                 primerPhasesDuration: primerDuration,
                 isTrimmed: true,
                 microcycle: microcycle,
-                mainSessionTemplateId: .aerobicFlush,
-                mainRunDurationMinutes: 20,
+                mainSessionTemplateId: .recoveryJog,
+                mainRunDurationMinutes: 15,
                 completedPrimerRun: nil,
                 isRestDay: true,
                 dayLabel: tomorrowWeekday,
@@ -920,7 +920,7 @@ enum SessionSynthesisEngine {
             primerPhasesDuration: primerDuration,
             isTrimmed: wasHardSession,
             microcycle: microcycle,
-            mainSessionTemplateId: wasHardSession ? .aerobicFlush : .zone2Run,
+            mainSessionTemplateId: wasHardSession ? .recoveryJog : .zone2Run,
             mainRunDurationMinutes: mainRunDurationMinutes,
             completedPrimerRun: nil,
             isRestDay: false,

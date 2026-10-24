@@ -48,14 +48,7 @@ struct StatBox: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding()
-        .background(Color(UIColor.secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(Color(UIColor.separator).opacity(0.15), lineWidth: 0.5)
-        )
-        .shadow(color: Color.black.opacity(0.03), radius: 4, x: 0, y: 2)
+        .liquidGlass(cornerRadius: 16, padding: 14)
         .contentShape(Rectangle())
         .onTapGesture {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -63,13 +56,9 @@ struct StatBox: View {
         }
         .sheet(isPresented: $showingInfo) {
             let metricText = "\(title): \(value) \(unit)".trimmingCharacters(in: .whitespaces)
-            MetricExplainerSheet(
-                title: explainer.title,
+            GlassBoxExplainerSheet(
+                explainer: explainer,
                 mode: isWorkoutStats ? "Workout Stats" : "Working Stats",
-                overview: explainer.overview,
-                modeContext: explainer.modeContext,
-                whyItMatters: explainer.whyItMatters,
-                targetRange: explainer.targetRange,
                 userMetricDisplay: metricText
             )
         }

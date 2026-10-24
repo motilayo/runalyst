@@ -291,10 +291,7 @@ struct LifetimeMilestonesCard: View {
                 }
             }
         }
-        .padding(16)
-        .background(Color(UIColor.secondarySystemGroupedBackground))
-        .cornerRadius(18)
-        .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
+        .liquidGlass(cornerRadius: 16, padding: 16, accentColor: .yellow)
         .padding(.horizontal)
         .alert(item: $selectedBadge) { badge in
             Alert(

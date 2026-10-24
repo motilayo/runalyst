@@ -21,41 +21,14 @@ struct RunListRowView: View {
         if let drill = prescribedDrillName {
             return PreRunDrill.iconName(for: nil, title: drill)
         }
-        if runRecord.isIndoor ?? false {
-            return "figure.run.treadmill"
-        }
-        switch runRecord.normalizedClassification {
-        case "Easy Run", "Steady Effort": return "figure.run"
-        case "Tempo Run": return "flame.fill"
-        case "Intervals": return "timer"
-        case "Long Run": return "map.fill"
-        case "Progression Run": return "chart.line.uptrend.xyaxis"
-        case "Recovery Run": return "heart.fill"
-        case "Hill Repeats": return "mountain.2.fill"
-        case "Fartlek": return "waveform.path.ecg"
-        default: return "figure.run"
-        }
+        return RunalystIcon.forClassification(runRecord.normalizedClassification, isIndoor: runRecord.isIndoor ?? false)
     }
 
     private var workoutColor: Color {
         if let drill = prescribedDrillName {
             return PreRunDrill.iconColor(for: nil, title: drill)
         }
-        if runRecord.isIndoor ?? false {
-            return Color(red: 0.0, green: 0.55, blue: 1.0)
-        }
-        switch runRecord.normalizedClassification {
-        case "Easy Run": return Color(red: 0.0, green: 0.72, blue: 0.55)
-        case "Steady Effort": return Color(red: 0.0, green: 0.55, blue: 1.0)
-        case "Tempo Run": return Color.orange
-        case "Intervals": return Color.purple
-        case "Long Run": return Color.indigo
-        case "Progression Run": return Color.teal
-        case "Recovery Run": return Color.mint
-        case "Hill Repeats": return Color.brown
-        case "Fartlek": return Color.pink
-        default: return Color(red: 0.0, green: 0.55, blue: 1.0)
-        }
+        return RunalystColor.forClassification(runRecord.normalizedClassification, isIndoor: runRecord.isIndoor ?? false)
     }
 
     private var formattedTimestamp: String {
@@ -119,9 +92,9 @@ struct RunListRowView: View {
                             .foregroundColor(.secondary.opacity(0.6))
 
                         HStack(spacing: 2) {
-                            Image(systemName: "heart.fill")
+                            Image(systemName: RunalystIcon.heartRate)
                                 .font(.system(size: 9))
-                                .foregroundColor(Color(red: 1.0, green: 0.22, blue: 0.55))
+                                .foregroundColor(RunalystColor.heartRate)
                             Text("\(Int(runRecord.workingAvgHeartRate))")
                                 .font(.subheadline)
                                 .monospacedDigit()
@@ -137,14 +110,7 @@ struct RunListRowView: View {
                     .foregroundColor(Color.secondary.opacity(0.6))
             }
         }
-        .padding(16)
-        .background(Color(UIColor.secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(Color(UIColor.separator).opacity(0.15), lineWidth: 0.5)
-        )
-        .shadow(color: Color.black.opacity(0.03), radius: 5, x: 0, y: 2)
+        .liquidGlass(cornerRadius: 16, padding: 16, accentColor: workoutColor)
         .padding(.horizontal)
         .accessibilityElement(children: .combine)
     }

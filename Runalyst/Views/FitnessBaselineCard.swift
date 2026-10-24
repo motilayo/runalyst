@@ -10,6 +10,7 @@ struct FitnessBaselineCard: View {
     var workoutDensityTier: String
     var timeRangeRunsCount: Int
     var timeRangeName: String
+    var forceTwoColumnLayout: Bool = false
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var activeExplainer: MetricExplainerInfo?
@@ -240,7 +241,7 @@ struct FitnessBaselineCard: View {
 
     var body: some View {
         VStack(spacing: 16) {
-            if horizontalSizeClass == .regular {
+            if horizontalSizeClass == .regular && !forceTwoColumnLayout {
                 HStack(alignment: .top, spacing: 20) {
                     quadrantVO2Max
                     Divider()
@@ -271,17 +272,9 @@ struct FitnessBaselineCard: View {
                 }
             }
         }
-        .padding(18)
-        .background(Color(UIColor.secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(Color(UIColor.separator).opacity(0.2), lineWidth: 0.5)
-        )
-        .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
-        .padding(.horizontal)
+        .liquidGlass(cornerRadius: 16, padding: 18, accentColor: Color(red: 1.0, green: 0.22, blue: 0.55))
         .sheet(item: $activeExplainer) { info in
-            MetricExplainerSheet(info: info)
+            GlassBoxExplainerSheet(info: info)
         }
     }
 }

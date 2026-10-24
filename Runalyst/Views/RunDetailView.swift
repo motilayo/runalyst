@@ -11,13 +11,11 @@ struct RunDetailView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Query private var existingRuns: [RunRecord]
 
-    @State private var showRawMetrics: Bool = false
     @State private var isForceAnalyzing: Bool = false
-    @State private var showingToggleInfo = false
+    @State private var showingBiomechanicsExplainer = false
     @State private var showingClassificationExplainer = false
     @State private var showingDrillExplainer = false
     @State private var isGeneratingInsight = false
-    @State private var showingReadinessMathModal = false
     @State private var showingAnalystChat = false
     @State private var showingEnvironmentInfo = false
 
@@ -474,14 +472,7 @@ struct RunDetailView: View {
         }
         .frame(minHeight: 1)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
-        .background(Color(UIColor.secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(Color(UIColor.separator).opacity(0.15), lineWidth: 0.5)
-        )
-        .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
+        .liquidGlass(cornerRadius: 16, padding: 16, accentColor: .purple)
         .id("aiAnalysisCard")
         .task {
             if !hasBiometrics, let oldInsight = runRecord.insight {
@@ -507,19 +498,19 @@ struct RunDetailView: View {
             showingEnvironmentInfo = true
         } label: {
             HStack(spacing: 5) {
-                Image(systemName: isIndoor ? "house.fill" : "figure.run")
+                Image(systemName: isIndoor ? RunalystIcon.indoor : RunalystIcon.outdoor)
                     .font(.caption2.bold())
                 Text(isIndoor ? "Indoor" : "Outdoor")
                     .font(.caption.bold())
             }
-            .foregroundColor(isIndoor ? .purple : .blue)
+            .foregroundColor(isIndoor ? RunalystColor.indoor : RunalystColor.outdoor)
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .background(isIndoor ? Color.purple.opacity(0.12) : Color.blue.opacity(0.12))
+            .background((isIndoor ? RunalystColor.indoor : RunalystColor.outdoor).opacity(0.12))
             .clipShape(Capsule())
             .overlay(
                 Capsule()
-                    .stroke((isIndoor ? Color.purple : Color.blue).opacity(0.3), lineWidth: 1)
+                    .stroke((isIndoor ? RunalystColor.indoor : RunalystColor.outdoor).opacity(0.3), lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
@@ -605,8 +596,8 @@ struct RunDetailView: View {
 
         let workingKm = activeDistanceMeters / 1000.0
         let currentPace = (workingKm > 0 && activeDuration > 0) ? (activeDuration / workingKm) : runRecord.workingAvgPace
-        let paceString = PaceFormatter.formatPace(secondsPerKilometer: currentPace)
-        let paceUnit = useMetricSystem ? "/km" : "/mi"
+        let paceValue = PaceFormatter.formatPaceValue(secondsPerKilometer: currentPace)
+        let paceUnit = PaceFormatter.paceUnit()
 
         let hrVal = runRecord.workingAvgHeartRate > 0 ? Int(round(runRecord.workingAvgHeartRate)) : Int(round(runRecord.rawAvgHeartRate))
         let cadVal = runRecord.workingAvgCadence > 0 ? Int(round(runRecord.workingAvgCadence)) : Int(round(runRecord.rawAvgCadence))
@@ -651,10 +642,10 @@ struct RunDetailView: View {
                         .font(.system(size: 10, weight: .bold, design: .rounded))
                         .foregroundColor(.secondary)
                     HStack(alignment: .firstTextBaseline, spacing: 2) {
-                        Text(paceString)
+                        Text(paceValue)
                             .font(.system(size: 26, weight: .bold, design: .rounded))
                             .monospacedDigit()
-                            .foregroundColor(Color.blue)
+                            .foregroundColor(RunalystColor.pace)
                         Text(paceUnit)
                             .font(.system(size: 12, weight: .semibold, design: .rounded))
                             .foregroundColor(.secondary)
@@ -671,9 +662,9 @@ struct RunDetailView: View {
                 HStack(spacing: 18) {
                     if hrVal > 0 {
                         HStack(spacing: 6) {
-                            Image(systemName: "heart.fill")
+                            Image(systemName: RunalystIcon.heartRate)
                                 .font(.system(size: 12))
-                                .foregroundColor(Color(red: 1.0, green: 0.18, blue: 0.55))
+                                .foregroundColor(RunalystColor.heartRate)
                             Text("AVG HR")
                                 .font(.system(size: 11, weight: .bold, design: .rounded))
                                 .foregroundColor(.secondary)
@@ -689,9 +680,9 @@ struct RunDetailView: View {
 
                     if cadVal > 0 {
                         HStack(spacing: 6) {
-                            Image(systemName: "metronome.fill")
+                            Image(systemName: RunalystIcon.cadence)
                                 .font(.system(size: 12))
-                                .foregroundColor(Color.green)
+                                .foregroundColor(RunalystColor.cadence)
                             Text("CADENCE")
                                 .font(.system(size: 11, weight: .bold, design: .rounded))
                                 .foregroundColor(.secondary)
@@ -709,14 +700,7 @@ struct RunDetailView: View {
                 }
             }
         }
-        .padding(16)
-        .background(Color(UIColor.secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(Color(UIColor.separator).opacity(0.15), lineWidth: 0.5)
-        )
-        .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
+        .liquidGlass(cornerRadius: 16, padding: 16, accentColor: RunalystColor.pace)
         .padding(.horizontal)
     }
 
@@ -731,7 +715,7 @@ struct RunDetailView: View {
 
     @ViewBuilder
     private var workoutRhythmTimeline: some View {
-        if !showRawMetrics, let segments = runRecord.signature?.phaseSegments, !segments.isEmpty {
+        if let segments = runRecord.signature?.phaseSegments, !segments.isEmpty {
             let isIntervalOrDrill: Bool = {
                 let type = runRecord.detectedTypeRaw
                 let isContinuous = type == "Recovery Run" || type == "Easy Run" || type == "Steady Effort" || type == "Long Run"
@@ -762,6 +746,103 @@ struct RunDetailView: View {
         }
     }
 
+    private var hasBiomechanicsData: Bool {
+        (runRecord.workingAvgVerticalOscillation ?? runRecord.rawAvgVerticalOscillation) != nil ||
+        (runRecord.workingAvgStrideLength ?? runRecord.rawAvgStrideLength) != nil ||
+        runRecord.verticalRatio != nil ||
+        runRecord.efficiencyFactor != nil
+    }
+
+    @ViewBuilder
+    private var secondaryBiomechanicsCard: some View {
+        if hasBiomechanicsData {
+            let currentOsc = runRecord.workingAvgVerticalOscillation ?? runRecord.rawAvgVerticalOscillation
+            let currentStride = runRecord.workingAvgStrideLength ?? runRecord.rawAvgStrideLength
+            let currentStrideConverted: Double? = {
+                guard let stride = currentStride, stride > 0 else { return nil }
+                return useMetricSystem ? stride : (stride * 3.28084)
+            }()
+            let currentVR = runRecord.verticalRatio
+            let currentEF = runRecord.efficiencyFactor
+
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    HStack(spacing: 6) {
+                        Image(systemName: RunalystIcon.verticalOscillation)
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundColor(RunalystColor.pace)
+                        Text("STRIDE & RUNNING ECONOMY")
+                            .font(.system(size: 11, weight: .bold, design: .rounded))
+                            .foregroundColor(.secondary)
+                    }
+
+                    Spacer()
+
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        showingBiomechanicsExplainer = true
+                    } label: {
+                        Image(systemName: RunalystIcon.glassBoxInfo)
+                            .font(.system(size: 13))
+                            .foregroundColor(.secondary)
+                            .frame(width: 32, height: 32)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                let columns = horizontalSizeClass == .regular
+                    ? [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
+                    : [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
+
+                LazyVGrid(columns: columns, spacing: 10) {
+                    if let osc = currentOsc {
+                        MiniStatTile(
+                            title: "Bounce",
+                            value: String(format: "%.1f", osc),
+                            unit: "cm",
+                            icon: RunalystIcon.verticalOscillation,
+                            accentColor: Color.orange
+                        )
+                    }
+
+                    if let stride = currentStrideConverted {
+                        MiniStatTile(
+                            title: "Stride Length",
+                            value: String(format: "%.2f", stride),
+                            unit: useMetricSystem ? "m" : "ft",
+                            icon: RunalystIcon.strideLength,
+                            accentColor: Color.indigo
+                        )
+                    }
+
+                    if let vr = currentVR {
+                        MiniStatTile(
+                            title: "Bounce Ratio",
+                            value: String(format: "%.1f", vr),
+                            unit: "%",
+                            icon: "percent",
+                            accentColor: Color.teal
+                        )
+                    }
+
+                    if let ef = currentEF {
+                        MiniStatTile(
+                            title: "Economy",
+                            value: String(format: "%.2f", ef),
+                            unit: "m/b",
+                            icon: RunalystIcon.efficiencyFactor,
+                            accentColor: RunalystColor.coach
+                        )
+                    }
+                }
+            }
+            .liquidGlass(cornerRadius: 16, padding: 14, accentColor: RunalystColor.pace)
+            .padding(.horizontal)
+            .id("secondaryBiomechanicsCard")
+        }
+    }
+
     @ViewBuilder
     private var performanceAndAnalysisSection: some View {
         let isRecovery = runRecord.detectedTypeRaw == "Recovery Run" || (runRecord.percentZone4 <= 0.02 && runRecord.workingAvgHeartRate > 0 && runRecord.workingAvgHeartRate <= 135 && runRecord.duration >= 600)
@@ -781,15 +862,14 @@ struct RunDetailView: View {
                 if isLinkedTechniqueDrill {
                     return drillId.title
                 }
-                let prefix = (runRecord.isIndoor == true) ? "Indoor " : ""
                 if isRecovery {
-                    return "\(prefix)Zone 1 Recovery Run"
+                    return "Zone 1 Recovery Run"
                 } else if runRecord.detectedTypeRaw == "Steady Effort" {
-                    return "\(prefix)Zone 2 Steady Base"
+                    return "Zone 2 Steady Base"
                 } else if runRecord.detectedTypeRaw == "Easy Run" {
-                    return "\(prefix)Zone 2 Easy Base"
+                    return "Zone 2 Easy Base"
                 } else {
-                    return "\(prefix)\(runRecord.detectedTypeRaw)"
+                    return runRecord.detectedTypeRaw
                 }
             }()
 
@@ -845,9 +925,8 @@ struct RunDetailView: View {
                     .padding(.horizontal)
             }
         } else if runRecord.evaluationModality == .intervals && hasIntervalWorkReps {
-            let prefix = (runRecord.isIndoor == true) ? "Indoor " : ""
             let rawType = runRecord.detectedTypeRaw.isEmpty ? "Intervals" : runRecord.detectedTypeRaw
-            let title = "\(prefix)\(rawType)"
+            let title = rawType
             let scorecard = IntervalPerformanceCard(
                 runRecord: runRecord,
                 baselineCadence: baselineCadence,
@@ -1090,154 +1169,10 @@ struct RunDetailView: View {
                 performanceAndAnalysisSection
                     .id("performanceSection-\(runRecord.detectedTypeRaw)")
 
-                // MARK: Data Toggle
-                HStack(spacing: 8) {
-                    Picker("Metrics Type", selection: $showRawMetrics) {
-                        Text("Working Stats").tag(false)
-                        Text("Workout Stats").tag(true)
-                    }
-                    .pickerStyle(.segmented)
-                    .onChange(of: showRawMetrics) { _, _ in
-                        UISelectionFeedbackGenerator().selectionChanged()
-                    }
-
-                    Button(action: {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        showingToggleInfo = true
-                    }) {
-                        Image(systemName: "info.circle")
-                            .font(.body)
-                            .foregroundColor(.secondary)
-                            .frame(width: 44, height: 44)
-                            .contentShape(Rectangle())
-                    }
-                }
-                .padding(.horizontal)
-                .sheet(isPresented: $showingToggleInfo) {
-                    let explainer = MetricDetailExplainer.explainer(for: showRawMetrics ? "Workout Stats" : "Working Stats", isWorkoutStats: showRawMetrics)
-                    MetricExplainerSheet(
-                        explainer: explainer,
-                        mode: showRawMetrics ? "Workout Stats" : "Working Stats"
-                    )
-                }
-
-                // MARK: Metrics Grid
-                let columns: [GridItem] = {
-                    if horizontalSizeClass == .regular {
-                        let currentStride = showRawMetrics ? (runRecord.rawAvgStrideLength ?? runRecord.workingAvgStrideLength) : (runRecord.workingAvgStrideLength ?? runRecord.rawAvgStrideLength)
-                        let currentOscillation = showRawMetrics ? (runRecord.rawAvgVerticalOscillation ?? runRecord.workingAvgVerticalOscillation) : (runRecord.workingAvgVerticalOscillation ?? runRecord.rawAvgVerticalOscillation)
-                        let currentVR = runRecord.verticalRatio
-                        let totalItems = 5 + (currentStride != nil ? 1 : 0) + (currentOscillation != nil ? 1 : 0) + (currentVR != nil ? 1 : 0)
-
-                        if totalItems == 5 {
-                            return Array(repeating: GridItem(.flexible(), spacing: 16), count: 5)
-                        } else if totalItems == 6 {
-                            return Array(repeating: GridItem(.flexible(), spacing: 16), count: 3)
-                        } else {
-                            return [
-                                GridItem(.flexible(), spacing: 16),
-                                GridItem(.flexible(), spacing: 16),
-                                GridItem(.flexible(), spacing: 16),
-                                GridItem(.flexible(), spacing: 16)
-                            ]
-                        }
-                    } else if verticalSizeClass == .regular {
-                        return [GridItem(.flexible(), spacing: 16), GridItem(.flexible(), spacing: 16)]
-                    } else {
-                        return [GridItem(.flexible(), spacing: 16), GridItem(.flexible(), spacing: 16), GridItem(.flexible(), spacing: 16)]
-                    }
-                }()
-
-                LazyVGrid(columns: columns, spacing: 16) {
-                    let activeDistanceMeters = showRawMetrics ? runRecord.totalDistanceMeters : runRecord.effectiveWorkingDistanceMeters
-                    let distanceConverted = useMetricSystem ? (activeDistanceMeters / 1000.0) : (activeDistanceMeters / 1609.344)
-                    let distanceUnit = useMetricSystem ? "km" : "mi"
-                    StatBox(title: "Distance", value: String(format: "%.2f", distanceConverted), unit: distanceUnit, isWorkoutStats: showRawMetrics)
-
-                    let activeDuration = showRawMetrics ? runRecord.duration : runRecord.effectiveWorkingDurationSeconds
-                    let minutes = Int(activeDuration) / 60
-                    let seconds = Int(activeDuration) % 60
-                    StatBox(title: showRawMetrics ? "Total Time" : "Moving Time", value: String(format: "%d:%02d", minutes, seconds), unit: "min", isWorkoutStats: showRawMetrics)
-
-                    let currentPace: Double = {
-                        if showRawMetrics {
-                            let totalKm = runRecord.totalDistanceMeters / 1000.0
-                            return totalKm > 0 ? (runRecord.duration / totalKm) : runRecord.rawAvgPace
-                        } else {
-                            let workingKm = runRecord.effectiveWorkingDistanceMeters / 1000.0
-                            return workingKm > 0 ? (runRecord.effectiveWorkingDurationSeconds / workingKm) : runRecord.workingAvgPace
-                        }
-                    }()
-                    let currentHR = showRawMetrics ? runRecord.rawAvgHeartRate : runRecord.workingAvgHeartRate
-                    let currentCadence = showRawMetrics ? runRecord.rawAvgCadence : runRecord.workingAvgCadence
-
-                    let paceValue = PaceFormatter.formatPace(secondsPerKilometer: currentPace)
-                    let paceCurrent = currentPace > 0 ? currentPace : nil
-                    let paceBaseline = (showRawMetrics || currentPace <= 0) ? nil : baselinePace
-                    StatBox(title: "Avg Pace", value: paceValue, unit: "", currentValue: paceCurrent, baselineValue: paceBaseline, polarity: .lowerIsBetter, isWorkoutStats: showRawMetrics)
-
-                    let hrValue = currentHR > 0 ? "\(Int(round(currentHR)))" : "--"
-                    let hrUnit = currentHR > 0 ? "BPM" : ""
-                    let hrCurrent = currentHR > 0 ? currentHR : nil
-                    let hrBaseline = (showRawMetrics || currentHR <= 0) ? nil : baselineHR
-                    StatBox(title: "Avg HR", value: hrValue, unit: hrUnit, currentValue: hrCurrent, baselineValue: hrBaseline, polarity: .lowerIsBetter, isWorkoutStats: showRawMetrics)
-
-                    let cadValue = currentCadence > 0 ? "\(Int(round(currentCadence)))" : "--"
-                    let cadUnit = currentCadence > 0 ? "SPM" : ""
-                    let cadCurrent = currentCadence > 0 ? currentCadence : nil
-                    let cadBaseline = (showRawMetrics || currentCadence <= 0) ? nil : baselineCadence
-                    StatBox(title: "Avg Cadence", value: cadValue, unit: cadUnit, currentValue: cadCurrent, baselineValue: cadBaseline, polarity: .higherIsBetter, isWorkoutStats: showRawMetrics)
-
-                    let currentStride = showRawMetrics ? (runRecord.rawAvgStrideLength ?? runRecord.workingAvgStrideLength) : (runRecord.workingAvgStrideLength ?? runRecord.rawAvgStrideLength)
-                    let currentStrideConverted: Double? = {
-                        guard let stride = currentStride, stride > 0 else { return nil }
-                        return useMetricSystem ? stride : (stride * 3.28084)
-                    }()
-                    let baselineStrideConverted: Double? = {
-                        guard let base = baselineStrideLength, base > 0 else { return nil }
-                        return useMetricSystem ? base : (base * 3.28084)
-                    }()
-                    if currentStride != nil {
-                        StatBox(
-                            title: "Avg Stride",
-                            value: currentStrideConverted.map { String(format: "%.2f", $0) } ?? "--",
-                            unit: currentStride != nil ? (useMetricSystem ? "m" : "ft") : "",
-                            currentValue: currentStrideConverted,
-                            baselineValue: showRawMetrics ? nil : baselineStrideConverted,
-                            polarity: .higherIsBetter,
-                            isWorkoutStats: showRawMetrics
-                        )
-                    }
-
-                    let currentOscillation = showRawMetrics ? (runRecord.rawAvgVerticalOscillation ?? runRecord.workingAvgVerticalOscillation) : (runRecord.workingAvgVerticalOscillation ?? runRecord.rawAvgVerticalOscillation)
-                    if currentOscillation != nil {
-                        StatBox(
-                            title: "Bounce",
-                            value: currentOscillation.map { String(format: "%.1f", $0) } ?? "--",
-                            unit: currentOscillation != nil ? "cm" : "",
-                            currentValue: currentOscillation,
-                            baselineValue: showRawMetrics ? nil : baselineOscillation,
-                            polarity: .lowerIsBetter,
-                            isWorkoutStats: showRawMetrics
-                        )
-                    }
-
-                    let currentVR = runRecord.verticalRatio
-                    if currentVR != nil {
-                        StatBox(
-                            title: "Bounce Ratio",
-                            value: currentVR.map { String(format: "%.1f", $0) } ?? "--",
-                            unit: currentVR != nil ? "%" : "",
-                            currentValue: currentVR,
-                            baselineValue: showRawMetrics ? nil : baselineVerticalRatio,
-                            polarity: .lowerIsBetter,
-                            isWorkoutStats: showRawMetrics
-                        )
-                    }
-                }
-                .padding(.horizontal)
-                .id("metricsGrid")
+                // MARK: - Secondary Biomechanics
+                secondaryBiomechanicsCard
             }
+            .frame(maxWidth: horizontalSizeClass == .regular ? 880 : .infinity)
             .frame(maxWidth: .infinity)
             .padding(.vertical)
 
@@ -1348,28 +1283,41 @@ struct RunDetailView: View {
         .toolbar(.hidden, for: .tabBar)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button {
+                CoachPillButton {
                     showingAnalystChat = true
-                } label: {
-                    Label("Ask Coach", systemImage: "bubble.left.and.text.bubble.right.fill")
-                        .foregroundColor(.purple)
                 }
             }
+        }
+        .sheet(isPresented: $showingBiomechanicsExplainer) {
+            GlassBoxExplainerSheet(
+                title: "Stride & Running Economy",
+                categoryBadge: "Biomechanics",
+                whatSummary: "Running economy reflects how efficiently your body converts oxygen and energy into forward propulsion. Optimal stride mechanics direct force horizontally through hip extension rather than wasting energy bouncing upward.",
+                whyItMatters: "High vertical oscillation (> 10 cm) and long ground contact times cause heavy joint braking forces. Lower bounce and a vertical ratio under 8% preserve elastic recoil, saving glycogen for the final miles.",
+                howItWorks: "Runalyst calculates Efficiency Factor as meters traveled per heartbeat (Speed / Heart Rate). Vertical Ratio measures vertical bounce divided by stride length. Pause-trimmed Working Stats filter sensor noise at stoplights.",
+                formula: "Efficiency Factor = Speed (m/min) / HR (BPM) • Vertical Ratio = Bounce (cm) / Stride (m)",
+                targetRange: "Bounce: 6.0–9.0 cm • Stride: 1.0–1.4 m • Ratio: < 8.0%"
+            )
         }
         .sheet(isPresented: $showingAnalystChat) {
             AnalystChatView(runRecord: runRecord)
         }
-        .sheet(isPresented: $showingReadinessMathModal) {
-            ReadinessMathModal()
-        }
         .sheet(isPresented: $showingClassificationExplainer) {
-            RunClassificationExplainerSheet()
+            GlassBoxExplainerSheet(
+                title: "Workout Classification",
+                categoryBadge: "CoreML & Biometrics",
+                whatSummary: "Runalyst analyzes your continuous minute-by-minute running data using on-device machine learning paired with physiological cardiac rules to identify what your body actually experienced.",
+                whyItMatters: "Strict cardiac guardrails ensure that high-intensity or elevated heart rate sessions are never classified as easy or recovery, even if your pace was slow on hills or in the heat.",
+                howItWorks: "Evaluates multi-signal telemetry across pace coefficient of variation (CV), pace slope regression, duration, and Zone 4 heart rate percentage with sub-20s pause trimming.",
+                formula: "Pace CV = σ ÷ μ • Pace Slope = Linear Regression over Time",
+                targetRange: "Easy: Zone 1–2 • Steady: CV < 6% • Tempo: Zone 3–4 • Intervals: Work Surges"
+            )
         }
         .onAppear {
             normalizeDrillClassification()
         }
         .task {
-            let previewScroll = ProcessInfo.processInfo.environment["RUNALYST_PREVIEW_SCROLL"]
+            let previewScroll = UserDefaults.standard.string(forKey: "RUNALYST_PREVIEW_SCROLL") ?? ProcessInfo.processInfo.environment["RUNALYST_PREVIEW_SCROLL"]
             if previewScroll == "CHART" {
                 try? await Task.sleep(nanoseconds: 600_000_000)
                 withAnimation(.easeInOut(duration: 0.5)) {
@@ -1378,13 +1326,13 @@ struct RunDetailView: View {
             } else if previewScroll == "BOTTOM" {
                 try? await Task.sleep(nanoseconds: 600_000_000)
                 withAnimation(.easeInOut(duration: 0.5)) {
-                    scrollProxy.scrollTo("aiAnalysisCard", anchor: .top)
+                    scrollProxy.scrollTo("secondaryBiomechanicsCard", anchor: .top)
                 }
             } else if ProcessInfo.processInfo.environment["RUNALYST_PREVIEW_SCREEN"] == "AUTO_TOUR" {
                 Task {
                     try? await Task.sleep(nanoseconds: 3_500_000_000)
                     withAnimation(.easeInOut(duration: 2.2)) {
-                        scrollProxy.scrollTo("metricsGrid", anchor: .top)
+                        scrollProxy.scrollTo("secondaryBiomechanicsCard", anchor: .top)
                     }
                 }
             }

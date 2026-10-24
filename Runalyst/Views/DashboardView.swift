@@ -16,7 +16,7 @@ struct DashboardView: View {
     @State private var isSyncing: Bool = true
     @State private var selectedFilter: String?
 
-    @AppStorage("dashboardTimeRange") private var timeRange: String = "30 Days"
+    @AppStorage("dashboardTimeRange") private var timeRange: String = "7 Days"
     @AppStorage("lastBaselineChangeTimestamp") private var lastBaselineChangeTimestamp: Double = 0
     @AppStorage("lastWatchExportTimestamp") private var lastWatchExportTimestamp: Double = 0
     @AppStorage("lastExportedDrillId") private var lastExportedDrillId: String = ""
@@ -34,6 +34,7 @@ struct DashboardView: View {
 
     @State private var isFetchingInsight = false
     @State private var showingAnalystChat = false
+    @State private var showingTrendsExplainer = false
 
     private var timeRangeRuns: [RunRecord] {
         let now = Date()
@@ -87,6 +88,16 @@ struct DashboardView: View {
             return Int(candidateRuns.map(\.workingAvgCadence).reduce(0, +)) / candidateRuns.count
         }
         return Int(candidateRuns.map { $0.workingAvgCadence * $0.duration }.reduce(0, +) / totalDuration)
+    }
+
+    var baselineHeartRate: Int? {
+        let runs = timeRangeRuns.filter { $0.workingAvgHeartRate > 0 }
+        guard !runs.isEmpty else { return nil }
+        let totalDuration = runs.map(\.duration).reduce(0, +)
+        guard totalDuration > 0 else {
+            return Int(runs.map(\.workingAvgHeartRate).reduce(0, +)) / runs.count
+        }
+        return Int(runs.map { Double($0.workingAvgHeartRate) * $0.duration }.reduce(0, +) / totalDuration)
     }
 
     var canonicalAthleteBaselinePace: Double? {
@@ -366,6 +377,20 @@ struct DashboardView: View {
                                 .foregroundColor(.secondary)
                         }
                     }
+
+                    Spacer()
+
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        showingTrendsExplainer = true
+                    } label: {
+                        Image(systemName: "info.circle")
+                            .font(.system(size: 15))
+                            .foregroundColor(.secondary)
+                            .frame(width: 36, height: 36)
+                            .contentShape(Rectangle())
+                    }
+                    .accessibilityLabel("Learn more about this insight")
                 }
 
                 if is7Day {
@@ -422,35 +447,87 @@ struct DashboardView: View {
                             }
                         }
                     }
-                } else if !headline.isEmpty {
-                    Text(headline)
-                        .font(.headline)
+
+                    let defaultPlaceholder = "Complete more runs this week to evaluate acute fatigue and recovery trends."
+                    Text(bodyText.isEmpty ? defaultPlaceholder : bodyText)
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .lineSpacing(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 2)
+                } else {
+                    let displayHeadline = headline.isEmpty ? "Aerobic Base Stabilizing" : headline
+                    Text(displayHeadline)
+                        .font(.title3.bold())
                         .foregroundColor(.primary)
+
+                    HStack(spacing: 6) {
+                        Text("Goal: \(trainingGoal)")
+                            .font(.caption.bold())
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.orange.opacity(0.12))
+                            .foregroundColor(.orange)
+                            .clipShape(Capsule())
+
+                        if isTrajectoryEaseUp {
+                            Text("Cumulative Strain")
+                                .font(.caption.bold())
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color.red.opacity(0.12))
+                                .foregroundColor(.red)
+                                .clipShape(Capsule())
+                        } else {
+                            Text("Aerobic Base Expanding")
+                                .font(.caption.bold())
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color.green.opacity(0.12))
+                                .foregroundColor(.green)
+                                .clipShape(Capsule())
+                        }
+                    }
+
+                    let defaultPlaceholder = "Complete more runs over the next 30 days to measure structural aerobic adaptation."
+                    Text(bodyText.isEmpty ? defaultPlaceholder : bodyText)
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .lineSpacing(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 2)
                 }
-
-                let defaultPlaceholder = is7Day
-                    ? "Complete more runs this week to evaluate acute fatigue and recovery trends."
-                    : "Complete more runs over the next 30 days to measure structural aerobic adaptation."
-
-                Text(bodyText.isEmpty ? defaultPlaceholder : bodyText)
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                    .lineSpacing(2)
-                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
-        .background(Color(UIColor.secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(Color(UIColor.separator).opacity(0.2), lineWidth: 0.5)
-        )
-        .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
+        .liquidGlass(cornerRadius: 16, padding: 16, accentColor: is7Day ? .purple : .orange)
+        .sheet(isPresented: $showingTrendsExplainer) {
+            let is7Day = timeRange == "7 Days"
+            let headline = currentHeadline()
+            let bodyText = currentBody()
+            GlassBoxExplainerSheet(
+                title: is7Day ? "Today's Training Directive" : "30-Day Aerobic Profile",
+                categoryBadge: is7Day ? "Acute Readiness" : "Longitudinal Adaptation",
+                whatSummary: headline.isEmpty
+                    ? (is7Day ? "Daily training directive calculated from acute fatigue and recovery balance." : "Your rolling 30-day baseline captures aerobic base stabilization.")
+                    : headline,
+                whyItMatters: bodyText.isEmpty
+                    ? "Consistent volume at conversational heart rates establishes capillary density and neuromuscular economy while protecting joint health."
+                    : bodyText,
+                howItWorks: is7Day
+                    ? "Evaluates your last 48-hour volume against your 28-day chronic workload using Banister impulse-response modeling to lock in today's safe duration and pace bands."
+                    : "Calculates rolling 30-day time-locked medians across pause-trimmed Working Pace, heart rate, and cadence to determine your physiological trajectory.",
+                formula: is7Day
+                    ? "ACWR = Acute Load (7D) ÷ Chronic Load (28D)"
+                    : "Efficiency Factor = Speed (m/s) ÷ (Heart Rate - Resting HR)",
+                targetRange: is7Day
+                    ? "ACWR: 0.8–1.3 (Optimal Zone) • HR Cap: \(deterministicPrescription.map { hrCapText(for: $0) } ?? "< 145")"
+                    : "Cadence Floor: ≥ 156–160 SPM • Stable or Rising Efficiency Factor"
+            )
+        }
         .onAppear {
             if timeRange != "7 Days" && timeRange != "30 Days" {
-                timeRange = "30 Days"
+                timeRange = "7 Days"
             }
             checkAndFetchInsight()
         }
@@ -466,22 +543,34 @@ struct DashboardView: View {
         }
     }
 
-    private func currentHeadline() -> String {
-        switch timeRange {
-        case "7 Days": return cachedHeadline7Day
-        case "30 Days": return cachedHeadline30Day
-        case "All Time": return cachedHeadlineAllTime
-        default: return ""
+    private func sanitizeCoachingText(_ text: String) -> String {
+        var cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        while cleaned.hasSuffix("}") || cleaned.hasSuffix("{") || cleaned.hasSuffix("\"") {
+            cleaned = String(cleaned.dropLast()).trimmingCharacters(in: .whitespacesAndNewlines)
         }
+        return cleaned
+    }
+
+    private func currentHeadline() -> String {
+        let raw: String
+        switch timeRange {
+        case "7 Days": raw = cachedHeadline7Day
+        case "30 Days": raw = cachedHeadline30Day
+        case "All Time": raw = cachedHeadlineAllTime
+        default: raw = ""
+        }
+        return sanitizeCoachingText(raw)
     }
 
     private func currentBody() -> String {
+        let raw: String
         switch timeRange {
-        case "7 Days": return cachedBody7Day
-        case "30 Days": return cachedBody30Day
-        case "All Time": return cachedBodyAllTime
-        default: return ""
+        case "7 Days": raw = cachedBody7Day
+        case "30 Days": raw = cachedBody30Day
+        case "All Time": raw = cachedBodyAllTime
+        default: raw = ""
         }
+        return sanitizeCoachingText(raw)
     }
 
     private func checkAndFetchInsight() {
@@ -766,6 +855,18 @@ struct DashboardView: View {
             timeRangeRunsCount: timeRangeRuns.count,
             timeRangeName: timeRange
         )
+        .padding(.horizontal)
+    }
+
+    @ViewBuilder
+    private var activityVolumeSummaryCard: some View {
+        ActivityVolumeSummaryCard(
+            runs: timeRangeRuns,
+            timeRange: timeRange,
+            useMetricSystem: useMetricSystem,
+            activeGoal: trainingGoal
+        )
+        .padding(.horizontal)
     }
 
     @ViewBuilder
@@ -799,10 +900,15 @@ struct DashboardView: View {
                                 selectedFilter = filter
                             }
                         }) {
-                            HStack(spacing: 4) {
+                            let iconName: String = {
                                 if let drillId = PreRunDrillId.allCases.first(where: { $0.title == filter }) {
-                                    Image(systemName: drillId.iconName)
+                                    return drillId.iconName
                                 }
+                                return RunalystIcon.forClassification(filter, isIndoor: false)
+                            }()
+
+                            HStack(spacing: 4) {
+                                Image(systemName: iconName)
                                 Text(filter)
                             }
                             .font(.caption.bold())
@@ -843,8 +949,35 @@ struct DashboardView: View {
                                 .padding(.horizontal)
                         }
 
-                        // 3. Fitness Baseline Quadrant Card
-                        fitnessBaselineCard
+                        // 3 & 4. Activity Volume & Fitness Baseline Cockpit
+                        if horizontalSizeClass == .regular && !timeRangeRuns.isEmpty {
+                            HStack(alignment: .top, spacing: 16) {
+                                ActivityVolumeSummaryCard(
+                                    runs: timeRangeRuns,
+                                    timeRange: timeRange,
+                                    useMetricSystem: useMetricSystem,
+                                    activeGoal: trainingGoal
+                                )
+                                FitnessBaselineCard(
+                                    globalVO2Max: globalVO2Max,
+                                    baselineVO2Max: baselineVO2Max,
+                                    baselineCadence: baselineCadence,
+                                    previousBaselineCadence: previousBaselineCadence,
+                                    baselinePace: baselinePace,
+                                    previousBaselinePace: previousBaselinePace,
+                                    workoutDensityTier: workoutDensityTier,
+                                    timeRangeRunsCount: timeRangeRuns.count,
+                                    timeRangeName: timeRange,
+                                    forceTwoColumnLayout: true
+                                )
+                            }
+                            .padding(.horizontal)
+                        } else {
+                            if !timeRangeRuns.isEmpty {
+                                activityVolumeSummaryCard
+                            }
+                            fitnessBaselineCard
+                        }
 
                         // 4. Past Runs Section Header & Run-Type Filters
                         VStack(alignment: .leading, spacing: 10) {
@@ -935,8 +1068,10 @@ struct DashboardView: View {
                             .padding(.horizontal)
                             .padding(.top, 8)
                             .padding(.bottom, 16)
-                }
-                .padding(.vertical)
+                    }
+                    .frame(maxWidth: horizontalSizeClass == .regular ? 1040 : .infinity)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical)
             }
             .safeAreaInset(edge: .bottom) {
                 Color.clear.frame(height: 80)
@@ -1007,14 +1142,9 @@ struct DashboardView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
+                    CoachPillButton {
                         showingAnalystChat = true
-                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    } label: {
-                        Image(systemName: "bubble.left.and.bubble.right.fill")
-                            .foregroundColor(.purple)
                     }
-                    .accessibilityLabel("AI Coach")
                 }
             }
             .toolbarBackground(.visible, for: .navigationBar)

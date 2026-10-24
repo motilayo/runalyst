@@ -92,6 +92,17 @@ struct PreviewRouterView: View {
             }
         case "DRILL_READOUT":
             drillReadoutPreview
+        case "GLASS_BOX":
+            GlassBoxExplainerSheet(
+                title: "30-Day Aerobic Profile",
+                categoryBadge: "Longitudinal Adaptation",
+                whatSummary: "Your rolling 30-day baseline captures aerobic base stabilization and metabolic efficiency.",
+                whyItMatters: "Consistent volume at conversational heart rates establishes capillary density and neuromuscular economy while protecting joint health from impact spikes.",
+                howItWorks: "Runalyst calculates rolling 30-day time-locked medians across pause-trimmed Working Pace, heart rate, and cadence to determine your physiological trajectory.",
+                formula: "Efficiency Factor = Speed (m/s) ÷ (Heart Rate - Resting HR)",
+                targetRange: "Cadence Floor: ≥ 156–160 SPM • Stable or Rising Efficiency Factor",
+                liveMetricDisplay: "166 SPM • 5:42/km"
+            )
         case "BIOMECHANICS":
             NavigationStack {
                 OverstrideBiomechanicsSheet()
@@ -120,10 +131,56 @@ struct PreviewRouterView: View {
             }
         case "WORKOUTS":
             WorkoutsView()
+        case "REST_DAY":
+            let restSession = PrescribedDailySession(
+                targetGoal: "General Fitness",
+                sessionTitle: "Rest & Structural Recovery Day",
+                durationBand: "No Run Prescribed",
+                paceBand: "No Pacing Target",
+                hrCap: "HR: Rest / < 125 BPM",
+                cadenceFloor: 0,
+                groundedRationale: "You've banked 89 min in the last 48 hours (70% of your 126 min/week average). A rest day allows deep recovery, glycogen replenishment, and joint remodeling to prevent cumulative overload.",
+                readinessStateText: "Scheduled Structural Recovery",
+                readinessTriggerLead: "48-Hour Volume Compression (70% of weekly baseline)",
+                primerDrillId: .recoveryJog,
+                primerDrillTitle: "Optional Recovery Jog",
+                primerTargetCadence: "Zone 1 HR",
+                primerWorkDescription: "15 min active recovery jog • Keep HR in Zone 1",
+                primerPhasesDuration: "15 min (Optional)",
+                isTrimmed: true,
+                microcycle: [],
+                mainSessionTemplateId: .recoveryJog,
+                mainRunDurationMinutes: 15,
+                completedPrimerRun: nil,
+                isRestDay: true,
+                dayLabel: "Today",
+                isToday: true,
+                readinessState: .acuteFatigue
+            )
+            NavigationStack {
+                ScrollView {
+                    PrescribedSessionCardView(
+                        session: restSession,
+                        isToday: true,
+                        preferredWorkoutIsIndoor: .constant(true)
+                    )
+                    .padding()
+                }
+                .navigationTitle("Workouts")
+            }
         case "WORKOUTS_COMPLETED_TODAY":
             WorkoutsCompletedTodayPreview(existingRuns: existingRuns)
         case "READINESS":
-            ReadinessMathModal(acuteLoad: 168.5, chronicWeeklyLoad: 165.2, acwr: 1.02)
+            GlassBoxExplainerSheet(
+                title: "Training Load & Readiness",
+                categoryBadge: "Acute Readiness",
+                whatSummary: "We compare your running effort this week against your past month to evaluate whether your body is primed to adapt or needs recovery.",
+                whyItMatters: "Spiking weekly mileage or intensity too quickly elevates musculoskeletal injury risk. Maintaining your ACWR within the sweet spot (0.8–1.3) safely builds durable aerobic fitness.",
+                howItWorks: "Banister impulse-response model calculates 7-day acute volume divided by rolling 28-day chronic volume with time-decay weighting.",
+                formula: "ACWR = Acute Load (7 Days) ÷ Chronic Load (28 Days)",
+                targetRange: "Optimal Zone: 0.8–1.3 • Overreaching Warning: > 1.5",
+                liveMetricDisplay: "ACWR: 1.02 (Optimal)"
+            )
         case "DETAIL":
             if let run = existingRuns.first {
                 NavigationStack {
@@ -210,14 +267,15 @@ struct PreviewRouterView: View {
         case "ANALYSIS":
             AnalysisDashboardView()
         case "PROGRESSION_EXPLAINER":
-            MetricExplainerSheet(
+            GlassBoxExplainerSheet(
                 title: "Efficiency Factor Progression",
-                mode: "Steady Effort • 30 Days",
-                overview: "Efficiency Factor (Speed ÷ Heart Rate) tracks physiological economy over time. By comparing how fast you run against the cardiovascular effort required, Runalyst shows whether your aerobic engine is becoming more efficient.",
-                modeContext: "Isolated to Steady Effort runs across 30 Days to eliminate pacing noise and ensure authentic physiological comparisons.",
-                whyItMatters: "Aerobic Economy: As aerobic endurance improves through base training, you run faster at the same heart rate, or maintain the same speed at a lower heart rate. A declining trend signals accumulated fatigue, dehydration, or heat stress.",
-                targetRange: "Target: Upward or stable trajectory across training cycles.\n\n• Rising: You are getting fitter and faster with less cardiovascular effort.\n• Dropping: You may be tired, overtraining, or battling heat/dehydration.",
-                userMetricDisplay: "1.48 EF"
+                categoryBadge: "Steady Effort • 30 Days",
+                whatSummary: "Efficiency Factor (Speed ÷ Heart Rate) tracks physiological economy over time. By comparing how fast you run against the cardiovascular effort required, Runalyst shows whether your aerobic engine is becoming more efficient.",
+                whyItMatters: "As aerobic endurance improves through base training, you run faster at the same heart rate, or maintain the same speed at a lower heart rate. A declining trend signals accumulated fatigue, dehydration, or heat stress.",
+                howItWorks: "Isolated to Steady Effort runs across 30 Days to eliminate pacing noise and ensure authentic physiological comparisons.",
+                formula: "Efficiency Factor = Speed (m/min) ÷ Heart Rate (BPM)",
+                targetRange: "Target: Upward or stable trajectory across training cycles.",
+                liveMetricDisplay: "1.48 EF"
             )
         case "MILESTONES":
             NavigationStack {

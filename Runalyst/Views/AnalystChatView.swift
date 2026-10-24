@@ -246,7 +246,7 @@ struct AnalystChatView: View {
                 }
             }
             .sheet(item: $activeExplainerInfo) { info in
-                MetricExplainerSheet(info: info)
+                GlassBoxExplainerSheet(info: info)
             }
             .task {
                 engine.setModelContextIfNeeded(modelContext)

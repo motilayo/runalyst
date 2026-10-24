@@ -336,7 +336,7 @@ struct MetricView: View {
             showingInfo = true
         }
         .sheet(isPresented: $showingInfo) {
-            MetricExplainerSheet(explainer: explainer, mode: "Working Stats")
+            GlassBoxExplainerSheet(explainer: explainer, mode: "Working Stats")
         }
     }
 }

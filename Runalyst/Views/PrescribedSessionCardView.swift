@@ -11,6 +11,9 @@ struct PrescribedSessionCardView: View {
     var onPreviewMainRun: (() -> Void)?
     var onScheduleFlushOverride: (() -> Void)?
 
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @State private var showingRationaleExplainer = false
+
     private var effectiveIsToday: Bool {
         if let isToday {
             return isToday
@@ -58,14 +61,21 @@ struct PrescribedSessionCardView: View {
                 activeSessionContent
             }
         }
-        .padding(16)
-        .background(Color(UIColor.secondarySystemGroupedBackground).opacity(0.92))
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .stroke(Color(UIColor.separator).opacity(0.12), lineWidth: 0.5)
-        )
-        .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
+        .liquidGlass(cornerRadius: 16, padding: 16, accentColor: .purple)
+        .sheet(isPresented: $showingRationaleExplainer) {
+            let parsed = parseRationale(session.groundedRationale)
+            GlassBoxExplainerSheet(
+                title: session.sessionTitle,
+                categoryBadge: session.isRestDay ? "Rest & Recovery" : session.targetGoal,
+                whatSummary: parsed.headline ?? (session.isRestDay ? "Rest & Connective Tissue Remodeling" : "Prescribed Aerobic Training"),
+                whyItMatters: parsed.body,
+                howItWorks: session.isRestDay
+                    ? "Rest days allow deep tendon remodeling, rebuild depleted muscle glycogen stores, and restore neuromuscular readiness without joint impact."
+                    : "Runalyst balances your 48-hour volume, acute-to-chronic workload ratio (ACWR), and rolling 30-day baseline to lock in your safe training envelope.",
+                formula: session.isRestDay ? "Target HR: < 135 BPM (Recovery Jog)" : "Cadence Floor: ≥ \(session.cadenceFloor) SPM • HR Cap: \(session.hrCap)",
+                targetRange: session.isRestDay ? "Recovery: Full Rest or \(session.mainRunDurationMinutes) min Zone 1" : "Duration: \(session.mainRunDurationMinutes) min • Pace: \(session.paceBand)"
+            )
+        }
     }
 
     // MARK: - Header Bar
@@ -87,15 +97,15 @@ struct PrescribedSessionCardView: View {
                     UISelectionFeedbackGenerator().selectionChanged()
                 } label: {
                     HStack(spacing: 3) {
-                        Image(systemName: preferredWorkoutIsIndoor ? "figure.run.square.stack" : "sun.max.fill")
+                        Image(systemName: preferredWorkoutIsIndoor ? RunalystIcon.indoor : RunalystIcon.outdoor)
                             .font(.system(size: 9, weight: .bold))
                         Text(preferredWorkoutIsIndoor ? "Indoor" : "Outdoor")
                             .font(.system(size: 10, weight: .bold))
                     }
-                    .foregroundColor(preferredWorkoutIsIndoor ? .purple : .blue)
+                    .foregroundColor(preferredWorkoutIsIndoor ? RunalystColor.indoor : RunalystColor.outdoor)
                     .padding(.horizontal, 7)
                     .padding(.vertical, 3)
-                    .background((preferredWorkoutIsIndoor ? Color.purple : Color.blue).opacity(0.12))
+                    .background((preferredWorkoutIsIndoor ? RunalystColor.indoor : RunalystColor.outdoor).opacity(0.12))
                     .clipShape(Capsule())
                 }
 
@@ -115,7 +125,8 @@ struct PrescribedSessionCardView: View {
     // MARK: - Active Session Header
 
     private var activeSessionHeader: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        let parsed = parseRationale(session.groundedRationale)
+        return VStack(alignment: .leading, spacing: 6) {
             if !effectiveIsToday {
                 HStack(spacing: 4) {
                     Image(systemName: "calendar.badge.clock")
@@ -130,22 +141,30 @@ struct PrescribedSessionCardView: View {
                 .clipShape(Capsule())
             }
 
-            Text(session.sessionTitle)
-                .font(.title3.weight(.bold))
-                .foregroundColor(.primary)
+            HStack(alignment: .center) {
+                Text(session.sessionTitle)
+                    .font(.title3.weight(.bold))
+                    .foregroundColor(.primary)
 
-            let parsed = parseRationale(session.groundedRationale)
-            VStack(alignment: .leading, spacing: 2) {
-                if let headline = parsed.headline {
-                    Text(headline)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundColor(.primary)
+                Spacer()
+
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    showingRationaleExplainer = true
+                } label: {
+                    Image(systemName: "info.circle")
+                        .font(.system(size: 15))
+                        .foregroundColor(.secondary)
+                        .frame(width: 36, height: 36)
+                        .contentShape(Rectangle())
                 }
-                Text(parsed.body)
-                    .font(.subheadline)
-                    .foregroundColor(Color(UIColor.label).opacity(0.85))
-                    .lineSpacing(3)
-                    .fixedSize(horizontal: false, vertical: true)
+                .accessibilityLabel("Learn more about today's prescribed workout")
+            }
+
+            if let headline = parsed.headline {
+                Text(headline)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(.purple)
             }
         }
     }
@@ -156,64 +175,57 @@ struct PrescribedSessionCardView: View {
         let parsedRationale = parseRationale(session.groundedRationale)
 
         return VStack(alignment: .leading, spacing: 12) {
-            // Title & Adaptation Focus
-            VStack(alignment: .leading, spacing: 4) {
-                Text(session.sessionTitle)
-                    .font(.title3.weight(.bold))
-                    .foregroundColor(.primary)
+            // Title & Adaptation Focus with Info Icon
+            HStack(alignment: .center) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(session.sessionTitle)
+                        .font(.title3.weight(.bold))
+                        .foregroundColor(.primary)
 
-                HStack(spacing: 5) {
-                    Image(systemName: "heart.text.square.fill")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundColor(Color(red: 0.0, green: 0.75, blue: 0.65))
+                    HStack(spacing: 5) {
+                        Image(systemName: "heart.text.square.fill")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(Color(red: 0.0, green: 0.75, blue: 0.65))
 
-                    Text("Tendon Remodeling & Glycogen Restoration")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(Color(red: 0.0, green: 0.72, blue: 0.62))
+                        Text("Tendon Remodeling & Glycogen Restoration")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(Color(red: 0.0, green: 0.72, blue: 0.62))
+                    }
                 }
+
+                Spacer()
+
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    showingRationaleExplainer = true
+                } label: {
+                    Image(systemName: "info.circle")
+                        .font(.system(size: 15))
+                        .foregroundColor(.secondary)
+                        .frame(width: 36, height: 36)
+                        .contentShape(Rectangle())
+                }
+                .accessibilityLabel("Learn more about rest day physiology")
             }
 
             // Glanceable Micro-Stat Grid (Transforms Text-Heavy Rationale into Quick Metrics)
             if let metrics = parsedRationale.statMetrics, !metrics.isEmpty {
                 HStack(spacing: 8) {
                     ForEach(metrics, id: \.title) { metric in
-                        HStack(spacing: 6) {
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(metric.title.uppercased())
-                                    .font(.system(size: 8, weight: .bold))
-                                    .foregroundColor(Color(UIColor.secondaryLabel))
-                                    .lineLimit(1)
-                                    .minimumScaleFactor(0.8)
-                                Text(metric.value)
-                                    .font(.system(size: 11, weight: .bold))
-                                    .monospacedDigit()
-                                    .foregroundColor(.primary)
-                                    .lineLimit(1)
-                                    .minimumScaleFactor(0.8)
-                            }
-                            Spacer(minLength: 0)
-                        }
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 6)
-                        .background(Color(UIColor.tertiarySystemGroupedBackground).opacity(0.85))
-                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        MiniStatTile(
+                            title: metric.title,
+                            value: metric.value,
+                            unit: nil,
+                            icon: nil,
+                            accentColor: metric.title.contains("Recovery") ? Color(red: 0.0, green: 0.75, blue: 0.65) : nil
+                        )
                     }
                 }
                 .padding(.top, 2)
-            }
-
-            // High-Contrast Explanatory Rationale Body
-            VStack(alignment: .leading, spacing: 3) {
-                if let headline = parsedRationale.headline, parsedRationale.statMetrics == nil {
-                    Text(headline)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundColor(.primary)
-                }
-                Text(parsedRationale.body)
-                    .font(.subheadline)
-                    .foregroundColor(Color(UIColor.label).opacity(0.85))
-                    .lineSpacing(3)
-                    .fixedSize(horizontal: false, vertical: true)
+            } else if let headline = parsedRationale.headline {
+                Text(headline)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(.purple)
             }
 
             // Clean Divider (Eliminates Nested Card-in-Card Container)
@@ -221,22 +233,16 @@ struct PrescribedSessionCardView: View {
                 .opacity(0.4)
                 .padding(.vertical, 2)
 
-            // Optional Active Recovery Flush Workout Card
+            // Optional Active Recovery Jog Card (Unified with Drills & Runs Library)
             DrillPrimerCardView(
-                drillId: .aerobicFlush,
+                drillId: .recoveryJog,
                 config: DrillCardConfig(
-                    customTitle: "Zone 1 Active Flush",
-                    customPurpose: "Active recovery flush • HR < 135 BPM",
+                    customTitle: "Recovery Jog",
+                    customPurpose: "Promote blood flow & tissue recovery",
                     customTarget: "Zone 1 HR",
                     categoryLabel: "OPTIONAL",
                     canChangeDuration: false,
-                    lockedDuration: .nearest(toMinutes: 20),
-                    customMetrics: [
-                        DrillCardMetric(icon: "stopwatch.fill", title: "Duration", value: "20 min", color: .secondary),
-                        DrillCardMetric(icon: "heart.fill", title: "Target HR", value: "< 135 BPM", color: Color(red: 0.0, green: 0.75, blue: 0.65)),
-                        DrillCardMetric(icon: "figure.walk", title: "Effort", value: "Active Recovery", color: Color(red: 0.20, green: 0.72, blue: 0.92)),
-                        DrillCardMetric(icon: "metronome.fill", title: "Cadence", value: "Relaxed", color: .secondary)
-                    ]
+                    lockedDuration: DrillDuration.nearest(toMinutes: session.mainRunDurationMinutes)
                 ),
                 baselineCadence: session.cadenceFloor,
                 onPreview: {
@@ -252,48 +258,63 @@ struct PrescribedSessionCardView: View {
 
     // MARK: - Active Session Content (Primer + Main Run)
 
+    @ViewBuilder
+    private var primerCard: some View {
+        DrillPrimerCardView(
+            drillId: session.primerDrillId,
+            config: DrillCardConfig(
+                customTitle: session.primerDrillTitle,
+                customPurpose: "Target \(cleanPrimerTarget(session: session))",
+                customTarget: cleanPrimerTarget(session: session),
+                categoryLabel: effectiveIsToday ? "PRE-RUN PRIMER" : "\(headerDayText.uppercased()) PRIMER",
+                canChangeDuration: false,
+                lockedDuration: session.primerDrillId.defaultDuration
+            ),
+            baselineCadence: session.cadenceFloor,
+            onPreview: onPreviewPrimer
+        )
+    }
+
+    @ViewBuilder
+    private var mainRunCard: some View {
+        let mainDuration = DrillDuration.nearest(toMinutes: session.mainRunDurationMinutes)
+        let paceTitle = preferredWorkoutIsIndoor ? "Belt Pace" : "Pace"
+        let paceIcon = preferredWorkoutIsIndoor ? RunalystIcon.indoor : RunalystIcon.pace
+        let maxHrValue = session.hrCap.replacingOccurrences(of: "HR: ", with: "")
+
+        DrillPrimerCardView(
+            drillId: session.mainSessionTemplateId,
+            config: DrillCardConfig(
+                customTitle: session.sessionTitle,
+                customPurpose: session.isTrimmed ? "Low-strain movement & tissue repair" : "Aerobic consistency & conversational pacing",
+                customTarget: session.mainSessionTemplateId.isHeartRateTargeted ? nil : "\(session.cadenceFloor)–\(session.cadenceFloor + 6) SPM",
+                categoryLabel: effectiveIsToday ? "MAIN RUN" : "\(headerDayText.uppercased()) MAIN RUN",
+                canChangeDuration: false,
+                lockedDuration: mainDuration,
+                customMetrics: [
+                    DrillCardMetric(icon: "stopwatch.fill", title: "Duration", value: cleanMainRunDurationFormatted(session: session), color: .secondary),
+                    DrillCardMetric(icon: paceIcon, title: paceTitle, value: session.paceBand, color: RunalystColor.pace),
+                    DrillCardMetric(icon: RunalystIcon.heartRate, title: "Max HR", value: maxHrValue, color: RunalystColor.heartRate),
+                    DrillCardMetric(icon: RunalystIcon.cadence, title: "Cadence", value: "≥ \(session.cadenceFloor) SPM", color: RunalystColor.cadence)
+                ]
+            ),
+            baselineCadence: session.cadenceFloor,
+            onPreview: onPreviewMainRun
+        )
+    }
+
+    @ViewBuilder
     private var activeSessionContent: some View {
-        VStack(spacing: 12) {
-            // Stage 1: Pre-Run Primer Card
-            DrillPrimerCardView(
-                drillId: session.primerDrillId,
-                config: DrillCardConfig(
-                    customTitle: session.primerDrillTitle,
-                    customPurpose: "Target \(cleanPrimerTarget(session: session))",
-                    customTarget: cleanPrimerTarget(session: session),
-                    categoryLabel: effectiveIsToday ? "PRE-RUN PRIMER" : "\(headerDayText.uppercased()) PRIMER",
-                    canChangeDuration: false,
-                    lockedDuration: session.primerDrillId.defaultDuration
-                ),
-                baselineCadence: session.cadenceFloor,
-                onPreview: onPreviewPrimer
-            )
-
-            // Stage 2: Main Run Card
-            let mainDuration = DrillDuration.nearest(toMinutes: session.mainRunDurationMinutes)
-            let paceTitle = preferredWorkoutIsIndoor ? "Belt Pace" : "Pace"
-            let paceIcon = preferredWorkoutIsIndoor ? "figure.run.square.stack" : "figure.run"
-            let maxHrValue = session.hrCap.replacingOccurrences(of: "HR: ", with: "")
-
-            DrillPrimerCardView(
-                drillId: session.mainSessionTemplateId,
-                config: DrillCardConfig(
-                    customTitle: session.sessionTitle,
-                    customPurpose: session.isTrimmed ? "Active Recovery Flush • Easy Aerobic Intensity" : "Aerobic Consistency • Conversational Pacing",
-                    customTarget: session.mainSessionTemplateId.isHeartRateTargeted ? nil : "\(session.cadenceFloor)-\(session.cadenceFloor + 6) SPM",
-                    categoryLabel: effectiveIsToday ? "MAIN RUN" : "\(headerDayText.uppercased()) MAIN RUN",
-                    canChangeDuration: false,
-                    lockedDuration: mainDuration,
-                    customMetrics: [
-                        DrillCardMetric(icon: "stopwatch.fill", title: "Duration", value: cleanMainRunDurationFormatted(session: session), color: .secondary),
-                        DrillCardMetric(icon: paceIcon, title: paceTitle, value: session.paceBand, color: Color(red: 0.0, green: 0.55, blue: 1.0)),
-                        DrillCardMetric(icon: "heart.fill", title: "Max HR", value: maxHrValue, color: Color(red: 1.0, green: 0.22, blue: 0.55)),
-                        DrillCardMetric(icon: "metronome.fill", title: "Cadence", value: "≥ \(session.cadenceFloor) SPM", color: Color(red: 0.0, green: 0.8, blue: 0.65))
-                    ]
-                ),
-                baselineCadence: session.cadenceFloor,
-                onPreview: onPreviewMainRun
-            )
+        if horizontalSizeClass == .regular {
+            HStack(alignment: .top, spacing: 14) {
+                primerCard
+                mainRunCard
+            }
+        } else {
+            VStack(spacing: 12) {
+                primerCard
+                mainRunCard
+            }
         }
     }
 

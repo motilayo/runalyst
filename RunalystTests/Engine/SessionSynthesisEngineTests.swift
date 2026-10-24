@@ -879,7 +879,7 @@ final class SessionSynthesisEngineTests: XCTestCase {
         case .completedToday(_, let tomorrowSession):
             XCTAssertTrue(tomorrowSession.isRestDay, "Wednesday must be prescribed as Rest Day following 115m compressive 48h volume")
             XCTAssertEqual(tomorrowSession.sessionTitle, "Rest & Structural Recovery Day")
-            XCTAssertEqual(tomorrowSession.mainSessionTemplateId, .aerobicFlush)
+            XCTAssertEqual(tomorrowSession.mainSessionTemplateId, .recoveryJog)
             XCTAssertTrue(tomorrowSession.groundedRationale.contains("48-Hour Volume Compression") || tomorrowSession.groundedRationale.contains("consecutive"))
             XCTAssertTrue(tomorrowSession.microcycle.contains(where: { $0.isRestDay }), "Tomorrow's lookahead microcycle must include a scheduled rest day")
         case .preRun:

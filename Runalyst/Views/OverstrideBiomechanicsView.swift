@@ -196,11 +196,9 @@ struct AppleWatchBiomechanicsBridgeView: View {
                 ))
             }
         }
-        .padding(14)
-        .background(Color(UIColor.secondarySystemGroupedBackground))
-        .cornerRadius(18)
+        .liquidGlass(cornerRadius: 16, padding: 14, accentColor: .teal)
         .sheet(item: $activeExplainerInfo) { info in
-            MetricExplainerSheet(info: info)
+            GlassBoxExplainerSheet(info: info)
         }
     }
 

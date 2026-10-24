@@ -125,21 +125,12 @@ struct DrillsLibraryView: View {
                         UISelectionFeedbackGenerator().selectionChanged()
                     }
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(Color(UIColor.secondarySystemGroupedBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .liquidGlass(cornerRadius: 14, padding: 12)
                 .padding(.horizontal)
 
-                // Category Picker
-                Picker("Category", selection: $selectedCategory) {
-                    ForEach(categories, id: \.self) { category in
-                        Text(category).tag(category)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal)
-                .padding(.top, 2)
+                // Category Picker Strip
+                PillFilterStrip(categories: categories, selectedCategory: $selectedCategory)
+                    .padding(.top, 2)
 
                 // Section 1: Foundation & Recovery Primers
                 if selectedCategory == "All" || selectedCategory == "Foundation" {
@@ -311,6 +302,8 @@ struct DrillsLibraryView: View {
                     }
                 }
             }
+            .frame(maxWidth: horizontalSizeClass == .regular ? 1040 : .infinity)
+            .frame(maxWidth: .infinity)
             .padding(.vertical)
         }
         .sheet(item: $activeReadoutItem) { item in

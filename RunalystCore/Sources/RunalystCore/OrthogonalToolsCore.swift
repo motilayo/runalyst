@@ -234,7 +234,9 @@ public enum OrthogonalToolsCore {
         )
 
         let dayInterval: TimeInterval = 24 * 3600
-        let cutoff48h = now.addingTimeInterval(-48 * 3600)
+        let cal = Calendar(identifier: .gregorian)
+        let startOfToday = cal.startOfDay(for: now)
+        let cutoff48h = cal.date(byAdding: .day, value: -2, to: startOfToday) ?? now.addingTimeInterval(-48 * 3600)
         let last48hSessions = sessions.filter { $0.date >= cutoff48h && $0.date <= now }
         let last48hMins = last48hSessions.map(\.durationMinutes).reduce(0.0, +)
 
