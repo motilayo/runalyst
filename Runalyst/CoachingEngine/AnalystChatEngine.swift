@@ -431,9 +431,8 @@ class AnalystChatEngine: ObservableObject {
         • Outside Running: Sidestep non-running topics gracefully.
         • Medical Safety: Urge rest on pain/fatigue. Never bring up unasked second runs.
         • Units: SPM, min/km. No LaTeX. Steady runs use splits, never reps.
-        • ACWR: Acute:Chronic Workload Ratio (<0.8=low, >1.4=spike; low != overload).
-        • Proactive Cards: Never ask permission to show drills/schedule; trigger directly.
-        • Silent Tools: Never write commands ('executeCoachAction', 'display_drill', 'Display the drill') in text.
+        • Workload: Trust 'workload_zone' ('underload', 'optimal', 'overreaching', 'spike'). Underload means volume is light, not high.
+        • Silent Tools: Never write command names or code syntax in conversational text.
 
         Respond in \(language).
         """
@@ -460,124 +459,12 @@ class AnalystChatEngine: ObservableObject {
 
         let getTrainingScheduleTool = GetTrainingScheduleTool { [weak self] query in
             guard let self else { return "No schedule days planned." }
-            self.toolInvokedDuringActiveTurn = true
-            let allRuns = (try? self.modelContext?.fetch(FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)]))) ?? (self.runRecord.map { [$0] } ?? [])
-            let activeGoal = UserDefaults.standard.string(forKey: "trainingGoal") ?? "Base Building"
-            let profile = RunnerProfile.compute(from: allRuns)
-            let useMetric = (UserDefaults.standard.object(forKey: "useMetricSystem") as? Bool) ?? true
-            let calendar = TrainingCalendar(calendar: Calendar.current)
-
-            let fromDate = calendar.parseISO(query.from) ?? calendar.startOfDay(for: Date())
-            let toDate: Date
-            if let toStr = query.to, let parsedTo = calendar.parseISO(toStr) {
-                toDate = calendar.startOfDay(for: parsedTo)
-            } else {
-                toDate = fromDate
-            }
-
-            let context = ScheduleEvaluationContext(
-                runRecords: allRuns,
-                activeGoal: activeGoal,
-                profile: profile,
-                useMetric: useMetric
-            )
-
-            let schedule = calendar.evaluateSchedule(
-                from: fromDate,
-                to: toDate,
-                context: context
-            )
-
-            return TrainingCalendar.formatCompactScheduleSummary(days: schedule)
+            return self.executeTrainingScheduleQuery(query: query)
         }
 
-        let getReadinessAndWorkloadTool = GetReadinessAndWorkloadTool { [weak self] query in
+        let getReadinessAndWorkloadTool = GetReadinessAndWorkloadTool { [weak self] _ in
             guard let self else { return "{}" }
-            self.toolInvokedDuringActiveTurn = true
-            let isDistress = query.userReportedDistress == true
-            let allRuns = (try? self.modelContext?.fetch(FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)]))) ?? (self.runRecord.map { [$0] } ?? [])
-            let activeGoal = UserDefaults.standard.string(forKey: "trainingGoal") ?? "Base Building"
-            let profile = RunnerProfile.compute(from: allRuns)
-
-            let cal = Calendar.current
-            let todayRuns = allRuns.filter { cal.isDateInToday($0.date) && !$0.isDeleted }
-            let completedMinutes = todayRuns.reduce(0.0) { $0 + $1.duration } / 60.0
-            let (_, targetMinutes) = SessionSynthesisEngine.aerobicDurationForExperience(profile.experienceLevel)
-            let completionPercent = targetMinutes > 0 ? Int(round(Double(completedMinutes) / Double(targetMinutes) * 100.0)) : 100
-
-            let streakSummary = StreakAndVolumeSummary.evaluate(
-                runs: allRuns,
-                experienceLevel: profile.experienceLevel,
-                trainingGoal: activeGoal,
-                now: Date()
-            )
-
-            let isOverride = isDistress || self.makeAnalysisContext(isSubjectiveDistress: isDistress).lockedPrescription.isSubjectiveOverride
-
-            var limitingFactors: [String] = []
-            if isOverride {
-                limitingFactors.append("runner_reported_distress")
-            }
-            if streakSummary.consecutiveRunDays >= streakSummary.maxConsecutiveDays {
-                limitingFactors.append("streak_limit_reached")
-            }
-            if streakSummary.volumeRatio48h >= streakSummary.volumeCompressionThreshold {
-                limitingFactors.append("48h_volume_compression")
-            }
-            if streakSummary.backToBackHRDecouplingBPM >= 5.0 {
-                limitingFactors.append("cardiac_drift")
-            }
-            if completionPercent >= 80 {
-                limitingFactors.append("daily_volume_satisfied")
-            }
-
-            let secondRunAdvisable: Bool
-            if isOverride {
-                secondRunAdvisable = false
-            } else if todayRuns.isEmpty {
-                secondRunAdvisable = true
-            } else if todayRuns.count == 1 && (todayRuns[0].duration <= 1320 && (todayRuns[0].prescribedDrillName != nil || todayRuns[0].totalDistanceMeters <= 2000)) {
-                secondRunAdvisable = true
-            } else if completionPercent >= 80 || streakSummary.shouldRecommendRestDay || streakSummary.volumeRatio48h >= 0.50 {
-                secondRunAdvisable = false
-            } else {
-                secondRunAdvisable = true
-            }
-
-            let readinessState: String
-            if isOverride {
-                readinessState = "distress"
-            } else {
-                readinessState = self.currentReadiness.state.rawValue
-            }
-
-            let facts = ReadinessFacts(
-                readiness_state: readinessState,
-                acwr: self.currentReadiness.acwr,
-                streak_days: streakSummary.consecutiveRunDays,
-                streak_limit: streakSummary.maxConsecutiveDays,
-                last_48h_minutes: streakSummary.last48hDurationMinutes,
-                weekly_avg_minutes: streakSummary.trailingWeeklyDurationMinutes,
-                volume_ratio_48h: streakSummary.volumeRatio48h,
-                volume_threshold: streakSummary.volumeCompressionThreshold,
-                hr_shift_bpm: streakSummary.backToBackHRDecouplingBPM,
-                today_minutes: completedMinutes,
-                today_target_minutes: targetMinutes,
-                today_completion_percent: completionPercent,
-                second_run_advisable: secondRunAdvisable,
-                limiting_factors: limitingFactors,
-                experience_level: profile.experienceLevel,
-                training_goal: activeGoal,
-                cadence_floor_spm: profile.heightAdjustedCadenceFloor
-            )
-
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
-            if let data = try? encoder.encode(facts),
-               let json = String(data: data, encoding: .utf8) {
-                return json
-            }
-            return "{}"
+            return self.executeReadinessAndWorkloadQuery()
         }
 
         let queryWorkoutHistoryTool = QueryWorkoutHistoryTool { [weak self] query in
@@ -776,6 +663,221 @@ class AnalystChatEngine: ObservableObject {
     }
 
     #if canImport(FoundationModels)
+    @available(iOS 26.0, *)
+    @discardableResult
+    func executeTrainingScheduleQuery(query: GetTrainingScheduleQuery) -> String {
+        self.toolInvokedDuringActiveTurn = true
+        let allRuns = (try? self.modelContext?.fetch(FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)]))) ?? (self.runRecord.map { [$0] } ?? [])
+        let activeGoal = UserDefaults.standard.string(forKey: "trainingGoal") ?? "Base Building"
+        let profile = RunnerProfile.compute(from: allRuns)
+        let useMetric = (UserDefaults.standard.object(forKey: "useMetricSystem") as? Bool) ?? true
+        let calendar = TrainingCalendar(calendar: Calendar.current)
+
+        let fromDate = calendar.parseISO(query.from) ?? calendar.startOfDay(for: Date())
+        let toDate: Date
+        let isExplicitWindow = query.to != nil
+        if let toStr = query.to, let parsedTo = calendar.parseISO(toStr) {
+            toDate = calendar.startOfDay(for: parsedTo)
+        } else {
+            toDate = calendar.calendar.date(byAdding: .day, value: 6, to: fromDate) ?? fromDate
+        }
+
+        let context = ScheduleEvaluationContext(
+            runRecords: allRuns,
+            activeGoal: activeGoal,
+            profile: profile,
+            useMetric: useMetric
+        )
+
+        let schedule = calendar.evaluateSchedule(
+            from: fromDate,
+            to: toDate,
+            context: context
+        )
+
+        // Unified Schedule Dance: bind the interactive visual representation alongside the query
+        if !isExplicitWindow {
+            let dailyState = SessionSynthesisEngine.evaluateDailyState(
+                runRecords: allRuns,
+                activeGoal: activeGoal,
+                experienceLevel: profile.experienceLevel,
+                useMetric: useMetric,
+                userHeightCm: profile.userHeightCm,
+                now: Date()
+            )
+            let sessionToAttach: PrescribedDailySession?
+            switch dailyState {
+            case .preRun(let session):
+                sessionToAttach = session
+            case .completedToday(_, let tomorrowSession):
+                sessionToAttach = tomorrowSession
+            }
+
+            if let session = sessionToAttach, session.isRestDay, let next = findNextScheduledRun() {
+                let day = next.day
+                let primerTitle = day.planned.primerTitle ?? "Strides"
+                let primerId = PreRunDrillId.resolve(from: primerTitle) ?? .strides
+                let dateStr = TrainingCalendar.weekdayFormatter.string(from: next.date)
+                let cadenceFloor = day.planned.cadenceFloor ?? 155
+                let primerTarget = DrillTemplate.template(for: primerId).calculateTargetCadence(cadenceFloor)
+
+                self.sessionRecommendedThisTurn = PrescribedDailySession(
+                    targetGoal: activeGoal,
+                    sessionTitle: day.planned.title,
+                    durationBand: "\(day.planned.minutesLow)–\(day.planned.minutesHigh) min",
+                    paceBand: day.planned.paceBand ?? "Easy Aerobic",
+                    hrCap: day.planned.hrCap ?? "< 152 BPM",
+                    cadenceFloor: cadenceFloor,
+                    groundedRationale: "Scheduled next run on your training calendar.",
+                    readinessStateText: "Upcoming Planned Session",
+                    readinessTriggerLead: nil,
+                    primerDrillId: primerId,
+                    primerDrillTitle: primerTitle,
+                    primerTargetCadence: primerTarget,
+                    primerWorkDescription: "Pre-run technique primer.",
+                    primerPhasesDuration: "10 min",
+                    isTrimmed: false,
+                    microcycle: [],
+                    mainSessionTemplateId: .zone2Run,
+                    mainRunDurationMinutes: day.planned.minutesHigh,
+                    completedPrimerRun: nil,
+                    isRestDay: false,
+                    dayLabel: dateStr,
+                    isToday: false
+                )
+            } else {
+                self.sessionRecommendedThisTurn = sessionToAttach
+            }
+        } else if schedule.count == 1 {
+            let dailyState = SessionSynthesisEngine.evaluateDailyState(
+                runRecords: allRuns,
+                activeGoal: activeGoal,
+                experienceLevel: profile.experienceLevel,
+                useMetric: useMetric,
+                userHeightCm: profile.userHeightCm,
+                now: fromDate
+            )
+            switch dailyState {
+            case .preRun(let session):
+                self.sessionRecommendedThisTurn = session
+            case .completedToday(_, let tomorrowSession):
+                self.sessionRecommendedThisTurn = tomorrowSession
+            }
+        } else {
+            let microcycleDays: [MicrocycleDay] = schedule.compactMap { day in
+                if day.relative == .today && day.completion == .completed {
+                    return nil
+                }
+                let isRest = day.planned.kind == .rest
+                let icon = isRest ? "bed.double.fill" : "figure.run"
+                let title = isRest ? day.planned.title : "\(day.planned.title) • \(day.planned.minutesLow)–\(day.planned.minutesHigh) min"
+                return MicrocycleDay(
+                    id: "\(day.date)-\(day.planned.title)",
+                    dayLabel: day.weekday,
+                    sessionTitle: title,
+                    iconName: icon,
+                    isRestDay: isRest
+                )
+            }
+            self.scheduleRecommendedThisTurn = microcycleDays
+        }
+        self.harmonizeAttachments()
+
+        return TrainingCalendar.formatCompactScheduleSummary(days: schedule)
+    }
+
+    @available(iOS 26.0, *)
+    @discardableResult
+    func executeReadinessAndWorkloadQuery() -> String {
+        self.toolInvokedDuringActiveTurn = true
+        let allRuns = (try? self.modelContext?.fetch(FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)]))) ?? (self.runRecord.map { [$0] } ?? [])
+        let activeGoal = UserDefaults.standard.string(forKey: "trainingGoal") ?? "Base Building"
+        let profile = RunnerProfile.compute(from: allRuns)
+
+        let cal = Calendar.current
+        let todayRuns = allRuns.filter { cal.isDateInToday($0.date) && !$0.isDeleted }
+        let completedMinutes = todayRuns.reduce(0.0) { $0 + $1.duration } / 60.0
+        let (_, targetMinutes) = SessionSynthesisEngine.aerobicDurationForExperience(profile.experienceLevel)
+        let completionPercent = targetMinutes > 0 ? Int(round(Double(completedMinutes) / Double(targetMinutes) * 100.0)) : 100
+
+        let streakSummary = StreakAndVolumeSummary.evaluate(
+            runs: allRuns,
+            experienceLevel: profile.experienceLevel,
+            trainingGoal: activeGoal,
+            now: Date()
+        )
+
+        var limitingFactors: [String] = []
+        if streakSummary.consecutiveRunDays >= streakSummary.maxConsecutiveDays {
+            limitingFactors.append("streak_limit_reached")
+        }
+        if streakSummary.volumeRatio48h >= streakSummary.volumeCompressionThreshold {
+            limitingFactors.append("48h_volume_compression")
+        }
+        if streakSummary.backToBackHRDecouplingBPM >= 5.0 {
+            limitingFactors.append("cardiac_drift")
+        }
+        if completionPercent >= 80 {
+            limitingFactors.append("daily_volume_satisfied")
+        }
+
+        let secondRunAdvisable: Bool
+        if todayRuns.isEmpty {
+            secondRunAdvisable = true
+        } else if todayRuns.count == 1 && (todayRuns[0].duration <= 1320 && (todayRuns[0].prescribedDrillName != nil || todayRuns[0].totalDistanceMeters <= 2000)) {
+            secondRunAdvisable = true
+        } else if completionPercent >= 80 || streakSummary.shouldRecommendRestDay || streakSummary.volumeRatio48h >= 0.50 {
+            secondRunAdvisable = false
+        } else {
+            secondRunAdvisable = true
+        }
+
+        let acwrVal = self.currentReadiness.acwr
+        let workloadZone: WorkloadZone
+        if let acwr = acwrVal {
+            if acwr < 0.8 {
+                workloadZone = .underload
+            } else if acwr <= 1.3 {
+                workloadZone = .optimal
+            } else if acwr <= 1.5 {
+                workloadZone = .overreaching
+            } else {
+                workloadZone = .spike
+            }
+        } else {
+            workloadZone = .optimal
+        }
+
+        let facts = ReadinessFacts(
+            readiness_state: self.currentReadiness.state.rawValue,
+            acwr: acwrVal,
+            workload_zone: workloadZone,
+            streak_days: streakSummary.consecutiveRunDays,
+            streak_limit: streakSummary.maxConsecutiveDays,
+            last_48h_minutes: streakSummary.last48hDurationMinutes,
+            weekly_avg_minutes: streakSummary.trailingWeeklyDurationMinutes,
+            volume_ratio_48h: streakSummary.volumeRatio48h,
+            volume_threshold: streakSummary.volumeCompressionThreshold,
+            hr_shift_bpm: streakSummary.backToBackHRDecouplingBPM,
+            today_minutes: completedMinutes,
+            today_target_minutes: targetMinutes,
+            today_completion_percent: completionPercent,
+            second_run_advisable: secondRunAdvisable,
+            limiting_factors: limitingFactors,
+            experience_level: profile.experienceLevel,
+            training_goal: activeGoal,
+            cadence_floor_spm: profile.heightAdjustedCadenceFloor
+        )
+
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        if let data = try? encoder.encode(facts),
+           let json = String(data: data, encoding: .utf8) {
+            return json
+        }
+        return "{}"
+    }
+
     @available(iOS 26.0, *)
     @discardableResult
     func executeCoachAction(query: ExecuteCoachActionQuery) async -> String {

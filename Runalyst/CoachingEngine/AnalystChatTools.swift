@@ -642,9 +642,17 @@ public struct ScheduleDay: Codable, Sendable, Equatable {
     }
 }
 
+public enum WorkloadZone: String, Codable, Sendable {
+    case underload
+    case optimal
+    case overreaching
+    case spike
+}
+
 public struct ReadinessFacts: Codable, Sendable, Equatable {
     public let readiness_state: String
     public let acwr: Double?
+    public let workload_zone: WorkloadZone
     public let streak_days: Int
     public let streak_limit: Int
     public let last_48h_minutes: Double
@@ -664,6 +672,7 @@ public struct ReadinessFacts: Codable, Sendable, Equatable {
     public init(
         readiness_state: String,
         acwr: Double?,
+        workload_zone: WorkloadZone = .optimal,
         streak_days: Int,
         streak_limit: Int,
         last_48h_minutes: Double,
@@ -682,6 +691,7 @@ public struct ReadinessFacts: Codable, Sendable, Equatable {
     ) {
         self.readiness_state = readiness_state
         self.acwr = acwr
+        self.workload_zone = workload_zone
         self.streak_days = streak_days
         self.streak_limit = streak_limit
         self.last_48h_minutes = last_48h_minutes
@@ -745,7 +755,7 @@ public struct GetTrainingScheduleQuery: Sendable {
     @Guide(description: "Start of schedule window in ISO format 'yyyy-MM-dd' (e.g. '2026-10-20').")
     public var from: String
 
-    @Guide(description: "Optional end of schedule window in ISO format 'yyyy-MM-dd'. If omitted, defaults to the 'from' date.")
+    @Guide(description: "Optional end of schedule window in ISO format 'yyyy-MM-dd'. If omitted, defaults to 6 days after 'from' (a full 7-day microcycle).")
     public var to: String?
 
     public init(from: String, to: String? = nil) {
@@ -757,12 +767,7 @@ public struct GetTrainingScheduleQuery: Sendable {
 @available(iOS 26.0, *)
 @Generable
 public struct GetReadinessAndWorkloadQuery: Sendable {
-    @Guide(description: "Set to true if runner reports pain, illness, extreme fatigue, or injury.")
-    public var userReportedDistress: Bool?
-
-    public init(userReportedDistress: Bool? = nil) {
-        self.userReportedDistress = userReportedDistress
-    }
+    public init() {}
 }
 
 @available(iOS 26.0, *)
@@ -793,7 +798,7 @@ public struct InspectWorkoutQuery: Sendable {
 @available(iOS 26.0, *)
 @Generable
 public struct ExecuteCoachActionQuery: Sendable {
-    @Guide(description: "Action to execute. 'display_drill': displays an interactive technique drill card when prescribing or requested (do NOT invoke for informational questions); 'display_session': displays upcoming workout session card; 'display_schedule': displays multi-day training schedule (from..to); 'display_explainer': displays a biomechanical metric concept explainer; 'update_goal': updates training goal; 'export_to_watch': sends workout to Apple Watch; 'record_feedback': saves athlete notes.")
+    @Guide(description: "Action to execute: 'display_drill' (technique drill card), 'display_session' (upcoming session card), 'display_schedule' (multi-day schedule timeline), 'display_explainer' (metric explainer card), 'export_to_watch' (WorkoutKit export), 'update_goal' (training goal update), 'record_feedback' (athlete feedback).")
     public var action: CoachActionType
 
     @Guide(description: "Start date in 'yyyy-MM-dd' format for display_schedule.")

@@ -560,25 +560,15 @@ final class IndoorIntelligenceTests: XCTestCase {
             let session = chatEngine.getOrCreateSession()
             XCTAssertNotNil(session)
 
-            // Test normal readiness query
-            let normalQuery = GetReadinessAndWorkloadQuery()
-            let normalTool = GetReadinessAndWorkloadTool { query in
-                XCTAssertNil(query.userReportedDistress)
-                return "{\"readiness_state\":\"productive\",\"second_run_advisable\":true}"
+            // Test readiness query returns valid physical telemetry
+            let query = GetReadinessAndWorkloadQuery()
+            let tool = GetReadinessAndWorkloadTool { _ in
+                "{\"readiness_state\":\"productive\",\"second_run_advisable\":true,\"workload_zone\":\"optimal\"}"
             }
-            let normalResult = try await normalTool.call(arguments: normalQuery)
-            XCTAssertTrue(normalResult.contains("productive"))
-            XCTAssertTrue(normalResult.contains("second_run_advisable"))
-
-            // Test distress override
-            let distressQuery = GetReadinessAndWorkloadQuery(userReportedDistress: true)
-            let distressTool = GetReadinessAndWorkloadTool { query in
-                XCTAssertEqual(query.userReportedDistress, true)
-                return "{\"limiting_factors\":[\"runner_reported_distress\"],\"readiness_state\":\"distress\",\"second_run_advisable\":false}"
-            }
-            let distressResult = try await distressTool.call(arguments: distressQuery)
-            XCTAssertTrue(distressResult.contains("distress"))
-            XCTAssertTrue(distressResult.contains("runner_reported_distress"))
+            let result = try await tool.call(arguments: query)
+            XCTAssertTrue(result.contains("productive"))
+            XCTAssertTrue(result.contains("second_run_advisable"))
+            XCTAssertTrue(result.contains("optimal"))
         }
         #endif
     }
