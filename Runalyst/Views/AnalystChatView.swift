@@ -208,7 +208,10 @@ struct AnalystChatView: View {
                                     .frame(width: 34, height: 34)
                                     .background(Color(UIColor.secondarySystemGroupedBackground))
                                     .clipShape(Circle())
+                                    .frame(width: 44, height: 44)
+                                    .contentShape(Rectangle())
                             }
+                            .accessibilityLabel("Dismiss keyboard")
                             .transition(.scale.combined(with: .opacity))
                         }
 
@@ -218,8 +221,11 @@ struct AnalystChatView: View {
                             Image(systemName: "arrow.up.circle.fill")
                                 .font(.system(size: 34))
                                 .foregroundColor(inputText.trimmingCharacters(in: .whitespaces).isEmpty ? Color(UIColor.tertiaryLabel) : .purple)
+                                .frame(width: 44, height: 44)
+                                .contentShape(Rectangle())
                         }
                         .disabled(inputText.trimmingCharacters(in: .whitespaces).isEmpty || engine.isResponding)
+                        .accessibilityLabel("Send message to coach")
                     }
                     .animation(.spring(response: 0.3, dampingFraction: 0.8), value: isInputFocused)
                     .padding(.horizontal, 16)

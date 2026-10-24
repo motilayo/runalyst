@@ -336,7 +336,7 @@ struct ProgressionChartView: View {
                             Image(systemName: "info.circle")
                                 .font(.subheadline)
                                 .foregroundColor(.secondary)
-                                .frame(width: 32, height: 32)
+                                .frame(width: 44, height: 44)
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)

@@ -387,7 +387,7 @@ struct DashboardView: View {
                         Image(systemName: "info.circle")
                             .font(.system(size: 15))
                             .foregroundColor(.secondary)
-                            .frame(width: 36, height: 36)
+                            .frame(width: 44, height: 44)
                             .contentShape(Rectangle())
                     }
                     .accessibilityLabel("Learn more about this insight")

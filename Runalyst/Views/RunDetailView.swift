@@ -512,8 +512,12 @@ struct RunDetailView: View {
                 Capsule()
                     .stroke((isIndoor ? RunalystColor.indoor : RunalystColor.outdoor).opacity(0.3), lineWidth: 1)
             )
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("Workout Environment: \(isIndoor ? "Indoor" : "Outdoor")")
+        .accessibilityHint("Double tap to change workout environment")
         .alert(isIndoor ? "Indoor Session" : "Outdoor Session", isPresented: $showingEnvironmentInfo) {
             Button(isIndoor ? "Switch to Outdoor" : "Switch to Indoor (Treadmill)") {
                 let newIndoor = !isIndoor
@@ -580,7 +584,11 @@ struct RunDetailView: View {
                         lineWidth: 1
                     )
             )
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
         }
+        .accessibilityLabel("Workout Classification: \(runRecord.detectedTypeRaw.isEmpty ? runRecord.normalizedClassification : runRecord.detectedTypeRaw)")
+        .accessibilityHint("Double tap to reclassify workout")
     }
 
     @ViewBuilder
@@ -785,10 +793,11 @@ struct RunDetailView: View {
                         Image(systemName: RunalystIcon.glassBoxInfo)
                             .font(.system(size: 13))
                             .foregroundColor(.secondary)
-                            .frame(width: 32, height: 32)
+                            .frame(width: 44, height: 44)
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Learn more about running dynamics and biomechanics")
                 }
 
                 let columns = horizontalSizeClass == .regular

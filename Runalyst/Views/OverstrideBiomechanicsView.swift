@@ -264,6 +264,8 @@ struct AppleWatchBiomechanicsBridgeView: View {
             .cornerRadius(12)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("\(spec.title): \(spec.targetRange). \(spec.targetStatus)")
+        .accessibilityHint("Double tap to learn more about \(spec.title)")
     }
 }
 
