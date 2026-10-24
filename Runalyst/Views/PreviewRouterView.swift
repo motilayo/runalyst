@@ -129,6 +129,8 @@ struct PreviewRouterView: View {
             } else {
                 DashboardView(onSync: nil)
             }
+        case "ANALYST_MACRO":
+            AnalystChatView(mode: .macroCoach)
         case "WORKOUTS":
             WorkoutsView()
         case "REST_DAY":
