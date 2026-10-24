@@ -279,4 +279,46 @@ final class ProgressionAndTemporalScopingTests: XCTestCase {
             || (runs.count >= 6 && heavySessions.count >= 2 && cadenceDropped)
         XCTAssertFalse(isCritical, "Standard 2-session training load must not trigger Critical Fatigue")
     }
+
+    // MARK: - Analysis Tab UI & Information Architecture Tests
+
+    func testProgressionChartHorizonsAndMetrics() {
+        XCTAssertEqual(ChartTimeHorizon.thirtyDays.days, 30)
+        XCTAssertEqual(ChartTimeHorizon.sixMonths.days, 180)
+        XCTAssertEqual(ChartTimeHorizon.oneYear.days, 365)
+        XCTAssertNil(ChartTimeHorizon.allTime.days)
+
+        XCTAssertEqual(ProgressionMetric.efficiencyFactor.rawValue, "Efficiency Factor")
+        XCTAssertEqual(ProgressionMetric.pace.rawValue, "Average Pace")
+    }
+
+    func testLifetimeMilestonesCardBadgesUnlocking() {
+        // Run of 21.5 km unlocks first steps, 5K, 10K, half marathon
+        let halfMarathonRun = RunRecord(
+            hkWorkoutID: UUID(),
+            date: Date(),
+            totalDistanceMeters: 21500,
+            duration: 7200,
+            rawAvgPace: 335,
+            rawAvgHeartRate: 155,
+            rawAvgCadence: 172,
+            workingAvgPace: 335,
+            workingAvgCadence: 172,
+            workingAvgHeartRate: 155,
+            paceCV: 0.03,
+            paceSlope: 0.0,
+            percentZone4: 0.1,
+            detectedTypeRaw: "Long Run"
+        )
+
+        let runs = [halfMarathonRun]
+        let card = LifetimeMilestonesCard(allRuns: runs)
+        XCTAssertNotNil(card)
+
+        let maxRunKm = (runs.map(\.totalDistanceMeters).max() ?? 0) / 1000.0
+        XCTAssertTrue(maxRunKm >= 21.1, "Half marathon milestone threshold reached")
+
+        let maxCadence = runs.map(\.workingAvgCadence).max() ?? 0
+        XCTAssertTrue(maxCadence >= 170.0, "Rhythm master milestone threshold reached")
+    }
 }

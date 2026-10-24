@@ -291,31 +291,57 @@ struct ProgressionChartView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            // Header: Title & Metric Segmented Control
+            // Header: Title, Time Horizon Dropdown Menu, and Info Button
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
                     HStack(spacing: 6) {
                         Image(systemName: "chart.line.uptrend.xyaxis")
                             .foregroundColor(.orange)
                             .font(.headline)
-                        Text("Longitudinal Progression")
+                        Text("Performance Trends")
                             .font(.headline)
                             .foregroundColor(.primary)
                     }
                     Spacer()
 
-                    Button(action: {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        showingInfo = true
-                    }) {
-                        Image(systemName: "info.circle")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                            .frame(width: 44, height: 44)
-                            .contentShape(Rectangle())
+                    HStack(spacing: 6) {
+                        // Time Horizon Menu (Apple Health Style dropdown eliminating stacked controls)
+                        Menu {
+                            Picker("Time Horizon", selection: $selectedHorizon) {
+                                ForEach(availableHorizons) { horizon in
+                                    Text(horizon.rawValue).tag(horizon)
+                                }
+                            }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Text(selectedHorizon.rawValue)
+                                    .font(.system(size: 12, weight: .semibold))
+                                Image(systemName: "chevron.up.chevron.down")
+                                    .font(.system(size: 9, weight: .bold))
+                            }
+                            .foregroundColor(.primary)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(Color(UIColor.tertiarySystemFill))
+                            .clipShape(Capsule())
+                        }
+                        .onChange(of: selectedHorizon) {
+                            syncDefaultSelectedRunType()
+                        }
+
+                        Button(action: {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            showingInfo = true
+                        }) {
+                            Image(systemName: "info.circle")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                                .frame(width: 32, height: 32)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Performance Trends Explanation")
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Longitudinal Progression Explanation")
                 }
 
                 // Full-width metric selector
@@ -325,17 +351,6 @@ struct ProgressionChartView: View {
                 }
                 .pickerStyle(.segmented)
                 .onChange(of: selectedMetric) {
-                    syncDefaultSelectedRunType()
-                }
-
-                // Time Horizon Picker
-                Picker("Time Horizon", selection: $selectedHorizon) {
-                    ForEach(availableHorizons) { horizon in
-                        Text(horizon.rawValue).tag(horizon)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .onChange(of: selectedHorizon) {
                     syncDefaultSelectedRunType()
                 }
             }
@@ -506,11 +521,21 @@ struct ProgressionChartView: View {
                     }
                 }
                 .chartXAxis {
-                    AxisMarks(values: .automatic(desiredCount: 5)) { _ in
+                    AxisMarks(values: selectedHorizon == .thirtyDays ? .automatic(desiredCount: 3) : .automatic(desiredCount: 4)) { value in
                         AxisGridLine()
                         AxisTick()
-                        AxisValueLabel(format: .dateTime.month(.abbreviated).day())
-                            .font(.caption2)
+                        AxisValueLabel(anchor: .top) {
+                            if let date = value.as(Date.self) {
+                                if selectedHorizon == .thirtyDays {
+                                    Text(date.formatted(.dateTime.month(.abbreviated).day()))
+                                        .font(.system(size: 10, weight: .semibold))
+                                        .monospacedDigit()
+                                } else {
+                                    Text(date.formatted(.dateTime.month(.abbreviated)))
+                                        .font(.system(size: 10, weight: .semibold))
+                                }
+                            }
+                        }
                     }
                 }
                 .chartXSelection(value: $selectedDate)
