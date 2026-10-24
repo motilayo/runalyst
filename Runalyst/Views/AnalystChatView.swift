@@ -11,9 +11,24 @@ struct AnalystChatView: View {
     @State private var inputText: String = ""
     @FocusState private var isInputFocused: Bool
 
-    @State private var activeReadoutItem: ActiveDrillReadoutItem?
-    @State private var activeExplainerInfo: MetricExplainerInfo?
-    @State private var isShowingDrillsLibrary: Bool = false
+    enum SheetDestination: Identifiable {
+        case readout(ActiveDrillReadoutItem)
+        case drillsLibrary
+        case explainer(MetricExplainerInfo)
+
+        var id: String {
+            switch self {
+            case .readout(let item):
+                return "readout_\(item.id)"
+            case .drillsLibrary:
+                return "drills_library"
+            case .explainer(let info):
+                return "explainer_\(info.id)"
+            }
+        }
+    }
+
+    @State private var activeSheet: SheetDestination?
     @AppStorage("lastWatchExportTimestamp") private var lastWatchExportTimestamp: Double = 0
     @AppStorage("lastExportedDrillId") private var lastExportedDrillId: String = ""
     @AppStorage("preferredWorkoutIsIndoor") private var preferredWorkoutIsIndoor: Bool = false
@@ -227,26 +242,29 @@ struct AnalystChatView: View {
                     }
                 }
             }
-            .sheet(item: $activeReadoutItem) { item in
-                DrillInterstitialReadoutView(
-                    readout: item.readout,
-                    workoutPlan: item.plan,
-                    prescriptionDTO: item.dto,
-                    onCommitToWatch: { _, dto in
-                        self.lastWatchExportTimestamp = Date().timeIntervalSince1970
-                        self.lastExportedDrillId = dto.preRunDrillId ?? ""
+            .sheet(item: $activeSheet) { destination in
+                switch destination {
+                case .readout(let item):
+                    DrillInterstitialReadoutView(
+                        readout: item.readout,
+                        workoutPlan: item.plan,
+                        prescriptionDTO: item.dto,
+                        onCommitToWatch: { _, dto in
+                            self.lastWatchExportTimestamp = Date().timeIntervalSince1970
+                            self.lastExportedDrillId = dto.preRunDrillId ?? ""
+                        }
+                    )
+                    .presentationDetents([.medium, .large])
+                    .presentationDragIndicator(.visible)
+
+                case .drillsLibrary:
+                    NavigationStack {
+                        DrillsLibraryView()
                     }
-                )
-                .presentationDetents([.medium, .large])
-                .presentationDragIndicator(.visible)
-            }
-            .sheet(isPresented: $isShowingDrillsLibrary) {
-                NavigationStack {
-                    DrillsLibraryView()
+
+                case .explainer(let info):
+                    GlassBoxExplainerSheet(info: info)
                 }
-            }
-            .sheet(item: $activeExplainerInfo) { info in
-                GlassBoxExplainerSheet(info: info)
             }
             .task {
                 engine.setModelContextIfNeeded(modelContext)
@@ -397,7 +415,7 @@ struct AnalystChatView: View {
                                 explainerKey: explainerKey,
                                 runRecord: runRecord,
                                 onOpenExplainer: { info in
-                                    activeExplainerInfo = info
+                                    activeSheet = .explainer(info)
                                 }
                             )
                         }
@@ -660,11 +678,11 @@ struct AnalystChatView: View {
             durationMinutes: drillId.defaultDuration.rawValue
         )
         let readiness = ReadinessEvaluator.assess(runRecords: runRecords)
-        activeReadoutItem = ActiveDrillReadoutItem.adaptive(
+        activeSheet = .readout(ActiveDrillReadoutItem.adaptive(
             dto: dto,
             readiness: readiness,
             customCoachingTip: cue.isEmpty ? nil : cue
-        )
+        ))
     }
 
     private var isRunToday: Bool {
@@ -685,10 +703,10 @@ struct AnalystChatView: View {
             readinessState: state == .productive ? nil : state.rawValue,
             isIndoor: preferredWorkoutIsIndoor
         )
-        activeReadoutItem = ActiveDrillReadoutItem.fromPrescription(
+        activeSheet = .readout(ActiveDrillReadoutItem.fromPrescription(
             dto: dto,
             customCoachingTip: session.groundedRationale
-        )
+        ))
     }
 
     private func openMainRunReadout(for session: PrescribedDailySession) {
@@ -705,10 +723,10 @@ struct AnalystChatView: View {
             readinessState: state == .productive ? nil : state.rawValue,
             isIndoor: preferredWorkoutIsIndoor
         )
-        activeReadoutItem = ActiveDrillReadoutItem.fromPrescription(
+        activeSheet = .readout(ActiveDrillReadoutItem.fromPrescription(
             dto: dto,
             customCoachingTip: session.groundedRationale
-        )
+        ))
     }
 }
 
