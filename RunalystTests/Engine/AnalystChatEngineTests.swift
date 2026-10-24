@@ -378,9 +378,9 @@ final class AnalystChatEngineTests: XCTestCase {
         if #available(iOS 26.0, *) {
             let instructions = engine.buildLeanSystemInstructions()
 
-            XCTAssertTrue(instructions.contains("ACWR: Acute:Chronic Workload Ratio"), "Prompt must ground ACWR acronym")
-            XCTAssertTrue(instructions.contains("Proactive Cards: Never ask permission"), "Prompt must ban permission asking")
-            XCTAssertTrue(instructions.contains("Display the drill"), "Prompt must explicitly forbid echoing display the drill")
+            XCTAssertTrue(instructions.contains("workload_zone"), "Prompt must ground workload_zone semantics")
+            XCTAssertTrue(instructions.contains("Silent Tools"), "Prompt must enforce silent tool execution")
+            XCTAssertTrue(instructions.contains("Medical Safety"), "Prompt must enforce medical safety boundaries")
             XCTAssertTrue(instructions.count < 1200, "System instructions must stay strictly under 1,200 chars (was \(instructions.count))")
         }
     }
@@ -663,7 +663,7 @@ final class AnalystChatEngineTests: XCTestCase {
 
             // Call getTrainingSchedule with to: nil (unified query)
             let tool = GetTrainingScheduleTool { query in
-                await engine.executeTrainingScheduleQuery(query: query)
+                engine.executeTrainingScheduleQuery(query: query)
             }
 
             let result = try await tool.call(arguments: GetTrainingScheduleQuery(from: todayStr, to: nil))
