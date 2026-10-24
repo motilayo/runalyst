@@ -848,7 +848,7 @@ public struct GetReadinessAndWorkloadTool: Tool {
     public typealias Output = String
 
     public let name = "getReadinessAndWorkload"
-    public let description = "Queries physiological recovery, ACWR, 48h volume compression, cardiac decoupling, and same-day workload capacity."
+    public let description = "Queries current recovery, training load balance, and whether additional running is safe today."
 
     let provider: @MainActor @Sendable (GetReadinessAndWorkloadQuery) async -> String
 
