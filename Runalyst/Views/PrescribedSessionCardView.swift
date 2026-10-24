@@ -203,406 +203,83 @@ struct PrescribedSessionCardView: View {
                 .opacity(0.4)
                 .padding(.vertical, 2)
 
-            // Optional Active Recovery Flush Action Row
-            HStack(alignment: .center, spacing: 10) {
-                ZStack {
-                    Circle()
-                        .fill(Color.teal.opacity(0.12))
-                        .frame(width: 34, height: 34)
-
-                    Image(systemName: "figure.walk")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(.teal)
-                }
-
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 6) {
-                        Text("20m Zone 1 Flush")
-                            .font(.subheadline.weight(.bold))
-                            .foregroundColor(.primary)
-
-                        Text("OPTIONAL")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundColor(.secondary)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Color(UIColor.tertiarySystemGroupedBackground))
-                            .clipShape(Capsule())
-                    }
-
-                    Text("Active recovery flush • HR < 135 BPM")
-                        .font(.caption)
-                        .foregroundColor(Color(UIColor.secondaryLabel))
-                }
-
-                Spacer(minLength: 8)
-
-                // High-Clarity Primary Action Button (Electric Blue + Apple Watch Glyph + 44pt Touch Target)
-                Button {
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            // Optional Active Recovery Flush Workout Card
+            DrillPrimerCardView(
+                drillId: .aerobicFlush,
+                config: DrillCardConfig(
+                    customTitle: "20m Zone 1 Flush",
+                    customPurpose: "Active recovery flush • HR < 135 BPM",
+                    customTarget: "Zone 1 HR",
+                    categoryLabel: "OPTIONAL FLUSH",
+                    canChangeDuration: false,
+                    lockedDuration: .nearest(toMinutes: 20),
+                    customMetrics: [
+                        DrillCardMetric(icon: "stopwatch.fill", title: "Duration", value: "20 min", color: .secondary),
+                        DrillCardMetric(icon: "heart.fill", title: "Target HR", value: "< 135 BPM", color: Color(red: 0.0, green: 0.75, blue: 0.65)),
+                        DrillCardMetric(icon: "figure.walk", title: "Effort", value: "Active Recovery", color: Color(red: 0.20, green: 0.72, blue: 0.92)),
+                        DrillCardMetric(icon: "metronome.fill", title: "Cadence", value: "Relaxed", color: .secondary)
+                    ]
+                ),
+                baselineCadence: session.cadenceFloor,
+                onPreview: {
                     if let onScheduleFlushOverride {
                         onScheduleFlushOverride()
                     } else {
                         onPreviewMainRun?()
                     }
-                } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: "applewatch")
-                            .font(.system(size: 11, weight: .bold))
-                        Text("Preview")
-                            .font(.system(size: 12, weight: .bold))
-                    }
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
-                    .background(Color(red: 0.0, green: 0.55, blue: 1.0))
-                    .clipShape(Capsule())
-                    .shadow(color: Color.blue.opacity(0.2), radius: 3, x: 0, y: 1)
                 }
-                .frame(minHeight: 44)
-                .contentShape(Rectangle())
-                .accessibilityLabel("Preview 20m Zone 1 Flush on Apple Watch")
-            }
+            )
         }
     }
 
     // MARK: - Active Session Content (Primer + Main Run)
 
     private var activeSessionContent: some View {
-        let primerDrill = PreRunDrill(
-            id: session.primerDrillId,
-            previousCadence: session.cadenceFloor,
-            targetCadence: session.primerTargetCadence,
-            readinessState: session.resolvedReadinessState,
-            isIndoor: preferredWorkoutIsIndoor
-        )
-        let primerPhases = primerDrill.generatePhases()
-        let totalPrimerDuration = max(1, primerPhases.reduce(0) { $0 + $1.durationSeconds })
+        VStack(spacing: 12) {
+            // Stage 1: Pre-Run Primer Card
+            DrillPrimerCardView(
+                drillId: session.primerDrillId,
+                config: DrillCardConfig(
+                    customTitle: session.primerDrillTitle,
+                    customPurpose: "Target \(cleanPrimerTarget(session: session))",
+                    customTarget: cleanPrimerTarget(session: session),
+                    categoryLabel: "PRE-RUN PRIMER",
+                    canChangeDuration: false,
+                    lockedDuration: session.primerDrillId.defaultDuration
+                ),
+                baselineCadence: session.cadenceFloor,
+                onPreview: onPreviewPrimer
+            )
 
-        let mainRunDrill = PreRunDrill(
-            id: session.mainSessionTemplateId,
-            previousCadence: session.cadenceFloor,
-            targetCadence: session.mainSessionTemplateId.isHeartRateTargeted ? nil : "\(session.cadenceFloor)-\(session.cadenceFloor + 6)",
-            duration: DrillDuration(rawValue: session.mainRunDurationMinutes) ?? .thirtyMinutes,
-            readinessState: session.resolvedReadinessState,
-            isIndoor: preferredWorkoutIsIndoor
-        )
-        let mainPhases = mainRunDrill.generatePhases()
-        let totalMainDuration = max(1, mainPhases.reduce(0) { $0 + $1.durationSeconds })
+            // Stage 2: Main Run Card
+            let mainDuration = DrillDuration.nearest(toMinutes: session.mainRunDurationMinutes)
+            let paceTitle = preferredWorkoutIsIndoor ? "Belt Pace" : "Pace"
+            let paceIcon = preferredWorkoutIsIndoor ? "figure.run.square.stack" : "figure.run"
+            let maxHrValue = session.hrCap.replacingOccurrences(of: "HR: ", with: "")
 
-        return VStack(spacing: 10) {
-            // Stage 1: Pre-Run Primer Subcard
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(alignment: .center, spacing: 8) {
-                    HStack(spacing: 6) {
-                        ZStack {
-                            Circle()
-                                .fill(Color(red: 0.0, green: 0.8, blue: 0.65).opacity(0.14))
-                                .frame(width: 24, height: 24)
-                            Image(systemName: "metronome.fill")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(Color(red: 0.0, green: 0.8, blue: 0.65))
-                        }
-
-                        Text("PRE-RUN PRIMER")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundColor(Color(red: 0.0, green: 0.8, blue: 0.65))
-
-                        Text("•")
-                            .font(.system(size: 10))
-                            .foregroundColor(.secondary)
-
-                        Text(cleanPrimerDuration(session: session))
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundColor(Color(red: 0.0, green: 0.8, blue: 0.65))
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 2)
-                            .background(Color(red: 0.0, green: 0.8, blue: 0.65).opacity(0.12))
-                            .clipShape(Capsule())
-                    }
-
-                    Spacer()
-
-                    if let onPreviewPrimer {
-                        Button {
-                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                            onPreviewPrimer()
-                        } label: {
-                            HStack(spacing: 5) {
-                                Image(systemName: "applewatch")
-                                    .font(.system(size: 11, weight: .bold))
-                                Text("Preview")
-                                    .font(.system(size: 12, weight: .bold))
-                            }
-                            .foregroundColor(Color(red: 0.0, green: 0.72, blue: 0.58))
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(Color(red: 0.0, green: 0.8, blue: 0.65).opacity(0.15))
-                            .clipShape(Capsule())
-                        }
-                        .frame(minHeight: 44)
-                        .contentShape(Rectangle())
-                        .accessibilityLabel("Preview Pre-Run Primer on Apple Watch")
-                    }
-                }
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(session.primerDrillTitle)
-                        .font(.subheadline.weight(.bold))
-                        .foregroundColor(.primary)
-
-                    Text("Target \(cleanPrimerTarget(session: session))")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.85)
-                }
-
-                // Integrated 4-Target Grid (matching Main Run)
-                LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
-                    metricCell(
-                        icon: "stopwatch.fill",
-                        title: "Duration",
-                        value: cleanPrimerDuration(session: session),
-                        color: .secondary
-                    )
-                    metricCell(
-                        icon: "metronome.fill",
-                        title: "Cadence",
-                        value: cleanPrimerTarget(session: session),
-                        color: Color(red: 0.0, green: 0.8, blue: 0.65)
-                    )
-                    metricCell(
-                        icon: "repeat",
-                        title: "Intervals",
-                        value: primerDrill.shortWorkSummary,
-                        color: Color(red: 1.0, green: 0.58, blue: 0.0)
-                    )
-                    metricCell(
-                        icon: "figure.walk",
-                        title: "Recovery",
-                        value: primerDrill.shortRecoverySummary,
-                        color: Color(red: 0.20, green: 0.72, blue: 0.92)
-                    )
-                }
-
-                // Primer phase bar
-                VStack(alignment: .leading, spacing: 4) {
-                    GeometryReader { geo in
-                        HStack(spacing: 2) {
-                            ForEach(primerPhases) { phase in
-                                let ratio = CGFloat(phase.durationSeconds) / CGFloat(totalPrimerDuration)
-                                let w = max(4, (geo.size.width - CGFloat(primerPhases.count - 1) * 2) * ratio)
-                                RoundedRectangle(cornerRadius: 2)
-                                    .fill(phaseColor(phase.kind))
-                                    .frame(width: w, height: 4)
-                            }
-                        }
-                    }
-                    .frame(height: 4)
-
-                    Text(primerDrill.structureSummary)
-                        .font(.system(size: 10, weight: .medium))
-                        .monospacedDigit()
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                }
-                .padding(.top, 2)
-            }
-            .padding(12)
-            .background(Color(UIColor.tertiarySystemGroupedBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-
-            // Stage 2: Main Run Subcard
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(alignment: .center, spacing: 8) {
-                    HStack(spacing: 6) {
-                        ZStack {
-                            Circle()
-                                .fill(Color(red: 0.0, green: 0.55, blue: 1.0).opacity(0.14))
-                                .frame(width: 24, height: 24)
-                            Image(systemName: "figure.run")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(Color(red: 0.0, green: 0.55, blue: 1.0))
-                        }
-
-                        Text("MAIN RUN")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundColor(Color(red: 0.0, green: 0.55, blue: 1.0))
-
-                        Text("•")
-                            .font(.system(size: 10))
-                            .foregroundColor(.secondary)
-
-                        Text(cleanMainRunDurationFormatted(session: session).uppercased())
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundColor(Color(red: 0.0, green: 0.55, blue: 1.0))
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 2)
-                            .background(Color(red: 0.0, green: 0.55, blue: 1.0).opacity(0.12))
-                            .clipShape(Capsule())
-                    }
-
-                    Spacer()
-
-                    if let onPreviewMainRun {
-                        Button {
-                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                            onPreviewMainRun()
-                        } label: {
-                            HStack(spacing: 5) {
-                                Image(systemName: "applewatch")
-                                    .font(.system(size: 11, weight: .bold))
-                                Text("Preview")
-                                    .font(.system(size: 12, weight: .bold))
-                            }
-                            .foregroundColor(Color(red: 0.0, green: 0.55, blue: 1.0))
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(Color(red: 0.0, green: 0.55, blue: 1.0).opacity(0.15))
-                            .clipShape(Capsule())
-                        }
-                        .frame(minHeight: 44)
-                        .contentShape(Rectangle())
-                        .accessibilityLabel("Preview Main Run on Apple Watch")
-                    }
-                }
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(mainRunDrill.id.title)
-                        .font(.subheadline.weight(.bold))
-                        .foregroundColor(.primary)
-
-                    Text(session.isTrimmed ? "Active Recovery Flush • Easy Aerobic Intensity" : "Aerobic Consistency • Conversational Pacing")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-
-                // Integrated 4-Target Grid
-                LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
-                    metricCell(
-                        icon: "stopwatch.fill",
-                        title: "Duration",
-                        value: cleanMainRunDurationFormatted(session: session),
-                        color: .secondary
-                    )
-                    metricCell(
-                        icon: preferredWorkoutIsIndoor ? "figure.run.square.stack" : "figure.run",
-                        title: preferredWorkoutIsIndoor ? "Belt Pace" : "Pace",
-                        value: session.paceBand,
-                        color: Color(red: 0.0, green: 0.55, blue: 1.0)
-                    )
-                    metricCell(
-                        icon: "heart.fill",
-                        title: "Max HR",
-                        value: session.hrCap.replacingOccurrences(of: "HR: ", with: ""),
-                        color: Color(red: 1.0, green: 0.22, blue: 0.55)
-                    )
-                    metricCell(
-                        icon: "metronome.fill",
-                        title: "Cadence",
-                        value: "≥ \(session.cadenceFloor) SPM",
-                        color: Color(red: 0.0, green: 0.8, blue: 0.65)
-                    )
-                }
-
-                if preferredWorkoutIsIndoor {
-                    HStack(spacing: 5) {
-                        Image(systemName: "info.circle.fill")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundColor(.purple)
-                        Text(
-                            session.mainSessionTemplateId == .hillBounds
-                            ? "Treadmill: Set 4–6% incline on surges • Launches as Indoor Run on Watch"
-                            : "Treadmill: Set 0.5–1.0% incline • Focus on HR & Cadence over wrist pace"
-                        )
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .padding(.top, 1)
-                }
-
-                // Main Run phase bar
-                VStack(alignment: .leading, spacing: 4) {
-                    GeometryReader { geo in
-                        HStack(spacing: 2) {
-                            ForEach(mainPhases) { phase in
-                                let ratio = CGFloat(phase.durationSeconds) / CGFloat(totalMainDuration)
-                                let w = max(4, (geo.size.width - CGFloat(mainPhases.count - 1) * 2) * ratio)
-                                RoundedRectangle(cornerRadius: 2)
-                                    .fill(phaseColor(phase.kind))
-                                    .frame(width: w, height: 4)
-                            }
-                        }
-                    }
-                    .frame(height: 4)
-
-                    Text(mainRunDrill.structureSummary)
-                        .font(.system(size: 10, weight: .medium))
-                        .monospacedDigit()
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                }
-                .padding(.top, 2)
-            }
-            .padding(12)
-            .background(Color(UIColor.tertiarySystemGroupedBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            DrillPrimerCardView(
+                drillId: session.mainSessionTemplateId,
+                config: DrillCardConfig(
+                    customTitle: session.sessionTitle,
+                    customPurpose: session.isTrimmed ? "Active Recovery Flush • Easy Aerobic Intensity" : "Aerobic Consistency • Conversational Pacing",
+                    customTarget: session.mainSessionTemplateId.isHeartRateTargeted ? nil : "\(session.cadenceFloor)-\(session.cadenceFloor + 6) SPM",
+                    categoryLabel: "MAIN RUN",
+                    canChangeDuration: false,
+                    lockedDuration: mainDuration,
+                    customMetrics: [
+                        DrillCardMetric(icon: "stopwatch.fill", title: "Duration", value: cleanMainRunDurationFormatted(session: session), color: .secondary),
+                        DrillCardMetric(icon: paceIcon, title: paceTitle, value: session.paceBand, color: Color(red: 0.0, green: 0.55, blue: 1.0)),
+                        DrillCardMetric(icon: "heart.fill", title: "Max HR", value: maxHrValue, color: Color(red: 1.0, green: 0.22, blue: 0.55)),
+                        DrillCardMetric(icon: "metronome.fill", title: "Cadence", value: "≥ \(session.cadenceFloor) SPM", color: Color(red: 0.0, green: 0.8, blue: 0.65))
+                    ]
+                ),
+                baselineCadence: session.cadenceFloor,
+                onPreview: onPreviewMainRun
+            )
         }
     }
 
     // MARK: - Helpers
-
-    private func metricCell(icon: String, title: String, value: String, color: Color) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: icon)
-                .font(.system(size: 11, weight: .bold))
-                .foregroundColor(color)
-                .frame(width: 14)
-
-            VStack(alignment: .leading, spacing: 1) {
-                Text(title.uppercased())
-                    .font(.system(size: 8, weight: .bold))
-                    .foregroundColor(.secondary)
-                Text(value)
-                    .font(.system(size: 11, weight: .bold))
-                    .monospacedDigit()
-                    .foregroundColor(.primary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
-        .background(Color(UIColor.secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-    }
-
-    private func phaseColor(_ kind: WorkoutPhase.Kind) -> Color {
-        kind.color
-    }
-
-    private func cleanPrimerDuration(session: PrescribedDailySession) -> String {
-        let primerDrill = PreRunDrill(
-            id: session.primerDrillId,
-            previousCadence: session.cadenceFloor,
-            targetCadence: session.primerTargetCadence,
-            readinessState: session.resolvedReadinessState,
-            isIndoor: preferredWorkoutIsIndoor
-        )
-        let totalSeconds = primerDrill.generatePhases().reduce(0) { $0 + $1.durationSeconds }
-        let mins = totalSeconds / 60
-        let secs = totalSeconds % 60
-        if secs == 0 {
-            return "\(mins) min"
-        } else {
-            return "\(mins)m \(secs)s"
-        }
-    }
 
     private func cleanPrimerTarget(session: PrescribedDailySession) -> String {
         let target = session.primerTargetCadence

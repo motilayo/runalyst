@@ -386,10 +386,6 @@ struct WorkoutsView: View {
         .padding(.top, 4)
     }
 
-    private func phaseColor(_ kind: WorkoutPhase.Kind) -> Color {
-        kind.color
-    }
-
     private func openPrimerReadout(for session: PrescribedDailySession) {
         let state = session.resolvedReadinessState
         let dto = DrillPrescriptionDTO(
