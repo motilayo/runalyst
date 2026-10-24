@@ -98,6 +98,39 @@ struct RunVarianceMapView: View {
         return points.sorted(by: { $0.minute < $1.minute })
     }
 
+    private var xAxisTicks: [Double] {
+        let mMax = maxMinutes
+        if mMax <= 15 {
+            var ticks = Array(stride(from: 0.0, through: mMax, by: 5.0))
+            if let last = ticks.last, (mMax - last) >= 2.0 {
+                ticks.append(mMax)
+            } else if ticks.count > 1 {
+                ticks[ticks.count - 1] = mMax
+            }
+            return Array(Set(ticks)).sorted()
+        } else if mMax <= 45 {
+            var ticks = Array(stride(from: 0.0, to: mMax, by: 10.0))
+            if let last = ticks.last, (mMax - last) >= 3.0 {
+                ticks.append(mMax)
+            } else if ticks.count > 1 {
+                ticks[ticks.count - 1] = mMax
+            } else {
+                ticks.append(mMax)
+            }
+            return Array(Set(ticks)).sorted()
+        } else {
+            var ticks = Array(stride(from: 0.0, to: mMax, by: 15.0))
+            if let last = ticks.last, (mMax - last) >= 5.0 {
+                ticks.append(mMax)
+            } else if ticks.count > 1 {
+                ticks[ticks.count - 1] = mMax
+            } else {
+                ticks.append(mMax)
+            }
+            return Array(Set(ticks)).sorted()
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
@@ -215,6 +248,20 @@ struct RunVarianceMapView: View {
                 .chartXVisibleDomain(length: min(maxMinutes + 1.0, 13.5))
                 .chartXScale(domain: 0...(maxMinutes + 1.0))
                 .chartYScale(domain: yMin...yMax)
+                .chartXAxis {
+                    AxisMarks(values: xAxisTicks) { value in
+                        AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [3, 3]))
+                            .foregroundStyle(Color.secondary.opacity(0.2))
+                        AxisTick()
+                        AxisValueLabel {
+                            if let minVal = value.as(Double.self) {
+                                Text("\(Int(round(minVal)))m")
+                                    .font(.system(size: 10, weight: .medium, design: .rounded).monospacedDigit())
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+                }
                 .frame(height: 220)
 
                 // Legend
