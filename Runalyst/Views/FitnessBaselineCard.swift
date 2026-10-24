@@ -274,7 +274,7 @@ struct FitnessBaselineCard: View {
         .liquidGlass(cornerRadius: 16, padding: 18, accentColor: Color(red: 1.0, green: 0.22, blue: 0.55))
         .padding(.horizontal)
         .sheet(item: $activeExplainer) { info in
-            MetricExplainerSheet(info: info)
+            GlassBoxExplainerSheet(info: info)
         }
     }
 }

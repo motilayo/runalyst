@@ -37,6 +37,28 @@ public struct GlassBoxExplainerSheet: View {
         self.liveMetricDisplay = liveMetricDisplay
     }
 
+    public init(info: MetricExplainerInfo) {
+        self.title = info.title
+        self.categoryBadge = info.mode ?? "Metric"
+        self.whatSummary = info.overview
+        self.whyItMatters = info.whyItMatters ?? "Maintaining safe biomechanical targets preserves energy, prevents soft-tissue fatigue, and supports joint longevity."
+        self.howItWorks = info.modeContext ?? "Calculated locally from your Apple Watch high-frequency sensor telemetry, pause-trimmed to eliminate sensor noise."
+        self.formula = nil
+        self.targetRange = info.targetRange
+        self.liveMetricDisplay = info.userMetricDisplay
+    }
+
+    public init(explainer: MetricDetailExplainer, mode: String? = nil, userMetricDisplay: String? = nil) {
+        self.title = explainer.title
+        self.categoryBadge = mode ?? "Metric"
+        self.whatSummary = explainer.overview
+        self.whyItMatters = explainer.whyItMatters
+        self.howItWorks = explainer.modeContext
+        self.formula = nil
+        self.targetRange = explainer.targetRange
+        self.liveMetricDisplay = userMetricDisplay
+    }
+
     public var body: some View {
         NavigationStack {
             ScrollView {

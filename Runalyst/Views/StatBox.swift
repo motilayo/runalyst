@@ -56,13 +56,9 @@ struct StatBox: View {
         }
         .sheet(isPresented: $showingInfo) {
             let metricText = "\(title): \(value) \(unit)".trimmingCharacters(in: .whitespaces)
-            MetricExplainerSheet(
-                title: explainer.title,
+            GlassBoxExplainerSheet(
+                explainer: explainer,
                 mode: isWorkoutStats ? "Workout Stats" : "Working Stats",
-                overview: explainer.overview,
-                modeContext: explainer.modeContext,
-                whyItMatters: explainer.whyItMatters,
-                targetRange: explainer.targetRange,
                 userMetricDisplay: metricText
             )
         }

@@ -198,7 +198,7 @@ struct AppleWatchBiomechanicsBridgeView: View {
         }
         .liquidGlass(cornerRadius: 16, padding: 14, accentColor: .teal)
         .sheet(item: $activeExplainerInfo) { info in
-            MetricExplainerSheet(info: info)
+            GlassBoxExplainerSheet(info: info)
         }
     }
 

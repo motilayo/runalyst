@@ -69,7 +69,7 @@ struct OnboardingView: View {
             }
             .toolbar(.hidden, for: .navigationBar)
             .sheet(item: $previewExplainer) { info in
-                MetricExplainerSheet(info: info)
+                GlassBoxExplainerSheet(info: info)
             }
             .task {
                 checkInitialAuthStatus()
