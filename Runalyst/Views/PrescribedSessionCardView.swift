@@ -237,7 +237,7 @@ struct PrescribedSessionCardView: View {
                 drillId: .recoveryJog,
                 config: DrillCardConfig(
                     customTitle: "Recovery Jog",
-                    customPurpose: "Active recovery jog • HR < 135 BPM",
+                    customPurpose: "Promote blood flow & tissue recovery",
                     customTarget: "Zone 1 HR",
                     categoryLabel: "OPTIONAL",
                     canChangeDuration: false,
@@ -290,7 +290,7 @@ struct PrescribedSessionCardView: View {
                 drillId: session.mainSessionTemplateId,
                 config: DrillCardConfig(
                     customTitle: session.sessionTitle,
-                    customPurpose: session.isTrimmed ? "Active Recovery Flush • Easy Aerobic Intensity" : "Aerobic Consistency • Conversational Pacing",
+                    customPurpose: session.isTrimmed ? "Low-strain movement & tissue repair" : "Aerobic consistency & conversational pacing",
                     customTarget: session.mainSessionTemplateId.isHeartRateTargeted ? nil : "\(session.cadenceFloor)-\(session.cadenceFloor + 6) SPM",
                     categoryLabel: effectiveIsToday ? "MAIN RUN" : "\(headerDayText.uppercased()) MAIN RUN",
                     canChangeDuration: false,
