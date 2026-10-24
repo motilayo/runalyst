@@ -168,10 +168,14 @@ struct PrescribedSessionCardView: View {
                                 Text(metric.title.uppercased())
                                     .font(.system(size: 8, weight: .bold))
                                     .foregroundColor(Color(UIColor.secondaryLabel))
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.8)
                                 Text(metric.value)
                                     .font(.system(size: 11, weight: .bold))
                                     .monospacedDigit()
                                     .foregroundColor(.primary)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.8)
                             }
                             Spacer(minLength: 0)
                         }
@@ -207,10 +211,10 @@ struct PrescribedSessionCardView: View {
             DrillPrimerCardView(
                 drillId: .aerobicFlush,
                 config: DrillCardConfig(
-                    customTitle: "20m Zone 1 Flush",
+                    customTitle: "Zone 1 Active Flush",
                     customPurpose: "Active recovery flush • HR < 135 BPM",
                     customTarget: "Zone 1 HR",
-                    categoryLabel: "OPTIONAL FLUSH",
+                    categoryLabel: "OPTIONAL",
                     canChangeDuration: false,
                     lockedDuration: .nearest(toMinutes: 20),
                     customMetrics: [
@@ -330,18 +334,24 @@ struct PrescribedSessionCardView: View {
                 metrics.append((title: "Weekly Share", value: "\(trimmed[range])%"))
             }
 
-            metrics.append((title: "Recovery", value: "Recommended"))
+            metrics.append((title: "Recovery", value: "Rest Day"))
 
             let bodyText: String
-            if let colonIndex = trimmed.firstIndex(of: ":") {
+            if let dotIndex = trimmed.range(of: "). ") {
+                bodyText = String(trimmed[dotIndex.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+            } else if let colonIndex = trimmed.firstIndex(of: ":") {
                 bodyText = String(trimmed[trimmed.index(after: colonIndex)...]).trimmingCharacters(in: .whitespacesAndNewlines)
             } else {
                 bodyText = trimmed
             }
 
+            let finalBody = bodyText.isEmpty
+                ? "A rest day allows deep recovery, glycogen replenishment, and joint remodeling to prevent cumulative overload."
+                : bodyText
+
             return ParsedRationale(
                 headline: "48-Hour Volume Compression",
-                body: bodyText,
+                body: finalBody,
                 statMetrics: metrics.isEmpty ? nil : metrics
             )
         }

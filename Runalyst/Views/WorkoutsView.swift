@@ -54,7 +54,7 @@ struct WorkoutsView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.horizontal, 16)
                 .padding(.top, 14)
-                .padding(.bottom, 20)
+                .padding(.bottom, 100)
             }
             .refreshable {
                 guard !isSyncing else { return }
