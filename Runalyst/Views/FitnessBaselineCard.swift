@@ -24,9 +24,6 @@ struct FitnessBaselineCard: View {
                 Text("VO2 MAX")
                     .font(.caption.bold())
                     .foregroundColor(.secondary)
-                Image(systemName: "info.circle")
-                    .font(.caption2)
-                    .foregroundColor(.secondary.opacity(0.7))
             }
 
             if let vo2Val = globalVO2Max {
@@ -91,9 +88,6 @@ struct FitnessBaselineCard: View {
                 Text("AVG CADENCE")
                     .font(.caption.bold())
                     .foregroundColor(.secondary)
-                Image(systemName: "info.circle")
-                    .font(.caption2)
-                    .foregroundColor(.secondary.opacity(0.7))
             }
 
             if let cadenceVal = baselineCadence, cadenceVal > 0 {
@@ -106,16 +100,17 @@ struct FitnessBaselineCard: View {
                     let diff = cadenceVal - prevCadence
                     if diff != 0 {
                         let isPositive = diff > 0
+                        let badgeColor: Color = isPositive ? .green : Color(red: 1.0, green: 0.28, blue: 0.35)
                         HStack(spacing: 3) {
                             Image(systemName: isPositive ? "arrow.up.right" : "arrow.down.right")
                                 .font(.system(size: 10, weight: .bold))
                             Text(String(format: "%@%d SPM", isPositive ? "+" : "", diff))
                                 .font(.caption2.bold())
                         }
-                        .foregroundColor(isPositive ? .green : .orange)
+                        .foregroundColor(badgeColor)
                         .padding(.horizontal, 7)
                         .padding(.vertical, 2.5)
-                        .background((isPositive ? Color.green : Color.orange).opacity(0.12))
+                        .background(badgeColor.opacity(0.12))
                         .clipShape(Capsule())
                     }
                 }
@@ -156,9 +151,6 @@ struct FitnessBaselineCard: View {
                 Text("AVG PACE")
                     .font(.caption.bold())
                     .foregroundColor(.secondary)
-                Image(systemName: "info.circle")
-                    .font(.caption2)
-                    .foregroundColor(.secondary.opacity(0.7))
             }
 
             if let paceVal = baselinePace, paceVal > 0 {
@@ -172,16 +164,17 @@ struct FitnessBaselineCard: View {
                     let diffSecs = Int(round(paceVal - prevPace))
                     if diffSecs != 0 {
                         let isFaster = diffSecs < 0
+                        let badgeColor: Color = isFaster ? .green : Color(red: 1.0, green: 0.28, blue: 0.35)
                         HStack(spacing: 3) {
                             Image(systemName: isFaster ? "arrow.down.right" : "arrow.up.right")
                                 .font(.system(size: 10, weight: .bold))
                             Text(String(format: "%@%ds", diffSecs > 0 ? "+" : "", diffSecs))
                                 .font(.caption2.bold())
                         }
-                        .foregroundColor(isFaster ? .green : .orange)
+                        .foregroundColor(badgeColor)
                         .padding(.horizontal, 7)
                         .padding(.vertical, 2.5)
-                        .background((isFaster ? Color.green : Color.orange).opacity(0.12))
+                        .background(badgeColor.opacity(0.12))
                         .clipShape(Capsule())
                     }
                 }
@@ -222,9 +215,6 @@ struct FitnessBaselineCard: View {
                 Text("WORKOUT DENSITY")
                     .font(.caption.bold())
                     .foregroundColor(.secondary)
-                Image(systemName: "info.circle")
-                    .font(.caption2)
-                    .foregroundColor(.secondary.opacity(0.7))
             }
 
             let density = workoutDensityTier
