@@ -378,9 +378,9 @@ final class AnalystChatEngineTests: XCTestCase {
         if #available(iOS 26.0, *) {
             let instructions = engine.buildLeanSystemInstructions()
 
-            XCTAssertTrue(instructions.contains("ACWR: Acute:Chronic Workload Ratio"), "Prompt must ground ACWR acronym")
-            XCTAssertTrue(instructions.contains("Proactive Cards: Never ask permission"), "Prompt must ban permission asking")
-            XCTAssertTrue(instructions.contains("Display the drill"), "Prompt must explicitly forbid echoing display the drill")
+            XCTAssertTrue(instructions.contains("workload_zone"), "Prompt must ground workload_zone semantics")
+            XCTAssertTrue(instructions.contains("Silent Tools"), "Prompt must enforce silent tool execution")
+            XCTAssertTrue(instructions.contains("Medical Safety"), "Prompt must enforce medical safety boundaries")
             XCTAssertTrue(instructions.count < 1200, "System instructions must stay strictly under 1,200 chars (was \(instructions.count))")
         }
     }
@@ -607,5 +607,72 @@ final class AnalystChatEngineTests: XCTestCase {
         let readoutItem = ActiveDrillReadoutItem.fromPrescription(dto: dto)
         let readoutDestination = AnalystChatView.SheetDestination.readout(readoutItem)
         XCTAssertEqual(readoutDestination.id, "readout_\(readoutItem.id)")
+    }
+
+    func testReadinessFactsWorkloadZoneClassification() throws {
+        let facts = ReadinessFacts(
+            readiness_state: "productive",
+            acwr: 0.60,
+            workload_zone: .underload,
+            streak_days: 0,
+            streak_limit: 4,
+            last_48h_minutes: 0,
+            weekly_avg_minutes: 120,
+            volume_ratio_48h: 0.0,
+            volume_threshold: 0.65,
+            hr_shift_bpm: 0,
+            today_minutes: 0,
+            today_target_minutes: 35,
+            today_completion_percent: 0,
+            second_run_advisable: true,
+            limiting_factors: [],
+            experience_level: "Beginner",
+            training_goal: "Base Building",
+            cadence_floor_spm: 155
+        )
+
+        let encoder = JSONEncoder()
+        let data = try encoder.encode(facts)
+        let json = try XCTUnwrap(String(data: data, encoding: .utf8))
+
+        XCTAssertTrue(json.contains("\"workload_zone\":\"underload\""))
+        XCTAssertFalse(json.contains("runner_reported_distress"))
+    }
+
+    func testTrainingScheduleDefaultsTo7DayMicrocycleAndHydratesNextSessionCard() async throws {
+        #if canImport(FoundationModels)
+        if #available(iOS 26.0, *) {
+            let config = ModelConfiguration(isStoredInMemoryOnly: true)
+            let container = try ModelContainer(for: RunRecord.self, configurations: config)
+            let context = container.mainContext
+
+            // Seed a past run to establish profile
+            let run = makeRunRecord(date: Date().addingTimeInterval(-86400 * 3), duration: 1800, distanceMeters: 4000)
+            context.insert(run)
+            try context.save()
+
+            let engine = AnalystChatEngine(modelContext: context, runRecord: nil, mode: .macroCoach)
+            _ = engine.getOrCreateSession()
+
+            let cal = Calendar.current
+            let df = DateFormatter()
+            df.calendar = cal
+            df.locale = Locale(identifier: "en_US_POSIX")
+            df.dateFormat = "yyyy-MM-dd"
+            let todayStr = df.string(from: Date())
+
+            // Call getTrainingSchedule with to: nil (unified query)
+            let tool = GetTrainingScheduleTool { query in
+                engine.executeTrainingScheduleQuery(query: query)
+            }
+
+            let result = try await tool.call(arguments: GetTrainingScheduleQuery(from: todayStr, to: nil))
+
+            // Tool must return multi-day timeline
+            XCTAssertTrue(result.contains("SCHEDULE TIMELINE:"))
+            // Engine must automatically bind the next session card
+            XCTAssertNotNil(engine.sessionRecommendedThisTurn, "Querying the schedule must directly hydrate the next session card")
+        }
+        #endif
     }
 }
