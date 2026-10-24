@@ -447,44 +447,55 @@ struct DashboardView: View {
                             }
                         }
                     }
+
+                    let defaultPlaceholder = "Complete more runs this week to evaluate acute fatigue and recovery trends."
+                    Text(bodyText.isEmpty ? defaultPlaceholder : bodyText)
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .lineSpacing(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 2)
                 } else {
                     let displayHeadline = headline.isEmpty ? "Aerobic Base Stabilizing" : headline
                     Text(displayHeadline)
-                        .font(.headline)
+                        .font(.title3.bold())
                         .foregroundColor(.primary)
 
-                    HStack(spacing: 8) {
-                        if let cad = baselineCadence {
-                            MiniStatTile(
-                                title: "Avg Cadence",
-                                value: "\(cad)",
-                                unit: "SPM",
-                                icon: nil,
-                                accentColor: Color.green
-                            )
-                        }
+                    HStack(spacing: 6) {
+                        Text("Goal: \(trainingGoal)")
+                            .font(.caption.bold())
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.orange.opacity(0.12))
+                            .foregroundColor(.orange)
+                            .clipShape(Capsule())
 
-                        if let pace = baselinePace {
-                            MiniStatTile(
-                                title: "Avg Pace",
-                                value: PaceFormatter.formatPace(secondsPerKilometer: pace),
-                                unit: useMetricSystem ? "/km" : "/mi",
-                                icon: nil,
-                                accentColor: Color.blue
-                            )
-                        }
-
-                        if let hr = baselineHeartRate {
-                            MiniStatTile(
-                                title: "Avg HR",
-                                value: "\(hr)",
-                                unit: "BPM",
-                                icon: nil,
-                                accentColor: Color(red: 1.0, green: 0.18, blue: 0.55)
-                            )
+                        if isTrajectoryEaseUp {
+                            Text("Cumulative Strain")
+                                .font(.caption.bold())
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color.red.opacity(0.12))
+                                .foregroundColor(.red)
+                                .clipShape(Capsule())
+                        } else {
+                            Text("Aerobic Base Expanding")
+                                .font(.caption.bold())
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color.green.opacity(0.12))
+                                .foregroundColor(.green)
+                                .clipShape(Capsule())
                         }
                     }
-                    .padding(.top, 2)
+
+                    let defaultPlaceholder = "Complete more runs over the next 30 days to measure structural aerobic adaptation."
+                    Text(bodyText.isEmpty ? defaultPlaceholder : bodyText)
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .lineSpacing(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 2)
                 }
             }
         }
@@ -532,22 +543,34 @@ struct DashboardView: View {
         }
     }
 
-    private func currentHeadline() -> String {
-        switch timeRange {
-        case "7 Days": return cachedHeadline7Day
-        case "30 Days": return cachedHeadline30Day
-        case "All Time": return cachedHeadlineAllTime
-        default: return ""
+    private func sanitizeCoachingText(_ text: String) -> String {
+        var cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        while cleaned.hasSuffix("}") || cleaned.hasSuffix("{") || cleaned.hasSuffix("\"") {
+            cleaned = String(cleaned.dropLast()).trimmingCharacters(in: .whitespacesAndNewlines)
         }
+        return cleaned
+    }
+
+    private func currentHeadline() -> String {
+        let raw: String
+        switch timeRange {
+        case "7 Days": raw = cachedHeadline7Day
+        case "30 Days": raw = cachedHeadline30Day
+        case "All Time": raw = cachedHeadlineAllTime
+        default: raw = ""
+        }
+        return sanitizeCoachingText(raw)
     }
 
     private func currentBody() -> String {
+        let raw: String
         switch timeRange {
-        case "7 Days": return cachedBody7Day
-        case "30 Days": return cachedBody30Day
-        case "All Time": return cachedBodyAllTime
-        default: return ""
+        case "7 Days": raw = cachedBody7Day
+        case "30 Days": raw = cachedBody30Day
+        case "All Time": raw = cachedBodyAllTime
+        default: raw = ""
         }
+        return sanitizeCoachingText(raw)
     }
 
     private func checkAndFetchInsight() {
@@ -835,6 +858,17 @@ struct DashboardView: View {
     }
 
     @ViewBuilder
+    private var activityVolumeSummaryCard: some View {
+        ActivityVolumeSummaryCard(
+            runs: timeRangeRuns,
+            timeRange: timeRange,
+            useMetricSystem: useMetricSystem,
+            activeGoal: trainingGoal
+        )
+        .padding(.horizontal)
+    }
+
+    @ViewBuilder
     private var filterChips: some View {
         if !availableFilters.isEmpty {
             ScrollView(.horizontal, showsIndicators: false) {
@@ -909,7 +943,12 @@ struct DashboardView: View {
                                 .padding(.horizontal)
                         }
 
-                        // 3. Fitness Baseline Quadrant Card
+                        // 3. Activity Volume & Training Load Card
+                        if !timeRangeRuns.isEmpty {
+                            activityVolumeSummaryCard
+                        }
+
+                        // 4. Fitness Baseline Quadrant Card
                         fitnessBaselineCard
 
                         // 4. Past Runs Section Header & Run-Type Filters

@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		E11100100D4E5F60718293B1 /* Runalyst/Views/ActivityVolumeSummaryCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11100100D4E5F60718293B1 /* Runalyst/Views/ActivityVolumeSummaryCard.swift */; };
 		D4E5F60718293A0100000003 /* RunalystCore in Frameworks */ = {isa = PBXBuildFile; productRef = D4E5F60718293A0100000002 /* RunalystCore */; };
 		D4E5F60718293A0100000004 /* RunalystCore in Frameworks */ = {isa = PBXBuildFile; productRef = D4E5F60718293A0100000002 /* RunalystCore */; };
 		075FD91D330B77E5867419C9 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0C58A0BCEA50BA9ED3463C4 /* ContentView.swift */; };
@@ -154,6 +155,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		F11100100D4E5F60718293B1 /* Runalyst/Views/ActivityVolumeSummaryCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/ActivityVolumeSummaryCard.swift; sourceTree = SOURCE_ROOT; };
 		00D99981A310B02F2B8044D6 /* PaceFormatterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaceFormatterTests.swift; sourceTree = "<group>"; };
 		0FC0868FA1D2D6FB2E59A10C /* DrillRecommendation.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DrillRecommendation.swift; path = Runalyst/Models/DrillRecommendation.swift; sourceTree = "<group>"; };
 		2225B5F6B6513A7AC03E5246 /* HealthKitManager.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = HealthKitManager.swift; path = Runalyst/Managers/HealthKitManager.swift; sourceTree = "<group>"; };
@@ -475,6 +477,7 @@
 				A1110030D4E5F60718293A30 /* Runalyst/Views/RunClassificationExplainerSheet.swift */,
 				A1110031D4E5F60718293A31 /* Runalyst/CoachingEngine/RunAnalyzerActor.swift */,
 				A1110032D4E5F60718293A32 /* Runalyst/Views/FitnessBaselineCard.swift */,
+				F11100100D4E5F60718293B1 /* Runalyst/Views/ActivityVolumeSummaryCard.swift */,
 				A1110033D4E5F60718293A33 /* Runalyst/Views/ProactiveCoachCard.swift */,
 				A1110034D4E5F60718293A34 /* Runalyst/Models/BucketData.swift */,
 				A1110035D4E5F60718293A35 /* Runalyst/Models/RunRecordDTO.swift */,
@@ -734,6 +737,7 @@
 				B1110030D4E5F60718293A30 /* Runalyst/Views/RunClassificationExplainerSheet.swift in Sources */,
 				B1110031D4E5F60718293A31 /* Runalyst/CoachingEngine/RunAnalyzerActor.swift in Sources */,
 				B1110032D4E5F60718293A32 /* Runalyst/Views/FitnessBaselineCard.swift in Sources */,
+				E11100100D4E5F60718293B1 /* Runalyst/Views/ActivityVolumeSummaryCard.swift in Sources */,
 				B1110033D4E5F60718293A33 /* Runalyst/Views/ProactiveCoachCard.swift in Sources */,
 				B1110034D4E5F60718293A34 /* Runalyst/Models/BucketData.swift in Sources */,
 				B1110035D4E5F60718293A35 /* Runalyst/Models/RunRecordDTO.swift in Sources */,
