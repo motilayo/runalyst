@@ -276,6 +276,8 @@ public struct SteadyStateScorecard: Codable, Sendable {
 
 public struct SplitDetail: Codable, Sendable {
     public let split_index: Int
+    public let split_label: String
+    public let split_type: String
     public let pace: String
     public let cadence_spm: Int
     public let heart_rate_bpm: Int?
@@ -286,6 +288,8 @@ public struct SplitDetail: Codable, Sendable {
 
     public init(
         split_index: Int,
+        split_label: String = "",
+        split_type: String = "continuous_kilometer_split",
         pace: String,
         cadence_spm: Int,
         heart_rate_bpm: Int? = nil,
@@ -295,6 +299,8 @@ public struct SplitDetail: Codable, Sendable {
         observation: String? = nil
     ) {
         self.split_index = split_index
+        self.split_label = split_label.isEmpty ? "km \(split_index) split" : split_label
+        self.split_type = split_type
         self.pace = pace
         self.cadence_spm = cadence_spm
         self.heart_rate_bpm = heart_rate_bpm
@@ -347,38 +353,220 @@ public struct BlendedTotals: Codable, Sendable {
 
 public struct HistoricalRunSummary: Codable, Sendable, Equatable {
     public let date: String
+    public let formatted_date: String
     public let weekday: String
     public let classification: String
     public let environment: String
+    public let is_indoor: Bool
     public let distance_km: Double
+    public let distance_formatted: String?
     public let duration_minutes: Int
     public let pace: String
     public let cadence_spm: Int
+    public let cadence_formatted: String?
     public let heart_rate_bpm: Int?
+    public let heart_rate_formatted: String?
     public let efficiency_factor: Double?
+    public let efficiency_factor_formatted: String?
 
     public init(
         date: String,
+        formatted_date: String = "",
         weekday: String,
         classification: String,
         environment: String,
+        is_indoor: Bool = false,
         distance_km: Double,
+        distance_formatted: String? = nil,
         duration_minutes: Int,
         pace: String,
         cadence_spm: Int,
+        cadence_formatted: String? = nil,
         heart_rate_bpm: Int? = nil,
-        efficiency_factor: Double? = nil
+        heart_rate_formatted: String? = nil,
+        efficiency_factor: Double? = nil,
+        efficiency_factor_formatted: String? = nil
     ) {
         self.date = date
+        self.formatted_date = formatted_date.isEmpty ? date : formatted_date
         self.weekday = weekday
         self.classification = classification
         self.environment = environment
+        self.is_indoor = is_indoor
         self.distance_km = distance_km
+        self.distance_formatted = distance_formatted ?? String(format: "%.2f km", distance_km)
         self.duration_minutes = duration_minutes
         self.pace = pace
         self.cadence_spm = cadence_spm
+        self.cadence_formatted = cadence_formatted ?? "\(cadence_spm) SPM"
         self.heart_rate_bpm = heart_rate_bpm
+        self.heart_rate_formatted = heart_rate_formatted ?? heart_rate_bpm.map { "\($0) BPM" }
         self.efficiency_factor = efficiency_factor
+        self.efficiency_factor_formatted = efficiency_factor_formatted
+    }
+}
+
+public struct HistoricalRunCatalog: Codable, Sendable, Equatable {
+    public let schema_name: String
+    public let total_workouts_count: Int
+    public let newest_workout_date: String
+    public let oldest_workout_date: String
+    public let workouts: [HistoricalRunSummary]
+    public let older_workouts_count: Int
+    public let header: String?
+    public let older_workouts_note: String?
+
+    public init(
+        schema_name: String = "HISTORICAL_RUN_CATALOG",
+        total_workouts_count: Int,
+        newest_workout_date: String,
+        oldest_workout_date: String,
+        workouts: [HistoricalRunSummary],
+        older_workouts_count: Int = 0,
+        header: String? = nil,
+        older_workouts_note: String? = nil
+    ) {
+        self.schema_name = schema_name
+        self.total_workouts_count = total_workouts_count
+        self.newest_workout_date = newest_workout_date
+        self.oldest_workout_date = oldest_workout_date
+        self.workouts = workouts
+        self.older_workouts_count = older_workouts_count
+        self.header = header
+        self.older_workouts_note = older_workouts_note
+    }
+}
+
+public struct HistoricalRunLookup: Codable, Sendable, Equatable {
+    public let schema_name: String
+    public let status: String
+    public let workout: HistoricalRunSummary?
+    public let rank_in_history: Int?
+    public let total_workouts_count: Int?
+    public let rank_note: String?
+    public let query_target: String?
+
+    public init(
+        schema_name: String = "HISTORICAL_RUN_LOOKUP",
+        status: String = "success",
+        workout: HistoricalRunSummary? = nil,
+        rank_in_history: Int? = nil,
+        total_workouts_count: Int? = nil,
+        rank_note: String? = nil,
+        query_target: String? = nil
+    ) {
+        self.schema_name = schema_name
+        self.status = status
+        self.workout = workout
+        self.rank_in_history = rank_in_history
+        self.total_workouts_count = total_workouts_count
+        self.rank_note = rank_note
+        self.query_target = query_target
+    }
+}
+
+public struct TelemetryDeltaFacts: Codable, Sendable, Equatable {
+    public let pace_delta_seconds_per_km: Int
+    public let pace_percentage_difference: Int
+    public let pace_comparison: String
+    public let cadence_delta_spm: Int
+    public let cadence_comparison: String
+    public let heart_rate_delta_bpm: Int
+    public let heart_rate_comparison: String
+    public let distance_delta_km: Double
+    public let distance_comparison: String
+    public let duration_delta_minutes: Int
+    public let duration_comparison: String
+    public let summary: String
+
+    public init(
+        pace_delta_seconds_per_km: Int,
+        pace_percentage_difference: Int,
+        pace_comparison: String,
+        cadence_delta_spm: Int,
+        cadence_comparison: String,
+        heart_rate_delta_bpm: Int,
+        heart_rate_comparison: String,
+        distance_delta_km: Double,
+        distance_comparison: String,
+        duration_delta_minutes: Int,
+        duration_comparison: String,
+        summary: String
+    ) {
+        self.pace_delta_seconds_per_km = pace_delta_seconds_per_km
+        self.pace_percentage_difference = pace_percentage_difference
+        self.pace_comparison = pace_comparison
+        self.cadence_delta_spm = cadence_delta_spm
+        self.cadence_comparison = cadence_comparison
+        self.heart_rate_delta_bpm = heart_rate_delta_bpm
+        self.heart_rate_comparison = heart_rate_comparison
+        self.distance_delta_km = distance_delta_km
+        self.distance_comparison = distance_comparison
+        self.duration_delta_minutes = duration_delta_minutes
+        self.duration_comparison = duration_comparison
+        self.summary = summary
+    }
+}
+
+public struct RunComparisonFacts: Codable, Sendable, Equatable {
+    public let schema_name: String
+    public let current_run: HistoricalRunSummary
+    public let prior_run: HistoricalRunSummary
+    public let deltas: TelemetryDeltaFacts
+    public let days_between: Int
+    public let timing_contrast: String
+    public let classification_contrast: String
+    public let summary: String
+
+    public init(
+        schema_name: String = "RUN_COMPARISON_FACTS",
+        current_run: HistoricalRunSummary,
+        prior_run: HistoricalRunSummary,
+        deltas: TelemetryDeltaFacts,
+        days_between: Int,
+        timing_contrast: String,
+        classification_contrast: String,
+        summary: String
+    ) {
+        self.schema_name = schema_name
+        self.current_run = current_run
+        self.prior_run = prior_run
+        self.deltas = deltas
+        self.days_between = days_between
+        self.timing_contrast = timing_contrast
+        self.classification_contrast = classification_contrast
+        self.summary = summary
+    }
+}
+
+public struct PerformanceArcFacts: Codable, Sendable, Equatable {
+    public let schema_name: String
+    public let total_runs_in_past_30_days: Int
+    public let best_performance_workout: HistoricalRunSummary?
+    public let toughest_workout: HistoricalRunSummary?
+    public let current_workout: HistoricalRunSummary?
+    public let current_vs_best: TelemetryDeltaFacts?
+    public let best_vs_toughest: TelemetryDeltaFacts?
+    public let summary: String
+
+    public init(
+        schema_name: String = "PERFORMANCE_ARC_FACTS",
+        total_runs_in_past_30_days: Int,
+        best_performance_workout: HistoricalRunSummary? = nil,
+        toughest_workout: HistoricalRunSummary? = nil,
+        current_workout: HistoricalRunSummary? = nil,
+        current_vs_best: TelemetryDeltaFacts? = nil,
+        best_vs_toughest: TelemetryDeltaFacts? = nil,
+        summary: String = ""
+    ) {
+        self.schema_name = schema_name
+        self.total_runs_in_past_30_days = total_runs_in_past_30_days
+        self.best_performance_workout = best_performance_workout
+        self.toughest_workout = toughest_workout
+        self.current_workout = current_workout
+        self.current_vs_best = current_vs_best
+        self.best_vs_toughest = best_vs_toughest
+        self.summary = summary
     }
 }
 

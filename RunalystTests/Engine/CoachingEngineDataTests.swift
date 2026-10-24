@@ -525,10 +525,10 @@ final class CoachingEngineDataTests: XCTestCase {
         XCTAssertTrue(reverseComparison.structuredTelemetryFacts.contains("6 SPM lower turnover in current run"))
         XCTAssertFalse(reverseComparison.structuredTelemetryFacts.contains("-6 SPM lower turnover"))
 
-        // 4. Test natural language comparison summary
-        XCTAssertTrue(comparison.coachingComparisonSummary.contains("Comparing your"))
-        XCTAssertTrue(comparison.coachingComparisonSummary.contains("15s/km faster"))
-        XCTAssertTrue(comparison.coachingComparisonSummary.contains("+6 SPM higher turnover"))
+        // 4. Test structured comparison facts
+        let comparisonFacts = comparison.comparisonFacts
+        XCTAssertTrue(comparisonFacts.deltas.pace_comparison.contains("15s/km faster"))
+        XCTAssertTrue(comparisonFacts.deltas.cadence_comparison.contains("+6 SPM"))
 
         // 5. Test 30-Day Performance Arc Analysis
         let arc = HistoricalRunMatcher.analyzePerformanceArc(relativeTo: currentRun, in: context)
@@ -540,8 +540,8 @@ final class CoachingEngineDataTests: XCTestCase {
         XCTAssertTrue(arc.structuredTelemetryFacts.contains("156 SPM"))
         XCTAssertTrue(arc.structuredTelemetryFacts.contains("150 SPM"))
         XCTAssertFalse(arc.structuredTelemetryFacts.contains("/km cadence"), "Must never output /km cadence")
-        XCTAssertFalse(arc.coachingArcSummary.contains("/km cadence"), "Coaching summary must never output /km cadence")
-        XCTAssertTrue(arc.coachingArcSummary.contains("156 SPM"))
+        XCTAssertTrue(arc.arcFacts.summary.contains("30-day arc"))
+        XCTAssertTrue(arc.arcFacts.best_performance_workout?.cadence_formatted?.contains("156 SPM") == true)
 
         // 6. Test superlative matching ("best run", "worst run")
         let bestMatch = try XCTUnwrap(HistoricalRunMatcher.findRun(matching: "compare to my best run", relativeTo: sep14Run, in: context))

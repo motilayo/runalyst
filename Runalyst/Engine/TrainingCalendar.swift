@@ -205,11 +205,7 @@ extension TrainingCalendar {
             // 4. Completion status
             let completion: ScheduleDay.CompletionStatus
             if !runsOnDay.isEmpty {
-                let hasMainRun = runsOnDay.contains { run in
-                    return !run.isPrimerWorkout && run.duration >= 1200
-                }
-                let totalDuration = runsOnDay.reduce(0.0) { $0 + $1.duration }
-                completion = (hasMainRun || totalDuration >= 1800) ? .completed : .partial
+                completion = SessionSynthesisEngine.isWorkoutDayComplete(runs: runsOnDay) ? .completed : .partial
             } else if dateStart > today {
                 completion = .upcoming
             } else if planned.kind == .rest {
@@ -274,7 +270,7 @@ extension TrainingCalendar {
                     plannedDesc += ", Primer: \(primer)"
                 }
                 if day.completion == .completed {
-                    parts.append("Status: All scheduled training completed for today • Rest & recover")
+                    parts.append("Status: All scheduled training completed for today")
                 } else if day.completion == .missed {
                     parts.append("Missed: \(plannedDesc)")
                 } else if day.completed.isEmpty {

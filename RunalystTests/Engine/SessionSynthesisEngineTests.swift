@@ -680,6 +680,39 @@ final class SessionSynthesisEngineTests: XCTestCase {
     }
 
     @MainActor
+    func testClosedLoopPrimer_SelectsStridesOnOptimalMechanics() {
+        let now = Date()
+
+        let optimalRun = makeRun(
+            date: dateOffset(days: -1, from: now),
+            duration: 2700,
+            distanceMeters: 6500,
+            workingAvgCadence: 168,
+            workingAvgHeartRate: 142,
+            detectedTypeRaw: "Steady Effort",
+            workingAvgVerticalOscillation: 8.2,
+            workingAvgStrideLength: 1.05
+        )
+        optimalRun.cadenceSlope = 0.02
+
+        let state = SessionSynthesisEngine.evaluateDailyState(
+            runRecords: [optimalRun],
+            activeGoal: "Base Building",
+            experienceLevel: "Intermediate",
+            useMetric: true,
+            now: now
+        )
+
+        switch state {
+        case .preRun(let session):
+            XCTAssertEqual(session.primerDrillId, PreRunDrillId.strides, "Optimal mechanics must default to Strides rather than Cadence Pyramids")
+            XCTAssertEqual(session.primerDrillTitle, "Strides")
+        case .completedToday:
+            XCTFail("Expected .preRun state")
+        }
+    }
+
+    @MainActor
     func testExperienceScaledDurationBands_AndWorkoutKitPhases() {
         let now = Date()
         let baselineRun = makeRun(

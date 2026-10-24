@@ -92,17 +92,20 @@ actor RunAnalyzerActor {
         let cvContext = "Pace Variability (CV): \(String(format: "%.3f", run.paceCV))"
         let slopeContext = "Pace Slope: \(String(format: "%.3f", run.paceSlope))"
 
+        let athleteProfile = RunnerProfile.compute(from: priorRuns.isEmpty ? [run] : priorRuns, now: targetDate)
+        let athleteFloor = athleteProfile.heightAdjustedCadenceFloor
+
         if let base = baseline {
             let cadenceDelta = run.workingAvgCadence - base.avgCadence
             let isRecoveryRun = run.detectedTypeRaw == "Recovery Run" || (run.percentZone4 <= 0.02 && run.workingAvgHeartRate > 0 && run.workingAvgHeartRate <= 135)
-            let effectiveFloor = isRecoveryRun ? 140.0 : 150.0
+            let effectiveFloor = isRecoveryRun ? Double(athleteFloor - 10) : Double(athleteFloor)
             let isSubFloor = run.workingAvgCadence < effectiveFloor
             let isCadenceImproved = (cadenceDelta >= 0 || run.workingAvgCadence >= 170) && !isSubFloor
             let cadenceSummary: String
             if isRecoveryRun {
                 cadenceSummary = "Cadence averaged \(Int(run.workingAvgCadence)) SPM during this active recovery session. Effort and heart rate were kept low to flush fatigue without mechanical strain."
             } else if isSubFloor {
-                cadenceSummary = "Cadence was \(Int(run.workingAvgCadence)) SPM (BELOW the 150 SPM floor). Turnover is slow with prolonged ground contact; DO NOT praise form or turnover precision."
+                cadenceSummary = "Cadence was \(Int(run.workingAvgCadence)) SPM (BELOW the \(Int(effectiveFloor)) SPM floor). Turnover is slow with prolonged ground contact; DO NOT praise form or turnover precision."
             } else if isCadenceImproved {
                 if run.workingAvgCadence >= 170 && cadenceDelta < 0 {
                     cadenceSummary = "Cadence averaged an optimal \(Int(run.workingAvgCadence)) SPM, maintaining strong turnover above the 170 SPM efficiency zone despite a slight drop."
@@ -197,7 +200,7 @@ actor RunAnalyzerActor {
                 directiveContext = "The runner shows mechanical stride collapse (stride compressed by \(Int(abs(strideDeltaPercent * 100)))% despite steady turnover). Prescribe a Form drill to reinforce hip extension and posture under fatigue." + goalSuffix
             } else if isTrueOverstriding {
                 let vrText = currentVR.map { String(format: "%.1f", $0) } ?? "high"
-                let subFloorNote = run.workingAvgCadence < 150 ? " (cadence is \(Int(run.workingAvgCadence)) SPM, below 150 SPM floor; DO NOT praise form precision)" : ""
+                let subFloorNote = run.workingAvgCadence < Double(athleteFloor) ? " (cadence is \(Int(run.workingAvgCadence)) SPM, below \(athleteFloor) SPM floor; DO NOT praise form precision)" : ""
                 directiveContext = "The runner shows high vertical bounce relative to stride length (VR: \(vrText)%)\(subFloorNote), indicating overstriding and braking forces. Prescribe Cadence Pyramids or Rhythm Intervals to quicken turnover." + goalSuffix
             } else if paceDiff > 0 && hrDelta < 0 {
                 let accelReason: String
@@ -211,15 +214,15 @@ actor RunAnalyzerActor {
                 }
                 directiveContext = "The runner was faster with a lower heart rate, indicating strong fitness improvements (\(accelReason)). Praise performance and prescribe an optional Speed or Tempo drill." + goalSuffix
             } else {
-                if run.workingAvgCadence < 150 {
-                    directiveContext = "The runner's cadence of \(Int(run.workingAvgCadence)) SPM is below the 150 SPM floor. Caution against heavy ground impact and prescribe Cadence Pyramids or Rhythm Intervals to elevate turnover. DO NOT praise form." + goalSuffix
+                if run.workingAvgCadence < Double(athleteFloor) {
+                    directiveContext = "The runner's cadence of \(Int(run.workingAvgCadence)) SPM is below the \(athleteFloor) SPM floor. Caution against heavy ground impact and prescribe Cadence Pyramids or Rhythm Intervals to elevate turnover. DO NOT praise form." + goalSuffix
                 } else {
                     directiveContext = "The runner is steady. Provide positive reinforcement and prescribe a general maintenance Rhythm drill." + goalSuffix
                 }
             }
         } else {
             let isolatedType = !run.detectedTypeRaw.isEmpty ? run.detectedTypeRaw : "Steady Effort"
-            let cadenceFloor = 150
+            let cadenceFloor = athleteFloor
             let isSubFloor = Int(run.workingAvgCadence) < cadenceFloor
             let subFloorWarning = isSubFloor ? " (cadence is below \(cadenceFloor) SPM floor; DO NOT praise form precision)" : ""
             directiveContext = "Evaluate this isolated \(isolatedType) and provide a basic introductory drill\(subFloorWarning)."

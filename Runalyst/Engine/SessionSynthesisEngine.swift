@@ -170,6 +170,18 @@ enum SessionSynthesisEngine {
         run.isPrimerWorkout
     }
 
+    /// Canonical predicate determining whether completed runs on a calendar day satisfy the day's training session.
+    /// An athlete completes today's training if they log a primary non-primer run of >= 20 min (1200s),
+    /// or achieve a cumulative workout volume of >= 30 min (1800s).
+    @MainActor
+    public static func isWorkoutDayComplete(runs: [RunRecord]) -> Bool {
+        let active = runs.filter { !$0.isDeleted }
+        guard !active.isEmpty else { return false }
+        let hasMainRun = active.contains { !$0.isPrimerWorkout && $0.duration >= 1200 }
+        let totalDuration = active.reduce(0.0) { $0 + $1.duration }
+        return hasMainRun || totalDuration >= 1800
+    }
+
     /// Synthesizes the athlete's daily state machine deterministically.
     @MainActor
     static func evaluateDailyState(
@@ -185,9 +197,22 @@ enum SessionSynthesisEngine {
             .filter { calendar.isDate($0.date, inSameDayAs: now) && !$0.isDeleted }
             .sorted { $0.date < $1.date }
 
-        // 1. If the runner ONLY completed the short Pre-Run Primer today (and not the Main Run yet),
-        // keep Today's Session in .preRun with completedPrimerRun attached so they can start the Main Run!
-        if todayRuns.count == 1, let onlyRun = todayRuns.first, isShortPrimerWorkout(onlyRun) {
+        // 1. If today has no completed workouts, remain in .preRun
+        guard !todayRuns.isEmpty else {
+            let todaySession = synthesizePreRunPrescription(
+                runRecords: runRecords,
+                activeGoal: activeGoal,
+                experienceLevel: experienceLevel,
+                useMetric: useMetric,
+                userHeightCm: userHeightCm,
+                now: now
+            )
+            return .preRun(session: todaySession)
+        }
+
+        // 2. If the runner completed a primer or partial run that does not yet satisfy a full day's completion:
+        // Keep today's session in .preRun with the primer attached so the runner can start/complete the main run!
+        if !isWorkoutDayComplete(runs: todayRuns) {
             let priorRuns = runRecords.filter { !calendar.isDate($0.date, inSameDayAs: now) && !$0.isDeleted }
             var todaySession = synthesizePreRunPrescription(
                 runRecords: priorRuns,
@@ -197,11 +222,13 @@ enum SessionSynthesisEngine {
                 userHeightCm: userHeightCm,
                 now: now
             )
-            todaySession.completedPrimerRun = buildSnapshot(from: onlyRun, useMetric: useMetric)
+            if let completedPrimer = todayRuns.first(where: { isShortPrimerWorkout($0) }) ?? todayRuns.first {
+                todaySession.completedPrimerRun = buildSnapshot(from: completedPrimer, useMetric: useMetric)
+            }
             return .preRun(session: todaySession)
         }
 
-        // 2. If the runner completed their Main Run (or both Primer + Main Run) today, transition to .completedToday
+        // 3. Main Run satisfied: transition to .completedToday and prepare tomorrow's prescription
         if let primaryRun = todayRuns.max(by: { $0.duration < $1.duration }) ?? todayRuns.last {
             var primarySnapshot = buildSnapshot(from: primaryRun, useMetric: useMetric)
             let otherSnapshots = todayRuns
@@ -224,7 +251,7 @@ enum SessionSynthesisEngine {
             return .completedToday(completedRun: primarySnapshot, tomorrowSession: tomorrowSession)
         }
 
-        // 3. Pre-Run State: Synthesize today's primary prescription
+        // 4. Fallback Pre-Run State
         let todaySession = synthesizePreRunPrescription(
             runRecords: runRecords,
             activeGoal: activeGoal,
@@ -479,9 +506,9 @@ enum SessionSynthesisEngine {
                 cadenceFloor = max(160, calibratedCadenceFloor)
                 rationale = "Cleared for quality work. Today targets your 5K race pace turnover with crisp aerobic interval reps."
 
-                primerDrillId = recentHadExcessiveBounce ? .cadencePyramids : .rhythmIntervals
-                primerTitle = primerDrillId == .cadencePyramids ? "Cadence Pyramids" : "Rhythm Intervals"
-                primerWork = primerDrillId == .cadencePyramids ? "4 x 30 sec work • 45 sec walk" : "4 x 30 sec work • 45 sec jog float"
+                primerDrillId = recentHadExcessiveBounce ? .cadencePyramids : (recentHadCadenceFade ? .rhythmIntervals : .strides)
+                primerTitle = primerDrillId == .cadencePyramids ? "Cadence Pyramids" : (primerDrillId == .rhythmIntervals ? "Rhythm Intervals" : "Strides")
+                primerWork = primerDrillId == .strides ? "4 x 15 sec strides • 45 sec walk" : (primerDrillId == .cadencePyramids ? "4 x 30 sec work • 45 sec walk" : "4 x 30 sec work • 45 sec jog float")
                 primerDuration = "10 min drill"
             } else if activeGoal.localizedCaseInsensitiveContains("10K") {
                 sessionTitle = "10K Threshold Surges"
@@ -512,9 +539,9 @@ enum SessionSynthesisEngine {
                     cadenceFloor = calibratedCadenceFloor
                     rationale = "Cleared for quality work. Today introduces threshold surges to elevate metabolic efficiency toward \(activeGoal)."
 
-                    primerDrillId = recentHadExcessiveBounce ? .cadencePyramids : .rhythmIntervals
-                    primerTitle = primerDrillId == .cadencePyramids ? "Cadence Pyramids" : "Rhythm Intervals"
-                    primerWork = "4 x 30 sec work • 45 sec walk"
+                    primerDrillId = recentHadExcessiveBounce ? .cadencePyramids : (recentHadCadenceFade ? .rhythmIntervals : .strides)
+                    primerTitle = primerDrillId == .cadencePyramids ? "Cadence Pyramids" : (primerDrillId == .rhythmIntervals ? "Rhythm Intervals" : "Strides")
+                    primerWork = primerDrillId == .strides ? "4 x 15 sec strides • 45 sec walk" : "4 x 30 sec work • 45 sec walk"
                     primerDuration = "10 min drill"
                 } else {
                     // Polarized Base Consolidation for Half/Full
@@ -555,9 +582,9 @@ enum SessionSynthesisEngine {
                 }
                 rationale = baseRationale
 
-                primerDrillId = recentHadExcessiveBounce ? .cadencePyramids : (recentHadCadenceFade ? .rhythmIntervals : .cadencePyramids)
-                primerTitle = primerDrillId == .rhythmIntervals ? "Rhythm Intervals" : "Cadence Pyramids"
-                primerWork = "4 x 30 sec work • 45 sec walk"
+                primerDrillId = recentHadExcessiveBounce ? .cadencePyramids : (recentHadCadenceFade ? .rhythmIntervals : .strides)
+                primerTitle = primerDrillId == .cadencePyramids ? "Cadence Pyramids" : (primerDrillId == .rhythmIntervals ? "Rhythm Intervals" : "Strides")
+                primerWork = primerDrillId == .strides ? "4 x 15 sec strides • 45 sec walk" : "4 x 30 sec work • 45 sec walk"
                 primerDuration = "10 min drill"
             }
         } else {
@@ -582,9 +609,9 @@ enum SessionSynthesisEngine {
             }
             rationale = polarizedRationale
 
-            primerDrillId = recentHadExcessiveBounce ? .cadencePyramids : (recentHadCadenceFade ? .rhythmIntervals : .cadencePyramids)
-            primerTitle = primerDrillId == .rhythmIntervals ? "Rhythm Intervals" : "Cadence Pyramids"
-            primerWork = "4 x 30 sec work • 45 sec walk"
+            primerDrillId = recentHadExcessiveBounce ? .cadencePyramids : (recentHadCadenceFade ? .rhythmIntervals : .strides)
+            primerTitle = primerDrillId == .cadencePyramids ? "Cadence Pyramids" : (primerDrillId == .rhythmIntervals ? "Rhythm Intervals" : "Strides")
+            primerWork = primerDrillId == .strides ? "4 x 15 sec strides • 45 sec walk" : "4 x 30 sec work • 45 sec walk"
             primerDuration = "10 min drill"
         }
 
@@ -795,10 +822,60 @@ enum SessionSynthesisEngine {
             ? "Today's \(todayRun.detectedTypeRaw) workout banked heavy neuromuscular stimuli. Tomorrow automatically shifts to an active recovery flush to clear metabolic waste and protect your legs."
             : "Building continuous consistency toward \(context.activeGoal). Tomorrow keeps aerobic volume progressing at conversational intensity."
 
-        let primerDrillId: PreRunDrillId = wasHardSession ? .cadencePyramids : .rhythmIntervals
-        let primerTitle = wasHardSession ? "Cadence Pyramids" : "Rhythm Intervals"
-        let primerTarget = wasHardSession ? "\(baseCadence - 2)–\(baseCadence + 4) SPM" : "\(baseCadence + 6)–\(baseCadence + 12) SPM"
-        let primerWork = wasHardSession ? "2 x 30 sec work • 45 sec walk • Gentle" : "3 x 30 sec work • 45 sec jog"
+        let todayHadExcessiveBounce: Bool = {
+            let vr = todayRun.verticalRatio ?? 0.0
+            let osc = todayRun.workingAvgVerticalOscillation ?? todayRun.rawAvgVerticalOscillation ?? 0.0
+            let subFloor = todayRun.workingAvgCadence > 0 && todayRun.workingAvgCadence < Double(calibratedCadenceFloor)
+            return vr > 9.0 || osc > 10.0 || subFloor
+        }()
+        let todayHadCadenceFade: Bool = {
+            if todayRun.framboiseTags.contains(FramboiseReadinessTag.cadenceFade) {
+                return true
+            }
+            if let slope = todayRun.cadenceSlope {
+                return slope < -0.15
+            }
+            let splits = todayRun.splits
+            if splits.count >= 3 {
+                let splitIdx = (splits.count * 2) / 3
+                let earlyCount = Double(splitIdx)
+                let lateCount = Double(splits.count - splitIdx)
+                guard earlyCount > 0 && lateCount > 0 else { return false }
+                let early = splits[0..<splitIdx].map(\.avgCadence).reduce(0, +) / earlyCount
+                let late = splits[splitIdx...].map(\.avgCadence).reduce(0, +) / lateCount
+                if (early - late) >= 5.0 {
+                    return true
+                }
+            }
+            return false
+        }()
+
+        let primerDrillId: PreRunDrillId
+        let primerTitle: String
+        let primerTarget: String
+        let primerWork: String
+
+        if wasHardSession {
+            primerDrillId = .cadencePyramids
+            primerTitle = "Cadence Pyramids"
+            primerTarget = "\(baseCadence - 2)–\(baseCadence + 4) SPM"
+            primerWork = "2 x 30 sec work • 45 sec walk • Gentle"
+        } else if todayHadExcessiveBounce {
+            primerDrillId = .cadencePyramids
+            primerTitle = "Cadence Pyramids"
+            primerTarget = "\(baseCadence - 2)–\(baseCadence + 4) SPM"
+            primerWork = "4 x 30 sec work • 45 sec walk"
+        } else if todayHadCadenceFade {
+            primerDrillId = .rhythmIntervals
+            primerTitle = "Rhythm Intervals"
+            primerTarget = "\(baseCadence + 4)–\(baseCadence + 8) SPM"
+            primerWork = "4 x 30 sec work • 45 sec jog"
+        } else {
+            primerDrillId = .strides
+            primerTitle = "Strides"
+            primerTarget = "\(baseCadence + 4)–\(baseCadence + 10) SPM"
+            primerWork = "4 x 15 sec strides • 45 sec walk"
+        }
 
         let tomorrowPrimerDrill = PreRunDrill(
             id: primerDrillId,
@@ -925,6 +1002,14 @@ enum SessionSynthesisEngine {
         let targetDay = calendar.startOfDay(for: targetDate)
         let today = calendar.startOfDay(for: now)
         let tomorrow = calendar.date(byAdding: .day, value: 1, to: today) ?? today
+
+        // 0. Past days or days beyond tomorrow: Pure weekly template indexed by weekday position
+        guard targetDay == today || targetDay == tomorrow else {
+            var cal = calendar
+            cal.firstWeekday = 1 // Sunday
+            let weekday = cal.component(.weekday, from: targetDay) // 1 = Sun, 7 = Sat
+            return templateSessionForWeekday(weekday: weekday, activeGoal: activeGoal, profile: profile, useMetric: useMetric)
+        }
 
         let dailyState = evaluateDailyState(
             runRecords: runRecords,
@@ -1139,9 +1224,12 @@ enum SessionSynthesisEngine {
         }
     }
 
+    @MainActor
     static func generateMicrocycle(
         activeGoal: String,
         now: Date,
+        runRecords: [RunRecord] = [],
+        profile: RunnerProfile? = nil,
         useMetric: Bool = true,
         isRecoveryWindow: Bool = false,
         startsAfterTomorrow: Bool = false,
@@ -1153,263 +1241,60 @@ enum SessionSynthesisEngine {
         let calendar = Calendar.current
         var days: [MicrocycleDay] = []
         let dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
-
-        // Dynamic Rest Day Placement:
-        // As streak increases, the scheduled rest day shifts earlier rather than remaining permanently 3 days out.
-        let restOffset: Int = {
-            if isTomorrowRest && !startsAfterTomorrow {
-                return 1
-            }
-            if startsAfterTomorrow {
-                return 3
-            }
-            return max(1, min(4, 3 - max(0, consecutiveRunDays - 1)))
-        }()
+        let effectiveProfile = profile ?? RunnerProfile.compute(from: runRecords, now: now)
 
         for offset in 1...5 {
             guard let targetDate = calendar.date(byAdding: .day, value: offset, to: now) else { continue }
             let weekday = calendar.component(.weekday, from: targetDate)
             let dayLabel = (offset == 1 && !startsAfterTomorrow) ? "Tomorrow" : dayNames[weekday - 1]
 
-            var sessionTitle: String
-            var iconName: String
-            var isRest: Bool
+            let template = templateSessionForWeekday(
+                weekday: weekday,
+                activeGoal: activeGoal,
+                profile: effectiveProfile,
+                useMetric: useMetric
+            )
 
-            if offset == restOffset {
-                sessionTitle = "Rest Day"
-                iconName = "bed.double.fill"
-                isRest = true
-            } else if activeGoal.localizedCaseInsensitiveContains("5K") {
-                switch offset {
-                case 1:
-                    if isRecoveryWindow {
-                        sessionTitle = useMetric ? "Zone 1 Recovery Flush (4 km)" : "Zone 1 Recovery Flush (2.5 mi)"
-                        iconName = "leaf.fill"
-                        isRest = false
-                    } else {
-                        sessionTitle = "4x800m 5K Rhythm Intervals (35m)"
-                        iconName = "flag.fill"
-                        isRest = false
-                    }
-                case 2:
-                    sessionTitle = useMetric ? "5 km Easy Aerobic Run" : "3 mi Easy Aerobic Run"
-                    iconName = "figure.run"
-                    isRest = false
-                case 3:
-                    sessionTitle = useMetric ? "5 km Easy Aerobic Run" : "3 mi Easy Aerobic Run"
-                    iconName = "figure.run"
-                    isRest = false
-                case 4:
-                    sessionTitle = "8x1 min Hill Surges (30m)"
-                    iconName = "mountain.2.fill"
-                    isRest = false
-                case 5:
-                    if hasRecentLongRun {
-                        sessionTitle = useMetric ? "Aerobic Consistency Run (5 km)" : "Aerobic Consistency Run (3 mi)"
-                        iconName = "waveform.path"
-                    } else {
-                        sessionTitle = useMetric ? "Long Run 7 km" : "Long Run 4.5 mi"
-                        iconName = "point.topleft.down.to.point.bottomright.curvepath.fill"
-                    }
-                    isRest = false
-                default:
-                    sessionTitle = useMetric ? "Easy Aerobic Run (5 km)" : "Easy Aerobic Run (3 mi)"
-                    iconName = "figure.run"
-                    isRest = false
+            let isTomorrowShiftedToRecovery = (offset == 1 && !startsAfterTomorrow && isRecoveryWindow)
+            let isRest = template.kind == .rest || (offset == 1 && isTomorrowRest && !startsAfterTomorrow)
+
+            let sessionTitle: String = {
+                if isRest {
+                    return "Rest Day"
                 }
-            } else if activeGoal.localizedCaseInsensitiveContains("10K") {
-                switch offset {
-                case 1:
-                    if isRecoveryWindow {
-                        sessionTitle = useMetric ? "Zone 1 Recovery Flush (5 km)" : "Zone 1 Recovery Flush (3 mi)"
-                        iconName = "leaf.fill"
-                        isRest = false
-                    } else {
-                        sessionTitle = "5x1 km Threshold Intervals (40m)"
-                        iconName = "flag.fill"
-                        isRest = false
-                    }
-                case 2:
-                    sessionTitle = useMetric ? "6 km Easy Aerobic Run" : "3.5 mi Easy Aerobic Run"
-                    iconName = "figure.run"
-                    isRest = false
-                case 3:
-                    sessionTitle = useMetric ? "6 km Easy Aerobic Run" : "3.5 mi Easy Aerobic Run"
-                    iconName = "figure.run"
-                    isRest = false
-                case 4:
-                    sessionTitle = "Tempo Progression (35m)"
-                    iconName = "bolt.fill"
-                    isRest = false
-                case 5:
-                    if hasRecentLongRun {
-                        sessionTitle = useMetric ? "Aerobic Consistency Run (6 km)" : "Aerobic Consistency Run (3.5 mi)"
-                        iconName = "waveform.path"
-                    } else {
-                        sessionTitle = useMetric ? "Long Run 10 km" : "Long Run 6 mi"
-                        iconName = "point.topleft.down.to.point.bottomright.curvepath.fill"
-                    }
-                    isRest = false
-                default:
-                    sessionTitle = useMetric ? "Easy Aerobic Run (6 km)" : "Easy Aerobic Run (3.5 mi)"
-                    iconName = "figure.run"
-                    isRest = false
+                if isTomorrowShiftedToRecovery {
+                    return "Zone 1 Recovery Flush (40m)"
                 }
-            } else if activeGoal.localizedCaseInsensitiveContains("Half") {
-                switch offset {
-                case 1:
-                    if isRecoveryWindow {
-                        sessionTitle = useMetric ? "Zone 1 Recovery Flush (40m)" : "Zone 1 Recovery Flush (40m)"
-                        iconName = "leaf.fill"
-                        isRest = false
-                    } else {
-                        sessionTitle = "Zone 2 Steady 45m"
-                        iconName = "figure.run"
-                        isRest = false
+                // If 5th day and no long run has been scheduled in the 5-day horizon for race goals, include the calibrated long run
+                if offset == 5 && !hasRecentLongRun && !days.contains(where: { $0.sessionTitle.lowercased().contains("long") }) {
+                    if activeGoal.localizedCaseInsensitiveContains("5K") {
+                        return useMetric ? "Long Run 7 km" : "Long Run 4.5 mi"
+                    } else if activeGoal.localizedCaseInsensitiveContains("10K") {
+                        return useMetric ? "Long Run 10 km" : "Long Run 6 mi"
+                    } else if activeGoal.localizedCaseInsensitiveContains("Half") || activeGoal.localizedCaseInsensitiveContains("Marathon") {
+                        return useMetric ? "Long Run 14 km" : "Long Run 8.5 mi"
                     }
-                case 2:
-                    if recoveryHoursRemaining > 36 {
-                        sessionTitle = useMetric ? "6 km Easy Aerobic Run" : "3.5 mi Easy Aerobic Run"
-                        iconName = "figure.run"
-                        isRest = false
-                    } else {
-                        sessionTitle = "Tempo Surges (35m)"
-                        iconName = "bolt.fill"
-                        isRest = false
-                    }
-                case 3:
-                    sessionTitle = "Zone 2 Steady 45m"
-                    iconName = "figure.run"
-                    isRest = false
-                case 4:
-                    sessionTitle = useMetric ? "Half Marathon Progress (8 km)" : "Half Marathon Progress (5 mi)"
-                    iconName = "waveform.path.ecg"
-                    isRest = false
-                case 5:
-                    if hasRecentLongRun {
-                        sessionTitle = useMetric ? "Easy Aerobic Run (8 km)" : "Easy Aerobic Run (5 mi)"
-                        iconName = "waveform.path"
-                    } else {
-                        sessionTitle = useMetric ? "Long Run 14 km" : "Long Run 8.5 mi"
-                        iconName = "point.topleft.down.to.point.bottomright.curvepath.fill"
-                    }
-                    isRest = false
-                default:
-                    sessionTitle = "Easy Aerobic Run"
-                    iconName = "figure.run"
-                    isRest = false
                 }
-            } else if activeGoal.localizedCaseInsensitiveContains("Marathon") {
-                switch offset {
-                case 1:
-                    if isRecoveryWindow {
-                        sessionTitle = useMetric ? "Zone 1 Recovery Flush (40m)" : "Zone 1 Recovery Flush (40m)"
-                        iconName = "leaf.fill"
-                        isRest = false
-                    } else {
-                        sessionTitle = "Zone 2 Steady 45m"
-                        iconName = "figure.run"
-                        isRest = false
-                    }
-                case 2:
-                    if recoveryHoursRemaining > 36 {
-                        sessionTitle = useMetric ? "6 km Easy Aerobic Run" : "3.5 mi Easy Aerobic Run"
-                        iconName = "figure.run"
-                        isRest = false
-                    } else {
-                        sessionTitle = "Tempo Surges 30m"
-                        iconName = "bolt.fill"
-                        isRest = false
-                    }
-                case 3:
-                    sessionTitle = "Zone 2 Steady 45m"
-                    iconName = "figure.run"
-                    isRest = false
-                case 4:
-                    sessionTitle = useMetric ? "Marathon Pace Progress (8 km)" : "Marathon Pace Progress (5 mi)"
-                    iconName = "waveform.path.ecg"
-                    isRest = false
-                case 5:
-                    if hasRecentLongRun {
-                        sessionTitle = useMetric ? "Easy Aerobic Run (8 km)" : "Easy Aerobic Run (5 mi)"
-                        iconName = "waveform.path"
-                    } else {
-                        sessionTitle = useMetric ? "Long Run 16 km" : "Long Run 10 mi"
-                        iconName = "point.topleft.down.to.point.bottomright.curvepath.fill"
-                    }
-                    isRest = false
-                default:
-                    sessionTitle = "Easy Aerobic Run"
-                    iconName = "figure.run"
-                    isRest = false
+                return template.title
+            }()
+
+            let iconName: String = {
+                if isRest {
+                    return "bed.double.fill"
                 }
-            } else if activeGoal.localizedCaseInsensitiveContains("Recovery") || activeGoal.localizedCaseInsensitiveContains("Injury") {
-                switch offset {
-                case 1:
-                    sessionTitle = "Zone 1 Recovery Flush (25m)"
-                    iconName = "leaf.fill"
-                    isRest = false
-                case 2:
-                    sessionTitle = "Rest & Mobility Day"
-                    iconName = "bed.double.fill"
-                    isRest = true
-                case 3:
-                    sessionTitle = "Walk-Jog Progression (20m)"
-                    iconName = "figure.walk"
-                    isRest = false
-                case 4:
-                    sessionTitle = "Rest Day"
-                    iconName = "bed.double.fill"
-                    isRest = true
-                case 5:
-                    sessionTitle = "Zone 1 Easy Aerobic (30m)"
-                    iconName = "figure.run"
-                    isRest = false
-                default:
-                    sessionTitle = "Recovery Flush (20m)"
-                    iconName = "leaf.fill"
-                    isRest = false
+                let lower = sessionTitle.lowercased()
+                if lower.contains("interval") || lower.contains("surge") || lower.contains("stride") {
+                    return "flag.fill"
+                } else if lower.contains("tempo") || lower.contains("progress") {
+                    return "bolt.fill"
+                } else if lower.contains("recovery") || lower.contains("flush") {
+                    return "leaf.fill"
+                } else if lower.contains("long") {
+                    return "point.topleft.down.to.point.bottomright.curvepath.fill"
+                } else {
+                    return "figure.run"
                 }
-            } else {
-                // Base Building / Just for Fun (Aerobic Foundation)
-                switch offset {
-                case 1:
-                    if isRecoveryWindow {
-                        sessionTitle = useMetric ? "Zone 1 Recovery Flush (40m)" : "Zone 1 Recovery Flush (40m)"
-                        iconName = "leaf.fill"
-                        isRest = false
-                    } else {
-                        sessionTitle = "Zone 2 Steady (40m)"
-                        iconName = "figure.run"
-                        isRest = false
-                    }
-                case 2:
-                    sessionTitle = "Easy Aerobic Base (30m)"
-                    iconName = "figure.run"
-                    isRest = false
-                case 3:
-                    sessionTitle = useMetric ? "Easy Aerobic Base (5 km)" : "Easy Aerobic Base (3 mi)"
-                    iconName = "figure.run"
-                    isRest = false
-                case 4:
-                    sessionTitle = "Aerobic Consistency Run (35m)"
-                    iconName = "waveform.path"
-                    isRest = false
-                case 5:
-                    if hasRecentLongRun {
-                        sessionTitle = useMetric ? "Easy Aerobic Base (5 km)" : "Easy Aerobic Base (3 mi)"
-                        iconName = "waveform.path"
-                    } else {
-                        sessionTitle = useMetric ? "Aerobic Long Run (8 km)" : "Aerobic Long Run (5 mi)"
-                        iconName = "point.topleft.down.to.point.bottomright.curvepath.fill"
-                    }
-                    isRest = false
-                default:
-                    sessionTitle = useMetric ? "Easy Aerobic Run (5 km)" : "Easy Aerobic Run (3 mi)"
-                    iconName = "figure.run"
-                    isRest = false
-                }
-            }
+            }()
 
             days.append(MicrocycleDay(
                 id: "day-\(offset)",

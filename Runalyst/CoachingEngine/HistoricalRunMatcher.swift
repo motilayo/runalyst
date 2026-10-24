@@ -208,6 +208,27 @@ struct HistoricalRunMatcher {
         let durationSeconds: Double
         let isIndoor: Bool
         let efficiencyFactor: Double?
+
+        var asSummary: HistoricalRunSummary {
+            let distKm = Double(String(format: "%.2f", distanceMeters / 1000.0)) ?? (distanceMeters / 1000.0)
+            let durMin = max(1, Int((durationSeconds / 60.0).rounded()))
+            let efFormatted = efficiencyFactor.map { String(format: "%.2f m/beat", $0) }
+            return HistoricalRunSummary(
+                date: formattedDate,
+                formatted_date: formattedDate,
+                weekday: weekday,
+                classification: classification,
+                environment: isIndoor ? "Indoor Treadmill" : "Outdoor",
+                is_indoor: isIndoor,
+                distance_km: distKm,
+                duration_minutes: durMin,
+                pace: paceFormatted,
+                cadence_spm: cadenceSPM,
+                heart_rate_bpm: heartRateBPM,
+                efficiency_factor: efficiencyFactor,
+                efficiency_factor_formatted: efFormatted
+            )
+        }
     }
 
     struct ComparisonTelemetry: Sendable {
@@ -221,147 +242,114 @@ struct HistoricalRunMatcher {
         let distanceDeltaMeters: Double
         let durationDeltaSeconds: Double
 
-        /// Structured mathematical and telemetry facts for FoundationModels tool injection.
-        /// Zero canned coaching prose, narrative boilerplate, or simulated conversation.
-        var structuredTelemetryFacts: String {
+        /// Strongly-typed mathematical comparison facts.
+        var comparisonFacts: RunComparisonFacts {
             let envCurrent = current.isIndoor ? "Indoor Treadmill" : "Outdoor"
             let envPrior = prior.isIndoor ? "Indoor Treadmill" : "Outdoor"
 
             let cal = Calendar.current
             let daysDiff = cal.dateComponents([.day], from: cal.startOfDay(for: prior.date), to: cal.startOfDay(for: current.date)).day ?? 0
-            let recencyContrast: String
+            let timingContrast: String
             if daysDiff > 0 {
-                recencyContrast = "\(daysDiff) day\(daysDiff == 1 ? "" : "s") after prior"
+                timingContrast = "\(daysDiff) day\(daysDiff == 1 ? "" : "s") after prior"
             } else if daysDiff < 0 {
-                recencyContrast = "\(abs(daysDiff)) day\(abs(daysDiff) == 1 ? "" : "s") before prior"
+                timingContrast = "\(abs(daysDiff)) day\(abs(daysDiff) == 1 ? "" : "s") before prior"
             } else {
-                recencyContrast = "Same day"
+                timingContrast = "Same day"
             }
 
             let sameClassification = current.classification.caseInsensitiveCompare(prior.classification) == .orderedSame
-            let classificationComparison = sameClassification ? "Matched (\(current.classification))" : "Different (\(current.classification) vs \(prior.classification))"
+            let classContrast = sameClassification ? "Matched (\(current.classification))" : "Different (\(current.classification) vs \(prior.classification))"
 
-            // Unit precision with respect to readability: align displayed precision with delta math
             let currentDistKm = Double(String(format: "%.2f", current.distanceMeters / 1000.0)) ?? (current.distanceMeters / 1000.0)
             let priorDistKm = Double(String(format: "%.2f", prior.distanceMeters / 1000.0)) ?? (prior.distanceMeters / 1000.0)
-            let distDiffKm = currentDistKm - priorDistKm
+            let distDiffKm = Double(String(format: "%.2f", currentDistKm - priorDistKm)) ?? (currentDistKm - priorDistKm)
             let durDiffMin = Int((current.durationSeconds - prior.durationSeconds) / 60)
-            let volumeComparison: String
-            if abs(distDiffKm) < 0.2 && abs(durDiffMin) < 3 {
-                volumeComparison = "Matched volume: both runs covered comparable distance (~\(String(format: "%.2f", currentDistKm)) km in ~\(Int(current.durationSeconds / 60)) min)."
-            } else {
-                let distDesc = distDiffKm > 0 ? "+\(String(format: "%.2f", distDiffKm)) km longer" : "\(String(format: "%.2f", abs(distDiffKm))) km shorter"
-                let durDesc = durDiffMin > 0 ? "+\(durDiffMin) min longer" : "\(abs(durDiffMin)) min shorter"
-                volumeComparison = "Volume difference: current run was \(distDesc) and \(durDesc) in duration."
-            }
 
-            let paceComparison: String
+            let pacePercent = prior.paceSecondsPerKm > 0 ? Int(round(Double(abs(paceDeltaSeconds)) / prior.paceSecondsPerKm * 100.0)) : 0
+
+            let paceComp: String
             if paceDeltaSeconds > 0 {
-                paceComparison = "\(paceDeltaSeconds)s/km faster in current run (\(current.paceFormatted) in \(envCurrent) vs \(prior.paceFormatted) in \(envPrior))"
+                paceComp = "\(paceDeltaSeconds)s/km faster in current run (\(current.paceFormatted) in \(envCurrent) vs \(prior.paceFormatted) in \(envPrior))"
             } else if paceDeltaSeconds < 0 {
-                paceComparison = "\(abs(paceDeltaSeconds))s/km slower in current run (\(current.paceFormatted) in \(envCurrent) vs \(prior.paceFormatted) in \(envPrior))"
+                paceComp = "\(abs(paceDeltaSeconds))s/km slower in current run (\(current.paceFormatted) in \(envCurrent) vs \(prior.paceFormatted) in \(envPrior))"
             } else {
-                paceComparison = "identical pace (\(current.paceFormatted))"
+                paceComp = "identical pace (\(current.paceFormatted))"
             }
 
-            let cadComparison: String
+            let cadComp: String
             if cadenceDelta > 0 {
-                cadComparison = "+\(cadenceDelta) SPM higher turnover in current run (\(current.cadenceSPM) SPM in \(envCurrent) vs \(prior.cadenceSPM) SPM in \(envPrior))"
+                cadComp = "+\(cadenceDelta) SPM higher turnover in current run (\(current.cadenceSPM) SPM in \(envCurrent) vs \(prior.cadenceSPM) SPM in \(envPrior))"
             } else if cadenceDelta < 0 {
-                cadComparison = "\(abs(cadenceDelta)) SPM lower turnover in current run (\(current.cadenceSPM) SPM in \(envCurrent) vs \(prior.cadenceSPM) SPM in \(envPrior))"
+                cadComp = "\(abs(cadenceDelta)) SPM lower turnover in current run (\(current.cadenceSPM) SPM in \(envCurrent) vs \(prior.cadenceSPM) SPM in \(envPrior))"
             } else {
-                cadComparison = "matched turnover (\(current.cadenceSPM) SPM)"
+                cadComp = "matched turnover at \(current.cadenceSPM) SPM (\(current.cadenceSPM) SPM in \(envCurrent) vs \(prior.cadenceSPM) SPM in \(envPrior))"
             }
 
-            let hrComparison: String
+            let hrComp: String
             if heartRateDelta > 0 {
-                hrComparison = "+\(heartRateDelta) BPM higher cardiac cost in current run (\(current.heartRateBPM) BPM in \(envCurrent) vs \(prior.heartRateBPM) BPM in \(envPrior))"
+                hrComp = "+\(heartRateDelta) BPM higher cardiac cost in current run (\(current.heartRateBPM) BPM in \(envCurrent) vs \(prior.heartRateBPM) BPM in \(envPrior))"
             } else if heartRateDelta < 0 {
-                hrComparison = "\(abs(heartRateDelta)) BPM lower cardiovascular demand in current run (\(current.heartRateBPM) BPM in \(envCurrent) vs \(prior.heartRateBPM) BPM in \(envPrior))"
+                hrComp = "\(abs(heartRateDelta)) BPM lower cardiovascular demand in current run (\(current.heartRateBPM) BPM in \(envCurrent) vs \(prior.heartRateBPM) BPM in \(envPrior))"
             } else {
-                hrComparison = "identical average heart rate (\(current.heartRateBPM) BPM)"
+                hrComp = "matched cardiac cost at \(current.heartRateBPM) BPM (\(current.heartRateBPM) BPM in \(envCurrent) vs \(prior.heartRateBPM) BPM in \(envPrior))"
             }
 
-            return """
-            HISTORICAL WORKOUT COMPARISON TELEMETRY:
-            Current Run:
-            - Date: \(current.weekday), \(current.formattedDate)
-            - Classification: \(current.classification)
-            - Distance: \(String(format: "%.2f", currentDistKm)) km (\(Int(current.durationSeconds / 60)) min)
-            - Working Pace: \(current.paceFormatted)
-            - Working Cadence: \(current.cadenceSPM) SPM
-            - Working Heart Rate: \(current.heartRateBPM) BPM
-            - Environment: \(envCurrent)
+            let distComp: String
+            if distDiffKm > 0 {
+                distComp = "+\(String(format: "%.2f", distDiffKm)) km longer in current run (\(String(format: "%.2f", currentDistKm)) vs \(String(format: "%.2f", priorDistKm)) km)"
+            } else if distDiffKm < 0 {
+                distComp = "\(String(format: "%.2f", abs(distDiffKm))) km shorter in current run (\(String(format: "%.2f", currentDistKm)) vs \(String(format: "%.2f", priorDistKm)) km)"
+            } else {
+                distComp = "matched distance at \(String(format: "%.2f", currentDistKm)) km"
+            }
 
-            Prior Run:
-            - Date: \(prior.weekday), \(prior.formattedDate)
-            - Classification: \(prior.classification)
-            - Distance: \(String(format: "%.2f", priorDistKm)) km (\(Int(prior.durationSeconds / 60)) min)
-            - Working Pace: \(prior.paceFormatted)
-            - Working Cadence: \(prior.cadenceSPM) SPM
-            - Working Heart Rate: \(prior.heartRateBPM) BPM
-            - Environment: \(envPrior)
+            let durComp: String
+            if durDiffMin > 0 {
+                durComp = "+\(durDiffMin) min longer in duration"
+            } else if durDiffMin < 0 {
+                durComp = "\(abs(durDiffMin)) min shorter in duration"
+            } else {
+                durComp = "matched duration"
+            }
 
-            Comparative Context:
-            - Recency: \(recencyContrast)
-            - Classification: \(classificationComparison)
-            - Volume: \(volumeComparison)
-            - Environment: Current: \(envCurrent) vs Prior: \(envPrior)
+            let summaryStr = "\(paceDeltaSeconds >= 0 ? "\(paceDeltaSeconds)s/km faster (+\(pacePercent)%)" : "\(abs(paceDeltaSeconds))s/km slower (-\(pacePercent)%)"), \(cadenceDelta >= 0 ? "+\(cadenceDelta)" : "\(cadenceDelta)") SPM turnover, \(heartRateDelta >= 0 ? "+\(heartRateDelta)" : "\(heartRateDelta)") BPM cardiac cost"
 
-            Mathematical Telemetry Deltas:
-            - Pace: \(paceComparison)
-            - Cadence: \(cadComparison)
-            - Heart Rate: \(hrComparison)
-            """
+            let deltas = TelemetryDeltaFacts(
+                pace_delta_seconds_per_km: paceDeltaSeconds,
+                pace_percentage_difference: pacePercent,
+                pace_comparison: paceComp,
+                cadence_delta_spm: cadenceDelta,
+                cadence_comparison: cadComp,
+                heart_rate_delta_bpm: heartRateDelta,
+                heart_rate_comparison: hrComp,
+                distance_delta_km: distDiffKm,
+                distance_comparison: distComp,
+                duration_delta_minutes: durDiffMin,
+                duration_comparison: durComp,
+                summary: summaryStr
+            )
+
+            return RunComparisonFacts(
+                current_run: current.asSummary,
+                prior_run: prior.asSummary,
+                deltas: deltas,
+                days_between: abs(daysDiff),
+                timing_contrast: timingContrast,
+                classification_contrast: classContrast,
+                summary: summaryStr
+            )
         }
 
-        /// Natural language synthesized comparison for fallback and offline coaching contexts.
-        var coachingComparisonSummary: String {
-            let envCurrent = current.isIndoor ? "Indoor Treadmill" : "Outdoor"
-
-            let cal = Calendar.current
-            let daysDiff = cal.dateComponents([.day], from: cal.startOfDay(for: prior.date), to: cal.startOfDay(for: current.date)).day ?? 0
-            let recencyNote = daysDiff > 0
-                ? "Your \(current.classification) on \(current.formattedDate) took place **\(daysDiff) day\(daysDiff == 1 ? "" : "s") after** your \(prior.classification) on \(prior.formattedDate)."
-                : "Workouts on \(current.formattedDate) and \(prior.formattedDate)."
-
-            let currentDistKm = Double(String(format: "%.2f", current.distanceMeters / 1000.0)) ?? (current.distanceMeters / 1000.0)
-            let priorDistKm = Double(String(format: "%.2f", prior.distanceMeters / 1000.0)) ?? (prior.distanceMeters / 1000.0)
-            let distDiffKm = currentDistKm - priorDistKm
-            let distComp = distDiffKm > 0 ? "+\(String(format: "%.2f", distDiffKm)) km longer" : "\(String(format: "%.2f", abs(distDiffKm))) km shorter"
-
-            let paceComp = paceDeltaSeconds > 0 ? "\(paceDeltaSeconds)s/km faster" : (paceDeltaSeconds < 0 ? "\(abs(paceDeltaSeconds))s/km slower" : "identical pace")
-            let cadComp = cadenceDelta > 0 ? "+\(cadenceDelta) SPM higher turnover in \(envCurrent)" : (cadenceDelta < 0 ? "\(abs(cadenceDelta)) SPM lower turnover in \(envCurrent)" : "matched turnover")
-            let hrComp = heartRateDelta > 0 ? "+\(heartRateDelta) BPM higher cardiac cost in \(envCurrent)" : (heartRateDelta < 0 ? "\(abs(heartRateDelta)) BPM lower cardiovascular demand in \(envCurrent)" : "matched heart rate")
-
-            var lines = [
-                "Comparing your **\(current.weekday), \(current.formattedDate) \(current.classification)** to your **\(prior.weekday), \(prior.formattedDate) \(prior.classification)** (\(recencyNote)):",
-                "",
-                "• **Pace**: **\(current.paceFormatted)** vs **\(prior.paceFormatted)** (\(paceComp))",
-                "• **Cadence**: **\(current.cadenceSPM) SPM** vs **\(prior.cadenceSPM) SPM** (\(cadComp))",
-                "• **Heart Rate**: **\(current.heartRateBPM) BPM** vs **\(prior.heartRateBPM) BPM** (\(hrComp))",
-                "• **Volume**: **\(String(format: "%.2f", currentDistKm)) km** (\(Int(current.durationSeconds / 60)) min) vs **\(String(format: "%.2f", priorDistKm)) km** (\(Int(prior.durationSeconds / 60)) min) (\(distComp))",
-                ""
-            ]
-
-            let isCurrentInterval = current.classification.localizedCaseInsensitiveContains("interval")
-            let isPriorInterval = prior.classification.localizedCaseInsensitiveContains("interval")
-
-            if isCurrentInterval && !isPriorInterval {
-                lines.append("Workout structure contrast: your current interval workout featured discrete work bouts separated by active recovery valleys, allowing your average heart rate to stay lower despite fast reps. The prior \(prior.classification) was a continuous sustained effort with constant cardiovascular load.")
-            } else if paceDeltaSeconds > 0 && heartRateDelta <= 0 {
-                lines.append("Positive aerobic progression: you held a faster pace while operating at lower cardiovascular cost and maintaining higher turnover.")
-            } else if paceDeltaSeconds <= 0 && heartRateDelta < 0 {
-                lines.append("Controlled aerobic containment: you operated at a more conservative pace, keeping your cardiovascular cost significantly lower.")
-            } else {
-                lines.append("Consistent pacing and cardiovascular engagement across both sessions.")
+        /// Structured mathematical and telemetry facts for FoundationModels tool injection.
+        var structuredTelemetryFacts: String {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+            if let data = try? encoder.encode(comparisonFacts),
+               let json = String(data: data, encoding: .utf8) {
+                return json
             }
-
-            if current.isIndoor && !prior.isIndoor {
-                lines.append("\nIndoor vs outdoor contrast: running on the treadmill eliminated wind resistance and road gradient variations, but required active turnover to keep pace with the moving belt.")
-            }
-
-            return lines.joined(separator: "\n")
+            return "{}"
         }
     }
 
@@ -371,88 +359,94 @@ struct HistoricalRunMatcher {
         let worstRun: TelemetryData?
         let currentRun: TelemetryData?
 
-        /// Structured mathematical and telemetry facts for FoundationModels tool injection.
-        /// Zero canned coaching prose; purely factual telemetry.
-        var structuredTelemetryFacts: String {
+        /// Strongly-typed mathematical performance arc facts.
+        var arcFacts: PerformanceArcFacts {
             guard let current = currentRun else {
-                return "30-DAY PERFORMANCE ARC TELEMETRY:\nNo workouts recorded in the past 30 days."
+                return PerformanceArcFacts(total_runs_in_past_30_days: 0)
             }
             guard let best = bestRun else {
-                return """
-                30-DAY PERFORMANCE ARC TELEMETRY:
-                Only 1 workout recorded in the past 30 days (\(current.weekday), \(current.formattedDate)):
-                - Type: \(current.classification) (\(current.isIndoor ? "Indoor Treadmill" : "Outdoor"))
-                - Distance: \(String(format: "%.2f", current.distanceMeters / 1000.0)) km (\(Int(current.durationSeconds / 60)) min)
-                - Working Pace: \(current.paceFormatted)
-                - Working Cadence: \(current.cadenceSPM) SPM
-                - Working Heart Rate: \(current.heartRateBPM) BPM
-                - Efficiency Factor: \(current.efficiencyFactor.map { String(format: "%.2f m/beat", $0) } ?? "N/A")
-                """
+                return PerformanceArcFacts(
+                    total_runs_in_past_30_days: totalRunsInPast30Days,
+                    current_workout: current.asSummary,
+                    summary: "1 workout recorded in past 30 days"
+                )
             }
 
             let worst = worstRun ?? current
+
             let paceDeltaSec = Int(worst.paceSecondsPerKm.rounded() - best.paceSecondsPerKm.rounded())
+            let bestVsWorstPacePercent = worst.paceSecondsPerKm > 0 ? Int(round(Double(abs(paceDeltaSec)) / worst.paceSecondsPerKm * 100.0)) : 0
             let cadDelta = best.cadenceSPM - worst.cadenceSPM
             let hrDelta = worst.heartRateBPM - best.heartRateBPM
-            let bestEFStr = best.efficiencyFactor.map { String(format: "%.2f m/beat", $0) } ?? "N/A"
-            let worstEFStr = worst.efficiencyFactor.map { String(format: "%.2f m/beat", $0) } ?? "N/A"
 
-            return """
-            30-DAY PERFORMANCE ARC TELEMETRY (\(totalRunsInPast30Days) workouts recorded in the past 30 days):
+            let bestVsWorstDeltas = TelemetryDeltaFacts(
+                pace_delta_seconds_per_km: paceDeltaSec,
+                pace_percentage_difference: bestVsWorstPacePercent,
+                pace_comparison: "Best workout was \(abs(paceDeltaSec))s/km faster (\(bestVsWorstPacePercent)% faster pace) than toughest (\(best.paceFormatted) vs \(worst.paceFormatted))",
+                cadence_delta_spm: cadDelta,
+                cadence_comparison: "Turnover was \(abs(cadDelta)) SPM higher in best vs toughest (\(best.cadenceSPM) SPM vs \(worst.cadenceSPM) SPM)",
+                heart_rate_delta_bpm: -hrDelta,
+                heart_rate_comparison: "Cardiac load was \(hrDelta) BPM lower in best vs toughest (\(best.heartRateBPM) BPM vs \(worst.heartRateBPM) BPM)",
+                distance_delta_km: Double(String(format: "%.2f", (best.distanceMeters - worst.distanceMeters) / 1000.0)) ?? 0.0,
+                distance_comparison: "Distance difference: \(String(format: "%.2f", (best.distanceMeters - worst.distanceMeters) / 1000.0)) km",
+                duration_delta_minutes: Int((best.durationSeconds - worst.durationSeconds) / 60),
+                duration_comparison: "Duration difference: \(Int((best.durationSeconds - worst.durationSeconds) / 60)) min",
+                summary: "Best workout was \(abs(paceDeltaSec))s/km faster with +\(abs(cadDelta)) SPM higher turnover"
+            )
 
-            BEST PERFORMANCE WORKOUT:
-            - Date: \(best.weekday), \(best.formattedDate)
-            - Classification: \(best.classification) (\(best.isIndoor ? "Indoor Treadmill" : "Outdoor"))
-            - Distance: \(String(format: "%.2f", best.distanceMeters / 1000.0)) km (\(Int(best.durationSeconds / 60)) min)
-            - Working Pace: \(best.paceFormatted)
-            - Working Cadence: \(best.cadenceSPM) SPM (turnover in steps per minute)
-            - Working Heart Rate: \(best.heartRateBPM) BPM
-            - Efficiency Factor: \(bestEFStr) (peak aerobic running economy)
+            let currentVsBestDeltas: TelemetryDeltaFacts? = {
+                guard current.date != best.date else { return nil }
+                let currentPaceDiff = Int(current.paceSecondsPerKm.rounded() - best.paceSecondsPerKm.rounded())
+                let pacePercent = current.paceSecondsPerKm > 0 ? Int(round(Double(abs(currentPaceDiff)) / current.paceSecondsPerKm * 100.0)) : 0
+                let currentCadDiff = best.cadenceSPM - current.cadenceSPM
+                let currentHRDiff = current.heartRateBPM - best.heartRateBPM
 
-            WORST / TOUGHEST WORKOUT:
-            - Date: \(worst.weekday), \(worst.formattedDate)
-            - Classification: \(worst.classification) (\(worst.isIndoor ? "Indoor Treadmill" : "Outdoor"))
-            - Distance: \(String(format: "%.2f", worst.distanceMeters / 1000.0)) km (\(Int(worst.durationSeconds / 60)) min)
-            - Working Pace: \(worst.paceFormatted) (Pace was \(abs(paceDeltaSec))s/km slower compared to best workout's \(best.paceFormatted))
-            - Working Cadence: \(worst.cadenceSPM) SPM (Turnover was \(abs(cadDelta)) SPM lower than best workout's \(best.cadenceSPM) SPM)
-            - Working Heart Rate: \(worst.heartRateBPM) BPM (+\(max(0, hrDelta)) BPM higher cardiac load vs best workout's \(best.heartRateBPM) BPM)
-            - Efficiency Factor: \(worstEFStr) (lower running economy under fatigue)
+                let paceComp = currentPaceDiff > 0
+                    ? "Best session was \(abs(currentPaceDiff))s/km faster (\(pacePercent)% faster pace) than current workout (\(best.paceFormatted) vs \(current.paceFormatted))"
+                    : (currentPaceDiff < 0 ? "Current workout was \(abs(currentPaceDiff))s/km faster (\(pacePercent)% faster pace) than prior 30-day best (\(current.paceFormatted) vs \(best.paceFormatted))" : "Pace matched prior 30-day best at \(current.paceFormatted)")
+                let cadComp = currentCadDiff > 0
+                    ? "Turnover was \(currentCadDiff) SPM higher in best session vs current workout (\(best.cadenceSPM) SPM vs \(current.cadenceSPM) SPM)"
+                    : (currentCadDiff < 0 ? "Current workout turnover was \(abs(currentCadDiff)) SPM higher than prior best (\(current.cadenceSPM) SPM vs \(best.cadenceSPM) SPM)" : "Turnover matched at \(current.cadenceSPM) SPM")
+                let hrComp = currentHRDiff > 0
+                    ? "Cardiac cost was +\(currentHRDiff) BPM higher in current workout vs best session (\(current.heartRateBPM) BPM vs \(best.heartRateBPM) BPM)"
+                    : (currentHRDiff < 0 ? "Cardiac cost was \(abs(currentHRDiff)) BPM lower in current workout vs best session (\(current.heartRateBPM) BPM vs \(best.heartRateBPM) BPM)" : "Heart rate matched at \(current.heartRateBPM) BPM")
 
-            MATHEMATICAL PERFORMANCE DELTAS (Best vs Toughest):
-            - Pace Gap: Toughest workout was \(abs(paceDeltaSec))s/km slower than best workout (best: \(best.paceFormatted), toughest: \(worst.paceFormatted))
-            - Cadence Gap: Toughest workout had \(abs(cadDelta)) SPM lower turnover than best workout (best: \(best.cadenceSPM) SPM, toughest: \(worst.cadenceSPM) SPM)
-            - Heart Rate Gap: Toughest workout was +\(max(0, hrDelta)) BPM higher cardiac load than best workout (best: \(best.heartRateBPM) BPM, toughest: \(worst.heartRateBPM) BPM)
-            """
+                return TelemetryDeltaFacts(
+                    pace_delta_seconds_per_km: currentPaceDiff,
+                    pace_percentage_difference: pacePercent,
+                    pace_comparison: paceComp,
+                    cadence_delta_spm: currentCadDiff,
+                    cadence_comparison: cadComp,
+                    heart_rate_delta_bpm: currentHRDiff,
+                    heart_rate_comparison: hrComp,
+                    distance_delta_km: Double(String(format: "%.2f", (best.distanceMeters - current.distanceMeters) / 1000.0)) ?? 0.0,
+                    distance_comparison: "Distance difference: \(String(format: "%.2f", (best.distanceMeters - current.distanceMeters) / 1000.0)) km",
+                    duration_delta_minutes: Int((best.durationSeconds - current.durationSeconds) / 60),
+                    duration_comparison: "Duration difference: \(Int((best.durationSeconds - current.durationSeconds) / 60)) min",
+                    summary: "30-day best was \(abs(currentPaceDiff))s/km faster (\(pacePercent)% faster pace) with +\(abs(currentCadDiff)) SPM turnover"
+                )
+            }()
+
+            return PerformanceArcFacts(
+                total_runs_in_past_30_days: totalRunsInPast30Days,
+                best_performance_workout: best.asSummary,
+                toughest_workout: worst.asSummary,
+                current_workout: current.asSummary,
+                current_vs_best: currentVsBestDeltas,
+                best_vs_toughest: bestVsWorstDeltas,
+                summary: "30-day arc: \(totalRunsInPast30Days) workouts recorded. Best on \(best.weekday) (\(best.paceFormatted), \(best.cadenceSPM) SPM)."
+            )
         }
 
-        /// Natural language synthesized coaching arc for fallback and offline coaching contexts.
-        var coachingArcSummary: String {
-            guard let current = currentRun else {
-                return "In the past 30 days, you have no recorded workouts."
+        /// Structured mathematical and telemetry facts for FoundationModels tool injection.
+        var structuredTelemetryFacts: String {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+            if let data = try? encoder.encode(arcFacts),
+               let json = String(data: data, encoding: .utf8) {
+                return json
             }
-            guard let best = bestRun else {
-                return "In the past 30 days, you have 1 workout recorded: your **\(current.weekday), \(current.formattedDate) \(current.classification)** (**\(String(format: "%.2f", current.distanceMeters / 1000.0)) km** at **\(current.paceFormatted)** with **\(current.cadenceSPM) SPM** cadence)."
-            }
-
-            let worst = worstRun ?? current
-            let paceDeltaSec = Int(worst.paceSecondsPerKm.rounded() - best.paceSecondsPerKm.rounded())
-            let cadDelta = best.cadenceSPM - worst.cadenceSPM
-            let bestEF = best.efficiencyFactor.map { String(format: "%.2f", $0) } ?? ""
-            let worstEF = worst.efficiencyFactor.map { String(format: "%.2f", $0) } ?? ""
-
-            let bestEFNote = !bestEF.isEmpty ? " and a **\(bestEF)** efficiency factor (reflecting high speed per heartbeat)" : ""
-            let worstEFNote = !worstEF.isEmpty ? " The **\(worstEF)** efficiency factor and " : " The "
-            let cadDiffNote = cadDelta > 0 ? "**\(cadDelta) SPM lower turnover**" : "matched turnover"
-
-            let envNote = worst.isIndoor ? "particularly under the treadmill's static heat and braking shock" : "reflecting cumulative fatigue"
-
-            return """
-            Looking at your performance arc across the past 30 days (\(totalRunsInPast30Days) workouts recorded):
-
-            Your **best performance** came on **\(best.weekday), \(best.formattedDate)** during a **\(String(format: "%.2f", best.distanceMeters / 1000.0)) km \(best.classification)**, where you sustained a **\(best.paceFormatted)** pace with **\(best.cadenceSPM) SPM** cadence\(bestEFNote)—demonstrating peak aerobic control and mechanical efficiency.
-
-            Your **toughest session** was your **\(worst.weekday), \(worst.formattedDate) \(worst.classification)**. \(worstEFNote)\(cadDiffNote) showed cardiovascular decoupling creeping in, \(envNote). Compared to your best session, your pace was **\(abs(paceDeltaSec))s/km slower** at a heart rate of **\(worst.heartRateBPM) BPM**, showing how environmental conditions and recovery interplay.
-            """
+            return "{}"
         }
     }
 
@@ -838,21 +832,18 @@ struct HistoricalRunMatcher {
         )
     }
 
-    /// Formats a concise catalog of the athlete's recorded workouts for tool listing queries.
+    /// Formats a strongly-typed catalog of the athlete's recorded workouts for tool listing queries.
     static func listRecentRuns(
         relativeTo currentRun: RunRecord? = nil,
         in context: ModelContext?,
         limit: Int = 10
     ) -> String {
         guard let context = context else {
-            if currentRun != nil {
-                return "Only the current run is available in stored records."
-            }
-            return "No workouts found in stored records."
+            return "{\"status\":\"no_context\",\"message\":\"No stored records available.\"}"
         }
         let descriptor = FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)])
         guard let allRuns = try? context.fetch(descriptor), !allRuns.isEmpty else {
-            return "No workouts found in stored records."
+            return "{\"status\":\"empty_database\",\"message\":\"No workouts found in stored records.\"}"
         }
         let dateFormatter = DateFormatter()
         dateFormatter.locale = Locale(identifier: "en_US_POSIX")
@@ -862,28 +853,34 @@ struct HistoricalRunMatcher {
         let newestDateStr = allRuns.first.map { dateFormatter.string(from: $0.date) } ?? "N/A"
         let oldestDateStr = allRuns.last.map { dateFormatter.string(from: $0.date) } ?? "N/A"
 
-        var lines = [
-            "ATHLETE WORKOUT DATABASE (\(totalCount) total workouts recorded, spanning from \(oldestDateStr) to \(newestDateStr)):",
-            "Showing \(min(limit, totalCount)) most recent workouts (newest to oldest):"
-        ]
-        for run in allRuns.prefix(limit) {
-            let isCurrent = currentRun != nil && run.id == currentRun?.id
-            let marker = isCurrent ? " [CURRENT WORKOUT]" : ""
-            let env = (run.isIndoor ?? false) ? "Indoor Treadmill" : "Outdoor"
-            let distKm = String(format: "%.2f km", run.totalDistanceMeters / 1000.0)
-            let durMin = "\(Int(run.duration / 60)) min"
-            let pace = run.workingAvgPace > 0 ? PaceFormatter.formatPace(secondsPerKilometer: run.workingAvgPace) : PaceFormatter.formatPace(secondsPerKilometer: run.rawAvgPace)
-            let cad = Int(round(run.workingAvgCadence > 0 ? run.workingAvgCadence : run.rawAvgCadence))
-            let hr = Int(round(run.workingAvgHeartRate > 0 ? run.workingAvgHeartRate : run.rawAvgHeartRate))
-            let type = run.detectedTypeRaw.isEmpty ? run.normalizedClassification : run.detectedTypeRaw
-            let dateStr = dateFormatter.string(from: run.date)
-            lines.append("• \(dateStr) - \(type) (\(env))\(marker): \(distKm) in \(durMin) @ \(pace), \(cad) SPM, \(hr) BPM")
+        let summaries: [HistoricalRunSummary] = allRuns.prefix(limit).map { run in
+            extractTelemetry(from: run).asSummary
         }
-        if totalCount > limit {
-            let olderCount = totalCount - limit
-            lines.append("(\(olderCount) older workouts recorded in athlete database down to first logged run on \(oldestDateStr))")
+
+        let olderCount = max(0, totalCount - limit)
+        let olderNote: String? = olderCount > 0
+            ? "\(olderCount) older workouts recorded in athlete database down to first logged run on \(oldestDateStr)"
+            : nil
+
+        let headerStr = "ATHLETE WORKOUT DATABASE (\(totalCount) total workouts recorded, spanning from \(oldestDateStr) to \(newestDateStr))"
+
+        let catalog = HistoricalRunCatalog(
+            total_workouts_count: totalCount,
+            newest_workout_date: newestDateStr,
+            oldest_workout_date: oldestDateStr,
+            workouts: summaries,
+            older_workouts_count: olderCount,
+            header: headerStr,
+            older_workouts_note: olderNote
+        )
+
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        if let data = try? encoder.encode(catalog),
+           let json = String(data: data, encoding: .utf8) {
+            return json
         }
-        return lines.joined(separator: "\n")
+        return "{}"
     }
 
     /// Formats a standalone telemetry card for a historical workout without requiring comparison math.
@@ -893,32 +890,35 @@ struct HistoricalRunMatcher {
         rankInHistory: Int? = nil
     ) -> String {
         let telemetry = extractTelemetry(from: run)
-        let env = telemetry.isIndoor ? "Indoor Treadmill" : "Outdoor"
-        let distKm = String(format: "%.2f km", telemetry.distanceMeters / 1000.0)
-        let durMin = "\(Int(telemetry.durationSeconds / 60)) min"
+        let total = totalWorkoutsCount ?? 1
         let rankNote: String
-        if let rank = rankInHistory, let total = totalWorkoutsCount {
+        if let rank = rankInHistory {
             if rank == 1 {
-                rankNote = "\n- Database Context: Oldest recorded workout (#1 of \(total) total workouts)"
+                rankNote = "Oldest recorded workout (#1 of \(total) total workouts)"
             } else if rank == total {
-                rankNote = "\n- Database Context: Most recent workout (#\(total) of \(total) total workouts)"
+                rankNote = "Most recent workout (#\(total) of \(total) total workouts)"
             } else {
-                rankNote = "\n- Database Context: Workout #\(rank) of \(total) total workouts in chronological order"
+                rankNote = "Workout #\(rank) of \(total) total workouts in chronological order"
             }
         } else {
             rankNote = ""
         }
 
-        return """
-        HISTORICAL WORKOUT TELEMETRY:
-        - Date: \(telemetry.weekday), \(telemetry.formattedDate)
-        - Classification: \(telemetry.classification)
-        - Environment: \(env)
-        - Distance: \(distKm) (\(durMin))
-        - Working Pace: \(telemetry.paceFormatted)
-        - Working Cadence: \(telemetry.cadenceSPM) SPM
-        - Working Heart Rate: \(telemetry.heartRateBPM) BPM\(rankNote)
-        """
+        let lookup = HistoricalRunLookup(
+            status: "success",
+            workout: telemetry.asSummary,
+            rank_in_history: rankInHistory,
+            total_workouts_count: totalWorkoutsCount,
+            rank_note: rankNote.isEmpty ? nil : rankNote
+        )
+
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        if let data = try? encoder.encode(lookup),
+           let json = String(data: data, encoding: .utf8) {
+            return json
+        }
+        return "{}"
     }
 
     /// Looks up a specific historical run by query criteria and returns its deterministic telemetry.
@@ -928,11 +928,11 @@ struct HistoricalRunMatcher {
         in context: ModelContext?
     ) -> String {
         guard let context = context else {
-            return "No workouts found in stored records."
+            return "{\"status\":\"no_context\",\"message\":\"No workouts found in stored records.\"}"
         }
         let descriptor = FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)])
         guard let allRuns = try? context.fetch(descriptor), !allRuns.isEmpty else {
-            return "No workouts found in stored records."
+            return "{\"status\":\"empty_database\",\"message\":\"No workouts found in stored records.\"}"
         }
         guard let match = findRun(matching: query, in: allRuns, relativeTo: currentRun) else {
             return "{\"status\":\"no_matching_run\",\"query\":\"\(query)\"}"

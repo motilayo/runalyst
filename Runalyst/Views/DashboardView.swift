@@ -283,8 +283,7 @@ struct DashboardView: View {
     private var isTodayCompleted: Bool {
         let cal = Calendar.current
         let todayRuns = runRecords.filter { cal.isDateInToday($0.date) && !$0.isDeleted }
-        guard !todayRuns.isEmpty else { return false }
-        return todayRuns.contains { !$0.isPrimerWorkout && $0.duration >= 1200 } || todayRuns.reduce(0.0) { $0 + $1.duration } >= 1800
+        return SessionSynthesisEngine.isWorkoutDayComplete(runs: todayRuns)
     }
 
     private var deterministicPrescription: LockedTrainingPrescription? {
