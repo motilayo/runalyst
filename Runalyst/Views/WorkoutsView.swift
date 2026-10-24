@@ -191,15 +191,15 @@ struct WorkoutsView: View {
                             selectedRunForDetail = targetRun
                         }
                     } label: {
+                        let iconName = snap.isPrimerDrill ? RunalystIcon.cadencePyramids : (snap.isIndoor ? RunalystIcon.indoor : RunalystIcon.outdoor)
+                        let iconColor = snap.isPrimerDrill ? RunalystColor.cadence : (snap.isIndoor ? RunalystColor.indoor : RunalystColor.outdoor)
+
                         HStack(alignment: .center, spacing: 10) {
-                            Image(systemName: snap.isPrimerDrill ? "metronome.fill" : "figure.run")
+                            Image(systemName: iconName)
                                 .font(.system(size: 12, weight: .bold))
-                                .foregroundColor(snap.isPrimerDrill ? Color(red: 0.0, green: 0.8, blue: 0.65) : Color(red: 0.0, green: 0.55, blue: 1.0))
+                                .foregroundColor(iconColor)
                                 .frame(width: 28, height: 28)
-                                .background(
-                                    (snap.isPrimerDrill ? Color(red: 0.0, green: 0.8, blue: 0.65) : Color(red: 0.0, green: 0.55, blue: 1.0))
-                                        .opacity(0.12)
-                                )
+                                .background(iconColor.opacity(0.12))
                                 .clipShape(Circle())
 
                             VStack(alignment: .leading, spacing: 2) {
