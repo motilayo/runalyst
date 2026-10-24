@@ -43,16 +43,6 @@ struct ActivityVolumeSummaryCard: View {
         Set(runs.map { calendar.startOfDay(for: $0.date) }).count
     }
 
-    private var averagePaceSeconds: Double? {
-        let validRuns = runs.filter { $0.workingAvgPace > 0 }
-        guard !validRuns.isEmpty else { return nil }
-        let totalDur = validRuns.map(\.duration).reduce(0, +)
-        guard totalDur > 0 else {
-            return validRuns.map(\.workingAvgPace).reduce(0, +) / Double(validRuns.count)
-        }
-        return validRuns.map { $0.workingAvgPace * $0.duration }.reduce(0, +) / totalDur
-    }
-
     // MARK: - 7-Day Day-by-Day Volume
     private struct DayVolume: Identifiable {
         let id = UUID()
@@ -252,13 +242,6 @@ struct ActivityVolumeSummaryCard: View {
                     .textCase(.uppercase)
 
                 Spacer()
-
-                if let pace = averagePaceSeconds {
-                    Text("Avg Pace: \(PaceFormatter.formatPace(secondsPerKilometer: pace))\(useMetricSystem ? "/km" : "/mi")")
-                        .font(.caption2.bold())
-                        .monospacedDigit()
-                        .foregroundColor(.secondary)
-                }
             }
 
             HStack(alignment: .bottom, spacing: 8) {
@@ -332,13 +315,6 @@ struct ActivityVolumeSummaryCard: View {
                     .textCase(.uppercase)
 
                 Spacer()
-
-                if let pace = averagePaceSeconds {
-                    Text("Baseline: \(PaceFormatter.formatPace(secondsPerKilometer: pace))\(useMetricSystem ? "/km" : "/mi")")
-                        .font(.caption2.bold())
-                        .monospacedDigit()
-                        .foregroundColor(.secondary)
-                }
             }
 
             // 4-Week Horizontal Bar Rows

@@ -16,7 +16,7 @@ struct DashboardView: View {
     @State private var isSyncing: Bool = true
     @State private var selectedFilter: String?
 
-    @AppStorage("dashboardTimeRange") private var timeRange: String = "30 Days"
+    @AppStorage("dashboardTimeRange") private var timeRange: String = "7 Days"
     @AppStorage("lastBaselineChangeTimestamp") private var lastBaselineChangeTimestamp: Double = 0
     @AppStorage("lastWatchExportTimestamp") private var lastWatchExportTimestamp: Double = 0
     @AppStorage("lastExportedDrillId") private var lastExportedDrillId: String = ""
@@ -527,7 +527,7 @@ struct DashboardView: View {
         }
         .onAppear {
             if timeRange != "7 Days" && timeRange != "30 Days" {
-                timeRange = "30 Days"
+                timeRange = "7 Days"
             }
             checkAndFetchInsight()
         }
@@ -899,10 +899,15 @@ struct DashboardView: View {
                                 selectedFilter = filter
                             }
                         }) {
-                            HStack(spacing: 4) {
+                            let iconName: String = {
                                 if let drillId = PreRunDrillId.allCases.first(where: { $0.title == filter }) {
-                                    Image(systemName: drillId.iconName)
+                                    return drillId.iconName
                                 }
+                                return RunalystIcon.forClassification(filter, isIndoor: false)
+                            }()
+
+                            HStack(spacing: 4) {
+                                Image(systemName: iconName)
                                 Text(filter)
                             }
                             .font(.caption.bold())

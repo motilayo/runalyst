@@ -92,9 +92,9 @@ struct RunListRowView: View {
                             .foregroundColor(.secondary.opacity(0.6))
 
                         HStack(spacing: 2) {
-                            Image(systemName: "heart.fill")
+                            Image(systemName: RunalystIcon.heartRate)
                                 .font(.system(size: 9))
-                                .foregroundColor(Color(red: 1.0, green: 0.22, blue: 0.55))
+                                .foregroundColor(RunalystColor.heartRate)
                             Text("\(Int(runRecord.workingAvgHeartRate))")
                                 .font(.subheadline)
                                 .monospacedDigit()
