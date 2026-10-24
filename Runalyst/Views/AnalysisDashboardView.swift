@@ -28,7 +28,7 @@ struct AnalysisDashboardView: View {
                     LifetimeMilestonesCard(allRuns: existingRuns)
                 }
                 .padding(.top, 16)
-                .padding(.bottom, 20)
+                .padding(.bottom, 100)
             }
             .background(Color(UIColor.systemGroupedBackground).ignoresSafeArea())
             .navigationTitle("Analysis")

@@ -198,6 +198,8 @@ struct DrillPrimerCardView: View {
                 Text(displayTitle)
                     .font(.subheadline.weight(.bold))
                     .foregroundColor(.primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
 
                 Text(purpose)
                     .font(.caption)
