@@ -34,6 +34,7 @@ struct DashboardView: View {
 
     @State private var isFetchingInsight = false
     @State private var showingAnalystChat = false
+    @State private var isInsightExpanded = false
 
     private var timeRangeRuns: [RunRecord] {
         let now = Date()
@@ -432,11 +433,44 @@ struct DashboardView: View {
                     ? "Complete more runs this week to evaluate acute fatigue and recovery trends."
                     : "Complete more runs over the next 30 days to measure structural aerobic adaptation."
 
-                Text(bodyText.isEmpty ? defaultPlaceholder : bodyText)
+                let displayText = bodyText.isEmpty ? defaultPlaceholder : bodyText
+                let isLongText = displayText.count > 110 || displayText.contains("\n")
+
+                Text(displayText)
                     .font(.subheadline)
                     .foregroundColor(.secondary)
                     .lineSpacing(2)
-                    .lineLimit(3)
+                    .lineLimit(isInsightExpanded ? nil : 3)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        if isLongText {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                isInsightExpanded.toggle()
+                            }
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        }
+                    }
+
+                if isLongText {
+                    Button {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            isInsightExpanded.toggle()
+                        }
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text(isInsightExpanded ? "Show Less" : "Read More")
+                                .font(.caption.bold())
+                            Image(systemName: isInsightExpanded ? "chevron.up" : "chevron.down")
+                                .font(.system(size: 10, weight: .bold))
+                        }
+                        .foregroundColor(.accentColor)
+                        .padding(.top, 2)
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -455,6 +489,7 @@ struct DashboardView: View {
             checkAndFetchInsight()
         }
         .onChange(of: timeRange) {
+            isInsightExpanded = false
             checkAndFetchInsight()
             refreshBaselineVO2Max()
             lastBaselineChangeTimestamp = Date().timeIntervalSince1970
