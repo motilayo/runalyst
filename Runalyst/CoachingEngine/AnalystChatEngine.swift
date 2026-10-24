@@ -93,8 +93,6 @@ class AnalystChatEngine: ObservableObject {
     var explainerRecommendedThisTurn: String?
     /// Tracks an upcoming schedule card recommended during the active conversation turn.
     var scheduleRecommendedThisTurn: [MicrocycleDay]?
-    /// The user question currently being processed during an active chat turn.
-    var currentTurnUserQuestion: String?
 
     // MARK: - Bounded-Memory State Tracking
     private var turnsSinceSessionRecycle: Int = 0
@@ -180,10 +178,8 @@ class AnalystChatEngine: ObservableObject {
     }
 
     private func executeChatTurn(userQuestion: String, isRetry: Bool) async {
-        self.currentTurnUserQuestion = userQuestion
         defer {
             isResponding = false
-            self.currentTurnUserQuestion = nil
         }
 
         #if canImport(FoundationModels)
@@ -428,7 +424,7 @@ class AnalystChatEngine: ObservableObject {
         if mode == .runInspection {
             toolLines.append("• `inspectWorkout`: Splits.")
         }
-        toolLines.append("• `executeCoachAction`: Actions (prescribe_drill, explain_metric, export_to_watch, record_feedback, update_goal).")
+        toolLines.append("• `executeCoachAction`: Actions.")
         let toolsBlock = toolLines.joined(separator: "\n")
 
         return """
@@ -446,7 +442,8 @@ class AnalystChatEngine: ObservableObject {
         • Forward Focus: Look forward to upcoming runs; never audit past splits unasked.
         • Medical Safety: Honor biology over data; urge rest on pain or fatigue. No unasked 2nd runs.
         • Outside Running: Units in SPM, min/km (no LaTeX). Sidestep non-running topics gracefully.
-        • Silent Tools: Never write command names or code in conversational prose. State advice and stop cleanly.
+        • Silent Tools: Never write command names or code in conversational prose.
+        • Direct: State advice and stop cleanly without trailing questions or pleasantries.
 
         Respond in \(language).
         """
@@ -681,86 +678,6 @@ class AnalystChatEngine: ObservableObject {
         return nil
     }
 
-    enum ScheduleVisualIntent: Sendable, Equatable {
-        case nextSession
-        case scheduleOverview
-        case none
-    }
-
-    func evaluateVisualScheduleIntent(for prompt: String?) -> ScheduleVisualIntent {
-        guard let text = prompt?.lowercased().trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else {
-            return .none
-        }
-
-        let isNextSessionQuery = text.contains("when should i run") ||
-                                 text.contains("when do i run") ||
-                                 text.contains("when is my next run") ||
-                                 text.contains("what should i run") ||
-                                 text.contains("what kind of session") ||
-                                 text.contains("what session") ||
-                                 text.contains("which session") ||
-                                 text.contains("next run") ||
-                                 text.contains("next workout") ||
-                                 text.contains("next session") ||
-                                 text.contains("run next") ||
-                                 text.contains("tomorrow's run") ||
-                                 text.contains("tomorrow's workout") ||
-                                 text.contains("run tomorrow") ||
-                                 text.contains("should i run tomorrow") ||
-                                 text.contains("can i run tomorrow") ||
-                                 text.contains("today's run") ||
-                                 text.contains("today's workout") ||
-                                 text.contains("run today") ||
-                                 text.contains("should i run today") ||
-                                 text.contains("can i run today") ||
-                                 text.contains("upcoming run") ||
-                                 text.contains("upcoming workout") ||
-                                 text.contains("upcoming session") ||
-                                 text.contains("planned workout") ||
-                                 text.contains("scheduled run") ||
-                                 text.contains("prescribed workout") ||
-                                 text.contains("workout plan")
-
-        let isScheduleOverviewQuery = text.contains("show me my schedule") ||
-                                      text.contains("show schedule") ||
-                                      text.contains("view schedule") ||
-                                      text.contains("see schedule") ||
-                                      text.contains("what does my week look like") ||
-                                      text.contains("my week look like") ||
-                                      text.contains("weekly schedule") ||
-                                      text.contains("full schedule") ||
-                                      text.contains("calendar schedule")
-
-        let isVolumeOrBalanceQuery = text.contains("mileage") ||
-                                     text.contains("miles") ||
-                                     text.contains("balance") ||
-                                     text.contains("weekly total") ||
-                                     text.contains("total volume") ||
-                                     text.contains("how much") ||
-                                     text.contains("how many") ||
-                                     text.contains("volume") ||
-                                     text.contains("underload") ||
-                                     text.contains("overload") ||
-                                     text.contains("overreaching") ||
-                                     text.contains("acwr") ||
-                                     text.contains("key area") ||
-                                     text.contains("focus on improving")
-
-        if isVolumeOrBalanceQuery && !isNextSessionQuery && !isScheduleOverviewQuery {
-            return .none
-        }
-
-        if isNextSessionQuery {
-            return .nextSession
-        }
-
-        if isScheduleOverviewQuery {
-            return .scheduleOverview
-        }
-
-        return .none
-    }
-
     #if canImport(FoundationModels)
     @available(iOS 26.0, *)
     @discardableResult
@@ -774,7 +691,6 @@ class AnalystChatEngine: ObservableObject {
 
         let fromDate = calendar.parseISO(query.from) ?? calendar.startOfDay(for: Date())
         let toDate: Date
-        let isExplicitWindow = query.to != nil
         if let toStr = query.to, let parsedTo = calendar.parseISO(toStr) {
             toDate = calendar.startOfDay(for: parsedTo)
         } else {
@@ -793,88 +709,6 @@ class AnalystChatEngine: ObservableObject {
             to: toDate,
             context: context
         )
-
-        // Unified Schedule Dance: bind the interactive visual representation ONLY when requested by user intent
-        let visualIntent = evaluateVisualScheduleIntent(for: self.currentTurnUserQuestion)
-
-        switch visualIntent {
-        case .nextSession:
-            let evalDate = (isExplicitWindow && schedule.count == 1) ? fromDate : Date()
-            let dailyState = SessionSynthesisEngine.evaluateDailyState(
-                runRecords: allRuns,
-                activeGoal: activeGoal,
-                experienceLevel: profile.experienceLevel,
-                useMetric: useMetric,
-                userHeightCm: profile.userHeightCm,
-                now: evalDate
-            )
-            let sessionToAttach: PrescribedDailySession?
-            switch dailyState {
-            case .preRun(let session):
-                sessionToAttach = session
-            case .completedToday(_, let tomorrowSession):
-                sessionToAttach = tomorrowSession
-            }
-
-            if let session = sessionToAttach, session.isRestDay, let next = findNextScheduledRun() {
-                let day = next.day
-                let primerTitle = day.planned.primerTitle ?? "Strides"
-                let primerId = PreRunDrillId.resolve(from: primerTitle) ?? .strides
-                let dateStr = TrainingCalendar.weekdayFormatter.string(from: next.date)
-                let cadenceFloor = day.planned.cadenceFloor ?? 155
-                let primerTarget = DrillTemplate.template(for: primerId).calculateTargetCadence(cadenceFloor)
-
-                self.sessionRecommendedThisTurn = PrescribedDailySession(
-                    targetGoal: activeGoal,
-                    sessionTitle: day.planned.title,
-                    durationBand: "\(day.planned.minutesLow)–\(day.planned.minutesHigh) min",
-                    paceBand: day.planned.paceBand ?? "Easy Aerobic",
-                    hrCap: day.planned.hrCap ?? "< 152 BPM",
-                    cadenceFloor: cadenceFloor,
-                    groundedRationale: "Scheduled next run on your training calendar.",
-                    readinessStateText: "Upcoming Planned Session",
-                    readinessTriggerLead: nil,
-                    primerDrillId: primerId,
-                    primerDrillTitle: primerTitle,
-                    primerTargetCadence: primerTarget,
-                    primerWorkDescription: "Pre-run technique primer.",
-                    primerPhasesDuration: "10 min",
-                    isTrimmed: false,
-                    microcycle: [],
-                    mainSessionTemplateId: .zone2Run,
-                    mainRunDurationMinutes: day.planned.minutesHigh,
-                    completedPrimerRun: nil,
-                    isRestDay: false,
-                    dayLabel: dateStr,
-                    isToday: false
-                )
-            } else {
-                self.sessionRecommendedThisTurn = sessionToAttach
-            }
-
-        case .scheduleOverview:
-            let microcycleDays: [MicrocycleDay] = schedule.compactMap { day in
-                if day.relative == .today && day.completion == .completed {
-                    return nil
-                }
-                let isRest = day.planned.kind == .rest
-                let icon = isRest ? "bed.double.fill" : "figure.run"
-                let title = isRest ? day.planned.title : "\(day.planned.title) • \(day.planned.minutesLow)–\(day.planned.minutesHigh) min"
-                return MicrocycleDay(
-                    id: "\(day.date)-\(day.planned.title)",
-                    dayLabel: day.weekday,
-                    sessionTitle: title,
-                    iconName: icon,
-                    isRestDay: isRest
-                )
-            }
-            self.scheduleRecommendedThisTurn = microcycleDays
-
-        case .none:
-            // Pure informational schedule query: return facts to the model without mutating UI card presentation
-            break
-        }
-        self.harmonizeAttachments()
 
         return TrainingCalendar.formatCompactScheduleSummary(days: schedule)
     }

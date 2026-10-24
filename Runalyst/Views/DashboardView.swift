@@ -1135,7 +1135,7 @@ struct DashboardView: View {
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
             }
             .sheet(isPresented: $showingAnalystChat) {
-                AnalystChatView(mode: .macroCoach)
+                AnalystChatView(mode: .macroCoach, modelContext: modelContext)
             }
             .background(Color(UIColor.systemGroupedBackground).ignoresSafeArea())
             .navigationTitle("Dashboard")
