@@ -208,25 +208,17 @@ struct DrillPrimerCardView: View {
 
             // Duration Selector (Omitted when duration is locked / prescribed)
             if config.canChangeDuration {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        Text("DURATION")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundColor(.secondary)
-                        Spacer()
-                        Picker("Duration", selection: $selectedDuration) {
-                            ForEach(drillId.supportedDurations, id: \.self) { dur in
-                                Text(dur.title).tag(dur)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-                        .frame(maxWidth: drillId.supportedDurations.count > 3 ? 280 : 210)
-                        .onChange(of: selectedDuration) { _, _ in
-                            UISelectionFeedbackGenerator().selectionChanged()
-                        }
+                Picker("Duration", selection: $selectedDuration) {
+                    ForEach(drillId.supportedDurations, id: \.self) { dur in
+                        Text(dur.title).tag(dur)
                     }
                 }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: .infinity)
                 .padding(.vertical, 2)
+                .onChange(of: selectedDuration) { _, _ in
+                    UISelectionFeedbackGenerator().selectionChanged()
+                }
             }
 
             // 2x2 Metric Grid (matching Main Run Standard)
