@@ -793,7 +793,7 @@ public struct InspectWorkoutQuery: Sendable {
 @available(iOS 26.0, *)
 @Generable
 public struct ExecuteCoachActionQuery: Sendable {
-    @Guide(description: "Action: 'display_schedule' to show training schedule card; 'display_session' for single session; 'display_drill' for interactive drill card; 'display_explainer' for metric concept; 'update_goal' to adjust goal; 'export_to_watch' to schedule workout; 'record_feedback' to save feedback.")
+    @Guide(description: "Action to execute. 'display_drill': displays an interactive technique drill card when prescribing or requested (do NOT invoke for informational questions); 'display_session': displays upcoming workout session card; 'display_schedule': displays multi-day training schedule (from..to); 'display_explainer': displays a biomechanical metric concept explainer; 'update_goal': updates training goal; 'export_to_watch': sends workout to Apple Watch; 'record_feedback': saves athlete notes.")
     public var action: CoachActionType
 
     @Guide(description: "Start date in 'yyyy-MM-dd' format for display_schedule.")
@@ -916,7 +916,7 @@ public struct ExecuteCoachActionTool: Tool {
     public typealias Output = String
 
     public let name = "executeCoachAction"
-    public let description = "Executes coaching actions: 'display_schedule' to present schedule card (from..to); 'display_drill' for drill card; 'display_explainer' for metric concept card; 'update_goal' to adjust goal; 'export_to_watch' to schedule workout; 'record_feedback' to save feedback."
+    public let description = "Executes interactive coaching UI actions: 'display_drill' presents an interactive technique drill card directly below your response (only when prescribing or requested); 'display_session' presents the upcoming session card; 'display_schedule' presents the schedule timeline card; 'display_explainer' presents a metric concept card; 'update_goal'; 'export_to_watch'; 'record_feedback'."
 
     let provider: @MainActor @Sendable (ExecuteCoachActionQuery) async -> String
 
