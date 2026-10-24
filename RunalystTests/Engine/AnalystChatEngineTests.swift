@@ -583,4 +583,29 @@ final class AnalystChatEngineTests: XCTestCase {
         }
         #endif
     }
+
+    func testAnalystChatSheetDestinationIdentifiableContracts() {
+        let explainerInfo = MetricExplainerInfo(
+            title: "Vertical Oscillation",
+            definition: "Bounce amplitude during flight phase.",
+            userMetricDisplay: "8.4 cm"
+        )
+        let explainerDestination = AnalystChatView.SheetDestination.explainer(explainerInfo)
+        XCTAssertEqual(explainerDestination.id, "explainer_\(explainerInfo.id)")
+
+        let libraryDestination = AnalystChatView.SheetDestination.drillsLibrary
+        XCTAssertEqual(libraryDestination.id, "drills_library")
+
+        let dto = DrillPrescriptionDTO(
+            title: "Cadence Pyramids",
+            preRunDrillId: PreRunDrillId.cadencePyramids.rawValue,
+            purpose: "Prime neuro-muscular turnover",
+            targetCadence: "165-170",
+            previousCadence: 160,
+            durationMinutes: 6
+        )
+        let readoutItem = ActiveDrillReadoutItem.fromPrescription(dto: dto)
+        let readoutDestination = AnalystChatView.SheetDestination.readout(readoutItem)
+        XCTAssertEqual(readoutDestination.id, "readout_\(readoutItem.id)")
+    }
 }
