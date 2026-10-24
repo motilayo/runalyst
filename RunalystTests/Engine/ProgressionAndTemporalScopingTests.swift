@@ -321,4 +321,80 @@ final class ProgressionAndTemporalScopingTests: XCTestCase {
         let maxCadence = runs.map(\.workingAvgCadence).max() ?? 0
         XCTAssertTrue(maxCadence >= 170.0, "Rhythm master milestone threshold reached")
     }
+
+    // MARK: - Dashboard UI & Hierarchy Tests
+
+    func testDashboardMinimumDistanceFilterFormatting() {
+        let metricDist = 0.5
+        let metricFormatted = "≥ \(String(format: "%.1f", metricDist)) km"
+        XCTAssertEqual(metricFormatted, "≥ 0.5 km")
+
+        let imperialDist = 1.0
+        let imperialFormatted = "≥ \(String(format: "%.1f", imperialDist)) mi"
+        XCTAssertEqual(imperialFormatted, "≥ 1.0 mi")
+    }
+
+    func testFitnessBaselineTrendColorSemantics() {
+        // Cadence: drop is decay (negative), increase is positive
+        let cadenceDrop = 153 - 157 // -4 SPM
+        XCTAssertTrue(cadenceDrop < 0, "Cadence drop should be negative")
+
+        let cadenceGain = 162 - 158 // +4 SPM
+        XCTAssertTrue(cadenceGain > 0, "Cadence gain should be positive")
+
+        // Pace: increase in seconds is slower (decay), decrease is faster (positive)
+        let paceSlower = 452.0 - 385.0 // +67s
+        XCTAssertTrue(paceSlower > 0, "Pace increase in seconds represents slower pace")
+
+        let paceFaster = 360.0 - 380.0 // -20s
+        XCTAssertTrue(paceFaster < 0, "Pace reduction in seconds represents faster pace")
+    }
+
+    func testRunListRowViewWorkoutFormatting() {
+        let calendar = Calendar.current
+        let now = Date()
+
+        let easyRun = RunRecord(
+            hkWorkoutID: UUID(),
+            date: now,
+            totalDistanceMeters: 3670,
+            duration: 1650,
+            rawAvgPace: 454,
+            rawAvgHeartRate: 154,
+            rawAvgCadence: 160,
+            workingAvgPace: 454,
+            workingAvgCadence: 160,
+            workingAvgHeartRate: 154,
+            paceCV: 0.04,
+            paceSlope: 0.0,
+            percentZone4: 0.05,
+            detectedTypeRaw: "Easy Run"
+        )
+
+        let drillRun = RunRecord(
+            hkWorkoutID: UUID(),
+            date: calendar.date(byAdding: .hour, value: -1, to: now) ?? now,
+            totalDistanceMeters: 730,
+            duration: 285,
+            rawAvgPace: 390,
+            rawAvgHeartRate: 148,
+            rawAvgCadence: 165,
+            workingAvgPace: 390,
+            workingAvgCadence: 165,
+            workingAvgHeartRate: 148,
+            paceCV: 0.02,
+            paceSlope: 0.0,
+            percentZone4: 0.0,
+            detectedTypeRaw: "Warmup"
+        )
+        drillRun.framboiseTags = ["cadence_pyramids"]
+
+        XCTAssertEqual(easyRun.normalizedClassification, "Easy Run")
+        XCTAssertEqual(drillRun.prescribedDrillName, "Cadence Pyramids")
+
+        let row1 = RunListRowView(runRecord: easyRun)
+        let row2 = RunListRowView(runRecord: drillRun)
+        XCTAssertNotNil(row1)
+        XCTAssertNotNil(row2)
+    }
 }

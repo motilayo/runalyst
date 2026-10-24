@@ -249,10 +249,10 @@ struct DashboardView: View {
                     }
                 }
             } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "line.3.horizontal.decrease.circle")
-                        .font(.system(size: 14, weight: .semibold))
-                    Text("\(String(format: "%.1f", minimumRunDistance))\(useMetricSystem ? "k" : "m")")
+                HStack(spacing: 5) {
+                    Image(systemName: "arrow.left.and.right")
+                        .font(.system(size: 11, weight: .bold))
+                    Text("≥ \(String(format: "%.1f", minimumRunDistance)) \(useMetricSystem ? "km" : "mi")")
                         .font(.caption2.bold())
                         .monospacedDigit()
                 }
@@ -376,37 +376,48 @@ struct DashboardView: View {
 
                     if let rx = deterministicPrescription {
                         let isRestDirective = displayHeadline.localizedCaseInsensitiveContains("Rest") || displayHeadline.localizedCaseInsensitiveContains("Recovery")
+                        let isRestTomorrow = rx.compactDurationBand.localizedCaseInsensitiveContains("Rest")
+                        let hasPaceTarget = rx.prescribedPaceBand != "No Pacing Target" && !isRestTomorrow
+
                         ViewThatFits(in: .horizontal) {
                             HStack(spacing: 8) {
                                 if isTodayCompleted {
-                                    targetPill(text: "Today: Complete ✓", color: .green)
-                                    targetPill(text: "Tomorrow: \(rx.compactDurationBand)", color: .purple)
-                                    targetPill(text: "Pace: \(rx.prescribedPaceBand)", color: Color(red: 0.0, green: 0.55, blue: 1.0))
+                                    targetPill(text: "Today: Done ✓", color: .green)
+                                    targetPill(text: "Tomorrow: \(isRestTomorrow ? "Rest" : rx.compactDurationBand)", color: .purple)
+                                    if hasPaceTarget {
+                                        targetPill(text: "Pace: \(rx.prescribedPaceBand)", color: Color(red: 0.0, green: 0.55, blue: 1.0))
+                                    }
                                 } else if isRestDirective {
                                     targetPill(text: "Rest & Recover", color: .green)
-                                    targetPill(text: "Next: \(rx.compactDurationBand)", color: .purple)
-                                    targetPill(text: "Pace: \(rx.prescribedPaceBand)", color: Color(red: 0.0, green: 0.55, blue: 1.0))
+                                    targetPill(text: "Next: \(isRestTomorrow ? "Rest" : rx.compactDurationBand)", color: .purple)
+                                    if hasPaceTarget {
+                                        targetPill(text: "Pace: \(rx.prescribedPaceBand)", color: Color(red: 0.0, green: 0.55, blue: 1.0))
+                                    }
                                 } else {
                                     targetPill(text: rx.compactDurationBand, color: .purple)
                                     targetPill(text: "Pace: \(rx.prescribedPaceBand)", color: Color(red: 0.0, green: 0.55, blue: 1.0))
                                     targetPill(text: hrCapText(for: rx), color: Color(red: 1.0, green: 0.22, blue: 0.55))
                                 }
                             }
-                            ScrollView(.horizontal, showsIndicators: false) {
+                            VStack(alignment: .leading, spacing: 6) {
                                 HStack(spacing: 6) {
                                     if isTodayCompleted {
-                                        targetPill(text: "Today: Complete ✓", color: .green)
-                                        targetPill(text: "Tomorrow: \(rx.compactDurationBand)", color: .purple)
-                                        targetPill(text: "Pace: \(rx.prescribedPaceBand)", color: Color(red: 0.0, green: 0.55, blue: 1.0))
+                                        targetPill(text: "Today: Done ✓", color: .green)
+                                        targetPill(text: "Tomorrow: \(isRestTomorrow ? "Rest" : rx.compactDurationBand)", color: .purple)
                                     } else if isRestDirective {
                                         targetPill(text: "Rest & Recover", color: .green)
-                                        targetPill(text: "Next: \(rx.compactDurationBand)", color: .purple)
-                                        targetPill(text: "Pace: \(rx.prescribedPaceBand)", color: Color(red: 0.0, green: 0.55, blue: 1.0))
+                                        targetPill(text: "Next: \(isRestTomorrow ? "Rest" : rx.compactDurationBand)", color: .purple)
                                     } else {
                                         targetPill(text: rx.compactDurationBand, color: .purple)
                                         targetPill(text: "Pace: \(rx.prescribedPaceBand)", color: Color(red: 0.0, green: 0.55, blue: 1.0))
-                                        targetPill(text: hrCapText(for: rx), color: Color(red: 1.0, green: 0.22, blue: 0.55))
                                     }
+                                }
+                                if isTodayCompleted || isRestDirective {
+                                    if hasPaceTarget {
+                                        targetPill(text: "Pace: \(rx.prescribedPaceBand)", color: Color(red: 0.0, green: 0.55, blue: 1.0))
+                                    }
+                                } else {
+                                    targetPill(text: hrCapText(for: rx), color: Color(red: 1.0, green: 0.22, blue: 0.55))
                                 }
                             }
                         }
@@ -425,8 +436,7 @@ struct DashboardView: View {
                     .font(.subheadline)
                     .foregroundColor(.secondary)
                     .lineSpacing(2)
-
-                AIDisclaimerFooter()
+                    .lineLimit(3)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -836,65 +846,73 @@ struct DashboardView: View {
                         // 3. Fitness Baseline Quadrant Card
                         fitnessBaselineCard
 
-                        if !availableFilters.isEmpty {
-                            filterChips
-                        }
+                        // 4. Past Runs Section Header & Run-Type Filters
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack {
+                                Text(selectedFilter == nil ? "Past Runs" : "Filtered Runs")
+                                    .font(.title3.bold())
+                                    .foregroundColor(.primary)
 
-                    if filteredRunRecords.isEmpty {
-                        if isSyncing && runRecords.isEmpty {
-                            AnimatedLoadingView(text: "Analyzing your running history...")
-                                .padding(.top, 100)
-                        } else if let filter = selectedFilter {
-                            ContentUnavailableView {
-                                Label("No \(filter) Runs", systemImage: "line.3.horizontal.decrease.circle")
-                            } description: {
-                                Text("No runs match the \"\(filter)\" filter in \(timeRange.lowercased()).")
-                            } actions: {
-                                Button("Clear Filter") {
-                                    selectedFilter = nil
-                                }
-                                .buttonStyle(.borderedProminent)
-                            }
-                            .padding(.top, 40)
-                        } else if !timeRangeRuns.isEmpty {
-                            let minDistanceUnit = useMetricSystem ? "km" : "mi"
-                            ContentUnavailableView {
-                                Label("No Runs Found", systemImage: "figure.run")
-                            } description: {
-                                Text("No runs meet the minimum distance of \(String(format: "%.1f", minimumRunDistance)) \(minDistanceUnit).")
-                            } actions: {
-                                Button("Reset Distance Filter") {
-                                    minimumRunDistance = useMetricSystem ? 1.0 : 0.6
-                                }
-                                .buttonStyle(.bordered)
-                            }
-                            .padding(.top, 40)
-                        } else {
-                            ContentUnavailableView(
-                                "No Runs Found",
-                                systemImage: "figure.run.circle",
-                                description: Text("Go for a run with your Apple Watch and it will appear here.")
-                            )
-                            .padding(.top, 60)
-                        }
-                    } else {
-                        if !filteredRunRecords.isEmpty {
-                            Section(header: Text(selectedFilter == nil ? "Past Runs" : "Filtered Runs")
-                                                .font(.title3.bold())
-                                                .foregroundColor(.primary)
-                                                .padding(.horizontal)
-                                                .frame(maxWidth: .infinity, alignment: .leading)) {
-                                if horizontalSizeClass == .regular {
-                                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 16), GridItem(.flexible(), spacing: 16)], spacing: 16) {
-                                        ForEach(filteredRunRecords) { run in
-                                            NavigationLink(value: run) {
-                                                RunListRowView(runRecord: run)
-                                            }
-                                            .buttonStyle(.plain)
-                                        }
+                                Spacer()
+
+                                if selectedFilter != nil {
+                                    Button("Clear Filter") {
+                                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                        selectedFilter = nil
                                     }
-                                    .padding(.horizontal)
-                                } else {
+                                    .font(.caption.bold())
+                                    .foregroundColor(.accentColor)
+                                }
+                            }
+                            .padding(.horizontal)
+
+                            if !availableFilters.isEmpty {
+                                filterChips
+                            }
+                        }
+                        .padding(.top, 4)
+                        .id("pastRunsSection")
+
+                        if filteredRunRecords.isEmpty {
+                            if isSyncing && runRecords.isEmpty {
+                                AnimatedLoadingView(text: "Analyzing your running history...")
+                                    .padding(.top, 100)
+                            } else if let filter = selectedFilter {
+                                ContentUnavailableView {
+                                    Label("No \(filter) Runs", systemImage: "line.3.horizontal.decrease.circle")
+                                } description: {
+                                    Text("No runs match the \"\(filter)\" filter in \(timeRange.lowercased()).")
+                                } actions: {
+                                    Button("Clear Filter") {
+                                        selectedFilter = nil
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                }
+                                .padding(.top, 40)
+                            } else if !timeRangeRuns.isEmpty {
+                                let minDistanceUnit = useMetricSystem ? "km" : "mi"
+                                ContentUnavailableView {
+                                    Label("No Runs Found", systemImage: "figure.run")
+                                } description: {
+                                    Text("No runs meet the minimum distance of \(String(format: "%.1f", minimumRunDistance)) \(minDistanceUnit).")
+                                } actions: {
+                                    Button("Reset Distance Filter") {
+                                        minimumRunDistance = useMetricSystem ? 1.0 : 0.6
+                                    }
+                                    .buttonStyle(.bordered)
+                                }
+                                .padding(.top, 40)
+                            } else {
+                                ContentUnavailableView(
+                                    "No Runs Found",
+                                    systemImage: "figure.run.circle",
+                                    description: Text("Go for a run with your Apple Watch and it will appear here.")
+                                )
+                                .padding(.top, 60)
+                            }
+                        } else {
+                            if horizontalSizeClass == .regular {
+                                LazyVGrid(columns: [GridItem(.flexible(), spacing: 16), GridItem(.flexible(), spacing: 16)], spacing: 16) {
                                     ForEach(filteredRunRecords) { run in
                                         NavigationLink(value: run) {
                                             RunListRowView(runRecord: run)
@@ -902,10 +920,21 @@ struct DashboardView: View {
                                         .buttonStyle(.plain)
                                     }
                                 }
+                                .padding(.horizontal)
+                            } else {
+                                ForEach(filteredRunRecords) { run in
+                                    NavigationLink(value: run) {
+                                        RunListRowView(runRecord: run)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
                             }
-                            .id("pastRunsSection")
                         }
-                    }
+
+                        AIDisclaimerFooter()
+                            .padding(.horizontal)
+                            .padding(.top, 8)
+                            .padding(.bottom, 16)
                 }
                 .padding(.vertical)
             }
