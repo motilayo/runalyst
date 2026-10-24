@@ -24,7 +24,7 @@ public enum RunalystIcon {
 
     // Workouts & Drills
     public static let strides = "bolt.horizontal.fill"
-    public static let cadencePyramids = "triangle.fill"
+    public static let cadencePyramids = "pyramid.fill"
     public static let rhythmIntervals = "clock.arrow.circlepath"
     public static let tempoSurges = "flame.fill"
     public static let aerobicFlush = "lungs.fill"

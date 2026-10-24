@@ -7,8 +7,8 @@ extension PreRunDrill {
             return matched.iconName
         }
         let lower = (title ?? drillId ?? "").lowercased()
-        if lower.contains("cadence") {
-            return "triangle.fill"
+        if lower.contains("cadence") || lower.contains("pyramid") {
+            return RunalystIcon.cadencePyramids
         } else if lower.contains("interval") || lower.contains("rhythm") || lower.contains("clock") {
             return "clock.arrow.circlepath"
         } else if lower.contains("surge") || lower.contains("tempo") {
@@ -28,7 +28,7 @@ extension PreRunDrill {
         } else if lower.contains("neuro") {
             return "sparkles"
         }
-        return "triangle.fill"
+        return RunalystIcon.cadencePyramids
     }
 
     static func iconColor(for drillId: String?, title: String? = nil) -> Color {

@@ -15,6 +15,10 @@ final class PaceFormatterTests: XCTestCase {
 
         let pace2 = PaceFormatter.formatPace(secondsPerKilometer: 315) // 5:15/km
         XCTAssertEqual(pace2, "5:15/km")
+
+        let val1 = PaceFormatter.formatPaceValue(secondsPerKilometer: 300)
+        XCTAssertEqual(val1, "5:00")
+        XCTAssertEqual(PaceFormatter.paceUnit(), "/km")
     }
 
     func testFormatPaceImperial() {
@@ -24,5 +28,9 @@ final class PaceFormatterTests: XCTestCase {
         // 300 sec/km * 1.609344 = 482.8032 sec/mi -> 8 min 3 sec -> 8:03/mi
         let pace1 = PaceFormatter.formatPace(secondsPerKilometer: 300)
         XCTAssertEqual(pace1, "8:03/mi")
+
+        let val1 = PaceFormatter.formatPaceValue(secondsPerKilometer: 300)
+        XCTAssertEqual(val1, "8:03")
+        XCTAssertEqual(PaceFormatter.paceUnit(), "/mi")
     }
 }

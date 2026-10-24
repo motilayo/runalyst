@@ -596,8 +596,8 @@ struct RunDetailView: View {
 
         let workingKm = activeDistanceMeters / 1000.0
         let currentPace = (workingKm > 0 && activeDuration > 0) ? (activeDuration / workingKm) : runRecord.workingAvgPace
-        let paceString = PaceFormatter.formatPace(secondsPerKilometer: currentPace)
-        let paceUnit = useMetricSystem ? "/km" : "/mi"
+        let paceValue = PaceFormatter.formatPaceValue(secondsPerKilometer: currentPace)
+        let paceUnit = PaceFormatter.paceUnit()
 
         let hrVal = runRecord.workingAvgHeartRate > 0 ? Int(round(runRecord.workingAvgHeartRate)) : Int(round(runRecord.rawAvgHeartRate))
         let cadVal = runRecord.workingAvgCadence > 0 ? Int(round(runRecord.workingAvgCadence)) : Int(round(runRecord.rawAvgCadence))
@@ -642,7 +642,7 @@ struct RunDetailView: View {
                         .font(.system(size: 10, weight: .bold, design: .rounded))
                         .foregroundColor(.secondary)
                     HStack(alignment: .firstTextBaseline, spacing: 2) {
-                        Text(paceString)
+                        Text(paceValue)
                             .font(.system(size: 26, weight: .bold, design: .rounded))
                             .monospacedDigit()
                             .foregroundColor(RunalystColor.pace)

@@ -363,7 +363,7 @@ enum PreRunDrillId: String, CaseIterable, Codable, Sendable {
     var iconName: String {
         switch self {
         case .cadencePyramids:
-            return "triangle.fill"
+            return RunalystIcon.cadencePyramids
         case .rhythmIntervals:
             return "clock.arrow.circlepath"
         case .tempoSurges:
