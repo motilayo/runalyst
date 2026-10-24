@@ -107,7 +107,11 @@ struct PrescribedSessionCardView: View {
                     .padding(.vertical, 3)
                     .background((preferredWorkoutIsIndoor ? RunalystColor.indoor : RunalystColor.outdoor).opacity(0.12))
                     .clipShape(Capsule())
+                    .frame(minWidth: 44, minHeight: 44)
+                    .contentShape(Rectangle())
                 }
+                .accessibilityLabel("Workout Environment: \(preferredWorkoutIsIndoor ? "Indoor" : "Outdoor")")
+                .accessibilityHint("Double tap to toggle between indoor and outdoor workout mode")
 
                 Text(session.targetGoal)
                     .font(.system(size: 10, weight: .semibold))
@@ -155,7 +159,7 @@ struct PrescribedSessionCardView: View {
                     Image(systemName: "info.circle")
                         .font(.system(size: 15))
                         .foregroundColor(.secondary)
-                        .frame(width: 36, height: 36)
+                        .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
                 .accessibilityLabel("Learn more about today's prescribed workout")
@@ -202,7 +206,7 @@ struct PrescribedSessionCardView: View {
                     Image(systemName: "info.circle")
                         .font(.system(size: 15))
                         .foregroundColor(.secondary)
-                        .frame(width: 36, height: 36)
+                        .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
                 .accessibilityLabel("Learn more about rest day physiology")

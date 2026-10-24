@@ -331,10 +331,14 @@ struct MetricView: View {
                 }
             }
         }
+        .frame(minHeight: 44)
         .contentShape(Rectangle())
         .onTapGesture {
             showingInfo = true
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(title): \(value)")
+        .accessibilityHint("Double tap to learn more about this metric")
         .sheet(isPresented: $showingInfo) {
             GlassBoxExplainerSheet(explainer: explainer, mode: "Working Stats")
         }

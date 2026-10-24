@@ -219,10 +219,13 @@ struct DrillPrescriptionPanel: View {
                                 .foregroundColor(.secondary.opacity(0.7))
                         }
                     }
+                    .frame(minHeight: 44)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .disabled(targetExplainerTitle == nil)
+                .accessibilityLabel("Target: \(target)")
+                .accessibilityHint("Double tap to learn more about this target")
 
                 Divider()
                     .background(Color(UIColor.separator).opacity(0.4))
@@ -250,9 +253,12 @@ struct DrillPrescriptionPanel: View {
                         .font(.caption2)
                         .foregroundColor(.secondary.opacity(0.7))
                 }
+                .frame(minHeight: 44)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Training Load: \(status.displayText)")
+            .accessibilityHint("Double tap to learn more about training load and readiness calculations")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)

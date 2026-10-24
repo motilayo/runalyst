@@ -378,8 +378,8 @@ final class AnalystChatEngineTests: XCTestCase {
         if #available(iOS 26.0, *) {
             let instructions = engine.buildLeanSystemInstructions()
 
-            XCTAssertTrue(instructions.contains("workload_zone"), "Prompt must ground workload_zone semantics")
-            XCTAssertTrue(instructions.contains("Silent Tools"), "Prompt must enforce silent tool execution")
+            XCTAssertTrue(instructions.contains("Workload: Trust 'workload_zone'"), "Prompt must ground workload zone")
+            XCTAssertTrue(instructions.contains("Silent Tools: Never write command names"), "Prompt must ban leaking tool command names")
             XCTAssertTrue(instructions.contains("Medical Safety"), "Prompt must enforce medical safety boundaries")
             XCTAssertTrue(instructions.count < 1200, "System instructions must stay strictly under 1,200 chars (was \(instructions.count))")
         }

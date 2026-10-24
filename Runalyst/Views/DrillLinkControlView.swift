@@ -66,7 +66,11 @@ struct DrillLinkControlView: View {
                         Capsule()
                             .stroke(Color.purple.opacity(0.3), lineWidth: 1)
                     )
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
                 }
+                .accessibilityLabel("Linked Pre-Run Drill: \(drillName)")
+                .accessibilityHint("Double tap to change or unlink drill")
             } else {
                 Menu {
                     ForEach(PreRunDrillId.techniqueDrills, id: \.self) { drill in
@@ -104,7 +108,11 @@ struct DrillLinkControlView: View {
                         Capsule()
                             .stroke(Color(red: 0.05, green: 0.45, blue: 0.5).opacity(0.25), lineWidth: 1)
                     )
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
                 }
+                .accessibilityLabel("Add Pre-Run Drill")
+                .accessibilityHint("Double tap to link a drill to this workout")
             }
         }
         .alert("Drill Tracking", isPresented: $showingDrillExplainer) {
