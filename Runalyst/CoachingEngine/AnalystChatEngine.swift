@@ -393,16 +393,23 @@ class AnalystChatEngine: ObservableObject {
                 let nextDateStr = df.string(from: next.date)
                 nextRunNote = " Next Workout: \(nextDayName) (\(nextDateStr), \(next.day.planned.title), \(next.day.planned.minutesHigh)m)."
             }
-            contextBlock = "Today: (\(todayDateStr)) \(scheduledTodayStr) (\(loggedTodayStr)). Tomorrow: (\(tomorrowDateStr)) \(scheduledTomorrowStr).\(nextRunNote)"
+            let benchmark = profile.goalBenchmark
+            let ageStr = profile.age.map { ", Age \($0)" } ?? ""
+            let vo2Str = profile.vo2Max.map { ", VO2max \(String(format: "%.1f", $0))" } ?? ""
+            let runnerLine = "Runner: \(profile.name) (\(Int(profile.userHeightCm))cm\(ageStr)\(vo2Str)) | \(profile.experienceLevel) | \(profile.trainingGoal) (\(Int(benchmark.targetWeeklyKmMin))–\(Int(benchmark.targetWeeklyKmMax))k/wk: \(benchmark.weeklyVolumeStatus.displayText))."
+            contextBlock = "\(runnerLine)\nToday: (\(todayDateStr)) \(scheduledTodayStr) (\(loggedTodayStr)). Tomorrow: (\(tomorrowDateStr)) \(scheduledTomorrowStr).\(nextRunNote)"
         } else if let runRecord {
             let daysDiff = max(0, Calendar.current.dateComponents([.day], from: runRecord.date, to: Date()).day ?? 0)
             let runDateStr = df.string(from: runRecord.date)
             let temporalGrounding = daysDiff == 0 ? "Today" : "\(runDateStr) (\(daysDiff)d ago)"
             let runType = runRecord.normalizedClassification
             let envNote = (runRecord.isIndoor ?? false) ? "Indoor" : "Outdoor"
-            contextBlock = "Today is \(todayDateStr). Workout: \(runType) (\(envNote), \(temporalGrounding))."
+            let profile = self.runnerProfile
+            let runnerLine = "Runner: \(profile.name) (\(Int(profile.userHeightCm))cm) | \(profile.experienceLevel) | \(profile.trainingGoal)."
+            contextBlock = "\(runnerLine)\nToday is \(todayDateStr). Workout: \(runType) (\(envNote), \(temporalGrounding))."
         } else {
-            contextBlock = "General Coaching: Today is \(todayDateStr)."
+            let profile = self.runnerProfile
+            contextBlock = "Runner: \(profile.name) | Today is \(todayDateStr)."
         }
 
         var recentContextBlock = ""
@@ -433,7 +440,7 @@ class AnalystChatEngine: ObservableObject {
         let toolsBlock = toolLines.joined(separator: "\n")
 
         return """
-        Runalyst coach. Speak warmly in 2–3 sentences like a trusted running partner.
+        Runalyst running coach. Answer warmly in 2–3 sentences.
 
         CONTEXT:
         \(contextBlock)\(recentContextBlock)
@@ -442,11 +449,11 @@ class AnalystChatEngine: ObservableObject {
         \(toolsBlock)
 
         RULES:
-        • Anchor: Ground in today. If tomorrow is rest, do not call later runs tomorrow's run.
-        • Voice: Talk effort, breath, recovery. No clichés ('steady progress') or tokens ('underload zone').
-        • Workload: Trust 'workload_zone'. Underload means fresh legs; do not diagnose overload. Urge rest when absorbing miles.
-        • Medical Safety: Biology overrides data; urge rest on pain or fatigue. No unasked 2nd runs.
-        • Outside Running: Units in SPM, min/km (no LaTeX). Sidestep non-running topics.
+        • Anchor: Ground in today. Don't call future runs tomorrow's run.
+        • Voice: Talk effort, breath, recovery. No clichés or tokens.
+        • Workload: Trust 'workload_zone'. Underload means fresh legs; do not diagnose overload.
+        • Medical Safety: Urge rest on pain or fatigue. No unasked 2nd runs.
+        • Outside Running: Units: SPM, min/km (no LaTeX). Sidestep non-running topics.
         • Silent Tools: Never write command names. Stop cleanly.
 
         Respond in \(language).
@@ -792,6 +799,7 @@ class AnalystChatEngine: ObservableObject {
             statusGuidance = "Acute training spike detected. Prioritize recovery to prevent overuse."
         }
 
+        let benchmark = profile.goalBenchmark
         let facts = ReadinessFacts(
             readiness_state: self.currentReadiness.state.rawValue,
             acwr: acwrVal,
@@ -811,7 +819,14 @@ class AnalystChatEngine: ObservableObject {
             experience_level: profile.experienceLevel,
             training_goal: activeGoal,
             cadence_floor_spm: profile.heightAdjustedCadenceFloor,
-            status_guidance: statusGuidance
+            status_guidance: statusGuidance,
+            athlete_name: profile.name,
+            athlete_age: profile.age,
+            athlete_vo2max: profile.vo2Max,
+            weekly_volume_km: profile.weeklyAverageKm,
+            goal_target_weekly_km: "\(Int(benchmark.targetWeeklyKmMin))–\(Int(benchmark.targetWeeklyKmMax)) km",
+            goal_volume_status: benchmark.weeklyVolumeStatus.displayText,
+            goal_primary_stimulus: benchmark.primaryStimulus
         )
 
         let encoder = JSONEncoder()

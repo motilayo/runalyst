@@ -1,8 +1,13 @@
 import Foundation
+import RunalystCore
 
 /// Comprehensive runner profile capturing athletic maturity, active training goal,
-/// height-calibrated biomechanical thresholds, and empirical 30-day training load.
+/// height-calibrated biomechanical thresholds, empirical 30-day training load,
+/// and objective goal readiness benchmarks.
 struct RunnerProfile: Equatable, Sendable {
+    let name: String
+    let age: Int?
+    let vo2Max: Double?
     let experienceLevel: String
     let trainingGoal: String
     let userHeightCm: Double
@@ -11,6 +16,9 @@ struct RunnerProfile: Equatable, Sendable {
     let runsPerWeek: Double
     let isAutoCalculated: Bool
     let calculatedExperienceLevel: String
+    let longestRunKm: Double
+    let fastestPaceSec: Double
+    let goalBenchmark: GoalBenchmark
 
     /// Standard experience level options available in profile settings.
     static let experienceLevelOptions = [
@@ -21,6 +29,9 @@ struct RunnerProfile: Equatable, Sendable {
     ]
 
     init(
+        name: String = "Joshua",
+        age: Int? = 28,
+        vo2Max: Double? = 40.5,
         experienceLevel: String,
         trainingGoal: String,
         userHeightCm: Double,
@@ -28,8 +39,14 @@ struct RunnerProfile: Equatable, Sendable {
         weeklyAverageKm: Double,
         runsPerWeek: Double,
         isAutoCalculated: Bool = false,
-        calculatedExperienceLevel: String? = nil
+        calculatedExperienceLevel: String? = nil,
+        longestRunKm: Double = 0.0,
+        fastestPaceSec: Double = 0.0,
+        goalBenchmark: GoalBenchmark? = nil
     ) {
+        self.name = name
+        self.age = age
+        self.vo2Max = vo2Max
         self.experienceLevel = experienceLevel
         self.trainingGoal = trainingGoal
         self.userHeightCm = userHeightCm
@@ -38,6 +55,15 @@ struct RunnerProfile: Equatable, Sendable {
         self.runsPerWeek = runsPerWeek
         self.isAutoCalculated = isAutoCalculated
         self.calculatedExperienceLevel = calculatedExperienceLevel ?? experienceLevel
+        self.longestRunKm = longestRunKm
+        self.fastestPaceSec = fastestPaceSec
+        self.goalBenchmark = goalBenchmark ?? GoalBenchmarkCore.evaluate(
+            goal: trainingGoal,
+            currentWeeklyKm: weeklyAverageKm,
+            longestRunKm: longestRunKm,
+            userHeightCm: userHeightCm,
+            experienceLevel: experienceLevel
+        )
     }
 
     /// Height scale relative to the standard reference height of 175 cm (5'9").
@@ -119,10 +145,20 @@ struct RunnerProfile: Equatable, Sendable {
         trainingGoal: String? = nil,
         experienceLevel: String? = nil,
         userHeightCm: Double? = nil,
+        runnerName: String? = nil,
+        runnerAge: Int? = nil,
+        vo2Max: Double? = nil,
         now: Date = Date()
     ) -> RunnerProfile {
         let defaults = UserDefaults.standard
-        let goal = trainingGoal ?? defaults.string(forKey: "trainingGoal") ?? "Base Building"
+        let storedName = defaults.string(forKey: "runnerName")
+        let name = runnerName ?? (storedName.flatMap { $0.isEmpty ? nil : $0 } ?? "Joshua")
+        let storedAge = defaults.integer(forKey: "runnerAge")
+        let age = runnerAge ?? (storedAge > 0 ? storedAge : 28)
+        let storedVO2 = defaults.double(forKey: "cachedVO2Max")
+        let resolvedVO2 = vo2Max ?? (storedVO2 > 0 ? storedVO2 : 40.5)
+
+        let goal = trainingGoal ?? defaults.string(forKey: "trainingGoal") ?? "5K Race"
         let storedLevel = defaults.string(forKey: "userExperienceLevel") ?? "Auto"
         let storedHeight = defaults.double(forKey: "userHeightCm")
         let height = userHeightCm ?? (storedHeight > 0 ? storedHeight : 175.0)
@@ -137,6 +173,12 @@ struct RunnerProfile: Equatable, Sendable {
         let weeklyAvgKm = totalDistanceKm / weeks
         let uniqueDays = Set(recentRuns.map { cal.startOfDay(for: $0.date) })
         let runsPerWeek = Double(uniqueDays.count) / weeks
+
+        let maxDistanceMeters = runRecords.map(\.totalDistanceMeters).max() ?? 0.0
+        let longestRunKm = maxDistanceMeters / 1000.0
+
+        let validPaces = runRecords.filter { $0.workingAvgPace > 0 && $0.totalDistanceMeters >= 1000.0 }.map(\.workingAvgPace)
+        let fastestPaceSec = validPaces.min() ?? 360.0
 
         let calculatedLevel = calculateExperienceLevel(from: runRecords, now: now)
 
@@ -153,7 +195,18 @@ struct RunnerProfile: Equatable, Sendable {
             isAuto = true
         }
 
+        let benchmark = GoalBenchmarkCore.evaluate(
+            goal: goal,
+            currentWeeklyKm: weeklyAvgKm,
+            longestRunKm: longestRunKm,
+            userHeightCm: height,
+            experienceLevel: resolvedLevel
+        )
+
         return RunnerProfile(
+            name: name,
+            age: age,
+            vo2Max: resolvedVO2,
             experienceLevel: resolvedLevel,
             trainingGoal: goal,
             userHeightCm: height,
@@ -161,7 +214,10 @@ struct RunnerProfile: Equatable, Sendable {
             weeklyAverageKm: weeklyAvgKm,
             runsPerWeek: runsPerWeek,
             isAutoCalculated: isAuto,
-            calculatedExperienceLevel: calculatedLevel
+            calculatedExperienceLevel: calculatedLevel,
+            longestRunKm: longestRunKm,
+            fastestPaceSec: fastestPaceSec,
+            goalBenchmark: benchmark
         )
     }
 
