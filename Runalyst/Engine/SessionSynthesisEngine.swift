@@ -1,5 +1,6 @@
 import Foundation
 import SwiftData
+import RunalystCore
 
 /// Represents a day in the weekly microcycle lookahead horizon.
 struct MicrocycleDay: Identifiable, Sendable, Equatable {
@@ -17,6 +18,7 @@ public struct PlannedSession: Sendable, Equatable, Codable {
         case rest
     }
     public let kind: Kind
+    public let intent: DailySessionIntent
     public let title: String
     public let minutesLow: Int
     public let minutesHigh: Int
@@ -28,7 +30,8 @@ public struct PlannedSession: Sendable, Equatable, Codable {
     public let provisional: Bool
 
     public init(
-        kind: Kind,
+        kind: Kind = .run,
+        intent: DailySessionIntent? = nil,
         title: String,
         minutesLow: Int,
         minutesHigh: Int,
@@ -39,7 +42,9 @@ public struct PlannedSession: Sendable, Equatable, Codable {
         adjustmentTriggers: [String] = [],
         provisional: Bool = false
     ) {
-        self.kind = kind
+        let resolvedIntent = intent ?? (kind == .rest ? .fullRest : .train)
+        self.intent = resolvedIntent
+        self.kind = resolvedIntent == .fullRest ? .rest : .run
         self.title = title
         self.minutesLow = minutesLow
         self.minutesHigh = minutesHigh
@@ -73,10 +78,71 @@ struct PrescribedDailySession: Sendable, Equatable {
     var mainSessionTemplateId: PreRunDrillId = .zone2Run
     var mainRunDurationMinutes: Int = 30
     var completedPrimerRun: RunRecordSnapshot?
-    var isRestDay: Bool = false
+    var intent: DailySessionIntent = .train
+    var isRestDay: Bool {
+        get { intent == .fullRest }
+        set { intent = newValue ? .fullRest : .train }
+    }
     var dayLabel: String?
     var isToday: Bool = false
     var readinessState: ReadinessState = .productive
+
+    init(
+        targetGoal: String,
+        sessionTitle: String,
+        durationBand: String,
+        paceBand: String,
+        hrCap: String,
+        cadenceFloor: Int,
+        groundedRationale: String,
+        readinessStateText: String,
+        readinessTriggerLead: String? = nil,
+        primerDrillId: PreRunDrillId,
+        primerDrillTitle: String,
+        primerTargetCadence: String,
+        primerWorkDescription: String,
+        primerPhasesDuration: String,
+        isTrimmed: Bool,
+        microcycle: [MicrocycleDay],
+        mainSessionTemplateId: PreRunDrillId = .zone2Run,
+        mainRunDurationMinutes: Int = 30,
+        completedPrimerRun: RunRecordSnapshot? = nil,
+        intent: DailySessionIntent? = nil,
+        isRestDay: Bool? = nil,
+        dayLabel: String? = nil,
+        isToday: Bool = false,
+        readinessState: ReadinessState = .productive
+    ) {
+        self.targetGoal = targetGoal
+        self.sessionTitle = sessionTitle
+        self.durationBand = durationBand
+        self.paceBand = paceBand
+        self.hrCap = hrCap
+        self.cadenceFloor = cadenceFloor
+        self.groundedRationale = groundedRationale
+        self.readinessStateText = readinessStateText
+        self.readinessTriggerLead = readinessTriggerLead
+        self.primerDrillId = primerDrillId
+        self.primerDrillTitle = primerDrillTitle
+        self.primerTargetCadence = primerTargetCadence
+        self.primerWorkDescription = primerWorkDescription
+        self.primerPhasesDuration = primerPhasesDuration
+        self.isTrimmed = isTrimmed
+        self.microcycle = microcycle
+        self.mainSessionTemplateId = mainSessionTemplateId
+        self.mainRunDurationMinutes = mainRunDurationMinutes
+        self.completedPrimerRun = completedPrimerRun
+        if let intent {
+            self.intent = intent
+        } else if let isRestDay, isRestDay {
+            self.intent = .fullRest
+        } else {
+            self.intent = .train
+        }
+        self.dayLabel = dayLabel
+        self.isToday = isToday
+        self.readinessState = readinessState
+    }
 
     /// Resolves the canonical readiness state deterministically from explicit state or status text.
     var resolvedReadinessState: ReadinessState {
@@ -129,6 +195,24 @@ enum DailyTrainingState: Sendable, Equatable {
         completedRun: RunRecordSnapshot,
         tomorrowSession: PrescribedDailySession
     )
+
+    public var activeSession: PrescribedDailySession {
+        switch self {
+        case .preRun(let session):
+            return session
+        case .completedToday(_, let tomorrow):
+            return tomorrow
+        }
+    }
+
+    public var isTodayCompleted: Bool {
+        switch self {
+        case .preRun:
+            return false
+        case .completedToday:
+            return true
+        }
+    }
 }
 
 /// Swift Deterministic Session Synthesis Engine.
@@ -426,9 +510,9 @@ enum SessionSynthesisEngine {
                 isTrimmed: true,
                 microcycle: microcycle,
                 mainSessionTemplateId: .recoveryJog,
-                mainRunDurationMinutes: 15,
+                mainRunDurationMinutes: 0,
                 completedPrimerRun: nil,
-                isRestDay: true,
+                intent: .fullRest,
                 dayLabel: "Today",
                 isToday: true,
                 readinessState: .acuteFatigue
@@ -440,29 +524,28 @@ enum SessionSynthesisEngine {
                 ? "Active Recovery Window (Post-\(recentRun?.detectedTypeRaw ?? "Workout") Drift)"
                 : "Active Recovery Window (Acute Fatigue)"
 
-            sessionTitle = "Easy Aerobic Base Run"
-            durationBand = "25–30 Min"
-            mainRunDurationMinutes = 30
-            mainSessionTemplateId = .zone2Run
-            let lowPace = basePace + 40.0
-            let highPace = basePace + 65.0
-            paceBand = formatPaceRange(lowSec: lowPace, highSec: highPace, useMetric: useMetric)
-            hrCap = "HR: < 145 BPM"
-            cadenceFloor = max(140, calibratedCadenceFloor - 4)
+            sessionTitle = "Zone 1 Active Recovery Flush"
+            durationBand = "15–20 Min"
+            mainRunDurationMinutes = 20
+            mainSessionTemplateId = .recoveryJog
+            let zones = TrainingZoneCore.calculateZones(anchorPaceSecPerKm: basePace, activeGoal: activeGoal)
+            paceBand = zones.zone1Recovery.formatted(useMetric: useMetric)
+            hrCap = "HR: < 135 BPM"
+            cadenceFloor = max(140, calibratedCadenceFloor - 6)
 
             let recentName = recentRun?.detectedTypeRaw ?? "workout"
             let recentRef = relativeWorkoutReference(for: recentRun?.date, relativeTo: now, workoutType: recentName)
             let goalPhrasing: String = {
                 if activeGoal.localizedCaseInsensitiveContains("Base") {
-                    return "develops your aerobic foundation at an easy, conversational pace"
+                    return "develops your aerobic foundation with an easy active flush"
                 } else if activeGoal.localizedCaseInsensitiveContains("5K") {
-                    return "builds your aerobic base for your 5K"
+                    return "promotes muscular recovery without cardiovascular strain for your 5K"
                 } else {
-                    return "builds your aerobic base for your \(activeGoal) progression"
+                    return "promotes muscular recovery without cardiovascular strain for your \(activeGoal) progression"
                 }
             }()
             rationale = hadCardiacDrift
-                ? "\(recentRef) banked your speed work for the week, but drove +\(driftBPM) BPM cardiac drift. Today \(goalPhrasing) while keeping your heart rate strictly capped."
+                ? "\(recentRef) banked your speed work for the week, but drove +\(driftBPM) BPM cardiac drift. Today \(goalPhrasing) with a short Zone 1 flush while keeping your heart rate strictly capped."
                 : "Recent high-load training requires active recovery to consolidate neuromuscular adaptations while protecting your mechanics."
 
             primerDrillId = .cadencePyramids
@@ -653,6 +736,16 @@ enum SessionSynthesisEngine {
             isTomorrowRest: false
         )
 
+        let todayIntent: DailySessionIntent = {
+            if streakSummary.shouldRecommendRestDay {
+                return .fullRest
+            } else if readiness.state == .acuteFatigue || hadCardiacDrift {
+                return .recoveryFlush
+            } else {
+                return .train
+            }
+        }()
+
         return PrescribedDailySession(
             targetGoal: activeGoal,
             sessionTitle: sessionTitle,
@@ -675,6 +768,7 @@ enum SessionSynthesisEngine {
             mainSessionTemplateId: mainSessionTemplateId,
             mainRunDurationMinutes: mainRunDurationMinutes,
             completedPrimerRun: nil,
+            intent: todayIntent,
             dayLabel: "Today",
             isToday: true,
             readinessState: resolvedTodayReadiness
@@ -783,9 +877,9 @@ enum SessionSynthesisEngine {
                 isTrimmed: true,
                 microcycle: microcycle,
                 mainSessionTemplateId: .recoveryJog,
-                mainRunDurationMinutes: 15,
+                mainRunDurationMinutes: 0,
                 completedPrimerRun: nil,
-                isRestDay: true,
+                intent: .fullRest,
                 dayLabel: tomorrowWeekday,
                 isToday: false,
                 readinessState: .acuteFatigue
@@ -796,27 +890,16 @@ enum SessionSynthesisEngine {
 
         let tomorrowTitle = wasHardSession ? "Zone 1 Active Recovery Flush" : "Zone 2 Easy Aerobic Base"
         let (aerobicBand, aerobicMins) = aerobicDurationForExperience(context.experienceLevel)
-        let durationBand = wasHardSession ? "25–30 Min" : aerobicBand
-        let mainRunDurationMinutes = wasHardSession ? 25 : aerobicMins
+        let durationBand = wasHardSession ? "15–20 Min" : aerobicBand
+        let mainRunDurationMinutes = wasHardSession ? 20 : aerobicMins
 
-        let isTodayEasyOrRecovery = todayRun.detectedTypeRaw == "Easy Run" || todayRun.detectedTypeRaw == "Recovery Run" || todayRun.detectedTypeRaw == "Zone 2" || todayRun.detectedTypeRaw == "Steady Effort"
-
-        let lowPace: Double
-        let highPace: Double
-        if wasHardSession {
-            lowPace = basePace + 40.0
-            highPace = basePace + 70.0
-        } else if isTodayEasyOrRecovery {
-            lowPace = max(240.0, basePace - 15.0)
-            highPace = basePace + 15.0
-        } else {
-            lowPace = basePace + 20.0
-            highPace = basePace + 40.0
-        }
-
-        let paceBand = formatPaceRange(lowSec: lowPace, highSec: highPace, useMetric: context.useMetric)
+        let zones = TrainingZoneCore.calculateZones(anchorPaceSecPerKm: basePace, activeGoal: context.activeGoal)
+        let paceBand = wasHardSession
+            ? zones.zone1Recovery.formatted(useMetric: context.useMetric)
+            : zones.zone2AerobicBase.formatted(useMetric: context.useMetric)
         let hrCap = wasHardSession ? "HR: < 135 BPM" : "HR: < 150 BPM"
         let cadenceFloor = max(140, calibratedCadenceFloor - 6)
+        let tomorrowIntent: DailySessionIntent = wasHardSession ? .recoveryFlush : .train
 
         let rationale = wasHardSession
             ? "Today's \(todayRun.detectedTypeRaw) workout banked heavy neuromuscular stimuli. Tomorrow automatically shifts to an active recovery flush to clear metabolic waste and protect your legs."
@@ -923,7 +1006,7 @@ enum SessionSynthesisEngine {
             mainSessionTemplateId: wasHardSession ? .recoveryJog : .zone2Run,
             mainRunDurationMinutes: mainRunDurationMinutes,
             completedPrimerRun: nil,
-            isRestDay: false,
+            intent: tomorrowIntent,
             dayLabel: tomorrowWeekday,
             isToday: false,
             readinessState: wasHardSession ? .acuteFatigue : .productive
@@ -1011,7 +1094,7 @@ enum SessionSynthesisEngine {
             return templateSessionForWeekday(weekday: weekday, activeGoal: activeGoal, profile: profile, useMetric: useMetric)
         }
 
-        let dailyState = evaluateDailyState(
+        let dailyState = DailyTrainingStateStore.shared.resolveState(
             runRecords: runRecords,
             activeGoal: activeGoal,
             experienceLevel: profile.experienceLevel,
@@ -1026,6 +1109,7 @@ enum SessionSynthesisEngine {
             case .preRun(let session):
                 return PlannedSession(
                     kind: session.isRestDay ? .rest : .run,
+                    intent: session.intent,
                     title: session.sessionTitle,
                     minutesLow: session.isRestDay ? 0 : max(15, session.mainRunDurationMinutes - 5),
                     minutesHigh: session.isRestDay ? 0 : session.mainRunDurationMinutes,
@@ -1096,6 +1180,7 @@ enum SessionSynthesisEngine {
 
             return PlannedSession(
                 kind: tomorrowSession.isRestDay ? .rest : .run,
+                intent: tomorrowSession.intent,
                 title: tomorrowSession.sessionTitle,
                 minutesLow: tomorrowSession.isRestDay ? 0 : max(15, tomorrowSession.mainRunDurationMinutes - 5),
                 minutesHigh: tomorrowSession.isRestDay ? 0 : tomorrowSession.mainRunDurationMinutes,
@@ -1215,7 +1300,7 @@ enum SessionSynthesisEngine {
             case 5: // Thu
                 return PlannedSession(kind: .run, title: "Zone 1 Recovery Flush (40m)", minutesLow: 35, minutesHigh: 40, paceBand: "Zone 1 Flush", primerTitle: "Optional 10m Walk", provisional: true)
             case 6: // Fri
-                return PlannedSession(kind: .run, title: "Easy Aerobic Base (30m)", minutesLow: 25, minutesHigh: 30, paceBand: "Zone 2 Base", primerTitle: "Rhythm Intervals", provisional: true)
+                return PlannedSession(kind: .run, title: "Aerobic Consistency Run (30m)", minutesLow: 25, minutesHigh: 30, paceBand: "Zone 2 Base", primerTitle: "Rhythm Intervals", provisional: true)
             case 7: // Sat
                 return PlannedSession(kind: .rest, title: "Rest Day", minutesLow: 0, minutesHigh: 0, provisional: true)
             default:

@@ -36,6 +36,7 @@ struct DataManagementSectionView: View {
                         }
                         try? modelContext.save()
                         WorkoutBridge.clearIntents()
+                        DailyTrainingStateStore.shared.invalidate()
                         UserDefaults.standard.removeObject(forKey: "cachedHeadline_7Day")
                         UserDefaults.standard.removeObject(forKey: "cachedBody_7Day")
                         UserDefaults.standard.removeObject(forKey: "cachedHeadline_30Day")

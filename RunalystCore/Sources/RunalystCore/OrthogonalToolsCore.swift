@@ -262,9 +262,11 @@ public enum OrthogonalToolsCore {
 
         let isOverridden = readinessReport.isSafetyOverridden
         let secondRunAdvisable: Bool
-        if isOverridden || streakDays >= streakLimit || volumeRatio48h >= 0.50 || todayCompletedMinutes <= 0.0 {
+        if isOverridden || streakDays >= streakLimit || volumeRatio48h >= 0.50 {
             secondRunAdvisable = false
-        } else if todayCompletedMinutes <= 20.0 && todayTargetMinutes > 20 {
+        } else if todayCompletedMinutes <= 0.0 {
+            secondRunAdvisable = true
+        } else if todayTargetMinutes > 0 && (todayCompletedMinutes / Double(todayTargetMinutes)) < 0.80 {
             secondRunAdvisable = true
         } else {
             secondRunAdvisable = false

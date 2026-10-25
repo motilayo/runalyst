@@ -297,6 +297,17 @@ struct DashboardView: View {
         return SessionSynthesisEngine.isWorkoutDayComplete(runs: todayRuns)
     }
 
+    private var currentDailyTrainingState: DailyTrainingState {
+        let profile = dashboardRunnerProfile
+        return DailyTrainingStateStore.shared.resolveState(
+            runRecords: runRecords,
+            activeGoal: trainingGoal,
+            experienceLevel: profile.experienceLevel,
+            useMetric: useMetricSystem,
+            userHeightCm: profile.userHeightCm
+        )
+    }
+
     private var deterministicPrescription: LockedTrainingPrescription? {
         guard let latestRun = runRecords.first else { return nil }
         let profile = dashboardRunnerProfile
@@ -335,6 +346,69 @@ struct DashboardView: View {
             .background(color.opacity(0.12))
             .foregroundColor(color)
             .clipShape(Capsule())
+    }
+
+    @ViewBuilder
+    private func directivePills(for state: DailyTrainingState) -> some View {
+        let session = state.activeSession
+        let isCompleted = state.isTodayCompleted
+        let hasPace = session.paceBand != "No Pacing Target" && session.intent != .fullRest
+
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) {
+                if isCompleted {
+                    targetPill(text: "Today: Done ✓", color: .green)
+                    let tomorrowText = session.intent == .fullRest ? "Rest" : session.durationBand
+                    targetPill(text: "Tomorrow: \(tomorrowText)", color: .purple)
+                    if hasPace {
+                        targetPill(text: "Pace: \(session.paceBand)", color: Color(red: 0.0, green: 0.55, blue: 1.0))
+                    }
+                } else if session.intent == .fullRest {
+                    targetPill(text: "Full Rest Day", color: .green)
+                    targetPill(text: "Rest & Structural Recovery", color: .purple)
+                } else if session.intent == .recoveryFlush {
+                    targetPill(text: "Active Flush", color: .teal)
+                    targetPill(text: session.durationBand, color: .purple)
+                    if hasPace {
+                        targetPill(text: "Pace: \(session.paceBand)", color: Color(red: 0.0, green: 0.55, blue: 1.0))
+                    }
+                    targetPill(text: session.hrCap, color: Color(red: 1.0, green: 0.22, blue: 0.55))
+                } else {
+                    targetPill(text: session.durationBand, color: .purple)
+                    if hasPace {
+                        targetPill(text: "Pace: \(session.paceBand)", color: Color(red: 0.0, green: 0.55, blue: 1.0))
+                    }
+                    targetPill(text: session.hrCap, color: Color(red: 1.0, green: 0.22, blue: 0.55))
+                }
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 6) {
+                    if isCompleted {
+                        targetPill(text: "Today: Done ✓", color: .green)
+                        let tomorrowText = session.intent == .fullRest ? "Rest" : session.durationBand
+                        targetPill(text: "Tomorrow: \(tomorrowText)", color: .purple)
+                    } else if session.intent == .fullRest {
+                        targetPill(text: "Full Rest Day", color: .green)
+                        targetPill(text: "Rest & Structural Recovery", color: .purple)
+                    } else if session.intent == .recoveryFlush {
+                        targetPill(text: "Active Flush", color: .teal)
+                        targetPill(text: session.durationBand, color: .purple)
+                    } else {
+                        targetPill(text: session.durationBand, color: .purple)
+                        if hasPace {
+                            targetPill(text: "Pace: \(session.paceBand)", color: Color(red: 0.0, green: 0.55, blue: 1.0))
+                        }
+                    }
+                }
+                if isCompleted || session.intent == .fullRest {
+                    if hasPace {
+                        targetPill(text: "Pace: \(session.paceBand)", color: Color(red: 0.0, green: 0.55, blue: 1.0))
+                    }
+                } else {
+                    targetPill(text: session.hrCap, color: Color(red: 1.0, green: 0.22, blue: 0.55))
+                }
+            }
+        }
     }
 
     @ViewBuilder
@@ -399,54 +473,7 @@ struct DashboardView: View {
                         .font(.title3.bold())
                         .foregroundColor(.primary)
 
-                    if let rx = deterministicPrescription {
-                        let isRestDirective = displayHeadline.localizedCaseInsensitiveContains("Rest") || displayHeadline.localizedCaseInsensitiveContains("Recovery")
-                        let isRestTomorrow = rx.compactDurationBand.localizedCaseInsensitiveContains("Rest")
-                        let hasPaceTarget = rx.prescribedPaceBand != "No Pacing Target" && !isRestTomorrow
-
-                        ViewThatFits(in: .horizontal) {
-                            HStack(spacing: 8) {
-                                if isTodayCompleted {
-                                    targetPill(text: "Today: Done ✓", color: .green)
-                                    targetPill(text: "Tomorrow: \(isRestTomorrow ? "Rest" : rx.compactDurationBand)", color: .purple)
-                                    if hasPaceTarget {
-                                        targetPill(text: "Pace: \(rx.prescribedPaceBand)", color: Color(red: 0.0, green: 0.55, blue: 1.0))
-                                    }
-                                } else if isRestDirective {
-                                    targetPill(text: "Rest & Recover", color: .green)
-                                    targetPill(text: "Next: \(isRestTomorrow ? "Rest" : rx.compactDurationBand)", color: .purple)
-                                    if hasPaceTarget {
-                                        targetPill(text: "Pace: \(rx.prescribedPaceBand)", color: Color(red: 0.0, green: 0.55, blue: 1.0))
-                                    }
-                                } else {
-                                    targetPill(text: rx.compactDurationBand, color: .purple)
-                                    targetPill(text: "Pace: \(rx.prescribedPaceBand)", color: Color(red: 0.0, green: 0.55, blue: 1.0))
-                                    targetPill(text: hrCapText(for: rx), color: Color(red: 1.0, green: 0.22, blue: 0.55))
-                                }
-                            }
-                            VStack(alignment: .leading, spacing: 6) {
-                                HStack(spacing: 6) {
-                                    if isTodayCompleted {
-                                        targetPill(text: "Today: Done ✓", color: .green)
-                                        targetPill(text: "Tomorrow: \(isRestTomorrow ? "Rest" : rx.compactDurationBand)", color: .purple)
-                                    } else if isRestDirective {
-                                        targetPill(text: "Rest & Recover", color: .green)
-                                        targetPill(text: "Next: \(isRestTomorrow ? "Rest" : rx.compactDurationBand)", color: .purple)
-                                    } else {
-                                        targetPill(text: rx.compactDurationBand, color: .purple)
-                                        targetPill(text: "Pace: \(rx.prescribedPaceBand)", color: Color(red: 0.0, green: 0.55, blue: 1.0))
-                                    }
-                                }
-                                if isTodayCompleted || isRestDirective {
-                                    if hasPaceTarget {
-                                        targetPill(text: "Pace: \(rx.prescribedPaceBand)", color: Color(red: 0.0, green: 0.55, blue: 1.0))
-                                    }
-                                } else {
-                                    targetPill(text: hrCapText(for: rx), color: Color(red: 1.0, green: 0.22, blue: 0.55))
-                                }
-                            }
-                        }
-                    }
+                    directivePills(for: currentDailyTrainingState)
 
                     let defaultPlaceholder = "Complete more runs this week to evaluate acute fatigue and recovery trends."
                     Text(bodyText.isEmpty ? defaultPlaceholder : bodyText)
@@ -1125,6 +1152,7 @@ struct DashboardView: View {
                 refreshBaselineVO2Max()
 
                 // Invalidate cache
+                DailyTrainingStateStore.shared.invalidate()
                 cachedHeadline7Day = ""
                 cachedBody7Day = ""
                 cachedHeadline30Day = ""

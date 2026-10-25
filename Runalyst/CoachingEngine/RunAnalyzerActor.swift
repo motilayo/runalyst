@@ -395,6 +395,9 @@ actor RunAnalyzerActor {
 
             run.insight = insight
             try modelContext.save()
+            await MainActor.run {
+                DailyTrainingStateStore.shared.invalidate()
+            }
 
         } catch {
             print("AI Generation Failed: \(error)")

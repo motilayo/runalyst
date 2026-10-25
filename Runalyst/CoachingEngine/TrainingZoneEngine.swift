@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import RunalystCore
 
 /// Structured locked training prescription deterministically calculated by Swift.
 struct LockedTrainingPrescription: Sendable, Equatable {
@@ -192,41 +193,13 @@ enum TrainingZoneEngine {
             )
         }
 
-        // 3. Mathematical Zone Calculation (Tier 1 & Tier 2)
-        let z1PaceLow = anchorPace + 60.0
-        let z1PaceHigh = anchorPace + 90.0
-
-        let z2PaceLow = anchorPace + 30.0
-        let z2PaceHigh = anchorPace + 50.0
-
-        let z3PaceLow = anchorPace + 10.0
-        let z3PaceHigh = anchorPace + 25.0
-
-        let z4PaceLow = anchorPace - 10.0
-        let z4PaceHigh = anchorPace + 5.0
-
-        // Zone 5 Goal Calibration
-        let z5PaceLow: Double
-        let z5PaceHigh: Double
-        if input.activeGoal.contains("5K") {
-            z5PaceLow = anchorPace - 30.0
-            z5PaceHigh = anchorPace - 20.0
-        } else if input.activeGoal.contains("10K") {
-            z5PaceLow = anchorPace - 20.0
-            z5PaceHigh = anchorPace - 10.0
-        } else if input.activeGoal.contains("Half") {
-            z5PaceLow = anchorPace - 10.0
-            z5PaceHigh = anchorPace
-        } else {
-            z5PaceLow = anchorPace - 5.0
-            z5PaceHigh = anchorPace + 10.0
-        }
-
-        let z1Str = formatRange(lowSec: z1PaceLow, highSec: z1PaceHigh, useMetric: input.useMetricSystem)
-        let z2Str = formatRange(lowSec: z2PaceLow, highSec: z2PaceHigh, useMetric: input.useMetricSystem)
-        let z3Str = formatRange(lowSec: z3PaceLow, highSec: z3PaceHigh, useMetric: input.useMetricSystem)
-        let z4Str = formatRange(lowSec: z4PaceLow, highSec: z4PaceHigh, useMetric: input.useMetricSystem)
-        let z5Str = formatRange(lowSec: z5PaceLow, highSec: z5PaceHigh, useMetric: input.useMetricSystem)
+        // 3. Mathematical Zone Calculation (Tier 1 & Tier 2) via RunalystCore
+        let matrix = TrainingZoneCore.calculateZones(anchorPaceSecPerKm: anchorPace, activeGoal: input.activeGoal)
+        let z1Str = matrix.zone1Recovery.formatted(useMetric: input.useMetricSystem)
+        let z2Str = matrix.zone2AerobicBase.formatted(useMetric: input.useMetricSystem)
+        let z3Str = matrix.zone3Steady.formatted(useMetric: input.useMetricSystem)
+        let z4Str = matrix.zone4Threshold.formatted(useMetric: input.useMetricSystem)
+        let z5Str = matrix.zone5Interval.formatted(useMetric: input.useMetricSystem)
 
         // 4. Delegate Next-Session Prescription to SessionSynthesisEngine (Single Source of Truth)
         let effectiveRuns: [RunRecord]
@@ -256,7 +229,7 @@ enum TrainingZoneEngine {
             effectiveRuns = [repRun]
         }
 
-        let dailyState = SessionSynthesisEngine.evaluateDailyState(
+        let dailyState = DailyTrainingStateStore.shared.resolveState(
             runRecords: effectiveRuns,
             activeGoal: input.activeGoal,
             experienceLevel: input.experienceLevel,

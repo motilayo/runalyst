@@ -118,3 +118,39 @@ struct TheMoldTests {
         #expect(original == decoded)
     }
 }
+
+@Suite("TrainingZoneCore Tests")
+struct TrainingZoneCoreTests {
+
+    @Test("Calculates deterministic 5-zone pacing matrix")
+    func zoneMatrixCalculation() throws {
+        let anchorPace = 360.0 // 6:00/km
+        let matrix = TrainingZoneCore.calculateZones(anchorPaceSecPerKm: anchorPace, activeGoal: "5K Race")
+
+        // Z1 Recovery: anchor + 60s to anchor + 90s (420s to 450s => 7:00–7:30/km)
+        #expect(matrix.zone1Recovery.lowSecPerKm == 420.0)
+        #expect(matrix.zone1Recovery.highSecPerKm == 450.0)
+        #expect(matrix.zone1Recovery.formatted(useMetric: true) == "7:00–7:30/km")
+
+        // Z2 Aerobic Base: anchor + 30s to anchor + 50s (390s to 410s => 6:30–6:50/km)
+        #expect(matrix.zone2AerobicBase.lowSecPerKm == 390.0)
+        #expect(matrix.zone2AerobicBase.highSecPerKm == 410.0)
+        #expect(matrix.zone2AerobicBase.formatted(useMetric: true) == "6:30–6:50/km")
+
+        // Z4 Threshold: anchor - 10s to anchor + 5s (350s to 365s => 5:50–6:05/km)
+        #expect(matrix.zone4Threshold.lowSecPerKm == 350.0)
+        #expect(matrix.zone4Threshold.highSecPerKm == 365.0)
+
+        // Z5 Goal-specific (5K): anchor - 30s to anchor - 20s (330s to 340s => 5:30–5:40/km)
+        #expect(matrix.zone5Interval.lowSecPerKm == 330.0)
+        #expect(matrix.zone5Interval.highSecPerKm == 340.0)
+    }
+
+    @Test("Default anchor paces match athletic maturity tiers")
+    func defaultAnchorPaces() throws {
+        #expect(TrainingZoneCore.defaultPaceForExperience("Elite") == 255.0)
+        #expect(TrainingZoneCore.defaultPaceForExperience("Advanced") == 290.0)
+        #expect(TrainingZoneCore.defaultPaceForExperience("Intermediate") == 340.0)
+        #expect(TrainingZoneCore.defaultPaceForExperience("Novice") == 400.0)
+    }
+}
