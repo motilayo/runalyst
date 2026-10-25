@@ -393,10 +393,9 @@ class AnalystChatEngine: ObservableObject {
                 let nextDateStr = df.string(from: next.date)
                 nextRunNote = " Next Workout: \(nextDayName) (\(nextDateStr), \(next.day.planned.title), \(next.day.planned.minutesHigh)m)."
             }
-            let benchmark = profile.goalBenchmark
             let ageStr = profile.age.map { ", Age \($0)" } ?? ""
             let vo2Str = profile.vo2Max.map { ", VO2max \(String(format: "%.1f", $0))" } ?? ""
-            let runnerLine = "Runner: \(profile.name) (\(Int(profile.userHeightCm))cm\(ageStr)\(vo2Str)) | \(profile.experienceLevel) | \(profile.trainingGoal) (\(Int(benchmark.targetWeeklyKmMin))–\(Int(benchmark.targetWeeklyKmMax))k/wk: \(benchmark.weeklyVolumeStatus.displayText))."
+            let runnerLine = "Runner: \(profile.name) (\(Int(profile.userHeightCm))cm\(ageStr)\(vo2Str)) | \(profile.experienceLevel) | \(profile.trainingGoal)."
             contextBlock = "\(runnerLine)\nToday: (\(todayDateStr)) \(scheduledTodayStr) (\(loggedTodayStr)). Tomorrow: (\(tomorrowDateStr)) \(scheduledTomorrowStr).\(nextRunNote)"
         } else if let runRecord {
             let daysDiff = max(0, Calendar.current.dateComponents([.day], from: runRecord.date, to: Date()).day ?? 0)
@@ -449,11 +448,11 @@ class AnalystChatEngine: ObservableObject {
         \(toolsBlock)
 
         RULES:
-        • Anchor: Ground in today. Don't call future runs tomorrow's run.
-        • Voice: Talk effort, breath, recovery. No clichés or tokens.
+        • Anti-Leak: Never echo code tokens ('underload', 'compression', 'limiting factor', 'elevated fatigue'). Speak like an empathetic coach.
         • Workload: Trust 'workload_zone'. Underload means fresh legs; do not diagnose overload.
-        • Medical Safety: Urge rest on pain or fatigue. No unasked 2nd runs.
-        • Outside Running: Units: SPM, min/km (no LaTeX). Sidestep non-running topics.
+        • Medical Safety: Urge rest on pain or fatigue. No 2nd runs unless asked.
+        • Anchor: Ground in today. Don't call future runs tomorrow's run.
+        • Outside Running: Units: SPM, min/km. Sidestep non-running topics.
         • Silent Tools: Never write command names. Stop cleanly.
 
         Respond in \(language).
@@ -761,13 +760,11 @@ class AnalystChatEngine: ObservableObject {
 
         let secondRunAdvisable: Bool
         if todayRuns.isEmpty {
-            secondRunAdvisable = true
-        } else if todayRuns.count == 1 && (todayRuns[0].duration <= 1320 && (todayRuns[0].prescribedDrillName != nil || todayRuns[0].totalDistanceMeters <= 2000)) {
-            secondRunAdvisable = true
-        } else if completionPercent >= 80 || streakSummary.shouldRecommendRestDay || (streakSummary.volumeRatio48h >= 0.50 && streakSummary.last48hDurationMinutes >= 60.0) {
             secondRunAdvisable = false
+        } else if todayRuns.count == 1 && (todayRuns[0].duration <= 1320 && (todayRuns[0].prescribedDrillName != nil || todayRuns[0].totalDistanceMeters <= 2000)) {
+            secondRunAdvisable = !streakSummary.shouldRecommendRestDay && self.currentReadiness.state != .acuteFatigue
         } else {
-            secondRunAdvisable = true
+            secondRunAdvisable = false
         }
 
         let acwrVal = self.currentReadiness.acwr
