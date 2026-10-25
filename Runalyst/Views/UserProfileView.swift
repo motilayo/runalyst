@@ -4,13 +4,13 @@ import SwiftData
 struct UserProfileView: View {
     @Query(sort: \RunRecord.date, order: .reverse) private var runRecords: [RunRecord]
 
-    @AppStorage("runnerName") private var runnerName: String = "Joshua"
-    @AppStorage("runnerAge") private var runnerAge: Int = 28
+    @AppStorage("runnerName") private var runnerName: String = ""
+    @AppStorage("runnerAge") private var runnerAge: Int = 0
     @AppStorage("useMetricSystem") private var useMetricSystem: Bool = Locale.current.measurementSystem == .metric
     @AppStorage("trainingGoal") private var trainingGoal: String = "5K Race"
     @AppStorage("userExperienceLevel") private var userExperienceLevel: String = "Auto"
     @AppStorage("userHeightCm") private var userHeightCm: Double = 175.0
-    @AppStorage("cachedVO2Max") private var cachedVO2Max: Double = 40.5
+    @AppStorage("cachedVO2Max") private var cachedVO2Max: Double = 0.0
 
     let goalOptions = [
         "5K Race",
@@ -28,9 +28,9 @@ struct UserProfileView: View {
             trainingGoal: trainingGoal,
             experienceLevel: userExperienceLevel == "Auto" ? nil : userExperienceLevel,
             userHeightCm: userHeightCm,
-            runnerName: runnerName,
-            runnerAge: runnerAge,
-            vo2Max: cachedVO2Max
+            runnerName: runnerName.isEmpty ? nil : runnerName,
+            runnerAge: runnerAge > 0 ? runnerAge : nil,
+            vo2Max: cachedVO2Max > 0 ? cachedVO2Max : nil
         )
 
         Form {
@@ -43,16 +43,16 @@ struct UserProfileView: View {
                 HStack {
                     Text("Name")
                     Spacer()
-                    TextField("Runner Name", text: $runnerName)
+                    TextField("Runner", text: $runnerName)
                         .multilineTextAlignment(.trailing)
                         .foregroundColor(.secondary)
                 }
 
-                Stepper(value: $runnerAge, in: 12...100) {
+                Stepper(value: $runnerAge, in: 0...100) {
                     HStack {
                         Text("Age")
                         Spacer()
-                        Text("\(runnerAge) yrs")
+                        Text(runnerAge > 0 ? "\(runnerAge) yrs" : "Optional")
                             .foregroundColor(.secondary)
                     }
                 }
@@ -113,7 +113,7 @@ struct UserProfileView: View {
                 HStack {
                     Text("VO2 Max")
                     Spacer()
-                    Text(String(format: "%.1f mL/kg/min", cachedVO2Max))
+                    Text(cachedVO2Max > 0 ? String(format: "%.1f mL/kg/min", cachedVO2Max) : "Syncing HealthKit...")
                         .foregroundColor(.secondary)
                 }
 

@@ -17,6 +17,8 @@ struct OnboardingView: View {
 
     @Environment(\.dismiss) private var dismiss
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding: Bool = false
+    @AppStorage("runnerName") private var runnerName: String = ""
+    @AppStorage("runnerAge") private var runnerAge: Int = 0
     @AppStorage("useMetricSystem") private var useMetricSystem: Bool = Locale.current.measurementSystem == .metric
     @AppStorage("trainingGoal") private var trainingGoal: String = "Base Building"
     @AppStorage("userExperienceLevel") private var userExperienceLevel: String = "Auto"
@@ -77,6 +79,9 @@ struct OnboardingView: View {
                     if UserDefaults.standard.object(forKey: "userHeightCm") == nil || userHeightCm == 175.0 {
                         userHeightCm = healthHeight
                     }
+                }
+                if let vo2s = try? await HealthKitManager.shared.fetchRecentGlobalVO2Maxes(limit: 1), let latest = vo2s.first, latest > 0 {
+                    UserDefaults.standard.set(latest, forKey: "cachedVO2Max")
                 }
             }
         }
@@ -464,6 +469,58 @@ struct OnboardingView: View {
 
                 // Profile Configuration Cards
                 VStack(spacing: 16) {
+                    // Card 0: Runner Identity
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "person.text.rectangle")
+                                .font(.headline)
+                                .foregroundColor(.blue)
+                            Text("Your Identity")
+                                .font(.headline)
+                                .foregroundColor(.primary)
+                        }
+
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Name or Nickname")
+                                .font(.caption.bold())
+                                .foregroundColor(.secondary)
+                            TextField("Enter your name", text: $runnerName)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(Color(UIColor.tertiarySystemGroupedBackground))
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                        }
+
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                Text("Age (Optional)")
+                                    .font(.caption.bold())
+                                    .foregroundColor(.secondary)
+                                Spacer()
+                                Text(runnerAge > 0 ? "\(runnerAge) yrs" : "Not set")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                            }
+                            Stepper(value: $runnerAge, in: 0...100) {
+                                Text("Adjust Age")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 4)
+                            .background(Color(UIColor.tertiarySystemGroupedBackground))
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                        }
+
+                        Text("Allows your on-device AI coach to address you naturally and ground recovery in your age bracket.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .lineSpacing(2)
+                    }
+                    .padding(16)
+                    .background(Color(UIColor.secondarySystemGroupedBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+
                     // Card 1: Primary Training Goal
                     VStack(alignment: .leading, spacing: 10) {
                         HStack(spacing: 8) {

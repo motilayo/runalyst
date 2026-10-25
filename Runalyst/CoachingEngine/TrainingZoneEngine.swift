@@ -78,6 +78,7 @@ struct TrainingZoneInput: Sendable {
     let daysSinceWorkout: Int
     let heightAdjustedCadenceFloor: Int
     let useMetricSystem: Bool
+    let userHeightCm: Double
     let isSubjectiveDistress: Bool
     let totalHistoricalRunsCount: Int
 
@@ -90,6 +91,7 @@ struct TrainingZoneInput: Sendable {
         daysSinceWorkout: Int,
         heightAdjustedCadenceFloor: Int,
         useMetricSystem: Bool,
+        userHeightCm: Double = 175.0,
         isSubjectiveDistress: Bool = false,
         totalHistoricalRunsCount: Int = 1
     ) {
@@ -101,6 +103,7 @@ struct TrainingZoneInput: Sendable {
         self.daysSinceWorkout = daysSinceWorkout
         self.heightAdjustedCadenceFloor = heightAdjustedCadenceFloor
         self.useMetricSystem = useMetricSystem
+        self.userHeightCm = userHeightCm
         self.isSubjectiveDistress = isSubjectiveDistress
         self.totalHistoricalRunsCount = totalHistoricalRunsCount
     }
@@ -258,7 +261,7 @@ enum TrainingZoneEngine {
             activeGoal: input.activeGoal,
             experienceLevel: input.experienceLevel,
             useMetric: input.useMetricSystem,
-            userHeightCm: 175.0,
+            userHeightCm: input.userHeightCm,
             now: Date()
         )
 
@@ -319,7 +322,8 @@ enum TrainingZoneEngine {
     ) -> LockedTrainingPrescription {
         let latestRun = runs.first(where: { !$0.isDeleted })
         let baselinePace = latestRun?.workingAvgPace
-        let cadenceFloor = profile?.heightAdjustedCadenceFloor ?? Int((150.0 / (max(130.0, min(220.0, userHeightCm)) / 175.0)).rounded())
+        let actualHeight = profile?.userHeightCm ?? userHeightCm
+        let cadenceFloor = profile?.heightAdjustedCadenceFloor ?? Int((150.0 / (max(130.0, min(220.0, actualHeight)) / 175.0)).rounded())
         let daysSince = latestRun.map { Calendar.current.dateComponents([.day], from: $0.date, to: now).day ?? 0 } ?? 0
 
         let input = TrainingZoneInput(
@@ -331,6 +335,7 @@ enum TrainingZoneEngine {
             daysSinceWorkout: daysSince,
             heightAdjustedCadenceFloor: cadenceFloor,
             useMetricSystem: useMetricSystem,
+            userHeightCm: actualHeight,
             isSubjectiveDistress: isSubjectiveDistress,
             totalHistoricalRunsCount: runs.count
         )

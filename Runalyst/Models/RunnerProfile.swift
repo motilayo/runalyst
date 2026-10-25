@@ -29,9 +29,9 @@ struct RunnerProfile: Equatable, Sendable {
     ]
 
     init(
-        name: String = "Joshua",
-        age: Int? = 28,
-        vo2Max: Double? = 40.5,
+        name: String = "Runner",
+        age: Int? = nil,
+        vo2Max: Double? = nil,
         experienceLevel: String,
         trainingGoal: String,
         userHeightCm: Double,
@@ -152,11 +152,11 @@ struct RunnerProfile: Equatable, Sendable {
     ) -> RunnerProfile {
         let defaults = UserDefaults.standard
         let storedName = defaults.string(forKey: "runnerName")
-        let name = runnerName ?? (storedName.flatMap { $0.isEmpty ? nil : $0 } ?? "Joshua")
+        let name = runnerName ?? (storedName.flatMap { $0.isEmpty ? nil : $0 } ?? "Runner")
         let storedAge = defaults.integer(forKey: "runnerAge")
-        let age = runnerAge ?? (storedAge > 0 ? storedAge : 28)
+        let age = runnerAge ?? (storedAge > 0 ? storedAge : nil)
         let storedVO2 = defaults.double(forKey: "cachedVO2Max")
-        let resolvedVO2 = vo2Max ?? (storedVO2 > 0 ? storedVO2 : 40.5)
+        let resolvedVO2 = vo2Max ?? (storedVO2 > 0 ? storedVO2 : nil)
 
         let goal = trainingGoal ?? defaults.string(forKey: "trainingGoal") ?? "5K Race"
         let storedLevel = defaults.string(forKey: "userExperienceLevel") ?? "Auto"

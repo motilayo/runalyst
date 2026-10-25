@@ -820,7 +820,7 @@ class AnalystChatEngine: ObservableObject {
             training_goal: activeGoal,
             cadence_floor_spm: profile.heightAdjustedCadenceFloor,
             status_guidance: statusGuidance,
-            athlete_name: profile.name,
+            athlete_name: (profile.name == "Runner" || profile.name.isEmpty) ? nil : profile.name,
             athlete_age: profile.age,
             athlete_vo2max: profile.vo2Max,
             weekly_volume_km: profile.weeklyAverageKm,
