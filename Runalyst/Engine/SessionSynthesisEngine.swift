@@ -213,6 +213,24 @@ enum DailyTrainingState: Sendable, Equatable {
             return true
         }
     }
+
+    public var todaySession: PrescribedDailySession? {
+        switch self {
+        case .preRun(let session):
+            return session
+        case .completedToday:
+            return nil
+        }
+    }
+
+    public var tomorrowSession: PrescribedDailySession? {
+        switch self {
+        case .preRun:
+            return nil
+        case .completedToday(_, let tomorrow):
+            return tomorrow
+        }
+    }
 }
 
 /// Swift Deterministic Session Synthesis Engine.

@@ -652,74 +652,18 @@ struct DashboardView: View {
         let verticalOscillationContext: String
 
         if targetTimeRange == "7 Days" {
-            // 7-DAY VIEW: Tactical Coach (Readiness & Acute Fatigue)
-            let heavySessions = timeRangeRuns.filter { run in
-                let type = run.detectedTypeRaw
-                let isHeavy = (type == "Intervals" || type == "Pyramids" || type == "Tempo Run" || type == "Hill Repeats")
-                let highZ4 = run.percentZone4 >= 0.35
-                return isHeavy || highZ4
-            }
-            let heavyCount = heavySessions.count
-
-            // Check for consecutive hard sessions (less than 36 hours apart)
-            var hasBackToBackHeavy = false
-            if heavySessions.count >= 2 {
-                for index in 0..<(heavySessions.count - 1) {
-                    let interval = heavySessions[index].date.timeIntervalSince(heavySessions[index + 1].date)
-                    if interval > 0 && interval < 36 * 3600 {
-                        hasBackToBackHeavy = true
-                        break
-                    }
-                }
-            }
-
-            let latestRun = timeRangeRuns.first
-            let hasFatigueDrift = latestRun?.framboiseTags.contains("fatigueDrift") ?? false
-
-            // Resolve personalized baseline cadence: prefer 30-day historical, then previous 7-day, then current 7-day
-            let personalizedBaselineCadence: Double = {
-                if let historical = latestRun?.computeHistoricalBaselineCadence(in: runRecords) {
-                    return historical
-                }
-                if let prev = previousBaselineCadence {
-                    return Double(prev)
-                }
-                if let base = baselineCadence {
-                    return Double(base)
-                }
-                return 160.0
-            }()
-
-            let latestCad = latestRun?.workingAvgCadence ?? personalizedBaselineCadence
-            let cadenceDiff = personalizedBaselineCadence - latestCad
-            let cadenceDropped = (latestCad > 0) && (cadenceDiff >= 3.5)
-
-            // High acute density: 6+ runs in 7 days
-            let isHighDensity = timeRangeRuns.count >= 6
-
-            let isCriticalFatigue = (heavyCount >= 3 && (cadenceDropped || hasFatigueDrift))
-                || (hasBackToBackHeavy && (cadenceDropped || hasFatigueDrift))
-                || (isHighDensity && heavyCount >= 2 && cadenceDropped && hasFatigueDrift)
-
-            let isModerateFatigue = heavyCount >= 2
-                || cadenceDropped
-                || hasFatigueDrift
-                || hasBackToBackHeavy
-                || (isHighDensity && heavyCount >= 1)
-
-            if isCriticalFatigue {
-                let dropText = cadenceDropped ? " with confirmed turnover decay of \(Int(round(cadenceDiff))) SPM" : ""
-                directiveContext = "CRITICAL_FATIGUE: Acute cumulative overload detected (\(heavyCount) hard sessions\(dropText)). PRIORITY: Tell the runner to take a full rest day or very gentle walk next, focusing on bringing fatigue down and resting their legs before their next run toward their \(trainingGoal) goal."
-                fatigueContext = "\(heavyCount) hard sessions; verified turnover decay under high acute density. Full rest recommended."
-            } else if isModerateFatigue {
-                let turnoverNote = cadenceDropped
-                    ? "Turnover shows mild decay (-3 to -4 SPM) after intense work."
-                    : "Cadence turnover remains stable, but acute training density is high."
-                directiveContext = "MODERATE_FATIGUE: Productive training fatigue from recent quality work. \(turnoverNote) PRIORITY: Tell the runner to do an easy recovery jog or light cross-training next, focusing on keeping their heart rate low and relaxed to consolidate fitness toward their \(trainingGoal) goal."
-                fatigueContext = "Moderate training strain from recent quality sessions. Recommend easy aerobic recovery in Zone 2."
-            } else {
-                directiveContext = "HIGH_READINESS: Balanced load, fresh legs, and consistent turnover. Athlete is primed for their next key workout. Recommend what kind of run to do next (such as a tempo run, intervals, or steady aerobic run) and what to focus on improving (like quickening cadence turnover, maintaining a steady pace, or building stamina) toward their \(trainingGoal) goal."
-                fatigueContext = "Readiness optimal. No acute cardiac or turnover fatigue."
+            // 7-DAY VIEW: Tactical Coach (Single Source of Truth: DailyTrainingState)
+            let activeSession = currentDailyTrainingState.activeSession
+            switch activeSession.intent {
+            case .fullRest:
+                directiveContext = "PRIORITY_FULL_REST: Training state is locked to FULL REST (0 minutes running). RATIONALE: \(activeSession.groundedRationale). Direct the runner clearly to take a full rest day with zero running to let their musculoskeletal system adapt toward their \(trainingGoal) goal."
+                fatigueContext = activeSession.groundedRationale
+            case .recoveryFlush:
+                directiveContext = "PRIORITY_RECOVERY_FLUSH: Training state is locked to ACTIVE RECOVERY FLUSH (\(activeSession.durationBand), \(activeSession.paceBand), \(activeSession.hrCap)). RATIONALE: \(activeSession.groundedRationale). Direct the runner to keep effort very light and heart rate strictly controlled toward their \(trainingGoal) goal."
+                fatigueContext = activeSession.groundedRationale
+            case .train:
+                directiveContext = "PRIORITY_TRAIN: Training state is locked to \(activeSession.sessionTitle) (\(activeSession.durationBand), \(activeSession.paceBand)). RATIONALE: \(activeSession.groundedRationale). Guide the runner on target pacing, turnover discipline, and form toward their \(trainingGoal) goal."
+                fatigueContext = activeSession.groundedRationale
             }
             efficiencyContext = ""
             verticalOscillationContext = ""

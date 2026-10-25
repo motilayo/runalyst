@@ -342,62 +342,26 @@ class AnalystChatEngine: ObservableObject {
         let contextBlock: String
         if mode == .macroCoach {
             let allRuns = (try? modelContext?.fetch(FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)]))) ?? (runRecord.map { [$0] } ?? [])
-            let todayRuns = allRuns.filter { calendar.calendar.isDateInToday($0.date) && !$0.isDeleted }
             let activeGoal = UserDefaults.standard.string(forKey: "trainingGoal") ?? "Base Building"
-            let profile = RunnerProfile.compute(from: allRuns)
-            let todaySchedule = calendar.evaluateSchedule(
-                from: today,
-                to: today,
-                context: ScheduleEvaluationContext(runRecords: allRuns, activeGoal: activeGoal, profile: profile, useMetric: useMetric)
-            ).first
+            let profile = RunnerProfile.compute(from: allRuns, trainingGoal: activeGoal)
+            let dailyState = DailyTrainingStateStore.shared.resolveState(
+                runRecords: allRuns,
+                activeGoal: activeGoal,
+                experienceLevel: profile.experienceLevel,
+                useMetric: useMetric,
+                userHeightCm: profile.userHeightCm,
+                now: today
+            )
+            let activeSession = dailyState.activeSession
+            let scheduledTodayStr = dailyState.isTodayCompleted
+                ? "Completed today. Tomorrow: \(activeSession.sessionTitle)"
+                : "\(activeSession.sessionTitle) (\(activeSession.durationBand))"
 
-            let scheduledTodayStr: String
-            if let plan = todaySchedule?.planned {
-                if plan.kind == .rest {
-                    scheduledTodayStr = "Rest Day"
-                } else {
-                    scheduledTodayStr = "\(plan.title) (\(plan.minutesLow)–\(plan.minutesHigh) min)"
-                }
-            } else {
-                scheduledTodayStr = "Rest Day"
-            }
-
-            let tomorrow = calendar.calendar.date(byAdding: .day, value: 1, to: today) ?? today
-            let tomorrowDateStr = df.string(from: tomorrow)
-            let tomorrowSchedule = calendar.evaluateSchedule(
-                from: calendar.startOfDay(for: tomorrow),
-                to: calendar.startOfDay(for: tomorrow),
-                context: ScheduleEvaluationContext(runRecords: allRuns, activeGoal: activeGoal, profile: profile, useMetric: useMetric)
-            ).first
-
-            let scheduledTomorrowStr: String
-            if let plan = tomorrowSchedule?.planned {
-                if plan.kind == .rest {
-                    scheduledTomorrowStr = "Rest Day"
-                } else {
-                    scheduledTomorrowStr = "\(plan.title) (\(plan.minutesLow)–\(plan.minutesHigh) min)"
-                }
-            } else {
-                scheduledTomorrowStr = "Rest Day"
-            }
-
-            let loggedTodayStr = todayRuns.isEmpty ? "None" : "\(todayRuns.count) run"
-
-            var nextRunNote = ""
-            if let next = findNextScheduledRun() {
-                let nextDayFormatter = DateFormatter()
-                nextDayFormatter.calendar = Calendar(identifier: .gregorian)
-                nextDayFormatter.locale = Locale(identifier: "en_US_POSIX")
-                nextDayFormatter.dateFormat = "EEEE"
-                let nextDayName = nextDayFormatter.string(from: next.date)
-                let nextDateStr = df.string(from: next.date)
-                nextRunNote = " Next Workout: \(nextDayName) (\(nextDateStr), \(next.day.planned.title), \(next.day.planned.minutesHigh)m)."
-            }
             let benchmark = profile.goalBenchmark
             let ageStr = profile.age.map { ", Age \($0)" } ?? ""
             let vo2Str = profile.vo2Max.map { ", VO2max \(String(format: "%.1f", $0))" } ?? ""
             let runnerLine = "Runner: \(profile.name) (\(Int(profile.userHeightCm))cm\(ageStr)\(vo2Str)) | \(profile.experienceLevel) | \(profile.trainingGoal) (\(Int(benchmark.targetWeeklyKmMin))–\(Int(benchmark.targetWeeklyKmMax))k/wk: \(benchmark.weeklyVolumeStatus.displayText))."
-            contextBlock = "\(runnerLine)\nToday: (\(todayDateStr)) \(scheduledTodayStr) (\(loggedTodayStr)). Tomorrow: (\(tomorrowDateStr)) \(scheduledTomorrowStr).\(nextRunNote)"
+            contextBlock = "\(runnerLine)\nToday: (\(todayDateStr)) Planned: \(scheduledTodayStr)."
         } else if let runRecord {
             let daysDiff = max(0, Calendar.current.dateComponents([.day], from: runRecord.date, to: Date()).day ?? 0)
             let runDateStr = df.string(from: runRecord.date)
