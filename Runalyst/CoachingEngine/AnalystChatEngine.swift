@@ -385,8 +385,13 @@ class AnalystChatEngine: ObservableObject {
 
             var nextRunNote = ""
             if let next = findNextScheduledRun() {
+                let nextDayFormatter = DateFormatter()
+                nextDayFormatter.calendar = Calendar(identifier: .gregorian)
+                nextDayFormatter.locale = Locale(identifier: "en_US_POSIX")
+                nextDayFormatter.dateFormat = "EEEE"
+                let nextDayName = nextDayFormatter.string(from: next.date)
                 let nextDateStr = df.string(from: next.date)
-                nextRunNote = " Next: \(nextDateStr) (\(next.day.planned.minutesHigh)m)."
+                nextRunNote = " Next Workout: \(nextDayName) (\(nextDateStr), \(next.day.planned.title), \(next.day.planned.minutesHigh)m)."
             }
             contextBlock = "Today: (\(todayDateStr)) \(scheduledTodayStr) (\(loggedTodayStr)). Tomorrow: (\(tomorrowDateStr)) \(scheduledTomorrowStr).\(nextRunNote)"
         } else if let runRecord {
@@ -406,7 +411,7 @@ class AnalystChatEngine: ObservableObject {
         let recentTurns = completedHistory.suffix(2)
 
         if !recentTurns.isEmpty {
-            var lines: [String] = ["RECENT DIALOGUE:"]
+            var lines: [String] = ["RECENT DIALOGUE (Reference Only):"]
             for msg in recentTurns {
                 let role = msg.sender == .user ? "Runner" : "Coach"
                 let cleaned = msg.text.replacingOccurrences(of: "\n", with: " ")
@@ -424,11 +429,11 @@ class AnalystChatEngine: ObservableObject {
         if mode == .runInspection {
             toolLines.append("• `inspectWorkout`: Splits.")
         }
-        toolLines.append("• `executeCoachAction`: Actions.")
+        toolLines.append("• `executeCoachAction`: (prescribe_drill, export_to_watch, update_goal, record_feedback).")
         let toolsBlock = toolLines.joined(separator: "\n")
 
         return """
-        Runalyst coach. Run alongside the athlete with warmth and clarity in 2–3 sentences.
+        Runalyst coach. Speak warmly in 2–3 sentences like a trusted running partner.
 
         CONTEXT:
         \(contextBlock)\(recentContextBlock)
@@ -437,13 +442,12 @@ class AnalystChatEngine: ObservableObject {
         \(toolsBlock)
 
         RULES:
-        • Presence: Translate data into human encouragement; never quote clinical tokens or labels.
-        • Workload: Trust 'workload_zone'. Underload means fresh legs and light volume; do not diagnose overload.
-        • Forward Focus: Look forward to upcoming runs; never audit past splits unasked.
-        • Medical Safety: Honor biology over data; urge rest on pain or fatigue. No unasked 2nd runs.
-        • Outside Running: Units in SPM, min/km (no LaTeX). Sidestep non-running topics gracefully.
-        • Silent Tools: Never write command names or code in conversational prose.
-        • Direct: State advice and stop cleanly without trailing questions or pleasantries.
+        • Anchor: Ground in today. If tomorrow is rest, do not call later runs tomorrow's run.
+        • Voice: Talk effort, breath, recovery. No clichés ('steady progress') or tokens ('underload zone').
+        • Workload: Trust 'workload_zone'. Underload means fresh legs; do not diagnose overload. Urge rest when absorbing miles.
+        • Medical Safety: Biology overrides data; urge rest on pain or fatigue. No unasked 2nd runs.
+        • Outside Running: Units in SPM, min/km (no LaTeX). Sidestep non-running topics.
+        • Silent Tools: Never write command names. Stop cleanly.
 
         Respond in \(language).
         """
@@ -775,6 +779,19 @@ class AnalystChatEngine: ObservableObject {
             workloadZone = .optimal
         }
 
+        let statusGuidance: String
+        if workloadZone == .underload && self.currentReadiness.state == .acuteFatigue {
+            statusGuidance = "Absorbing recent volume before building further. Overall chronic workload is light, but legs need recovery today from recent miles."
+        } else if workloadZone == .underload {
+            statusGuidance = "Fresh legs with low chronic training load. Well rested and primed to build."
+        } else if workloadZone == .optimal {
+            statusGuidance = "Balanced training load in the productive sweet spot."
+        } else if workloadZone == .overreaching {
+            statusGuidance = "Workload is elevated above baseline. Monitor recovery closely."
+        } else {
+            statusGuidance = "Acute training spike detected. Prioritize recovery to prevent overuse."
+        }
+
         let facts = ReadinessFacts(
             readiness_state: self.currentReadiness.state.rawValue,
             acwr: acwrVal,
@@ -793,7 +810,8 @@ class AnalystChatEngine: ObservableObject {
             limiting_factors: limitingFactors,
             experience_level: profile.experienceLevel,
             training_goal: activeGoal,
-            cadence_floor_spm: profile.heightAdjustedCadenceFloor
+            cadence_floor_spm: profile.heightAdjustedCadenceFloor,
+            status_guidance: statusGuidance
         )
 
         let encoder = JSONEncoder()

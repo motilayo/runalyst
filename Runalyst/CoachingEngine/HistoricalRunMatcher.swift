@@ -278,21 +278,35 @@ struct HistoricalRunMatcher {
             }
 
             let cadComp: String
-            if cadenceDelta > 0 {
-                cadComp = "+\(cadenceDelta) SPM higher turnover in current run (\(current.cadenceSPM) SPM in \(envCurrent) vs \(prior.cadenceSPM) SPM in \(envPrior))"
-            } else if cadenceDelta < 0 {
-                cadComp = "\(abs(cadenceDelta)) SPM lower turnover in current run (\(current.cadenceSPM) SPM in \(envCurrent) vs \(prior.cadenceSPM) SPM in \(envPrior))"
+            let cadDeltaOpt: Int?
+            if current.cadenceSPM > 0 && prior.cadenceSPM > 0 {
+                cadDeltaOpt = cadenceDelta
+                if cadenceDelta > 0 {
+                    cadComp = "+\(cadenceDelta) SPM higher turnover in current run (\(current.cadenceSPM) SPM in \(envCurrent) vs \(prior.cadenceSPM) SPM in \(envPrior))"
+                } else if cadenceDelta < 0 {
+                    cadComp = "\(abs(cadenceDelta)) SPM lower turnover in current run (\(current.cadenceSPM) SPM in \(envCurrent) vs \(prior.cadenceSPM) SPM in \(envPrior))"
+                } else {
+                    cadComp = "matched turnover at \(current.cadenceSPM) SPM (\(current.cadenceSPM) SPM in \(envCurrent) vs \(prior.cadenceSPM) SPM in \(envPrior))"
+                }
             } else {
-                cadComp = "matched turnover at \(current.cadenceSPM) SPM (\(current.cadenceSPM) SPM in \(envCurrent) vs \(prior.cadenceSPM) SPM in \(envPrior))"
+                cadDeltaOpt = nil
+                cadComp = "cadence unavailable for comparison (unrecorded sensor telemetry)"
             }
 
             let hrComp: String
-            if heartRateDelta > 0 {
-                hrComp = "+\(heartRateDelta) BPM higher cardiac cost in current run (\(current.heartRateBPM) BPM in \(envCurrent) vs \(prior.heartRateBPM) BPM in \(envPrior))"
-            } else if heartRateDelta < 0 {
-                hrComp = "\(abs(heartRateDelta)) BPM lower cardiovascular demand in current run (\(current.heartRateBPM) BPM in \(envCurrent) vs \(prior.heartRateBPM) BPM in \(envPrior))"
+            let hrDeltaOpt: Int?
+            if current.heartRateBPM > 0 && prior.heartRateBPM > 0 {
+                hrDeltaOpt = heartRateDelta
+                if heartRateDelta > 0 {
+                    hrComp = "+\(heartRateDelta) BPM higher cardiac cost in current run (\(current.heartRateBPM) BPM in \(envCurrent) vs \(prior.heartRateBPM) BPM in \(envPrior))"
+                } else if heartRateDelta < 0 {
+                    hrComp = "\(abs(heartRateDelta)) BPM lower cardiovascular demand in current run (\(current.heartRateBPM) BPM in \(envCurrent) vs \(prior.heartRateBPM) BPM in \(envPrior))"
+                } else {
+                    hrComp = "matched cardiac cost at \(current.heartRateBPM) BPM (\(current.heartRateBPM) BPM in \(envCurrent) vs \(prior.heartRateBPM) BPM in \(envPrior))"
+                }
             } else {
-                hrComp = "matched cardiac cost at \(current.heartRateBPM) BPM (\(current.heartRateBPM) BPM in \(envCurrent) vs \(prior.heartRateBPM) BPM in \(envPrior))"
+                hrDeltaOpt = nil
+                hrComp = "heart rate unavailable for comparison (unrecorded sensor telemetry)"
             }
 
             let distComp: String
@@ -313,15 +327,24 @@ struct HistoricalRunMatcher {
                 durComp = "matched duration"
             }
 
-            let summaryStr = "\(paceDeltaSeconds >= 0 ? "\(paceDeltaSeconds)s/km faster (+\(pacePercent)%)" : "\(abs(paceDeltaSeconds))s/km slower (-\(pacePercent)%)"), \(cadenceDelta >= 0 ? "+\(cadenceDelta)" : "\(cadenceDelta)") SPM turnover, \(heartRateDelta >= 0 ? "+\(heartRateDelta)" : "\(heartRateDelta)") BPM cardiac cost"
+            var summaryParts: [String] = [
+                paceDeltaSeconds >= 0 ? "\(paceDeltaSeconds)s/km faster (+\(pacePercent)%)" : "\(abs(paceDeltaSeconds))s/km slower (-\(pacePercent)%)"
+            ]
+            if let cd = cadDeltaOpt {
+                summaryParts.append("\(cd >= 0 ? "+\(cd)" : "\(cd)") SPM turnover")
+            }
+            if let hd = hrDeltaOpt {
+                summaryParts.append("\(hd >= 0 ? "+\(hd)" : "\(hd)") BPM cardiac cost")
+            }
+            let summaryStr = summaryParts.joined(separator: ", ")
 
             let deltas = TelemetryDeltaFacts(
                 pace_delta_seconds_per_km: paceDeltaSeconds,
                 pace_percentage_difference: pacePercent,
                 pace_comparison: paceComp,
-                cadence_delta_spm: cadenceDelta,
+                cadence_delta_spm: cadDeltaOpt,
                 cadence_comparison: cadComp,
-                heart_rate_delta_bpm: heartRateDelta,
+                heart_rate_delta_bpm: hrDeltaOpt,
                 heart_rate_comparison: hrComp,
                 distance_delta_km: distDiffKm,
                 distance_comparison: distComp,
@@ -376,40 +399,68 @@ struct HistoricalRunMatcher {
 
             let paceDeltaSec = Int(worst.paceSecondsPerKm.rounded() - best.paceSecondsPerKm.rounded())
             let bestVsWorstPacePercent = worst.paceSecondsPerKm > 0 ? Int(round(Double(abs(paceDeltaSec)) / worst.paceSecondsPerKm * 100.0)) : 0
-            let cadDelta = best.cadenceSPM - worst.cadenceSPM
-            let hrDelta = worst.heartRateBPM - best.heartRateBPM
+            let cadDelta: Int? = (best.cadenceSPM > 0 && worst.cadenceSPM > 0) ? (best.cadenceSPM - worst.cadenceSPM) : nil
+            let hrDelta: Int? = (worst.heartRateBPM > 0 && best.heartRateBPM > 0) ? (worst.heartRateBPM - best.heartRateBPM) : nil
+
+            let bestVsWorstCadComp: String = {
+                guard let cd = cadDelta else { return "Cadence unavailable for comparison (unrecorded telemetry)" }
+                return "Turnover was \(abs(cd)) SPM higher in best vs toughest (\(best.cadenceSPM) SPM vs \(worst.cadenceSPM) SPM)"
+            }()
+
+            let bestVsWorstHRComp: String = {
+                guard let hd = hrDelta else { return "Cardiac cost unavailable for comparison (unrecorded telemetry)" }
+                return "Cardiac load was \(hd) BPM lower in best vs toughest (\(best.heartRateBPM) BPM vs \(worst.heartRateBPM) BPM)"
+            }()
+
+            var bestVsWorstSummaryParts = ["Best workout was \(abs(paceDeltaSec))s/km faster (\(bestVsWorstPacePercent)% faster pace) than toughest (\(best.paceFormatted) vs \(worst.paceFormatted))"]
+            if let cd = cadDelta {
+                bestVsWorstSummaryParts.append("with +\(abs(cd)) SPM higher turnover")
+            }
+            let bestVsWorstSummary = bestVsWorstSummaryParts.joined(separator: " ")
 
             let bestVsWorstDeltas = TelemetryDeltaFacts(
                 pace_delta_seconds_per_km: paceDeltaSec,
                 pace_percentage_difference: bestVsWorstPacePercent,
                 pace_comparison: "Best workout was \(abs(paceDeltaSec))s/km faster (\(bestVsWorstPacePercent)% faster pace) than toughest (\(best.paceFormatted) vs \(worst.paceFormatted))",
                 cadence_delta_spm: cadDelta,
-                cadence_comparison: "Turnover was \(abs(cadDelta)) SPM higher in best vs toughest (\(best.cadenceSPM) SPM vs \(worst.cadenceSPM) SPM)",
-                heart_rate_delta_bpm: -hrDelta,
-                heart_rate_comparison: "Cardiac load was \(hrDelta) BPM lower in best vs toughest (\(best.heartRateBPM) BPM vs \(worst.heartRateBPM) BPM)",
+                cadence_comparison: bestVsWorstCadComp,
+                heart_rate_delta_bpm: hrDelta.map { -$0 },
+                heart_rate_comparison: bestVsWorstHRComp,
                 distance_delta_km: Double(String(format: "%.2f", (best.distanceMeters - worst.distanceMeters) / 1000.0)) ?? 0.0,
                 distance_comparison: "Distance difference: \(String(format: "%.2f", (best.distanceMeters - worst.distanceMeters) / 1000.0)) km",
                 duration_delta_minutes: Int((best.durationSeconds - worst.durationSeconds) / 60),
                 duration_comparison: "Duration difference: \(Int((best.durationSeconds - worst.durationSeconds) / 60)) min",
-                summary: "Best workout was \(abs(paceDeltaSec))s/km faster with +\(abs(cadDelta)) SPM higher turnover"
+                summary: bestVsWorstSummary
             )
 
             let currentVsBestDeltas: TelemetryDeltaFacts? = {
                 guard current.date != best.date else { return nil }
                 let currentPaceDiff = Int(current.paceSecondsPerKm.rounded() - best.paceSecondsPerKm.rounded())
                 let pacePercent = current.paceSecondsPerKm > 0 ? Int(round(Double(abs(currentPaceDiff)) / current.paceSecondsPerKm * 100.0)) : 0
-                let currentCadDiff = best.cadenceSPM - current.cadenceSPM
-                let currentHRDiff = current.heartRateBPM - best.heartRateBPM
+                let currentCadDiff: Int? = (best.cadenceSPM > 0 && current.cadenceSPM > 0) ? (best.cadenceSPM - current.cadenceSPM) : nil
+                let currentHRDiff: Int? = (current.heartRateBPM > 0 && best.heartRateBPM > 0) ? (current.heartRateBPM - best.heartRateBPM) : nil
 
                 let paceComp = currentPaceDiff > 0
                     ? "Best session was \(abs(currentPaceDiff))s/km faster (\(pacePercent)% faster pace) than current workout (\(best.paceFormatted) vs \(current.paceFormatted))"
                     : (currentPaceDiff < 0 ? "Current workout was \(abs(currentPaceDiff))s/km faster (\(pacePercent)% faster pace) than prior 30-day best (\(current.paceFormatted) vs \(best.paceFormatted))" : "Pace matched prior 30-day best at \(current.paceFormatted)")
-                let cadComp = currentCadDiff > 0
-                    ? "Turnover was \(currentCadDiff) SPM higher in best session vs current workout (\(best.cadenceSPM) SPM vs \(current.cadenceSPM) SPM)"
-                    : (currentCadDiff < 0 ? "Current workout turnover was \(abs(currentCadDiff)) SPM higher than prior best (\(current.cadenceSPM) SPM vs \(best.cadenceSPM) SPM)" : "Turnover matched at \(current.cadenceSPM) SPM")
-                let hrComp = currentHRDiff > 0
-                    ? "Cardiac cost was +\(currentHRDiff) BPM higher in current workout vs best session (\(current.heartRateBPM) BPM vs \(best.heartRateBPM) BPM)"
-                    : (currentHRDiff < 0 ? "Cardiac cost was \(abs(currentHRDiff)) BPM lower in current workout vs best session (\(current.heartRateBPM) BPM vs \(best.heartRateBPM) BPM)" : "Heart rate matched at \(current.heartRateBPM) BPM")
+                let cadComp: String = {
+                    guard let ccd = currentCadDiff else { return "Cadence unavailable for comparison" }
+                    return ccd > 0
+                        ? "Turnover was \(ccd) SPM higher in best session vs current workout (\(best.cadenceSPM) SPM vs \(current.cadenceSPM) SPM)"
+                        : (ccd < 0 ? "Current workout turnover was \(abs(ccd)) SPM higher than prior best (\(current.cadenceSPM) SPM vs \(best.cadenceSPM) SPM)" : "Turnover matched at \(current.cadenceSPM) SPM")
+                }()
+                let hrComp: String = {
+                    guard let chrd = currentHRDiff else { return "Heart rate unavailable for comparison" }
+                    return chrd > 0
+                        ? "Cardiac cost was +\(chrd) BPM higher in current workout vs best session (\(current.heartRateBPM) BPM vs \(best.heartRateBPM) BPM)"
+                        : (chrd < 0 ? "Cardiac cost was \(abs(chrd)) BPM lower in current workout vs best session (\(current.heartRateBPM) BPM vs \(best.heartRateBPM) BPM)" : "Heart rate matched at \(current.heartRateBPM) BPM")
+                }()
+
+                var curBestSummaryParts = ["30-day best was \(abs(currentPaceDiff))s/km faster (\(pacePercent)% faster pace)"]
+                if let ccd = currentCadDiff {
+                    curBestSummaryParts.append("with +\(abs(ccd)) SPM turnover")
+                }
+                let curBestSummary = curBestSummaryParts.joined(separator: " ")
 
                 return TelemetryDeltaFacts(
                     pace_delta_seconds_per_km: currentPaceDiff,
@@ -423,10 +474,11 @@ struct HistoricalRunMatcher {
                     distance_comparison: "Distance difference: \(String(format: "%.2f", (best.distanceMeters - current.distanceMeters) / 1000.0)) km",
                     duration_delta_minutes: Int((best.durationSeconds - current.durationSeconds) / 60),
                     duration_comparison: "Duration difference: \(Int((best.durationSeconds - current.durationSeconds) / 60)) min",
-                    summary: "30-day best was \(abs(currentPaceDiff))s/km faster (\(pacePercent)% faster pace) with +\(abs(currentCadDiff)) SPM turnover"
+                    summary: curBestSummary
                 )
             }()
 
+            let bestCadenceSuffix = best.cadenceSPM > 0 ? ", \(best.cadenceSPM) SPM" : ""
             return PerformanceArcFacts(
                 total_runs_in_past_30_days: totalRunsInPast30Days,
                 best_performance_workout: best.asSummary,
@@ -434,7 +486,7 @@ struct HistoricalRunMatcher {
                 current_workout: current.asSummary,
                 current_vs_best: currentVsBestDeltas,
                 best_vs_toughest: bestVsWorstDeltas,
-                summary: "30-day arc: \(totalRunsInPast30Days) workouts recorded. Best on \(best.weekday) (\(best.paceFormatted), \(best.cadenceSPM) SPM)."
+                summary: "30-day arc: \(totalRunsInPast30Days) workouts recorded. Best on \(best.weekday) (\(best.paceFormatted)\(bestCadenceSuffix))."
             )
         }
 
@@ -1175,6 +1227,9 @@ public enum WorkoutMathCalculator {
 
         let intA = Int(cadA.rounded())
         let intB = Int(cadB.rounded())
+        guard intA > 0 && intB > 0 else {
+            return fallbackErrorResult(operation: "cadence_delta", valueA: cadAString, valueB: cadBString)
+        }
         let diff = intA - intB
         let absDiff = abs(diff)
         let diffFormatted = diff >= 0 ? "+\(diff) SPM" : "-\(absDiff) SPM"
