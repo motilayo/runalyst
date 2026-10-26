@@ -852,7 +852,7 @@ public struct GetTrainingScheduleTool: Tool {
     public typealias Output = String
 
     public let name = "getTrainingSchedule"
-    public let description = "Queries planned workouts and completed activity across any calendar date range (ISO 'yyyy-MM-dd'). Returns completion status, logged sessions, and planned prescriptions. Only call when the athlete asks about their schedule, upcoming workouts, or training calendar."
+    public let description = "Queries planned workouts and completed activity across any calendar date range (ISO 'yyyy-MM-dd'). Returns completion status, logged sessions, and planned prescriptions."
 
     let provider: @MainActor @Sendable (GetTrainingScheduleQuery) async -> String
 
@@ -872,7 +872,7 @@ public struct GetReadinessAndWorkloadTool: Tool {
     public typealias Output = String
 
     public let name = "getReadinessAndWorkload"
-    public let description = "Queries current recovery, training load balance, and whether additional running is safe today. Only call when the athlete asks about readiness, recovery, fatigue, or workload."
+    public let description = "Queries athlete profile & physiology (height, experience, training goal, cadence floor), recovery readiness, training load balance, and today's training status."
 
     let provider: @MainActor @Sendable (GetReadinessAndWorkloadQuery) async -> String
 
@@ -892,7 +892,7 @@ public struct QueryWorkoutHistoryTool: Tool {
     public typealias Output = String
 
     public let name = "queryWorkoutHistory"
-    public let description = "Queries historical workout data: compares current run with past runs, ranks 30-day performance arc, or looks up specific runs. Only call when the athlete asks about past runs or performance."
+    public let description = "Queries historical workout data: compares current run with past runs, ranks 30-day performance arc, or looks up specific runs."
 
     let provider: @MainActor @Sendable (QueryWorkoutHistoryQuery) async -> String
 

@@ -769,9 +769,25 @@ final class AnalystChatEngineTests: XCTestCase {
 
         if #available(iOS 26.0, *) {
             let output = engine.executeReadinessAndWorkloadQueryForModel()
+            XCTAssertTrue(output.contains("ATHLETE PROFILE & PHYSIOLOGY:"), "Model tool telemetry must provide athlete profile facts")
+            XCTAssertTrue(output.contains("Height:"), "Model tool telemetry must provide height")
+            XCTAssertTrue(output.contains("Cadence Floor:"), "Model tool telemetry must provide height-adjusted cadence floor")
             XCTAssertTrue(output.contains("READINESS & WORKLOAD TELEMETRY:"))
             XCTAssertFalse(output.contains("underload"), "Model tool telemetry must never leak raw 'underload' token")
             XCTAssertFalse(output.contains("daily_volume_satisfied"), "Model tool telemetry must never label completed run as limiting factor")
+        }
+    }
+
+    func testMacroInstructionsOmitStaticWorkoutStatusLine() {
+        if #available(iOS 26.0, *) {
+            let engine = AnalystChatEngine(modelContext: nil, runRecord: nil, mode: .macroCoach)
+            let instructions = engine.buildLeanSystemInstructions()
+
+            XCTAssertTrue(instructions.contains("Athlete:"), "Prompt must identify athlete name cleanly")
+            XCTAssertTrue(instructions.contains("Today:"), "Prompt must provide calendar date grounding")
+            XCTAssertFalse(instructions.contains("Status:"), "Prompt must omit static workout status to avoid broken record repetition")
+            XCTAssertFalse(instructions.contains("Talk effort, breath, recovery"), "Prompt must not force per-message effort/breath keywords")
+            XCTAssertTrue(instructions.count < 1200, "System instructions must stay under 1,200 chars")
         }
     }
 }

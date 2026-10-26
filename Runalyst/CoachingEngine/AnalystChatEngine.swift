@@ -342,22 +342,10 @@ class AnalystChatEngine: ObservableObject {
             let allRuns = (try? modelContext?.fetch(FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)]))) ?? (runRecord.map { [$0] } ?? [])
             let activeGoal = UserDefaults.standard.string(forKey: "trainingGoal") ?? "Base Building"
             let profile = RunnerProfile.compute(from: allRuns, trainingGoal: activeGoal)
-            let dailyState = DailyTrainingStateStore.shared.resolveState(
-                runRecords: allRuns,
-                activeGoal: activeGoal,
-                experienceLevel: profile.experienceLevel,
-                useMetric: useMetric,
-                userHeightCm: profile.userHeightCm,
-                now: today
-            )
-            let activeSession = dailyState.activeSession
             let currentWeek = calendar.weekInterval(containing: today)
             let weekRange = "Week: \(calendar.formatISO(currentWeek.start))..\(calendar.formatISO(currentWeek.end))"
-            let statusStr = dailyState.isTodayCompleted
-                ? "Today's training is complete; next is tomorrow's \(activeSession.sessionTitle) (\(activeSession.durationBand))."
-                : "Today: \(activeSession.sessionTitle) (\(activeSession.durationBand))."
-            let runnerLine = "Runner: \(profile.name) | \(profile.experienceLevel) | \(profile.trainingGoal)."
-            contextBlock = "\(runnerLine)\nToday: \(todayDateStr) | \(weekRange)\nStatus: \(statusStr)"
+            let runnerLine = "Athlete: \(profile.name)"
+            contextBlock = "\(runnerLine)\nToday: \(todayDateStr) | \(weekRange)"
         } else if let runRecord {
             let daysDiff = max(0, Calendar.current.dateComponents([.day], from: runRecord.date, to: Date()).day ?? 0)
             let runDateStr = df.string(from: runRecord.date)
@@ -365,11 +353,11 @@ class AnalystChatEngine: ObservableObject {
             let runType = runRecord.normalizedClassification
             let envNote = (runRecord.isIndoor ?? false) ? "Indoor" : "Outdoor"
             let profile = self.runnerProfile
-            let runnerLine = "Runner: \(profile.name) (\(Int(profile.userHeightCm))cm) | \(profile.experienceLevel) | \(profile.trainingGoal)."
+            let runnerLine = "Athlete: \(profile.name)"
             contextBlock = "\(runnerLine)\nToday is \(todayDateStr). Workout: \(runType) (\(envNote), \(temporalGrounding))."
         } else {
             let profile = self.runnerProfile
-            contextBlock = "Runner: \(profile.name) | Today is \(todayDateStr)."
+            contextBlock = "Athlete: \(profile.name)\nToday is \(todayDateStr)."
         }
 
         var recentContextBlock = ""
@@ -409,8 +397,7 @@ class AnalystChatEngine: ObservableObject {
         \(toolsBlock)
 
         RULES:
-        • Anchor: Ground in today. Don't call future runs tomorrow's run.
-        • Voice: Talk effort, breath, recovery. Never leak tokens or code words.
+        • Role: Runalyst running coach talking with athlete. Answer questions directly in 1–3 sentences.
         • Workload: Trust 'workload_zone' and load balance. Light load means fresh legs; do not diagnose overload.
         • Medical Safety: Urge rest on pain or fatigue. No unasked 2nd runs today; do not contradict tomorrow's planned run.
         • Outside Running: Units: SPM, min/km (no LaTeX). Sidestep non-running topics.
@@ -859,15 +846,24 @@ class AnalystChatEngine: ObservableObject {
             : "\(Int(round(completedMinutes))) min logged of \(targetMinutes) min planned"
 
         var lines: [String] = [
-            "READINESS & WORKLOAD TELEMETRY:",
-            "• Readiness State: \(self.currentReadiness.state.rawValue.capitalized)",
-            "• Training Load Balance: \(loadBalanceDescription)",
-            "• Today's Work: \(todayStatusDesc)",
-            "• 48-Hour Volume: \(Int(round(streakSummary.last48hDurationMinutes))) min (\(streakSummary.consecutiveRunDays) consecutive run \(streakSummary.consecutiveRunDays == 1 ? "day" : "days"))",
-            "• Weekly Mileage: \(String(format: "%.1f", profile.weeklyAverageKm)) km/wk (Goal: \(activeGoal), Target: \(Int(benchmark.targetWeeklyKmMin))–\(Int(benchmark.targetWeeklyKmMax)) km/wk, Status: \(volumeStatusDesc))",
-            "• Primary Stimulus: \(benchmark.primaryStimulus)",
-            "• Cadence Floor: \(profile.heightAdjustedCadenceFloor) SPM"
+            "ATHLETE PROFILE & PHYSIOLOGY:",
+            "• Name: \(profile.name)",
+            "• Height: \(Int(profile.userHeightCm)) cm",
+            "• Experience Level: \(profile.experienceLevel)",
+            "• Training Goal: \(activeGoal)",
+            "• Height-Calibrated Cadence Floor: \(profile.heightAdjustedCadenceFloor) SPM"
         ]
+        if let vo2 = profile.vo2Max {
+            lines.append("• VO2 Max: \(Int(round(vo2)))")
+        }
+        lines.append("")
+        lines.append("READINESS & WORKLOAD TELEMETRY:")
+        lines.append("• Readiness State: \(self.currentReadiness.state.rawValue.capitalized)")
+        lines.append("• Training Load Balance: \(loadBalanceDescription)")
+        lines.append("• Today's Work: \(todayStatusDesc)")
+        lines.append("• 48-Hour Volume: \(Int(round(streakSummary.last48hDurationMinutes))) min (\(streakSummary.consecutiveRunDays) consecutive run \(streakSummary.consecutiveRunDays == 1 ? "day" : "days"))")
+        lines.append("• Weekly Mileage: \(String(format: "%.1f", profile.weeklyAverageKm)) km/wk (Target: \(Int(benchmark.targetWeeklyKmMin))–\(Int(benchmark.targetWeeklyKmMax)) km/wk, Status: \(volumeStatusDesc))")
+        lines.append("• Primary Stimulus: \(benchmark.primaryStimulus)")
 
         if streakSummary.shouldRecommendRestDay || streakSummary.consecutiveRunDays >= streakSummary.maxConsecutiveDays {
             lines.append("• Limiting Factor: Streak limit reached (\(streakSummary.consecutiveRunDays) days); rest advised.")
@@ -885,14 +881,13 @@ class AnalystChatEngine: ObservableObject {
     func executeCoachAction(query: ExecuteCoachActionQuery) async -> String {
         self.toolInvokedDuringActiveTurn = true
         let allRuns = (try? self.modelContext?.fetch(FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)]))) ?? (self.runRecord.map { [$0] } ?? [])
-        let profile = RunnerProfile.compute(from: allRuns)
 
         switch query.action {
         case .prescribeDrill:
             let resolved = PreRunDrillId.resolve(from: query.payload ?? "") ?? .strides
             self.drillRecommendedThisTurn = resolved
             harmonizeAttachments()
-            return "{\"drill_id\":\"\(resolved.rawValue)\",\"drill_name\":\"\(resolved.title)\",\"status\":\"drill_prescribed\",\"message\":\"The \(resolved.title) technique drill is attached to your recommendation.\"}"
+            return "{\"drill_id\":\"\(resolved.rawValue)\",\"drill_name\":\"\(resolved.title)\",\"timing\":\"Pre-Run Neuromuscular Primer (perform before your main run or standalone while legs are fresh)\",\"status\":\"drill_prescribed\",\"message\":\"The \(resolved.title) technique primer is attached to your recommendation.\"}"
 
         case .exportToWatch:
             let resolved = PreRunDrillId.resolve(from: query.payload ?? "") ?? .strides
