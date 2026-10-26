@@ -202,48 +202,63 @@ enum TrainingZoneEngine {
         let z5Str = matrix.zone5Interval.formatted(useMetric: input.useMetricSystem)
 
         // 4. Delegate Next-Session Prescription to SessionSynthesisEngine (Single Source of Truth)
-        let effectiveRuns: [RunRecord]
-        if !runs.isEmpty {
-            effectiveRuns = runs
-        } else {
-            let runDate = Calendar.current.date(byAdding: .day, value: -max(1, input.daysSinceWorkout), to: Date()) ?? Date().addingTimeInterval(-86400)
-            let repRun = RunRecord(
-                hkWorkoutID: UUID(),
-                date: runDate,
-                totalDistanceMeters: 5000.0,
-                duration: anchorPace * 5.0,
-                rawAvgPace: anchorPace,
-                rawAvgHeartRate: input.readyForHard ? 142.0 : 168.0,
-                rawAvgCadence: Double(input.heightAdjustedCadenceFloor),
-                workingAvgPace: anchorPace,
-                workingAvgCadence: Double(input.heightAdjustedCadenceFloor),
-                workingAvgHeartRate: input.readyForHard ? 142.0 : 168.0,
-                paceCV: 0.05,
-                paceSlope: 0.0,
-                percentZone4: 0.1,
-                detectedTypeRaw: input.readyForHard ? "Steady Effort" : "Recovery Jog"
+        let session: PrescribedDailySession
+        if runs.count > 1 {
+            let dailyState = DailyTrainingStateStore.shared.resolveState(
+                runRecords: runs,
+                activeGoal: input.activeGoal,
+                experienceLevel: input.experienceLevel,
+                useMetric: input.useMetricSystem,
+                userHeightCm: input.userHeightCm,
+                now: Date()
             )
-            if !input.readyForHard {
-                repRun.framboiseTags = [FramboiseReadinessTag.cardiacDrift]
-            }
-            effectiveRuns = [repRun]
-        }
-
-        let dailyState = DailyTrainingStateStore.shared.resolveState(
-            runRecords: effectiveRuns,
-            activeGoal: input.activeGoal,
-            experienceLevel: input.experienceLevel,
-            useMetric: input.useMetricSystem,
-            userHeightCm: input.userHeightCm,
-            now: Date()
-        )
-
-        let session: PrescribedDailySession = {
             switch dailyState {
-            case .preRun(let s): return s
-            case .completedToday(_, let tomorrow): return tomorrow
+            case .preRun(let s): session = s
+            case .completedToday(_, let tomorrow): session = tomorrow
             }
-        }()
+        } else {
+            // Standalone evaluation (e.g. from single runRecord in WorkoutAnalysisContext or synthetic test):
+            // Call SessionSynthesisEngine directly WITHOUT polluting the global DailyTrainingStateStore cache.
+            let effectiveRuns: [RunRecord]
+            if !runs.isEmpty {
+                effectiveRuns = runs
+            } else {
+                let runDate = Calendar.current.date(byAdding: .day, value: -max(1, input.daysSinceWorkout), to: Date()) ?? Date().addingTimeInterval(-86400)
+                let repRun = RunRecord(
+                    hkWorkoutID: UUID(),
+                    date: runDate,
+                    totalDistanceMeters: 5000.0,
+                    duration: anchorPace * 5.0,
+                    rawAvgPace: anchorPace,
+                    rawAvgHeartRate: input.readyForHard ? 142.0 : 168.0,
+                    rawAvgCadence: Double(input.heightAdjustedCadenceFloor),
+                    workingAvgPace: anchorPace,
+                    workingAvgCadence: Double(input.heightAdjustedCadenceFloor),
+                    workingAvgHeartRate: input.readyForHard ? 142.0 : 168.0,
+                    paceCV: 0.05,
+                    paceSlope: 0.0,
+                    percentZone4: 0.1,
+                    detectedTypeRaw: input.readyForHard ? "Steady Effort" : "Recovery Jog"
+                )
+                if !input.readyForHard {
+                    repRun.framboiseTags = [FramboiseReadinessTag.cardiacDrift]
+                }
+                effectiveRuns = [repRun]
+            }
+
+            let dailyState = SessionSynthesisEngine.evaluateDailyState(
+                runRecords: effectiveRuns,
+                activeGoal: input.activeGoal,
+                experienceLevel: input.experienceLevel,
+                useMetric: input.useMetricSystem,
+                userHeightCm: input.userHeightCm,
+                now: Date()
+            )
+            switch dailyState {
+            case .preRun(let s): session = s
+            case .completedToday(_, let tomorrow): session = tomorrow
+            }
+        }
 
         let nextName = session.sessionTitle
         let nextDur = session.durationBand

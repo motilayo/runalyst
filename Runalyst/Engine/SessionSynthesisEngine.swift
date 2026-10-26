@@ -81,8 +81,7 @@ struct PrescribedDailySession: Sendable, Equatable {
     var completedPrimerRun: RunRecordSnapshot?
     var intent: DailySessionIntent = .train
     var isRestDay: Bool {
-        get { intent == .fullRest }
-        set { intent = newValue ? .fullRest : .train }
+        intent == .fullRest
     }
     var dayLabel: String?
     var isToday: Bool = false
@@ -520,17 +519,17 @@ enum SessionSynthesisEngine {
 
         if streakSummary.shouldRecommendRestDay {
             let sessionTitle = "Rest & Structural Recovery Day"
-            let durationBand = "Rest Day (or 15m Walk/Mobility)"
+            let durationBand = "Full Rest Day"
             let paceBand = "No Pacing Target"
             let hrCap = "HR: Rest / < 125 BPM"
             let cadenceFloor = 0
             let rationale = streakSummary.restDayReason ?? "Scheduled rest day to consolidate aerobic adaptations and protect tendons."
             let readinessStatus = "Scheduled Structural Recovery"
             let primerDrillId: PreRunDrillId = .recoveryJog
-            let primerTitle = "Optional Recovery Jog"
-            let primerTarget = "Zone 1 HR"
-            let primerWork = "15 min active recovery jog • Keep HR in Zone 1"
-            let primerDuration = "15 min (Optional)"
+            let primerTitle = "Rest & Mobility"
+            let primerTarget = "Rest"
+            let primerWork = "Full rest • Mobility or gentle walking only"
+            let primerDuration = "0 min"
 
             let remainingHours = recoveryTimeline.readyForHard ? 0.0 : max(0.0, recoveryTimeline.requiredHours - (recoveryTimeline.hoursSinceLastHard ?? 0.0))
             let microcycle = generateMicrocycle(
@@ -575,6 +574,8 @@ enum SessionSynthesisEngine {
             )
         }
 
+        let zones = TrainingZoneCore.calculateZones(anchorPaceSecPerKm: basePace, activeGoal: activeGoal)
+
         if readiness.state == .acuteFatigue || hadCardiacDrift {
             readinessStatus = hadCardiacDrift
                 ? "Active Recovery Window (Post-\(recentRun?.detectedTypeRaw ?? "Workout") Drift)"
@@ -584,7 +585,6 @@ enum SessionSynthesisEngine {
             durationBand = "15–20 Min"
             mainRunDurationMinutes = 20
             mainSessionTemplateId = .recoveryJog
-            let zones = TrainingZoneCore.calculateZones(anchorPaceSecPerKm: basePace, activeGoal: activeGoal)
             paceBand = zones.zone1Recovery.formatted(useMetric: useMetric)
             hrCap = "HR: < 135 BPM"
             cadenceFloor = max(140, calibratedCadenceFloor - 6)
@@ -615,9 +615,7 @@ enum SessionSynthesisEngine {
             durationBand = "30–35 Min"
             mainRunDurationMinutes = 30
             mainSessionTemplateId = .zone2Run
-            let lowPace = basePace + 30.0
-            let highPace = basePace + 50.0
-            paceBand = formatPaceRange(lowSec: lowPace, highSec: highPace, useMetric: useMetric)
+            paceBand = zones.zone2AerobicBase.formatted(useMetric: useMetric)
             hrCap = "HR: < 150 BPM"
             cadenceFloor = calibratedCadenceFloor
 
@@ -638,9 +636,7 @@ enum SessionSynthesisEngine {
                 durationBand = "30–35 Min"
                 mainRunDurationMinutes = 30
                 mainSessionTemplateId = .rhythmIntervals
-                let lowPace = basePace - 15.0
-                let highPace = basePace + 5.0
-                paceBand = formatPaceRange(lowSec: lowPace, highSec: highPace, useMetric: useMetric)
+                paceBand = zones.zone5Interval.formatted(useMetric: useMetric)
                 hrCap = "HR: < 168 BPM"
                 cadenceFloor = max(160, calibratedCadenceFloor)
                 rationale = "Cleared for quality work. Today targets your 5K race pace turnover with crisp aerobic interval reps."
@@ -654,9 +650,7 @@ enum SessionSynthesisEngine {
                 durationBand = "35–40 Min"
                 mainRunDurationMinutes = 35
                 mainSessionTemplateId = .tempoSurges
-                let lowPace = basePace - 10.0
-                let highPace = basePace + 5.0
-                paceBand = formatPaceRange(lowSec: lowPace, highSec: highPace, useMetric: useMetric)
+                paceBand = zones.zone4Threshold.formatted(useMetric: useMetric)
                 hrCap = "HR: < 165 BPM"
                 cadenceFloor = max(155, calibratedCadenceFloor)
                 rationale = "Cleared for quality work. Today targets lactate threshold resistance with controlled tempo surges."
@@ -671,9 +665,7 @@ enum SessionSynthesisEngine {
                     durationBand = "35–40 Min"
                     mainRunDurationMinutes = 35
                     mainSessionTemplateId = .tempoSurges
-                    let lowPace = basePace - 5.0
-                    let highPace = basePace + 10.0
-                    paceBand = formatPaceRange(lowSec: lowPace, highSec: highPace, useMetric: useMetric)
+                    paceBand = zones.zone4Threshold.formatted(useMetric: useMetric)
                     hrCap = "HR: < 162 BPM"
                     cadenceFloor = calibratedCadenceFloor
                     rationale = "Cleared for quality work. Today introduces threshold surges to elevate metabolic efficiency toward \(activeGoal)."
@@ -689,9 +681,7 @@ enum SessionSynthesisEngine {
                     durationBand = band
                     mainRunDurationMinutes = mins
                     mainSessionTemplateId = .zone2Run
-                    let lowPace = basePace + 20.0
-                    let highPace = basePace + 45.0
-                    paceBand = formatPaceRange(lowSec: lowPace, highSec: highPace, useMetric: useMetric)
+                    paceBand = zones.zone2AerobicBase.formatted(useMetric: useMetric)
                     hrCap = "HR: < 152 BPM"
                     cadenceFloor = calibratedCadenceFloor
                     rationale = "Quality stimulus already banked for the week. Today maintains polarized aerobic development at conversational pace toward \(activeGoal)."
@@ -708,9 +698,7 @@ enum SessionSynthesisEngine {
                 durationBand = band
                 mainRunDurationMinutes = mins
                 mainSessionTemplateId = .zone2Run
-                let lowPace = basePace + 20.0
-                let highPace = basePace + 45.0
-                paceBand = formatPaceRange(lowSec: lowPace, highSec: highPace, useMetric: useMetric)
+                paceBand = zones.zone2AerobicBase.formatted(useMetric: useMetric)
                 hrCap = "HR: < 152 BPM"
                 cadenceFloor = calibratedCadenceFloor
                 var baseRationale = "Aerobic foundation primed. Build continuous capillary density and fat oxidation capacity toward \(activeGoal)."
@@ -735,9 +723,7 @@ enum SessionSynthesisEngine {
             durationBand = band
             mainRunDurationMinutes = mins
             mainSessionTemplateId = .zone2Run
-            let lowPace = basePace + 20.0
-            let highPace = basePace + 45.0
-            paceBand = formatPaceRange(lowSec: lowPace, highSec: highPace, useMetric: useMetric)
+            paceBand = zones.zone2AerobicBase.formatted(useMetric: useMetric)
             hrCap = "HR: < 152 BPM"
             cadenceFloor = calibratedCadenceFloor
             var polarizedRationale = "Quality stimulus already banked for the week. Today maintains 80/20 polarized aerobic balance to consolidate fitness without overloading your nervous system."
@@ -805,7 +791,7 @@ enum SessionSynthesisEngine {
         let totalSessionMins = (todayIntent == .fullRest) ? 0 : (primerMins + mainRunDurationMinutes)
         let effectiveDurationBand: String = {
             if todayIntent == .fullRest {
-                return "Rest Day (or 15m Walk/Mobility)"
+                return "Full Rest Day"
             }
             return "\(totalSessionMins) Min"
         }()
@@ -894,7 +880,7 @@ enum SessionSynthesisEngine {
 
         if streakSummary.shouldRecommendRestDay {
             let tomorrowTitle = "Rest & Structural Recovery Day"
-            let durationBand = "Rest Day (or 15m Walk/Mobility)"
+            let durationBand = "Full Rest Day"
             let paceBand = "No Pacing Target"
             let hrCap = "HR: Rest / < 125 BPM"
             let cadenceFloor = 0
@@ -905,10 +891,10 @@ enum SessionSynthesisEngine {
                 : "Consecutive Day Streak Cap Reached (\(streakSummary.consecutiveRunDays) Days)"
 
             let primerDrillId: PreRunDrillId = .recoveryJog
-            let primerTitle = "Optional Recovery Jog"
-            let primerTarget = "Zone 1 HR"
-            let primerWork = "15 min active recovery jog • Keep HR in Zone 1"
-            let primerDuration = "15 min (Optional)"
+            let primerTitle = "Rest & Mobility"
+            let primerTarget = "Rest"
+            let primerWork = "Full rest • Mobility or gentle walk optional"
+            let primerDuration = "0 min"
 
             let tomorrowDate = Calendar.current.date(byAdding: .day, value: 1, to: context.now) ?? context.now
             let tomorrowWeekday = TrainingCalendar.weekdayFormatter.string(from: tomorrowDate)
@@ -1055,7 +1041,7 @@ enum SessionSynthesisEngine {
         let totalTomorrowMins = (tomorrowIntent == .fullRest) ? 0 : (tomorrowPrimerMins + mainRunDurationMinutes)
         let effectiveTomorrowDurationBand: String = {
             if tomorrowIntent == .fullRest {
-                return "Rest Day (or 15m Walk/Mobility)"
+                return "Full Rest Day"
             }
             return "\(totalTomorrowMins) Min"
         }()
@@ -1218,14 +1204,33 @@ enum SessionSynthesisEngine {
                 cal.firstWeekday = 1
                 let weekday = cal.component(.weekday, from: tomorrow)
                 let template = templateSessionForWeekday(weekday: weekday, activeGoal: activeGoal, profile: profile, useMetric: useMetric)
+                let (minsLow, minsHigh): (Int, Int) = {
+                    if isRest { return (0, 0) }
+                    if title.contains("Recovery Flush") { return (35, 40) }
+                    return (template.minutesLow, template.minutesHigh)
+                }()
+                let tomorrowIntent: DailySessionIntent = {
+                    if isRest { return .fullRest }
+                    if title.contains("Recovery Flush") { return .recoveryFlush }
+                    return .train
+                }()
+                let resolvedPaceBand: String? = {
+                    if isRest { return nil }
+                    let weightedBase = computeWeightedBaseline(from: runRecords, priorTo: now)
+                    let zones = TrainingZoneCore.calculateZones(anchorPaceSecPerKm: weightedBase.pace, activeGoal: activeGoal)
+                    if title.contains("Recovery Flush") {
+                        return zones.zone1Recovery.formatted(useMetric: useMetric)
+                    }
+                    return template.paceBand ?? zones.zone2AerobicBase.formatted(useMetric: useMetric)
+                }()
                 return PlannedSession(
                     kind: isRest ? .rest : .run,
-                    intent: isRest ? .fullRest : .train,
+                    intent: tomorrowIntent,
                     title: title,
-                    minutesLow: isRest ? 0 : template.minutesLow,
-                    minutesHigh: isRest ? 0 : template.minutesHigh,
-                    paceBand: isRest ? nil : template.paceBand,
-                    hrCap: isRest ? "HR: Rest / < 125 BPM" : (template.hrCap ?? "HR: < 150 BPM"),
+                    minutesLow: minsLow,
+                    minutesHigh: minsHigh,
+                    paceBand: resolvedPaceBand,
+                    hrCap: isRest ? "HR: Rest / < 125 BPM" : (tomorrowIntent == .recoveryFlush ? "HR: < 135 BPM" : (template.hrCap ?? "HR: < 150 BPM")),
                     cadenceFloor: isRest ? nil : (template.cadenceFloor ?? profile.heightAdjustedCadenceFloor),
                     primerTitle: isRest ? nil : template.primerTitle,
                     adjustmentTriggers: todaySession.isTrimmed ? ["recovery_window"] : [],
@@ -1265,14 +1270,33 @@ enum SessionSynthesisEngine {
                 cal.firstWeekday = 1
                 let weekday = cal.component(.weekday, from: targetDay)
                 let template = templateSessionForWeekday(weekday: weekday, activeGoal: activeGoal, profile: profile, useMetric: useMetric)
+                let (minsLow, minsHigh): (Int, Int) = {
+                    if matchedDay.isRestDay { return (0, 0) }
+                    if matchedDay.sessionTitle.contains("Recovery Flush") { return (35, 40) }
+                    return (template.minutesLow, template.minutesHigh)
+                }()
+                let dayIntent: DailySessionIntent = {
+                    if matchedDay.isRestDay { return .fullRest }
+                    if matchedDay.sessionTitle.contains("Recovery Flush") { return .recoveryFlush }
+                    return .train
+                }()
+                let resolvedPaceBand: String? = {
+                    if matchedDay.isRestDay { return nil }
+                    let weightedBase = computeWeightedBaseline(from: runRecords, priorTo: now)
+                    let zones = TrainingZoneCore.calculateZones(anchorPaceSecPerKm: weightedBase.pace, activeGoal: activeGoal)
+                    if matchedDay.sessionTitle.contains("Recovery Flush") {
+                        return zones.zone1Recovery.formatted(useMetric: useMetric)
+                    }
+                    return template.paceBand ?? zones.zone2AerobicBase.formatted(useMetric: useMetric)
+                }()
                 return PlannedSession(
                     kind: matchedDay.isRestDay ? .rest : .run,
-                    intent: matchedDay.isRestDay ? .fullRest : .train,
+                    intent: dayIntent,
                     title: matchedDay.sessionTitle,
-                    minutesLow: matchedDay.isRestDay ? 0 : template.minutesLow,
-                    minutesHigh: matchedDay.isRestDay ? 0 : template.minutesHigh,
-                    paceBand: matchedDay.isRestDay ? nil : template.paceBand,
-                    hrCap: matchedDay.isRestDay ? "HR: Rest / < 125 BPM" : (template.hrCap ?? "HR: < 150 BPM"),
+                    minutesLow: minsLow,
+                    minutesHigh: minsHigh,
+                    paceBand: resolvedPaceBand,
+                    hrCap: matchedDay.isRestDay ? "HR: Rest / < 125 BPM" : (dayIntent == .recoveryFlush ? "HR: < 135 BPM" : (template.hrCap ?? "HR: < 150 BPM")),
                     cadenceFloor: matchedDay.isRestDay ? nil : (template.cadenceFloor ?? profile.heightAdjustedCadenceFloor),
                     primerTitle: matchedDay.isRestDay ? nil : template.primerTitle,
                     adjustmentTriggers: [],

@@ -255,31 +255,27 @@ struct PrescribedSessionCardView: View {
                     .foregroundColor(.purple)
             }
 
-            // Clean Divider (Eliminates Nested Card-in-Card Container)
+            // Clean Divider
             Divider()
                 .opacity(0.4)
                 .padding(.vertical, 2)
 
-            // Optional Active Recovery Jog Card (Unified with Drills & Runs Library)
-            DrillPrimerCardView(
-                drillId: .recoveryJog,
-                config: DrillCardConfig(
-                    customTitle: "Recovery Jog",
-                    customPurpose: "Promote blood flow & tissue recovery",
-                    customTarget: "Zone 1 HR",
-                    categoryLabel: "OPTIONAL",
-                    canChangeDuration: false,
-                    lockedDuration: DrillDuration.nearest(toMinutes: session.mainRunDurationMinutes)
-                ),
-                baselineCadence: session.cadenceFloor,
-                onPreview: {
-                    if let onScheduleFlushOverride {
-                        onScheduleFlushOverride()
-                    } else {
-                        onPreviewMainRun?()
-                    }
+            // Structural Rest & Unweighting Guidance
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 8) {
+                    Image(systemName: "bed.double.fill")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(Color(red: 0.0, green: 0.75, blue: 0.65))
+                    Text("Zero Running Scheduled")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundColor(.primary)
                 }
-            )
+                Text("Complete rest day to allow structural tendon remodeling, glycogen replenishment, and joint unweighting. Light walking (15–20 min) or dynamic mobility is welcome, but running impact is restricted.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .lineSpacing(2)
+            }
+            .padding(.top, 2)
         }
     }
 

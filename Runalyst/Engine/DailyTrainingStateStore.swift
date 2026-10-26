@@ -71,14 +71,20 @@ final class DailyTrainingStateStore {
     static func computeFingerprint(runs: [RunRecord]) -> String {
         let active = runs.filter { !$0.isDeleted }
         guard let first = active.first else { return "empty" }
-        let tagsHash = first.framboiseTags.joined(separator: ",")
-        let indoorStr = (first.isIndoor ?? false) ? "indoor" : "outdoor"
-        let detectedType = first.detectedTypeRaw
-        let prov = first.classificationProvenanceRaw ?? "none"
-        let dur = Int(first.duration.rounded())
+        var hasher = Hasher()
+        hasher.combine(active.count)
         let cal = Calendar.current
-        let todayRuns = active.filter { cal.isDateInToday($0.date) }
-        let todayRunsKey = todayRuns.map { "\($0.id.uuidString):\($0.prescribedDrillName ?? "none"):\(Int($0.duration))" }.joined(separator: "|")
-        return "\(active.count)-\(first.id.uuidString)-\(Int(first.date.timeIntervalSince1970))-\(dur)-\(indoorStr)-\(detectedType)-\(prov)-\(tagsHash)-today[\(todayRunsKey)]"
+        let thirtyDaysAgo = cal.date(byAdding: .day, value: -30, to: Date()) ?? Date().addingTimeInterval(-30 * 86400)
+        for r in active where r.date >= thirtyDaysAgo {
+            hasher.combine(r.id)
+            hasher.combine(r.date.timeIntervalSince1970)
+            hasher.combine(Int(r.duration))
+            hasher.combine(r.isIndoor ?? false)
+            hasher.combine(r.detectedTypeRaw)
+            hasher.combine(r.classificationProvenanceRaw ?? "")
+            hasher.combine(r.prescribedDrillName ?? "")
+            hasher.combine(r.framboiseTags.joined(separator: ","))
+        }
+        return "\(active.count)-\(first.id.uuidString)-\(hasher.finalize())"
     }
 }
