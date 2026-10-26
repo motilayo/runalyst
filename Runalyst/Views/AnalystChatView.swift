@@ -45,22 +45,7 @@ struct AnalystChatView: View {
 
     private var headerSubtitle: String {
         if mode == .macroCoach {
-            if let latest = runRecords.first {
-                let cal = Calendar.current
-                let isRunToday = cal.isDateInToday(latest.date)
-                let typeStr = latest.detectedTypeRaw.isEmpty ? "Run" : latest.detectedTypeRaw
-                let formatter = DateFormatter()
-                formatter.locale = Locale(identifier: "en_US_POSIX")
-                formatter.dateFormat = "EEE, MMM d"
-                let dateStr = formatter.string(from: latest.date)
-                if isRunToday {
-                    return "🔒 On-Device • Today's \(typeStr) Logged"
-                } else {
-                    return "🔒 On-Device • Last Run: \(dateStr)"
-                }
-            } else {
-                return "🔒 On-Device • Daily Training Guidance"
-            }
+            return "🔒 On-Device • Daily Training Guidance"
         } else if let runRecord {
             let formatter = DateFormatter()
             formatter.locale = Locale(identifier: "en_US_POSIX")
@@ -125,7 +110,7 @@ struct AnalystChatView: View {
                                 HStack(spacing: 8) {
                                     ProgressView()
                                         .tint(.purple)
-                                    Text("Looking over your run...")
+                                    Text(mode == .macroCoach ? "Reviewing training guidance..." : "Looking over your run...")
                                         .font(.caption)
                                         .foregroundColor(.secondary)
                                 }
@@ -183,7 +168,7 @@ struct AnalystChatView: View {
 
                     // Text Input Bar
                     HStack(spacing: 10) {
-                        TextField("Ask about pace, heart rate, cadence...", text: $inputText)
+                        TextField(mode == .macroCoach ? "Ask about schedule, readiness, recovery..." : "Ask about pace, heart rate, cadence...", text: $inputText)
                             .font(.subheadline)
                             .padding(.horizontal, 16)
                             .padding(.vertical, 10)
@@ -503,18 +488,12 @@ struct AnalystChatView: View {
                             : "Am I recovered to run today, or should I take a rest day?"
                         submitQuestion()
                     }
-                    if let latest = runRecords.first {
-                        chipButton("Review Last Run", icon: "clock.arrow.circlepath", iconColor: Color(red: 0.18, green: 0.82, blue: 0.35)) {
-                            let df = DateFormatter()
-                            df.locale = Locale(identifier: "en_US_POSIX")
-                            df.dateFormat = "EEEE"
-                            let weekday = df.string(from: latest.date)
-                            inputText = "How was my effort and pacing during \(weekday)'s \(latest.detectedTypeRaw)?"
-                            submitQuestion()
-                        }
-                    }
                     chipButton("Weekly Training Status", icon: "calendar", iconColor: .purple) {
                         inputText = "How is my weekly mileage and overall training balance?"
+                        submitQuestion()
+                    }
+                    chipButton("Goal & Plan", icon: "flag.fill", iconColor: Color(red: 0.18, green: 0.82, blue: 0.35)) {
+                        inputText = "How is my progress toward my training goal?"
                         submitQuestion()
                     }
                 } else if let runRecord {
@@ -709,7 +688,7 @@ struct AnalystChatView: View {
             purpose: session.groundedRationale,
             targetCadence: session.primerTargetCadence,
             previousCadence: session.cadenceFloor,
-            durationMinutes: session.primerDrillId.defaultDuration.rawValue,
+            durationMinutes: session.primerDurationMinutes,
             hapticMode: "On",
             readinessState: state == .productive ? nil : state.rawValue,
             isIndoor: preferredWorkoutIsIndoor
@@ -787,35 +766,15 @@ struct InlineChatDrillCard: View {
         return title.isEmpty ? drillId.title : title
     }
 
-    private var currentPrescription: LockedTrainingPrescription? {
+    private var dailySession: PrescribedDailySession? {
         guard drillId.isAerobicContinuous else { return nil }
-        let useMetric = (UserDefaults.standard.object(forKey: "useMetricSystem") as? Bool) ?? true
-        let readiness = ReadinessEvaluator.assess(runRecords: runRecords)
-        let timeline = RecoveryTimeline.build(
-            runs: runRecords.map { ReadinessRunSnapshot(run: $0) },
-            readiness: readiness,
-            now: Date()
-        )
-        let profile = RunnerProfile.compute(from: runRecords)
-        let pace = (effectiveRun?.workingAvgPace ?? 0) > 0 ? effectiveRun?.workingAvgPace : nil
-        let daysDiff = effectiveRun.map { Calendar.current.dateComponents([.day], from: $0.date, to: Date()).day ?? 0 } ?? 0
-        let tzInput = TrainingZoneInput(
-            baselinePaceSec: pace,
-            workoutPaceSec: pace,
-            activeGoal: UserDefaults.standard.string(forKey: "trainingGoal") ?? "Base Building",
-            experienceLevel: profile.experienceLevel,
-            readyForHard: timeline.readyForHard,
-            daysSinceWorkout: daysDiff,
-            heightAdjustedCadenceFloor: profile.heightAdjustedCadenceFloor,
-            useMetricSystem: useMetric,
-            totalHistoricalRunsCount: runRecords.count
-        )
-        return TrainingZoneEngine.computePrescription(tzInput, runs: runRecords)
+        let state = DailyTrainingStateStore.shared.resolveState(runRecords: runRecords)
+        return state.activeSession
     }
 
     private var durationDisplay: String {
-        if let rx = currentPrescription, !rx.compactDurationBand.isEmpty && rx.compactDurationBand != "Rest Day" {
-            return rx.compactDurationBand
+        if let session = dailySession, !session.durationBand.isEmpty && session.intent != .fullRest {
+            return session.durationBand
         }
         return drillId.defaultDuration.title
     }
@@ -833,26 +792,8 @@ struct InlineChatDrillCard: View {
     }
 
     private var resolvedDrillDuration: DrillDuration {
-        if let rx = currentPrescription {
-            let band = rx.compactDurationBand
-            let digits = band.components(separatedBy: CharacterSet.decimalDigits.inverted).filter { !$0.isEmpty }
-            if let firstStr = digits.first, let firstVal = Int(firstStr) {
-                let secondVal = digits.count > 1 ? (Int(digits[1]) ?? firstVal) : firstVal
-                let targetMins = (firstVal + secondVal) / 2
-                if targetMins >= 45 {
-                    return .fiftyMinutes
-                } else if targetMins >= 35 {
-                    return .fortyMinutes
-                } else if targetMins >= 25 {
-                    return .thirtyMinutes
-                } else if targetMins >= 12 {
-                    return .fifteenMinutes
-                } else if targetMins >= 8 {
-                    return .tenMinutes
-                } else {
-                    return .fiveMinutes
-                }
-            }
+        if let session = dailySession {
+            return DrillDuration.nearest(toMinutes: session.mainRunDurationMinutes)
         }
         return drillId.defaultDuration
     }

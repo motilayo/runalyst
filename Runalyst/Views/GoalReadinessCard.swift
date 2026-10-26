@@ -180,22 +180,14 @@ struct GoalReadinessCard: View {
     // MARK: - Deterministic Mathematical Evaluation
 
     private func computeGoalSpec() -> GoalSpecData {
-        let cal = Calendar.current
         let now = Date()
-        let thirtyDaysAgo = cal.date(byAdding: .day, value: -30, to: now) ?? now.addingTimeInterval(-30 * 24 * 3600)
-        let recentRuns = allRuns.filter { $0.date >= thirtyDaysAgo && $0.date <= now }
-
-        let totalMeters30Days = recentRuns.reduce(0.0) { $0 + $1.totalDistanceMeters }
-        let weeklyAvgKm = (totalMeters30Days / 1000.0) / (30.0 / 7.0)
+        let fourWeeksAgo = Calendar.current.date(byAdding: .day, value: -28, to: now) ?? now
+        let recentRuns = allRuns.filter { $0.date >= fourWeeksAgo && !$0.isDeleted }
+        let profile = RunnerProfile.compute(from: allRuns, trainingGoal: trainingGoal, now: now)
+        let weeklyAvgKm = profile.weeklyAverageKm
         let weeklyAvgDistanceFormatted = formatDistance(km: weeklyAvgKm) + "/wk"
-
-        let longestRecentRunMeters = recentRuns.map(\.totalDistanceMeters).max()
-            ?? allRuns.map(\.totalDistanceMeters).max()
-            ?? 0.0
-        let longestRecentRunKm = longestRecentRunMeters / 1000.0
-
-        let uniqueDays = Set(recentRuns.map { cal.startOfDay(for: $0.date) })
-        let runsPerWeek = Double(uniqueDays.count) / (30.0 / 7.0)
+        let longestRecentRunKm = profile.longestRunKm
+        let runsPerWeek = profile.runsPerWeek
 
         guard !allRuns.isEmpty else {
             return GoalSpecData(

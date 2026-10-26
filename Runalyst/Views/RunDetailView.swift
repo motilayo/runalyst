@@ -33,81 +33,32 @@ struct RunDetailView: View {
         }
     }
 
-    private var baselineRuns: [RunRecord] {
-        guard let thirtyDaysAgo = Calendar.current.date(byAdding: .day, value: -30, to: runRecord.date) else { return [] }
-        return existingRuns.filter {
-            $0.date < runRecord.date &&
-            $0.date >= thirtyDaysAgo
-        }
+    private var baselineStats: SessionSynthesisEngine.WeightedBaselineStats? {
+        SessionSynthesisEngine.computeWeightedBaselineStats(from: existingRuns, priorTo: runRecord.date)
     }
 
     private var baselinePace: Double? {
-        let runs = baselineRuns.filter { $0.workingAvgPace > 0 }
-        guard !runs.isEmpty else { return nil }
-        let totalDuration = runs.map(\.duration).reduce(0, +)
-        guard totalDuration > 0 else {
-            return runs.map(\.workingAvgPace).reduce(0, +) / Double(runs.count)
-        }
-        return runs.map { $0.workingAvgPace * $0.duration }.reduce(0, +) / totalDuration
+        baselineStats?.avgPace
     }
 
     private var baselineHR: Double? {
-        let runs = baselineRuns.filter { $0.workingAvgHeartRate > 0 }
-        guard !runs.isEmpty else { return nil }
-        let totalDuration = runs.map(\.duration).reduce(0, +)
-        guard totalDuration > 0 else {
-            return Double(runs.map(\.workingAvgHeartRate).reduce(0, +)) / Double(runs.count)
-        }
-        return runs.map { Double($0.workingAvgHeartRate) * $0.duration }.reduce(0, +) / totalDuration
+        baselineStats?.avgHR
     }
 
     private var baselineCadence: Double? {
-        let runs = baselineRuns.filter { $0.workingAvgCadence > 0 }
-        guard !runs.isEmpty else { return nil }
-        let totalDuration = runs.map(\.duration).reduce(0, +)
-        guard totalDuration > 0 else {
-            return Double(runs.map(\.workingAvgCadence).reduce(0, +)) / Double(runs.count)
-        }
-        return runs.map { Double($0.workingAvgCadence) * $0.duration }.reduce(0, +) / totalDuration
+        baselineStats?.avgCadence
     }
 
     private var baselineOscillation: Double? {
-        let runs = baselineRuns.compactMap { run -> (val: Double, dur: Double)? in
-            guard let osc = run.workingAvgVerticalOscillation ?? run.rawAvgVerticalOscillation, osc > 0 else { return nil }
-            return (osc, run.duration)
-        }
-        guard !runs.isEmpty else { return nil }
-        let totalDuration = runs.map(\.dur).reduce(0, +)
-        guard totalDuration > 0 else {
-            return runs.map(\.val).reduce(0, +) / Double(runs.count)
-        }
-        return runs.map { $0.val * $0.dur }.reduce(0, +) / totalDuration
+        baselineStats?.avgOscillation
     }
 
     private var baselineStrideLength: Double? {
-        let runs = baselineRuns.compactMap { run -> (val: Double, dur: Double)? in
-            guard let stride = run.workingAvgStrideLength ?? run.rawAvgStrideLength, stride > 0 else { return nil }
-            return (stride, run.duration)
-        }
-        guard !runs.isEmpty else { return nil }
-        let totalDuration = runs.map(\.dur).reduce(0, +)
-        guard totalDuration > 0 else {
-            return runs.map(\.val).reduce(0, +) / Double(runs.count)
-        }
-        return runs.map { $0.val * $0.dur }.reduce(0, +) / totalDuration
+        baselineStats?.avgStrideLength
     }
 
     private var baselineVerticalRatio: Double? {
-        let runs = baselineRuns.compactMap { run -> (val: Double, dur: Double)? in
-            guard let vr = run.verticalRatio, vr > 0 else { return nil }
-            return (vr, run.duration)
-        }
-        guard !runs.isEmpty else { return nil }
-        let totalDuration = runs.map(\.dur).reduce(0, +)
-        guard totalDuration > 0 else {
-            return runs.map(\.val).reduce(0, +) / Double(runs.count)
-        }
-        return runs.map { $0.val * $0.dur }.reduce(0, +) / totalDuration
+        baselineStats?.avgVerticalRatio
     }
 
     private var formattedRunDate: String {
@@ -233,7 +184,7 @@ struct RunDetailView: View {
                 requiredHours: 48,
                 state: .productive
             ),
-            baselineStats: baselineCadence.map { (avgPace: runRecord.workingAvgPace, avgCadence: $0, avgHR: runRecord.workingAvgHeartRate) }
+            baselineStats: baselineStats.map { (avgPace: $0.avgPace, avgCadence: $0.avgCadence, avgHR: $0.avgHR) }
         )
         let floor = context.runnerProfile.heightAdjustedCadenceFloor
         let cad = context.workingCadence

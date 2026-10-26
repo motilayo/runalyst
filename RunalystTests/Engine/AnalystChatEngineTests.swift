@@ -276,45 +276,50 @@ final class AnalystChatEngineTests: XCTestCase {
         }
     }
 
-    // MARK: - 7. Native Tool-Calling: Session & Schedule Cards
+    // MARK: - 7. Pure Query Tool Execution: Zero Unsolicited Card Attachments
 
-    func testNativeToolExecutionAttachesSessionCard() async {
+    func testNativeScheduleQueryExecutesPurelyWithoutAttachingUnsolicitedCards() async {
         let run = makeRunRecord(date: Date())
         let engine = AnalystChatEngine(runRecord: run, mode: .macroCoach)
 
+        var queryOutput = ""
         engine.modelResponder = { _, _ in
             let df = DateFormatter()
             df.dateFormat = "yyyy-MM-dd"
-            engine.executeTrainingScheduleQuery(query: GetTrainingScheduleQuery(from: df.string(from: Date())))
-            return "Here is your planned workout session."
+            queryOutput = engine.executeTrainingScheduleQuery(query: GetTrainingScheduleQuery(from: df.string(from: Date())))
+            return "Your next workout is an Aerobic Run on Monday. Rest well until then."
         }
 
         await engine.sendMessage("What is my next workout session?")
 
+        XCTAssertFalse(queryOutput.isEmpty, "Query tool must return formatted schedule data to the model")
         XCTAssertEqual(engine.messages.count, 2)
         let analystMsg = engine.messages[1]
-        XCTAssertNotNil(analystMsg.attachedSession, "Session card must be attached when tool executes schedule query")
+        XCTAssertNil(analystMsg.attachedSession, "Pure schedule query tool must never attach an unsolicited session card")
+        XCTAssertNil(analystMsg.attachedSchedule, "Pure schedule query tool must never attach an unsolicited schedule card")
     }
 
-    func testNativeToolExecutionAttachesScheduleCard() async {
+    func testNativeScheduleWeekQueryReturnsFactsWithoutAttachingCards() async {
         let run = makeRunRecord(date: Date())
         let engine = AnalystChatEngine(runRecord: run, mode: .macroCoach)
 
+        var queryOutput = ""
         engine.modelResponder = { _, _ in
             let df = DateFormatter()
             df.dateFormat = "yyyy-MM-dd"
             let today = Date()
             let future = Calendar.current.date(byAdding: .day, value: 7, to: today) ?? today
-            engine.executeTrainingScheduleQuery(query: GetTrainingScheduleQuery(from: df.string(from: today), to: df.string(from: future)))
-            return "Here is your upcoming training schedule for the week."
+            queryOutput = engine.executeTrainingScheduleQuery(query: GetTrainingScheduleQuery(from: df.string(from: today), to: df.string(from: future)))
+            return "Here is your training rhythm for the week: long run on Monday and steady miles midweek."
         }
 
         await engine.sendMessage("Show me my schedule for this week")
 
+        XCTAssertFalse(queryOutput.isEmpty, "Query tool must return formatted schedule facts to the model")
         XCTAssertEqual(engine.messages.count, 2)
         let analystMsg = engine.messages[1]
-        XCTAssertNotNil(analystMsg.attachedSchedule, "Schedule card must be attached when tool executes schedule query")
-        XCTAssertFalse(analystMsg.attachedSchedule?.isEmpty ?? true)
+        XCTAssertNil(analystMsg.attachedSchedule, "Pure schedule query tool must never attach an unsolicited schedule card")
+        XCTAssertNil(analystMsg.attachedSession, "Pure schedule query tool must never attach an unsolicited session card")
     }
 
     // MARK: - 8. Zero Guessing: Text Mention Without Tool Call Attaches Zero Cards
@@ -354,22 +359,24 @@ final class AnalystChatEngineTests: XCTestCase {
         XCTAssertEqual(lastMsg.attachedDrillId, .cadencePyramids, "Tool execution attaches the prescribed drill card")
     }
 
-    func testTomorrowRunQueryWithToolCallAttachesSessionCard() async {
+    func testTomorrowRunQueryWithToolCallAnswersPurelyWithoutSessionCard() async {
         let run = makeRunRecord(date: Date())
         let engine = AnalystChatEngine(runRecord: run, mode: .macroCoach)
 
+        var factsEmitted = ""
         engine.modelResponder = { _, _ in
             let df = DateFormatter()
             df.dateFormat = "yyyy-MM-dd"
-            engine.executeTrainingScheduleQuery(query: GetTrainingScheduleQuery(from: df.string(from: Date())))
+            factsEmitted = engine.executeTrainingScheduleQuery(query: GetTrainingScheduleQuery(from: df.string(from: Date())))
             return "Tomorrow is planned as a scheduled session to allow steady adaptation."
         }
 
         await engine.sendMessage("Can I run tomorrow?")
 
+        XCTAssertFalse(factsEmitted.isEmpty, "Schedule query must succeed")
         XCTAssertEqual(engine.messages.count, 2)
         let analystMsg = engine.messages[1]
-        XCTAssertNotNil(analystMsg.attachedSession, "Session card must attach when tool executes schedule query")
+        XCTAssertNil(analystMsg.attachedSession, "Session query must deliver pure conversational coaching without unsolicited cards")
     }
 
     // MARK: - 9. System Prompt Character Budget (< 1200)
@@ -395,28 +402,24 @@ final class AnalystChatEngineTests: XCTestCase {
 
     // MARK: - 10. Next Scheduled Run Resolution via Tool Execution
 
-    func testWhenIsMyNextScheduledRunAttachesUpcomingRunSessionCardNotRestDay() async {
+    func testWhenIsMyNextScheduledRunAnswersPurelyWithoutUnsolicitedCard() async {
         let run = makeRunRecord(date: Date())
         let engine = AnalystChatEngine(runRecord: run, mode: .macroCoach)
 
+        var scheduleFacts = ""
         engine.modelResponder = { _, _ in
             let df = DateFormatter()
             df.dateFormat = "yyyy-MM-dd"
-            engine.executeTrainingScheduleQuery(query: GetTrainingScheduleQuery(from: df.string(from: Date())))
+            scheduleFacts = engine.executeTrainingScheduleQuery(query: GetTrainingScheduleQuery(from: df.string(from: Date())))
             return "Your next scheduled run is on Thursday: a 30-minute Easy Aerobic run."
         }
 
         await engine.sendMessage("So when is my next scheduled run?")
 
+        XCTAssertFalse(scheduleFacts.isEmpty, "Schedule query must succeed and provide data to the coach")
         XCTAssertEqual(engine.messages.count, 2)
         let analystMsg = engine.messages[1]
-        XCTAssertNotNil(analystMsg.attachedSession, "Session card must be attached when tool executes schedule query")
-        XCTAssertFalse(analystMsg.attachedSession?.isRestDay ?? true, "Attached session must be an actual run, not a rest day")
-        XCTAssertNotNil(analystMsg.attachedSession?.dayLabel)
-        if let dayLabel = analystMsg.attachedSession?.dayLabel {
-            XCTAssertFalse(analystMsg.attachedSession?.sessionTitle.hasSuffix(" (\(dayLabel))") ?? false, "Session title should not append day in parentheses")
-        }
-        XCTAssertFalse(analystMsg.attachedSession?.isToday ?? true, "Upcoming next run must not be marked as today")
+        XCTAssertNil(analystMsg.attachedSession, "Next run question must be answered conversationally without unsolicited session card")
     }
 
     // MARK: - 11. Pure Conversational Delivery (Zero Regex Hacking)
@@ -496,11 +499,22 @@ final class AnalystChatEngineTests: XCTestCase {
 
             XCTAssertFalse(instructions.isEmpty)
             XCTAssertTrue(instructions.contains("Today:"), "System instructions should provide today schedule context")
+            XCTAssertFalse(instructions.contains("inspectWorkout"), "Macro coach prompt must NOT contain inspectWorkout tool")
             XCTAssertTrue(instructions.count < 1200, "System instructions must stay strictly under 1,200 chars (was \(instructions.count))")
         }
     }
 
-    func testMacroCoachDecoupledCanAnswerQuestionsAndAttachCards() async {
+    func testRunInspectionInstructionsContainInspectWorkoutTool() {
+        if #available(iOS 26.0, *) {
+            let run = makeRunRecord(date: Date())
+            let engine = AnalystChatEngine(runRecord: run, mode: .runInspection)
+            let instructions = engine.buildLeanSystemInstructions()
+
+            XCTAssertTrue(instructions.contains("inspectWorkout"), "Run inspection prompt must contain inspectWorkout tool")
+        }
+    }
+
+    func testMacroCoachDecoupledCanAnswerQuestionsPurely() async {
         let engine = AnalystChatEngine(modelContext: nil, runRecord: nil, mode: .macroCoach)
 
         engine.modelResponder = { _, _ in
@@ -514,12 +528,12 @@ final class AnalystChatEngineTests: XCTestCase {
 
         XCTAssertEqual(engine.messages.count, 2)
         let analystMsg = engine.messages[1]
-        XCTAssertNotNil(analystMsg.attachedSession, "Session card should attach when tool executes schedule query")
+        XCTAssertNil(analystMsg.attachedSession, "Macro coach should answer conversationally without unsolicited session cards")
     }
 
-    // MARK: - 13. Tool Attachment Deduplication
+    // MARK: - 13. Tool Attachment Execution
 
-    func testWhenNextRunQueryRecommendsDrillAlignsPrimerAndDeduplicatesCard() async {
+    func testWhenNextRunQueryRecommendsDrillAttachesDrillActionCard() async {
         let engine = AnalystChatEngine(modelContext: nil, runRecord: nil, mode: .macroCoach)
 
         engine.modelResponder = { _, _ in
@@ -534,8 +548,8 @@ final class AnalystChatEngineTests: XCTestCase {
 
         XCTAssertEqual(engine.messages.count, 2)
         let analystMsg = engine.messages[1]
-        XCTAssertNotNil(analystMsg.attachedSession, "Session card should be attached for next run query")
-        XCTAssertNil(analystMsg.attachedDrillId, "Standalone drill card must be deduplicated when session card is attached")
+        XCTAssertNil(analystMsg.attachedSession, "Schedule query must not attach session card")
+        XCTAssertEqual(analystMsg.attachedDrillId, .strides, "Explicit drill action attaches drill card")
     }
 
     func testExplicitDrillQueryPreservesStandaloneDrillCard() async {
@@ -684,9 +698,26 @@ final class AnalystChatEngineTests: XCTestCase {
 
             // Tool must return multi-day timeline
             XCTAssertTrue(result.contains("SCHEDULE TIMELINE:"))
-            // Engine must automatically bind the next session card
-            XCTAssertNotNil(engine.sessionRecommendedThisTurn, "Querying the schedule must directly hydrate the next session card")
+            XCTAssertNil(engine.sessionRecommendedThisTurn, "Query tool must remain pure with zero session card side effects")
         }
         #endif
+    }
+
+    func testWeeklyMileageAndTrainingBalanceDoesNotAttachSessionCard() async {
+        let engine = AnalystChatEngine(modelContext: nil, runRecord: nil, mode: .macroCoach)
+
+        engine.modelResponder = { _, _ in
+            let df = DateFormatter()
+            df.dateFormat = "yyyy-MM-dd"
+            _ = engine.executeTrainingScheduleQuery(query: GetTrainingScheduleQuery(from: df.string(from: Date())))
+            return "Your weekly mileage is steady with 111 minutes logged, keeping you in the underload zone."
+        }
+
+        await engine.sendMessage("How is my weekly mileage and overall training balance?")
+
+        XCTAssertEqual(engine.messages.count, 2)
+        let analystMsg = engine.messages[1]
+        XCTAssertNil(analystMsg.attachedSession, "Asking about weekly mileage must never attach a session card")
+        XCTAssertNil(analystMsg.attachedDrillId, "Asking about weekly mileage must never attach a drill card")
     }
 }

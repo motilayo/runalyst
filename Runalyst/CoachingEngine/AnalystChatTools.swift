@@ -362,7 +362,7 @@ public struct HistoricalRunSummary: Codable, Sendable, Equatable {
     public let distance_formatted: String?
     public let duration_minutes: Int
     public let pace: String
-    public let cadence_spm: Int
+    public let cadence_spm: Int?
     public let cadence_formatted: String?
     public let heart_rate_bpm: Int?
     public let heart_rate_formatted: String?
@@ -380,7 +380,7 @@ public struct HistoricalRunSummary: Codable, Sendable, Equatable {
         distance_formatted: String? = nil,
         duration_minutes: Int,
         pace: String,
-        cadence_spm: Int,
+        cadence_spm: Int? = nil,
         cadence_formatted: String? = nil,
         heart_rate_bpm: Int? = nil,
         heart_rate_formatted: String? = nil,
@@ -397,10 +397,10 @@ public struct HistoricalRunSummary: Codable, Sendable, Equatable {
         self.distance_formatted = distance_formatted ?? String(format: "%.2f km", distance_km)
         self.duration_minutes = duration_minutes
         self.pace = pace
-        self.cadence_spm = cadence_spm
-        self.cadence_formatted = cadence_formatted ?? "\(cadence_spm) SPM"
-        self.heart_rate_bpm = heart_rate_bpm
-        self.heart_rate_formatted = heart_rate_formatted ?? heart_rate_bpm.map { "\($0) BPM" }
+        self.cadence_spm = (cadence_spm ?? 0) > 0 ? cadence_spm : nil
+        self.cadence_formatted = cadence_formatted ?? self.cadence_spm.map { "\($0) SPM" }
+        self.heart_rate_bpm = (heart_rate_bpm ?? 0) > 0 ? heart_rate_bpm : nil
+        self.heart_rate_formatted = heart_rate_formatted ?? self.heart_rate_bpm.map { "\($0) BPM" }
         self.efficiency_factor = efficiency_factor
         self.efficiency_factor_formatted = efficiency_factor_formatted
     }
@@ -469,9 +469,9 @@ public struct TelemetryDeltaFacts: Codable, Sendable, Equatable {
     public let pace_delta_seconds_per_km: Int
     public let pace_percentage_difference: Int
     public let pace_comparison: String
-    public let cadence_delta_spm: Int
+    public let cadence_delta_spm: Int?
     public let cadence_comparison: String
-    public let heart_rate_delta_bpm: Int
+    public let heart_rate_delta_bpm: Int?
     public let heart_rate_comparison: String
     public let distance_delta_km: Double
     public let distance_comparison: String
@@ -483,9 +483,9 @@ public struct TelemetryDeltaFacts: Codable, Sendable, Equatable {
         pace_delta_seconds_per_km: Int,
         pace_percentage_difference: Int,
         pace_comparison: String,
-        cadence_delta_spm: Int,
+        cadence_delta_spm: Int? = nil,
         cadence_comparison: String,
-        heart_rate_delta_bpm: Int,
+        heart_rate_delta_bpm: Int? = nil,
         heart_rate_comparison: String,
         distance_delta_km: Double,
         distance_comparison: String,
@@ -668,6 +668,14 @@ public struct ReadinessFacts: Codable, Sendable, Equatable {
     public let experience_level: String
     public let training_goal: String
     public let cadence_floor_spm: Int
+    public let status_guidance: String?
+    public let athlete_name: String?
+    public let athlete_age: Int?
+    public let athlete_vo2max: Double?
+    public let weekly_volume_km: Double?
+    public let goal_target_weekly_km: String?
+    public let goal_volume_status: String?
+    public let goal_primary_stimulus: String?
 
     public init(
         readiness_state: String,
@@ -687,7 +695,15 @@ public struct ReadinessFacts: Codable, Sendable, Equatable {
         limiting_factors: [String],
         experience_level: String,
         training_goal: String,
-        cadence_floor_spm: Int
+        cadence_floor_spm: Int,
+        status_guidance: String? = nil,
+        athlete_name: String? = nil,
+        athlete_age: Int? = nil,
+        athlete_vo2max: Double? = nil,
+        weekly_volume_km: Double? = nil,
+        goal_target_weekly_km: String? = nil,
+        goal_volume_status: String? = nil,
+        goal_primary_stimulus: String? = nil
     ) {
         self.readiness_state = readiness_state
         self.acwr = acwr
@@ -707,6 +723,14 @@ public struct ReadinessFacts: Codable, Sendable, Equatable {
         self.experience_level = experience_level
         self.training_goal = training_goal
         self.cadence_floor_spm = cadence_floor_spm
+        self.status_guidance = status_guidance
+        self.athlete_name = athlete_name
+        self.athlete_age = athlete_age
+        self.athlete_vo2max = athlete_vo2max
+        self.weekly_volume_km = weekly_volume_km
+        self.goal_target_weekly_km = goal_target_weekly_km
+        self.goal_volume_status = goal_volume_status
+        self.goal_primary_stimulus = goal_primary_stimulus
     }
 }
 // swiftlint:enable identifier_name
@@ -848,7 +872,7 @@ public struct GetReadinessAndWorkloadTool: Tool {
     public typealias Output = String
 
     public let name = "getReadinessAndWorkload"
-    public let description = "Queries physiological recovery, ACWR, 48h volume compression, cardiac decoupling, and same-day workload capacity."
+    public let description = "Queries current recovery, training load balance, and whether additional running is safe today."
 
     let provider: @MainActor @Sendable (GetReadinessAndWorkloadQuery) async -> String
 

@@ -30,7 +30,7 @@ struct WorkoutsView: View {
             return overrideDailyState
         }
         let profile = RunnerProfile.compute(from: runRecords, trainingGoal: trainingGoal)
-        return SessionSynthesisEngine.evaluateDailyState(
+        return DailyTrainingStateStore.shared.resolveState(
             runRecords: runRecords,
             activeGoal: trainingGoal,
             experienceLevel: profile.experienceLevel,
@@ -364,7 +364,7 @@ struct WorkoutsView: View {
             purpose: session.groundedRationale,
             targetCadence: session.primerTargetCadence,
             previousCadence: session.cadenceFloor,
-            durationMinutes: session.primerDrillId.defaultDuration.rawValue,
+            durationMinutes: session.primerDurationMinutes,
             hapticMode: "On",
             readinessState: state == .productive ? nil : state.rawValue,
             isIndoor: preferredWorkoutIsIndoor

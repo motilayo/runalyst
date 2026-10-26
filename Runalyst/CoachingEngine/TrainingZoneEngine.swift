@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import RunalystCore
 
 /// Structured locked training prescription deterministically calculated by Swift.
 struct LockedTrainingPrescription: Sendable, Equatable {
@@ -78,6 +79,7 @@ struct TrainingZoneInput: Sendable {
     let daysSinceWorkout: Int
     let heightAdjustedCadenceFloor: Int
     let useMetricSystem: Bool
+    let userHeightCm: Double
     let isSubjectiveDistress: Bool
     let totalHistoricalRunsCount: Int
 
@@ -90,6 +92,7 @@ struct TrainingZoneInput: Sendable {
         daysSinceWorkout: Int,
         heightAdjustedCadenceFloor: Int,
         useMetricSystem: Bool,
+        userHeightCm: Double = 175.0,
         isSubjectiveDistress: Bool = false,
         totalHistoricalRunsCount: Int = 1
     ) {
@@ -101,6 +104,7 @@ struct TrainingZoneInput: Sendable {
         self.daysSinceWorkout = daysSinceWorkout
         self.heightAdjustedCadenceFloor = heightAdjustedCadenceFloor
         self.useMetricSystem = useMetricSystem
+        self.userHeightCm = userHeightCm
         self.isSubjectiveDistress = isSubjectiveDistress
         self.totalHistoricalRunsCount = totalHistoricalRunsCount
     }
@@ -189,85 +193,72 @@ enum TrainingZoneEngine {
             )
         }
 
-        // 3. Mathematical Zone Calculation (Tier 1 & Tier 2)
-        let z1PaceLow = anchorPace + 60.0
-        let z1PaceHigh = anchorPace + 90.0
-
-        let z2PaceLow = anchorPace + 30.0
-        let z2PaceHigh = anchorPace + 50.0
-
-        let z3PaceLow = anchorPace + 10.0
-        let z3PaceHigh = anchorPace + 25.0
-
-        let z4PaceLow = anchorPace - 10.0
-        let z4PaceHigh = anchorPace + 5.0
-
-        // Zone 5 Goal Calibration
-        let z5PaceLow: Double
-        let z5PaceHigh: Double
-        if input.activeGoal.contains("5K") {
-            z5PaceLow = anchorPace - 30.0
-            z5PaceHigh = anchorPace - 20.0
-        } else if input.activeGoal.contains("10K") {
-            z5PaceLow = anchorPace - 20.0
-            z5PaceHigh = anchorPace - 10.0
-        } else if input.activeGoal.contains("Half") {
-            z5PaceLow = anchorPace - 10.0
-            z5PaceHigh = anchorPace
-        } else {
-            z5PaceLow = anchorPace - 5.0
-            z5PaceHigh = anchorPace + 10.0
-        }
-
-        let z1Str = formatRange(lowSec: z1PaceLow, highSec: z1PaceHigh, useMetric: input.useMetricSystem)
-        let z2Str = formatRange(lowSec: z2PaceLow, highSec: z2PaceHigh, useMetric: input.useMetricSystem)
-        let z3Str = formatRange(lowSec: z3PaceLow, highSec: z3PaceHigh, useMetric: input.useMetricSystem)
-        let z4Str = formatRange(lowSec: z4PaceLow, highSec: z4PaceHigh, useMetric: input.useMetricSystem)
-        let z5Str = formatRange(lowSec: z5PaceLow, highSec: z5PaceHigh, useMetric: input.useMetricSystem)
+        // 3. Mathematical Zone Calculation (Tier 1 & Tier 2) via RunalystCore
+        let matrix = TrainingZoneCore.calculateZones(anchorPaceSecPerKm: anchorPace, activeGoal: input.activeGoal)
+        let z1Str = matrix.zone1Recovery.formatted(useMetric: input.useMetricSystem)
+        let z2Str = matrix.zone2AerobicBase.formatted(useMetric: input.useMetricSystem)
+        let z3Str = matrix.zone3Steady.formatted(useMetric: input.useMetricSystem)
+        let z4Str = matrix.zone4Threshold.formatted(useMetric: input.useMetricSystem)
+        let z5Str = matrix.zone5Interval.formatted(useMetric: input.useMetricSystem)
 
         // 4. Delegate Next-Session Prescription to SessionSynthesisEngine (Single Source of Truth)
-        let effectiveRuns: [RunRecord]
-        if !runs.isEmpty {
-            effectiveRuns = runs
-        } else {
-            let runDate = Calendar.current.date(byAdding: .day, value: -max(1, input.daysSinceWorkout), to: Date()) ?? Date().addingTimeInterval(-86400)
-            let repRun = RunRecord(
-                hkWorkoutID: UUID(),
-                date: runDate,
-                totalDistanceMeters: 5000.0,
-                duration: anchorPace * 5.0,
-                rawAvgPace: anchorPace,
-                rawAvgHeartRate: input.readyForHard ? 142.0 : 168.0,
-                rawAvgCadence: Double(input.heightAdjustedCadenceFloor),
-                workingAvgPace: anchorPace,
-                workingAvgCadence: Double(input.heightAdjustedCadenceFloor),
-                workingAvgHeartRate: input.readyForHard ? 142.0 : 168.0,
-                paceCV: 0.05,
-                paceSlope: 0.0,
-                percentZone4: 0.1,
-                detectedTypeRaw: input.readyForHard ? "Steady Effort" : "Recovery Jog"
+        let session: PrescribedDailySession
+        if runs.count > 1 {
+            let dailyState = DailyTrainingStateStore.shared.resolveState(
+                runRecords: runs,
+                activeGoal: input.activeGoal,
+                experienceLevel: input.experienceLevel,
+                useMetric: input.useMetricSystem,
+                userHeightCm: input.userHeightCm,
+                now: Date()
             )
-            if !input.readyForHard {
-                repRun.framboiseTags = [FramboiseReadinessTag.cardiacDrift]
-            }
-            effectiveRuns = [repRun]
-        }
-
-        let dailyState = SessionSynthesisEngine.evaluateDailyState(
-            runRecords: effectiveRuns,
-            activeGoal: input.activeGoal,
-            experienceLevel: input.experienceLevel,
-            useMetric: input.useMetricSystem,
-            userHeightCm: 175.0,
-            now: Date()
-        )
-
-        let session: PrescribedDailySession = {
             switch dailyState {
-            case .preRun(let s): return s
-            case .completedToday(_, let tomorrow): return tomorrow
+            case .preRun(let s): session = s
+            case .completedToday(_, let tomorrow): session = tomorrow
             }
-        }()
+        } else {
+            // Standalone evaluation (e.g. from single runRecord in WorkoutAnalysisContext or synthetic test):
+            // Call SessionSynthesisEngine directly WITHOUT polluting the global DailyTrainingStateStore cache.
+            let effectiveRuns: [RunRecord]
+            if !runs.isEmpty {
+                effectiveRuns = runs
+            } else {
+                let runDate = Calendar.current.date(byAdding: .day, value: -max(1, input.daysSinceWorkout), to: Date()) ?? Date().addingTimeInterval(-86400)
+                let repRun = RunRecord(
+                    hkWorkoutID: UUID(),
+                    date: runDate,
+                    totalDistanceMeters: 5000.0,
+                    duration: anchorPace * 5.0,
+                    rawAvgPace: anchorPace,
+                    rawAvgHeartRate: input.readyForHard ? 142.0 : 168.0,
+                    rawAvgCadence: Double(input.heightAdjustedCadenceFloor),
+                    workingAvgPace: anchorPace,
+                    workingAvgCadence: Double(input.heightAdjustedCadenceFloor),
+                    workingAvgHeartRate: input.readyForHard ? 142.0 : 168.0,
+                    paceCV: 0.05,
+                    paceSlope: 0.0,
+                    percentZone4: 0.1,
+                    detectedTypeRaw: input.readyForHard ? "Steady Effort" : "Recovery Jog"
+                )
+                if !input.readyForHard {
+                    repRun.framboiseTags = [FramboiseReadinessTag.cardiacDrift]
+                }
+                effectiveRuns = [repRun]
+            }
+
+            let dailyState = SessionSynthesisEngine.evaluateDailyState(
+                runRecords: effectiveRuns,
+                activeGoal: input.activeGoal,
+                experienceLevel: input.experienceLevel,
+                useMetric: input.useMetricSystem,
+                userHeightCm: input.userHeightCm,
+                now: Date()
+            )
+            switch dailyState {
+            case .preRun(let s): session = s
+            case .completedToday(_, let tomorrow): session = tomorrow
+            }
+        }
 
         let nextName = session.sessionTitle
         let nextDur = session.durationBand
@@ -319,7 +310,8 @@ enum TrainingZoneEngine {
     ) -> LockedTrainingPrescription {
         let latestRun = runs.first(where: { !$0.isDeleted })
         let baselinePace = latestRun?.workingAvgPace
-        let cadenceFloor = profile?.heightAdjustedCadenceFloor ?? Int((150.0 / (max(130.0, min(220.0, userHeightCm)) / 175.0)).rounded())
+        let actualHeight = profile?.userHeightCm ?? userHeightCm
+        let cadenceFloor = profile?.heightAdjustedCadenceFloor ?? Int((150.0 / (max(130.0, min(220.0, actualHeight)) / 175.0)).rounded())
         let daysSince = latestRun.map { Calendar.current.dateComponents([.day], from: $0.date, to: now).day ?? 0 } ?? 0
 
         let input = TrainingZoneInput(
@@ -331,6 +323,7 @@ enum TrainingZoneEngine {
             daysSinceWorkout: daysSince,
             heightAdjustedCadenceFloor: cadenceFloor,
             useMetricSystem: useMetricSystem,
+            userHeightCm: actualHeight,
             isSubjectiveDistress: isSubjectiveDistress,
             totalHistoricalRunsCount: runs.count
         )

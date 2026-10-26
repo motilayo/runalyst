@@ -30,7 +30,7 @@ struct DashboardView: View {
     @AppStorage("cachedHeadline_AllTime") private var cachedHeadlineAllTime: String = ""
     @AppStorage("cachedBody_AllTime") private var cachedBodyAllTime: String = ""
 
-    @AppStorage("lastInsightRunCount") private var lastInsightRunCount: Int = 0
+    @AppStorage("lastInsightFingerprint") private var lastInsightFingerprint: String = ""
 
     @State private var isFetchingInsight = false
     @State private var showingAnalystChat = false
@@ -78,16 +78,7 @@ struct DashboardView: View {
     }
 
     var canonicalAthleteBaselineCadence: Int? {
-        let calendar = Calendar.current
-        let thirtyDaysAgo = calendar.date(byAdding: .day, value: -30, to: Date()) ?? Date()
-        let recentRuns = runRecords.filter { $0.date >= thirtyDaysAgo && $0.workingAvgCadence > 0 }
-        let candidateRuns = recentRuns.isEmpty ? runRecords.filter { $0.workingAvgCadence > 0 } : recentRuns
-        guard !candidateRuns.isEmpty else { return nil }
-        let totalDuration = candidateRuns.map(\.duration).reduce(0, +)
-        guard totalDuration > 0 else {
-            return Int(candidateRuns.map(\.workingAvgCadence).reduce(0, +)) / candidateRuns.count
-        }
-        return Int(candidateRuns.map { $0.workingAvgCadence * $0.duration }.reduce(0, +) / totalDuration)
+        SessionSynthesisEngine.computeWeightedBaselineStats(from: runRecords, priorTo: Date()).map { Int($0.avgCadence.rounded()) }
     }
 
     var baselineHeartRate: Int? {
@@ -101,16 +92,7 @@ struct DashboardView: View {
     }
 
     var canonicalAthleteBaselinePace: Double? {
-        let calendar = Calendar.current
-        let thirtyDaysAgo = calendar.date(byAdding: .day, value: -30, to: Date()) ?? Date()
-        let recentRuns = runRecords.filter { $0.date >= thirtyDaysAgo && $0.workingAvgPace > 0 }
-        let candidateRuns = recentRuns.isEmpty ? runRecords.filter { $0.workingAvgPace > 0 } : recentRuns
-        guard !candidateRuns.isEmpty else { return nil }
-        let totalDuration = candidateRuns.map(\.duration).reduce(0, +)
-        guard totalDuration > 0 else {
-            return candidateRuns.map(\.workingAvgPace).reduce(0, +) / Double(candidateRuns.count)
-        }
-        return candidateRuns.map { $0.workingAvgPace * $0.duration }.reduce(0, +) / totalDuration
+        SessionSynthesisEngine.computeWeightedBaselineStats(from: runRecords, priorTo: Date())?.avgPace
     }
 
     private var previousBaselineCadence: Int? {
@@ -159,25 +141,12 @@ struct DashboardView: View {
         return previousRuns.map { $0.workingAvgPace * $0.duration }.reduce(0, +) / totalDuration
     }
 
+    private var trajectoryAssessment: SessionSynthesisEngine.TrajectoryAssessment {
+        SessionSynthesisEngine.evaluate30DayTrajectory(from: timeRangeRuns, now: Date())
+    }
+
     private var isTrajectoryEaseUp: Bool {
-        if timeRange == "30 Days" {
-            let validRuns = timeRangeRuns.filter { $0.workingAvgPace > 0 && $0.workingAvgHeartRate > 0 }
-            let midDate = Calendar.current.date(byAdding: .day, value: -15, to: Date()) ?? Date()
-            let recentRuns = validRuns.filter { $0.date >= midDate }
-            let olderRuns = validRuns.filter { $0.date < midDate }
-            let recentEF = recentRuns.compactMap(\.efficiencyFactor)
-            let olderEF = olderRuns.compactMap(\.efficiencyFactor)
-            let avgRecentEF = recentEF.isEmpty ? 0.0 : (recentEF.reduce(0, +) / Double(recentEF.count))
-            let avgOlderEF = olderEF.isEmpty ? 0.0 : (olderEF.reduce(0, +) / Double(olderEF.count))
-            let efDelta = (avgRecentEF > 0 && avgOlderEF > 0) ? (avgRecentEF - avgOlderEF) : 0.0
-
-            let recentHR = recentRuns.map(\.workingAvgHeartRate).reduce(0, +) / Double(max(1, recentRuns.count))
-            let olderHR = olderRuns.map(\.workingAvgHeartRate).reduce(0, +) / Double(max(1, olderRuns.count))
-            let hrDelta = (recentHR > 0 && olderHR > 0) ? (recentHR - olderHR) : 0.0
-
-            return (efDelta <= -0.02 && olderEF.count >= 2) || (hrDelta >= 3.0 && olderHR > 0)
-        }
-        return false
+        timeRange == "30 Days" && trajectoryAssessment.verdict == .easeUp
     }
 
     private var workoutDensityTier: String {
@@ -280,7 +249,7 @@ struct DashboardView: View {
     }
 
     private var dashboardRunnerProfile: RunnerProfile {
-        RunnerProfile.compute(from: runRecords, now: Date())
+        RunnerProfile.compute(from: runRecords, trainingGoal: trainingGoal, now: Date())
     }
 
     private var dashboardRecoveryTimeline: RecoveryTimeline {
@@ -297,32 +266,15 @@ struct DashboardView: View {
         return SessionSynthesisEngine.isWorkoutDayComplete(runs: todayRuns)
     }
 
-    private var deterministicPrescription: LockedTrainingPrescription? {
-        guard let latestRun = runRecords.first else { return nil }
+    private var currentDailyTrainingState: DailyTrainingState {
         let profile = dashboardRunnerProfile
-        let tzInput = TrainingZoneInput(
-            baselinePaceSec: canonicalAthleteBaselinePace ?? latestRun.workingAvgPace,
-            workoutPaceSec: latestRun.workingAvgPace,
+        return DailyTrainingStateStore.shared.resolveState(
+            runRecords: runRecords,
             activeGoal: trainingGoal,
             experienceLevel: profile.experienceLevel,
-            readyForHard: dashboardRecoveryTimeline.readyForHard,
-            daysSinceWorkout: Calendar.current.dateComponents([.day], from: latestRun.date, to: Date()).day ?? 0,
-            heightAdjustedCadenceFloor: profile.heightAdjustedCadenceFloor,
-            useMetricSystem: useMetricSystem,
-            isSubjectiveDistress: false,
-            totalHistoricalRunsCount: runRecords.count
+            useMetric: useMetricSystem,
+            userHeightCm: profile.userHeightCm
         )
-        return TrainingZoneEngine.computePrescription(tzInput, runs: runRecords)
-    }
-
-    private func hrCapText(for rx: LockedTrainingPrescription) -> String {
-        if rx.intensityCategory.contains("RECOVERY") || rx.intensityCategory.contains("ZONE_2") || !dashboardRecoveryTimeline.readyForHard {
-            return "HR: < 145"
-        } else if rx.intensityCategory.contains("THRESHOLD") || rx.intensityCategory.contains("TEMPO") {
-            return "HR: 155–168"
-        } else {
-            return "HR: < 155"
-        }
     }
 
     private func targetPill(text: String, color: Color = .purple) -> some View {
@@ -335,6 +287,69 @@ struct DashboardView: View {
             .background(color.opacity(0.12))
             .foregroundColor(color)
             .clipShape(Capsule())
+    }
+
+    @ViewBuilder
+    private func directivePills(for state: DailyTrainingState) -> some View {
+        let session = state.activeSession
+        let isCompleted = state.isTodayCompleted
+        let hasPace = session.paceBand != "No Pacing Target" && session.intent != .fullRest
+
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) {
+                if isCompleted {
+                    targetPill(text: "Today: Done ✓", color: .green)
+                    let tomorrowText = session.intent == .fullRest ? "Rest" : session.durationBand
+                    targetPill(text: "Tomorrow: \(tomorrowText)", color: .purple)
+                    if hasPace {
+                        targetPill(text: "Pace: \(session.paceBand)", color: Color(red: 0.0, green: 0.55, blue: 1.0))
+                    }
+                } else if session.intent == .fullRest {
+                    targetPill(text: "Full Rest Day", color: .green)
+                    targetPill(text: "Rest & Structural Recovery", color: .purple)
+                } else if session.intent == .recoveryFlush {
+                    targetPill(text: "Active Flush", color: .teal)
+                    targetPill(text: session.durationBand, color: .purple)
+                    if hasPace {
+                        targetPill(text: "Pace: \(session.paceBand)", color: Color(red: 0.0, green: 0.55, blue: 1.0))
+                    }
+                    targetPill(text: session.hrCap, color: Color(red: 1.0, green: 0.22, blue: 0.55))
+                } else {
+                    targetPill(text: session.durationBand, color: .purple)
+                    if hasPace {
+                        targetPill(text: "Pace: \(session.paceBand)", color: Color(red: 0.0, green: 0.55, blue: 1.0))
+                    }
+                    targetPill(text: session.hrCap, color: Color(red: 1.0, green: 0.22, blue: 0.55))
+                }
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 6) {
+                    if isCompleted {
+                        targetPill(text: "Today: Done ✓", color: .green)
+                        let tomorrowText = session.intent == .fullRest ? "Rest" : session.durationBand
+                        targetPill(text: "Tomorrow: \(tomorrowText)", color: .purple)
+                    } else if session.intent == .fullRest {
+                        targetPill(text: "Full Rest Day", color: .green)
+                        targetPill(text: "Rest & Structural Recovery", color: .purple)
+                    } else if session.intent == .recoveryFlush {
+                        targetPill(text: "Active Flush", color: .teal)
+                        targetPill(text: session.durationBand, color: .purple)
+                    } else {
+                        targetPill(text: session.durationBand, color: .purple)
+                        if hasPace {
+                            targetPill(text: "Pace: \(session.paceBand)", color: Color(red: 0.0, green: 0.55, blue: 1.0))
+                        }
+                    }
+                }
+                if isCompleted || session.intent == .fullRest {
+                    if hasPace {
+                        targetPill(text: "Pace: \(session.paceBand)", color: Color(red: 0.0, green: 0.55, blue: 1.0))
+                    }
+                } else {
+                    targetPill(text: session.hrCap, color: Color(red: 1.0, green: 0.22, blue: 0.55))
+                }
+            }
+        }
     }
 
     @ViewBuilder
@@ -399,54 +414,7 @@ struct DashboardView: View {
                         .font(.title3.bold())
                         .foregroundColor(.primary)
 
-                    if let rx = deterministicPrescription {
-                        let isRestDirective = displayHeadline.localizedCaseInsensitiveContains("Rest") || displayHeadline.localizedCaseInsensitiveContains("Recovery")
-                        let isRestTomorrow = rx.compactDurationBand.localizedCaseInsensitiveContains("Rest")
-                        let hasPaceTarget = rx.prescribedPaceBand != "No Pacing Target" && !isRestTomorrow
-
-                        ViewThatFits(in: .horizontal) {
-                            HStack(spacing: 8) {
-                                if isTodayCompleted {
-                                    targetPill(text: "Today: Done ✓", color: .green)
-                                    targetPill(text: "Tomorrow: \(isRestTomorrow ? "Rest" : rx.compactDurationBand)", color: .purple)
-                                    if hasPaceTarget {
-                                        targetPill(text: "Pace: \(rx.prescribedPaceBand)", color: Color(red: 0.0, green: 0.55, blue: 1.0))
-                                    }
-                                } else if isRestDirective {
-                                    targetPill(text: "Rest & Recover", color: .green)
-                                    targetPill(text: "Next: \(isRestTomorrow ? "Rest" : rx.compactDurationBand)", color: .purple)
-                                    if hasPaceTarget {
-                                        targetPill(text: "Pace: \(rx.prescribedPaceBand)", color: Color(red: 0.0, green: 0.55, blue: 1.0))
-                                    }
-                                } else {
-                                    targetPill(text: rx.compactDurationBand, color: .purple)
-                                    targetPill(text: "Pace: \(rx.prescribedPaceBand)", color: Color(red: 0.0, green: 0.55, blue: 1.0))
-                                    targetPill(text: hrCapText(for: rx), color: Color(red: 1.0, green: 0.22, blue: 0.55))
-                                }
-                            }
-                            VStack(alignment: .leading, spacing: 6) {
-                                HStack(spacing: 6) {
-                                    if isTodayCompleted {
-                                        targetPill(text: "Today: Done ✓", color: .green)
-                                        targetPill(text: "Tomorrow: \(isRestTomorrow ? "Rest" : rx.compactDurationBand)", color: .purple)
-                                    } else if isRestDirective {
-                                        targetPill(text: "Rest & Recover", color: .green)
-                                        targetPill(text: "Next: \(isRestTomorrow ? "Rest" : rx.compactDurationBand)", color: .purple)
-                                    } else {
-                                        targetPill(text: rx.compactDurationBand, color: .purple)
-                                        targetPill(text: "Pace: \(rx.prescribedPaceBand)", color: Color(red: 0.0, green: 0.55, blue: 1.0))
-                                    }
-                                }
-                                if isTodayCompleted || isRestDirective {
-                                    if hasPaceTarget {
-                                        targetPill(text: "Pace: \(rx.prescribedPaceBand)", color: Color(red: 0.0, green: 0.55, blue: 1.0))
-                                    }
-                                } else {
-                                    targetPill(text: hrCapText(for: rx), color: Color(red: 1.0, green: 0.22, blue: 0.55))
-                                }
-                            }
-                        }
-                    }
+                    directivePills(for: currentDailyTrainingState)
 
                     let defaultPlaceholder = "Complete more runs this week to evaluate acute fatigue and recovery trends."
                     Text(bodyText.isEmpty ? defaultPlaceholder : bodyText)
@@ -521,8 +489,8 @@ struct DashboardView: View {
                     ? "ACWR = Acute Load (7D) ÷ Chronic Load (28D)"
                     : "Efficiency Factor = Speed (m/s) ÷ (Heart Rate - Resting HR)",
                 targetRange: is7Day
-                    ? "ACWR: 0.8–1.3 (Optimal Zone) • HR Cap: \(deterministicPrescription.map { hrCapText(for: $0) } ?? "< 145")"
-                    : "Cadence Floor: ≥ 156–160 SPM • Stable or Rising Efficiency Factor"
+                    ? "ACWR: 0.8–1.3 (Optimal Zone) • \(currentDailyTrainingState.activeSession.hrCap)"
+                    : "Cadence Floor: ≥ \(dashboardRunnerProfile.heightAdjustedCadenceFloor) SPM • Stable or Rising Efficiency Factor"
             )
         }
         .onAppear {
@@ -536,6 +504,10 @@ struct DashboardView: View {
             refreshBaselineVO2Max()
             lastBaselineChangeTimestamp = Date().timeIntervalSince1970
             autoSyncStaleWatchDrillIfNeeded()
+        }
+        .onChange(of: trainingGoal) {
+            checkAndFetchInsight()
+            DailyTrainingStateStore.shared.invalidate()
         }
         .onChange(of: minimumRunDistance) {
             lastBaselineChangeTimestamp = Date().timeIntervalSince1970
@@ -578,8 +550,8 @@ struct DashboardView: View {
             isFetchingInsight = false
             return
         }
-        let currentRunCount = runRecords.count
-        if currentRunCount != lastInsightRunCount {
+        let currentFingerprint = "\(timeRange)_\(trainingGoal)_\(DailyTrainingStateStore.computeFingerprint(runs: runRecords))"
+        if currentFingerprint != lastInsightFingerprint {
             // Invalidate cache
             cachedHeadline7Day = ""
             cachedBody7Day = ""
@@ -587,7 +559,7 @@ struct DashboardView: View {
             cachedBody30Day = ""
             cachedHeadlineAllTime = ""
             cachedBodyAllTime = ""
-            lastInsightRunCount = currentRunCount
+            lastInsightFingerprint = currentFingerprint
         }
 
         if currentHeadline().isEmpty || currentBody().isEmpty {
@@ -625,124 +597,39 @@ struct DashboardView: View {
         let verticalOscillationContext: String
 
         if targetTimeRange == "7 Days" {
-            // 7-DAY VIEW: Tactical Coach (Readiness & Acute Fatigue)
-            let heavySessions = timeRangeRuns.filter { run in
-                let type = run.detectedTypeRaw
-                let isHeavy = (type == "Intervals" || type == "Pyramids" || type == "Tempo Run" || type == "Hill Repeats")
-                let highZ4 = run.percentZone4 >= 0.35
-                return isHeavy || highZ4
+            // 7-DAY VIEW: Tactical Coach (Single Source of Truth: DailyTrainingState)
+            let activeSession = currentDailyTrainingState.activeSession
+            switch activeSession.intent {
+            case .fullRest:
+                directiveContext = "PRIORITY_FULL_REST: Training state is locked to FULL REST (0 minutes running). RATIONALE: \(activeSession.groundedRationale). Direct the runner clearly to take a full rest day with zero running to let their musculoskeletal system adapt toward their \(trainingGoal) goal."
+            case .recoveryFlush:
+                directiveContext = "PRIORITY_RECOVERY_FLUSH: Training state is locked to ACTIVE RECOVERY FLUSH (\(activeSession.durationBand), \(activeSession.paceBand), \(activeSession.hrCap)). RATIONALE: \(activeSession.groundedRationale). Direct the runner to keep effort very light and heart rate strictly controlled toward their \(trainingGoal) goal."
+            case .train:
+                directiveContext = "PRIORITY_TRAIN: Training state is locked to \(activeSession.sessionTitle) (\(activeSession.durationBand), \(activeSession.paceBand)). RATIONALE: \(activeSession.groundedRationale). Guide the runner on target pacing, turnover discipline, and form toward their \(trainingGoal) goal."
             }
-            let heavyCount = heavySessions.count
-
-            // Check for consecutive hard sessions (less than 36 hours apart)
-            var hasBackToBackHeavy = false
-            if heavySessions.count >= 2 {
-                for index in 0..<(heavySessions.count - 1) {
-                    let interval = heavySessions[index].date.timeIntervalSince(heavySessions[index + 1].date)
-                    if interval > 0 && interval < 36 * 3600 {
-                        hasBackToBackHeavy = true
-                        break
-                    }
-                }
-            }
-
-            let latestRun = timeRangeRuns.first
-            let hasFatigueDrift = latestRun?.framboiseTags.contains("fatigueDrift") ?? false
-
-            // Resolve personalized baseline cadence: prefer 30-day historical, then previous 7-day, then current 7-day
-            let personalizedBaselineCadence: Double = {
-                if let historical = latestRun?.computeHistoricalBaselineCadence(in: runRecords) {
-                    return historical
-                }
-                if let prev = previousBaselineCadence {
-                    return Double(prev)
-                }
-                if let base = baselineCadence {
-                    return Double(base)
-                }
-                return 160.0
-            }()
-
-            let latestCad = latestRun?.workingAvgCadence ?? personalizedBaselineCadence
-            let cadenceDiff = personalizedBaselineCadence - latestCad
-            let cadenceDropped = (latestCad > 0) && (cadenceDiff >= 3.5)
-
-            // High acute density: 6+ runs in 7 days
-            let isHighDensity = timeRangeRuns.count >= 6
-
-            let isCriticalFatigue = (heavyCount >= 3 && (cadenceDropped || hasFatigueDrift))
-                || (hasBackToBackHeavy && (cadenceDropped || hasFatigueDrift))
-                || (isHighDensity && heavyCount >= 2 && cadenceDropped && hasFatigueDrift)
-
-            let isModerateFatigue = heavyCount >= 2
-                || cadenceDropped
-                || hasFatigueDrift
-                || hasBackToBackHeavy
-                || (isHighDensity && heavyCount >= 1)
-
-            if isCriticalFatigue {
-                let dropText = cadenceDropped ? " with confirmed turnover decay of \(Int(round(cadenceDiff))) SPM" : ""
-                directiveContext = "CRITICAL_FATIGUE: Acute cumulative overload detected (\(heavyCount) hard sessions\(dropText)). PRIORITY: Tell the runner to take a full rest day or very gentle walk next, focusing on bringing fatigue down and resting their legs before their next run toward their \(trainingGoal) goal."
-                fatigueContext = "\(heavyCount) hard sessions; verified turnover decay under high acute density. Full rest recommended."
-            } else if isModerateFatigue {
-                let turnoverNote = cadenceDropped
-                    ? "Turnover shows mild decay (-3 to -4 SPM) after intense work."
-                    : "Cadence turnover remains stable, but acute training density is high."
-                directiveContext = "MODERATE_FATIGUE: Productive training fatigue from recent quality work. \(turnoverNote) PRIORITY: Tell the runner to do an easy recovery jog or light cross-training next, focusing on keeping their heart rate low and relaxed to consolidate fitness toward their \(trainingGoal) goal."
-                fatigueContext = "Moderate training strain from recent quality sessions. Recommend easy aerobic recovery in Zone 2."
-            } else {
-                directiveContext = "HIGH_READINESS: Balanced load, fresh legs, and consistent turnover. Athlete is primed for their next key workout. Recommend what kind of run to do next (such as a tempo run, intervals, or steady aerobic run) and what to focus on improving (like quickening cadence turnover, maintaining a steady pace, or building stamina) toward their \(trainingGoal) goal."
-                fatigueContext = "Readiness optimal. No acute cardiac or turnover fatigue."
-            }
+            fatigueContext = ""
             efficiencyContext = ""
             verticalOscillationContext = ""
         } else {
             // 30-DAY VIEW: Goal Readiness & Trajectory Analyst
-            let validRuns = timeRangeRuns.filter { $0.workingAvgPace > 0 && $0.workingAvgHeartRate > 0 }
-            let midDate = Calendar.current.date(byAdding: .day, value: -15, to: Date()) ?? Date()
-
-            let recentRuns = validRuns.filter { $0.date >= midDate }
-            let olderRuns = validRuns.filter { $0.date < midDate }
-
-            let recentEF = recentRuns.compactMap(\.efficiencyFactor)
-            let olderEF = olderRuns.compactMap(\.efficiencyFactor)
-
-            let avgRecentEF = recentEF.isEmpty ? 0.0 : (recentEF.reduce(0, +) / Double(recentEF.count))
-            let avgOlderEF = olderEF.isEmpty ? 0.0 : (olderEF.reduce(0, +) / Double(olderEF.count))
-            let efDelta = (avgRecentEF > 0 && avgOlderEF > 0) ? (avgRecentEF - avgOlderEF) : 0.0
-
-            let recentOscs = recentRuns.compactMap { $0.workingAvgVerticalOscillation ?? $0.rawAvgVerticalOscillation }
-            let olderOscs = olderRuns.compactMap { $0.workingAvgVerticalOscillation ?? $0.rawAvgVerticalOscillation }
-            let avgRecentOsc = recentOscs.isEmpty ? 0.0 : (recentOscs.reduce(0, +) / Double(recentOscs.count))
-            let avgOlderOsc = olderOscs.isEmpty ? 0.0 : (olderOscs.reduce(0, +) / Double(olderOscs.count))
-            let oscDelta = (avgRecentOsc > 0 && avgOlderOsc > 0) ? (avgRecentOsc - avgOlderOsc) : 0.0
-
-            let recentVRs = recentRuns.compactMap(\.verticalRatio)
-            let olderVRs = olderRuns.compactMap(\.verticalRatio)
-            let avgRecentVR = recentVRs.isEmpty ? 0.0 : (recentVRs.reduce(0, +) / Double(recentVRs.count))
-            let avgOlderVR = olderVRs.isEmpty ? 0.0 : (olderVRs.reduce(0, +) / Double(olderVRs.count))
-            let vrDelta = (avgRecentVR > 0 && avgOlderVR > 0) ? (avgRecentVR - avgOlderVR) : 0.0
-
-            let recentHR = recentRuns.map(\.workingAvgHeartRate).reduce(0, +) / Double(max(1, recentRuns.count))
-            let olderHR = olderRuns.map(\.workingAvgHeartRate).reduce(0, +) / Double(max(1, olderRuns.count))
-            let hrDelta = (recentHR > 0 && olderHR > 0) ? (recentHR - olderHR) : 0.0
-
-            if (efDelta <= -0.02 && olderEF.count >= 2) || (hrDelta >= 3.0 && olderHR > 0) {
+            let assessment = SessionSynthesisEngine.evaluate30DayTrajectory(from: timeRangeRuns, now: Date())
+            switch assessment.verdict {
+            case .easeUp:
                 directiveContext = "TRAJECTORY_EASE_UP: Over the past 30 days, training data indicates cumulative overworking and declining efficiency (aerobic cost is climbing). For their stated goal of \(trainingGoal), tell the runner clearly that they are overworking and need to ease up on volume or intensity so their body can absorb the training and avoid declining instead of improving."
                 efficiencyContext = "Efficiency Factor declined over the past month. Cardiac drift and physiological strain accumulating."
-            } else if efDelta > 0.02 || hrDelta < -2.0 || oscDelta < -0.2 || vrDelta < -0.3 {
-                let hrDeltaText = hrDelta < 0 ? "\(Int(abs(hrDelta))) BPM lower" : "stable"
-                let vrDeltaText = avgRecentVR > 0 ? ", Vertical Ratio: \(String(format: "%.1f", avgRecentVR))%" : ""
-                directiveContext = "TRAJECTORY_ON_TRACK: Over the past 30 days, aerobic efficiency, cardiac response, and running economy have clearly improved (Efficiency Factor increased by \(String(format: "%.2f", efDelta)), heart rate at \(paceContext) is \(hrDeltaText)\(vrDeltaText)). Tell the runner clearly that they are solidly on track for their \(trainingGoal) goal and their consistency is paying off."
-                efficiencyContext = "Efficiency Factor rose by +\(String(format: "%.2f", efDelta)) m/beat. Aerobic capacity expanding."
-            } else {
+            case .onTrack:
+                let hrDeltaText = assessment.hrDelta < 0 ? "\(Int(abs(assessment.hrDelta))) BPM lower" : "stable"
+                let vrDeltaText = assessment.avgRecentVR > 0 ? ", Vertical Ratio: \(String(format: "%.1f", assessment.avgRecentVR))%" : ""
+                directiveContext = "TRAJECTORY_ON_TRACK: Over the past 30 days, aerobic efficiency, cardiac response, and running economy have clearly improved (Efficiency Factor increased by \(String(format: "%.2f", assessment.efDelta)), heart rate at \(paceContext) is \(hrDeltaText)\(vrDeltaText)). Tell the runner clearly that they are solidly on track for their \(trainingGoal) goal and their consistency is paying off."
+                efficiencyContext = "Efficiency Factor rose by +\(String(format: "%.2f", assessment.efDelta)) m/beat. Aerobic capacity expanding."
+            case .stepItUp:
                 directiveContext = "TRAJECTORY_STEP_IT_UP: Over the past 30 days, baseline fitness is steady and well-calibrated, but performance has plateaued. Tell the runner their performances show their body has adapted and they have more to give, encouraging them to step up their training slightly in pace, volume, or quality to chase their \(trainingGoal) goal."
-                efficiencyContext = "Efficiency Factor stable at \(String(format: "%.2f", max(1.2, avgRecentEF))) m/beat."
+                efficiencyContext = "Efficiency Factor stable at \(String(format: "%.2f", max(1.2, assessment.avgRecentEF))) m/beat."
             }
-            if avgRecentVR > 0 {
-                verticalOscillationContext = "Vertical Oscillation: \(String(format: "%.1f", avgRecentOsc)) cm (VR: \(String(format: "%.1f", avgRecentVR))%)"
+            if assessment.avgRecentVR > 0 {
+                verticalOscillationContext = "Vertical Oscillation: \(String(format: "%.1f", assessment.avgRecentOsc)) cm (VR: \(String(format: "%.1f", assessment.avgRecentVR))%)"
             } else {
-                verticalOscillationContext = avgRecentOsc > 0 ? "Vertical Oscillation: \(String(format: "%.1f", avgRecentOsc)) cm" : "Vertical form steady"
+                verticalOscillationContext = assessment.avgRecentOsc > 0 ? "Vertical Oscillation: \(String(format: "%.1f", assessment.avgRecentOsc)) cm" : "Vertical form steady"
             }
             fatigueContext = ""
         }
@@ -1125,6 +1012,7 @@ struct DashboardView: View {
                 refreshBaselineVO2Max()
 
                 // Invalidate cache
+                DailyTrainingStateStore.shared.invalidate()
                 cachedHeadline7Day = ""
                 cachedBody7Day = ""
                 cachedHeadline30Day = ""
@@ -1135,7 +1023,7 @@ struct DashboardView: View {
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
             }
             .sheet(isPresented: $showingAnalystChat) {
-                AnalystChatView(mode: .macroCoach)
+                AnalystChatView(mode: .macroCoach, modelContext: modelContext)
             }
             .background(Color(UIColor.systemGroupedBackground).ignoresSafeArea())
             .navigationTitle("Dashboard")

@@ -724,7 +724,7 @@ final class SessionSynthesisEngineTests: XCTestCase {
             detectedTypeRaw: "Steady Effort"
         )
 
-        // 1. Novice -> 25–35 Min, 30m
+        // 1. Novice -> 45 Min total (15m strides primer + 30m main run)
         let noviceState = SessionSynthesisEngine.evaluateDailyState(
             runRecords: [baselineRun],
             activeGoal: "Base Building",
@@ -733,15 +733,17 @@ final class SessionSynthesisEngineTests: XCTestCase {
             now: now
         )
         if case .preRun(let session) = noviceState {
-            XCTAssertEqual(session.durationBand, "25–35 Min")
+            XCTAssertEqual(session.durationBand, "45 Min")
             XCTAssertEqual(session.mainRunDurationMinutes, 30)
+            XCTAssertEqual(session.primerDurationMinutes, 15)
+            XCTAssertEqual(session.totalDurationMinutes, 45)
             let drill = PreRunDrill(id: session.mainSessionTemplateId, duration: .thirtyMinutes)
             XCTAssertEqual(drill.totalPhasesDurationSeconds, 1800)
         } else {
             XCTFail("Expected .preRun for Novice")
         }
 
-        // 2. Intermediate -> 35–45 Min, 40m
+        // 2. Intermediate -> 55 Min total (15m strides primer + 40m main run)
         let intermediateState = SessionSynthesisEngine.evaluateDailyState(
             runRecords: [baselineRun],
             activeGoal: "Base Building",
@@ -750,8 +752,10 @@ final class SessionSynthesisEngineTests: XCTestCase {
             now: now
         )
         if case .preRun(let session) = intermediateState {
-            XCTAssertEqual(session.durationBand, "35–45 Min")
+            XCTAssertEqual(session.durationBand, "55 Min")
             XCTAssertEqual(session.mainRunDurationMinutes, 40)
+            XCTAssertEqual(session.primerDurationMinutes, 15)
+            XCTAssertEqual(session.totalDurationMinutes, 55)
             let drill = PreRunDrill(id: session.mainSessionTemplateId, duration: .fortyMinutes)
             XCTAssertEqual(drill.totalPhasesDurationSeconds, 2400)
             let phases = drill.generatePhases()
@@ -763,7 +767,7 @@ final class SessionSynthesisEngineTests: XCTestCase {
             XCTFail("Expected .preRun for Intermediate")
         }
 
-        // 3. Advanced -> 45–60 Min, 50m
+        // 3. Advanced -> 65 Min total (15m strides primer + 50m main run)
         let advancedState = SessionSynthesisEngine.evaluateDailyState(
             runRecords: [baselineRun],
             activeGoal: "Base Building",
@@ -772,8 +776,10 @@ final class SessionSynthesisEngineTests: XCTestCase {
             now: now
         )
         if case .preRun(let session) = advancedState {
-            XCTAssertEqual(session.durationBand, "45–60 Min")
+            XCTAssertEqual(session.durationBand, "65 Min")
             XCTAssertEqual(session.mainRunDurationMinutes, 50)
+            XCTAssertEqual(session.primerDurationMinutes, 15)
+            XCTAssertEqual(session.totalDurationMinutes, 65)
             let drill = PreRunDrill(id: session.mainSessionTemplateId, duration: .fiftyMinutes)
             XCTAssertEqual(drill.totalPhasesDurationSeconds, 3000)
             let phases = drill.generatePhases()

@@ -356,14 +356,10 @@ struct ContentView: View {
 
                 // 5. Update MacroProfile (compute once, persist locally for RAG Analyst Chat)
                 let readiness = ReadinessEvaluator.assess(runRecords: allRuns)
-                let recentValidPaces = allRuns.prefix(15).map(\.workingAvgPace).filter { $0 > 0 }
-                let basePace = recentValidPaces.isEmpty ? nil : (recentValidPaces.reduce(0, +) / Double(recentValidPaces.count))
-
-                let recentValidHRs = allRuns.prefix(15).map(\.workingAvgHeartRate).filter { $0 > 0 }
-                let baseHR = recentValidHRs.isEmpty ? nil : (recentValidHRs.reduce(0, +) / Double(recentValidHRs.count))
-
-                let recentValidCads = allRuns.prefix(15).map(\.workingAvgCadence).filter { $0 > 0 }
-                let baseCad = recentValidCads.isEmpty ? nil : (recentValidCads.reduce(0, +) / Double(recentValidCads.count))
+                let baselineStats = SessionSynthesisEngine.computeWeightedBaselineStats(from: allRuns, priorTo: Date())
+                let basePace = baselineStats?.avgPace
+                let baseHR = baselineStats?.avgHR
+                let baseCad = baselineStats?.avgCadence
 
                 let validEFs = allRuns.prefix(15).compactMap(\.efficiencyFactor)
                 let baseEF = validEFs.isEmpty ? nil : (validEFs.reduce(0, +) / Double(validEFs.count))
@@ -379,6 +375,9 @@ struct ContentView: View {
                     updatedAt: Date()
                 )
                 profile.save()
+                await MainActor.run {
+                    DailyTrainingStateStore.shared.invalidate()
+                }
             }
 
         } catch is CancellationError {
