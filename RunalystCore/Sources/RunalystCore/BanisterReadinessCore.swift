@@ -248,4 +248,208 @@ public enum BanisterReadinessCore {
         }
         return false
     }
+
+    /// Evaluates multi-day streaks, 48-hour volume compression, and day-over-day cardiac decoupling
+    /// calibrated by the runner's experience level and active training goal.
+    public static func evaluateStreakAndVolume(
+        samples: [StreakRunSample],
+        experienceLevel: String,
+        trainingGoal: String,
+        now: Date = Date(),
+        calendar: Calendar = Calendar(identifier: .gregorian)
+    ) -> StreakAndVolumeSummary {
+        // 1. Separate main runs (>= 20 min or non-primer) from short primers (< 20 min)
+        let mainRuns = samples.filter { sample in
+            guard sample.date <= now else { return false }
+            let isShortPrimer = (sample.isPrimer || sample.durationSeconds < 1200) && sample.percentZone4 < 0.25
+            return !isShortPrimer
+        }.sorted { $0.date > $1.date }
+
+        // 2. Trailing 28-day baseline (duration and frequency)
+        let day28Cutoff = calendar.date(byAdding: .day, value: -28, to: now) ?? now.addingTimeInterval(-28 * 24 * 3600)
+        let trailingRuns = mainRuns.filter { $0.date >= day28Cutoff }
+        let totalTrailingDurationMins = trailingRuns.map { $0.durationSeconds / 60.0 }.reduce(0, +)
+        let trailingWeeklyDurationMinutes = totalTrailingDurationMins > 0 ? (totalTrailingDurationMins / 4.0) : 150.0
+
+        var uniqueTrailingDays = Set<DateComponents>()
+        for run in trailingRuns {
+            uniqueTrailingDays.insert(calendar.dateComponents([.year, .month, .day], from: run.date))
+        }
+        let trailingWeeklyActiveDays = !uniqueTrailingDays.isEmpty ? (Double(uniqueTrailingDays.count) / 4.0) : 3.5
+
+        // 3. 48-Hour Volume (Includes all runs banked across trailing 2 calendar days leading into today)
+        let startOfToday = calendar.startOfDay(for: now)
+        let cutoff48h = calendar.date(byAdding: .day, value: -2, to: startOfToday) ?? now.addingTimeInterval(-48 * 3600)
+        let runs48h = samples.filter { $0.date <= now && $0.date >= cutoff48h }
+        let last48hDurationMinutes = runs48h.map { $0.durationSeconds / 60.0 }.reduce(0, +)
+        let volumeRatio48h = trailingWeeklyDurationMinutes > 0 ? (last48hDurationMinutes / trailingWeeklyDurationMinutes) : 0.0
+
+        // 4. Consecutive Run Days (Streak)
+        var streak = 0
+        var checkDate = now
+        let todayComponents = calendar.dateComponents([.year, .month, .day], from: now)
+        let hasRunToday = mainRuns.contains { calendar.dateComponents([.year, .month, .day], from: $0.date) == todayComponents }
+        if !hasRunToday {
+            if let yesterday = calendar.date(byAdding: .day, value: -1, to: now) {
+                let yesterdayComponents = calendar.dateComponents([.year, .month, .day], from: yesterday)
+                let hasRunYesterday = mainRuns.contains { calendar.dateComponents([.year, .month, .day], from: $0.date) == yesterdayComponents }
+                if hasRunYesterday {
+                    checkDate = yesterday
+                }
+            }
+        }
+
+        while streak < 14 {
+            guard let targetDay = calendar.date(byAdding: .day, value: -streak, to: checkDate) else { break }
+            let targetComponents = calendar.dateComponents([.year, .month, .day], from: targetDay)
+            let ranOnDay = mainRuns.contains { calendar.dateComponents([.year, .month, .day], from: $0.date) == targetComponents }
+            if ranOnDay {
+                streak += 1
+            } else {
+                break
+            }
+        }
+
+        // 5. Back-to-Back HR Decoupling (Day-over-Day)
+        var hrDecoupling = 0.0
+        if streak >= 2, mainRuns.count >= 2 {
+            let latest = mainRuns[0]
+            let previous = mainRuns[1]
+            if calendar.isDate(latest.date, inSameDayAs: checkDate),
+               let prevExpected = calendar.date(byAdding: .day, value: -1, to: checkDate),
+               calendar.isDate(previous.date, inSameDayAs: prevExpected) {
+                let latestHR = latest.avgHeartRate
+                let prevHR = previous.avgHeartRate
+                if latestHR > 0 && prevHR > 0 {
+                    hrDecoupling = latestHR - prevHR
+                }
+            }
+        }
+
+        // 6. Calibration Matrix (Experience & Goal)
+        let exp = experienceLevel.lowercased()
+        let baseMaxDays: Int
+        let baseCompressionThreshold: Double
+
+        if exp.contains("novice") || exp.contains("beginner") {
+            baseMaxDays = 2
+            baseCompressionThreshold = 0.50
+        } else if exp.contains("advanced") || exp.contains("veteran") {
+            baseMaxDays = 4
+            baseCompressionThreshold = 0.68
+        } else if exp.contains("competitive") || exp.contains("elite") {
+            baseMaxDays = 5
+            baseCompressionThreshold = 0.75
+        } else {
+            baseMaxDays = 3
+            baseCompressionThreshold = 0.60
+        }
+
+        var maxDays = baseMaxDays
+        var compressionThreshold = baseCompressionThreshold
+        let goal = trainingGoal.lowercased()
+
+        if goal.contains("injury") || goal.contains("recovery") {
+            maxDays = 1
+            compressionThreshold = 0.45
+        } else if goal.contains("half") || goal.contains("marathon") {
+            if !exp.contains("novice") {
+                maxDays = min(5, baseMaxDays + 1)
+            }
+            compressionThreshold = min(0.85, baseCompressionThreshold + 0.05)
+        }
+
+        // 7. Decision
+        var recommendRest = false
+        var reason: String?
+
+        if streak >= maxDays {
+            recommendRest = true
+            reason = "You've completed \(streak) consecutive days of running. A scheduled rest day allows muscle and tendon rebuilding before your next run toward \(trainingGoal)."
+        } else if volumeRatio48h >= compressionThreshold && last48hDurationMinutes >= 60.0 {
+            recommendRest = true
+            let pct = Int(round(volumeRatio48h * 100))
+            let mins48 = Int(round(last48hDurationMinutes))
+            let weeklyMins = Int(round(trailingWeeklyDurationMinutes))
+            reason = "48-Hour Volume Compression: You've banked \(mins48) min in the last 48 hours (\(pct)% of your \(weeklyMins) min/week average). A rest day allows deep recovery to prevent cumulative overload."
+        } else if streak >= 2 && hrDecoupling >= 10.0 {
+            recommendRest = true
+            let shift = Int(round(hrDecoupling))
+            reason = "Day-over-day cardiac drift (+\(shift) BPM) indicates autonomic fatigue after consecutive runs. Take a rest day to recover baseline cardiac cost."
+        }
+
+        return StreakAndVolumeSummary(
+            consecutiveRunDays: streak,
+            last48hDurationMinutes: last48hDurationMinutes,
+            trailingWeeklyDurationMinutes: trailingWeeklyDurationMinutes,
+            trailingWeeklyActiveDays: trailingWeeklyActiveDays,
+            backToBackHRDecouplingBPM: hrDecoupling,
+            volumeRatio48h: volumeRatio48h,
+            maxConsecutiveDays: maxDays,
+            volumeCompressionThreshold: compressionThreshold,
+            shouldRecommendRestDay: recommendRest,
+            restDayReason: reason
+        )
+    }
+}
+
+// MARK: - Streak and Volume Domain Types
+
+public struct StreakRunSample: Sendable, Equatable, Codable {
+    public let date: Date
+    public let durationSeconds: Double
+    public let percentZone4: Double
+    public let avgHeartRate: Double
+    public let isPrimer: Bool
+
+    public init(
+        date: Date,
+        durationSeconds: Double,
+        percentZone4: Double,
+        avgHeartRate: Double = 0.0,
+        isPrimer: Bool = false
+    ) {
+        self.date = date
+        self.durationSeconds = durationSeconds
+        self.percentZone4 = percentZone4
+        self.avgHeartRate = avgHeartRate
+        self.isPrimer = isPrimer
+    }
+}
+
+public struct StreakAndVolumeSummary: Sendable, Equatable, Codable {
+    public let consecutiveRunDays: Int
+    public let last48hDurationMinutes: Double
+    public let trailingWeeklyDurationMinutes: Double
+    public let trailingWeeklyActiveDays: Double
+    public let backToBackHRDecouplingBPM: Double
+    public let volumeRatio48h: Double
+    public let maxConsecutiveDays: Int
+    public let volumeCompressionThreshold: Double
+    public let shouldRecommendRestDay: Bool
+    public let restDayReason: String?
+
+    public init(
+        consecutiveRunDays: Int,
+        last48hDurationMinutes: Double,
+        trailingWeeklyDurationMinutes: Double,
+        trailingWeeklyActiveDays: Double,
+        backToBackHRDecouplingBPM: Double,
+        volumeRatio48h: Double,
+        maxConsecutiveDays: Int,
+        volumeCompressionThreshold: Double,
+        shouldRecommendRestDay: Bool,
+        restDayReason: String?
+    ) {
+        self.consecutiveRunDays = consecutiveRunDays
+        self.last48hDurationMinutes = last48hDurationMinutes
+        self.trailingWeeklyDurationMinutes = trailingWeeklyDurationMinutes
+        self.trailingWeeklyActiveDays = trailingWeeklyActiveDays
+        self.backToBackHRDecouplingBPM = backToBackHRDecouplingBPM
+        self.volumeRatio48h = volumeRatio48h
+        self.maxConsecutiveDays = maxConsecutiveDays
+        self.volumeCompressionThreshold = volumeCompressionThreshold
+        self.shouldRecommendRestDay = shouldRecommendRestDay
+        self.restDayReason = restDayReason
+    }
 }

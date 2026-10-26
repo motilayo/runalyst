@@ -475,20 +475,9 @@ enum FramboiseReadinessTag {
 
 // MARK: - Streak & 48-Hour Volume Summary
 
-/// Evaluates multi-day streaks, 48-hour volume compression, and day-over-day cardiac decoupling
-/// calibrated by the runner's experience level and active training goal.
-public struct StreakAndVolumeSummary: Sendable, Equatable {
-    public let consecutiveRunDays: Int
-    public let last48hDurationMinutes: Double
-    public let trailingWeeklyDurationMinutes: Double
-    public let trailingWeeklyActiveDays: Double
-    public let backToBackHRDecouplingBPM: Double
-    public let volumeRatio48h: Double
-    public let maxConsecutiveDays: Int
-    public let volumeCompressionThreshold: Double
-    public let shouldRecommendRestDay: Bool
-    public let restDayReason: String?
+public typealias StreakAndVolumeSummary = RunalystCore.StreakAndVolumeSummary
 
+extension StreakAndVolumeSummary {
     @MainActor
     static func evaluate(
         runs: [RunRecord],
@@ -497,140 +486,24 @@ public struct StreakAndVolumeSummary: Sendable, Equatable {
         now: Date = Date(),
         calendar: Calendar = .current
     ) -> StreakAndVolumeSummary {
-        // 1. Separate main runs (>= 20 min or non-primer) from short primers (< 20 min)
-        let mainRuns = runs.filter { run in
-            guard !run.isDeleted && run.date <= now else { return false }
+        let samples = runs.filter { !$0.isDeleted }.map { run in
             let hasDrillTag = run.framboiseTags.contains("prescribedDrill") || run.prescribedDrillName != nil
-            let isShortPrimer = (hasDrillTag || run.duration < 1200) && run.percentZone4 < 0.25
-            return !isShortPrimer
-        }.sorted { $0.date > $1.date }
-
-        // 2. Trailing 28-day baseline (duration and frequency)
-        let day28Cutoff = calendar.date(byAdding: .day, value: -28, to: now) ?? now.addingTimeInterval(-28 * 24 * 3600)
-        let trailingRuns = mainRuns.filter { $0.date >= day28Cutoff }
-        let totalTrailingDurationMins = trailingRuns.map { $0.duration / 60.0 }.reduce(0, +)
-        let trailingWeeklyDurationMinutes = totalTrailingDurationMins > 0 ? (totalTrailingDurationMins / 4.0) : 150.0
-
-        var uniqueTrailingDays = Set<DateComponents>()
-        for run in trailingRuns {
-            uniqueTrailingDays.insert(calendar.dateComponents([.year, .month, .day], from: run.date))
+            let isPrimer = (hasDrillTag || run.duration < 1200) && run.percentZone4 < 0.25
+            let hr = run.workingAvgHeartRate > 0 ? run.workingAvgHeartRate : run.rawAvgHeartRate
+            return StreakRunSample(
+                date: run.date,
+                durationSeconds: run.duration,
+                percentZone4: run.percentZone4,
+                avgHeartRate: hr,
+                isPrimer: isPrimer
+            )
         }
-        let trailingWeeklyActiveDays = !uniqueTrailingDays.isEmpty ? (Double(uniqueTrailingDays.count) / 4.0) : 3.5
-
-        // 3. 48-Hour Volume (Includes all runs banked across trailing 2 calendar days leading into today)
-        let startOfToday = calendar.startOfDay(for: now)
-        let cutoff48h = calendar.date(byAdding: .day, value: -2, to: startOfToday) ?? now.addingTimeInterval(-48 * 3600)
-        let runs48h = runs.filter { !$0.isDeleted && $0.date <= now && $0.date >= cutoff48h }
-        let last48hDurationMinutes = runs48h.map { $0.duration / 60.0 }.reduce(0, +)
-        let volumeRatio48h = trailingWeeklyDurationMinutes > 0 ? (last48hDurationMinutes / trailingWeeklyDurationMinutes) : 0.0
-
-        // 4. Consecutive Run Days (Streak)
-        var streak = 0
-        var checkDate = now
-        let todayComponents = calendar.dateComponents([.year, .month, .day], from: now)
-        let hasRunToday = mainRuns.contains { calendar.dateComponents([.year, .month, .day], from: $0.date) == todayComponents }
-        if !hasRunToday {
-            if let yesterday = calendar.date(byAdding: .day, value: -1, to: now) {
-                let yesterdayComponents = calendar.dateComponents([.year, .month, .day], from: yesterday)
-                let hasRunYesterday = mainRuns.contains { calendar.dateComponents([.year, .month, .day], from: $0.date) == yesterdayComponents }
-                if hasRunYesterday {
-                    checkDate = yesterday
-                }
-            }
-        }
-
-        while streak < 14 {
-            guard let targetDay = calendar.date(byAdding: .day, value: -streak, to: checkDate) else { break }
-            let targetComponents = calendar.dateComponents([.year, .month, .day], from: targetDay)
-            let ranOnDay = mainRuns.contains { calendar.dateComponents([.year, .month, .day], from: $0.date) == targetComponents }
-            if ranOnDay {
-                streak += 1
-            } else {
-                break
-            }
-        }
-
-        // 5. Back-to-Back HR Decoupling (Day-over-Day)
-        var hrDecoupling = 0.0
-        if streak >= 2, mainRuns.count >= 2 {
-            let latest = mainRuns[0]
-            let previous = mainRuns[1]
-            if calendar.isDate(latest.date, inSameDayAs: checkDate),
-               let prevExpected = calendar.date(byAdding: .day, value: -1, to: checkDate),
-               calendar.isDate(previous.date, inSameDayAs: prevExpected) {
-                let latestHR = latest.workingAvgHeartRate > 0 ? latest.workingAvgHeartRate : latest.rawAvgHeartRate
-                let prevHR = previous.workingAvgHeartRate > 0 ? previous.workingAvgHeartRate : previous.rawAvgHeartRate
-                if latestHR > 0 && prevHR > 0 {
-                    hrDecoupling = latestHR - prevHR
-                }
-            }
-        }
-
-        // 6. Calibration Matrix (Experience & Goal)
-        let exp = experienceLevel.lowercased()
-        let baseMaxDays: Int
-        let baseCompressionThreshold: Double
-
-        if exp.contains("novice") || exp.contains("beginner") {
-            baseMaxDays = 2
-            baseCompressionThreshold = 0.50
-        } else if exp.contains("advanced") || exp.contains("veteran") {
-            baseMaxDays = 4
-            baseCompressionThreshold = 0.68
-        } else if exp.contains("competitive") || exp.contains("elite") {
-            baseMaxDays = 5
-            baseCompressionThreshold = 0.75
-        } else {
-            // Intermediate / Default
-            baseMaxDays = 3
-            baseCompressionThreshold = 0.60
-        }
-
-        // Goal Modifiers
-        var maxDays = baseMaxDays
-        var compressionThreshold = baseCompressionThreshold
-        let goal = trainingGoal.lowercased()
-
-        if goal.contains("injury") || goal.contains("recovery") {
-            maxDays = 1
-            compressionThreshold = 0.45
-        } else if goal.contains("half") || goal.contains("marathon") {
-            if !exp.contains("novice") {
-                maxDays = min(5, baseMaxDays + 1)
-            }
-            compressionThreshold = min(0.85, baseCompressionThreshold + 0.05)
-        }
-
-        // 7. Decision
-        var recommendRest = false
-        var reason: String?
-
-        if streak >= maxDays {
-            recommendRest = true
-            reason = "You've completed \(streak) consecutive days of running. A scheduled rest day allows muscle and tendon rebuilding before your next run toward \(trainingGoal)."
-        } else if volumeRatio48h >= compressionThreshold && last48hDurationMinutes >= 60.0 {
-            recommendRest = true
-            let pct = Int(round(volumeRatio48h * 100))
-            let mins48 = Int(round(last48hDurationMinutes))
-            let weeklyMins = Int(round(trailingWeeklyDurationMinutes))
-            reason = "48-Hour Volume Compression: You've banked \(mins48) min in the last 48 hours (\(pct)% of your \(weeklyMins) min/week average). A rest day allows deep recovery to prevent cumulative overload."
-        } else if streak >= 2 && hrDecoupling >= 10.0 {
-            recommendRest = true
-            let shift = Int(round(hrDecoupling))
-            reason = "Day-over-day cardiac drift (+\(shift) BPM) indicates autonomic fatigue after consecutive runs. Take a rest day to recover baseline cardiac cost."
-        }
-
-        return StreakAndVolumeSummary(
-            consecutiveRunDays: streak,
-            last48hDurationMinutes: last48hDurationMinutes,
-            trailingWeeklyDurationMinutes: trailingWeeklyDurationMinutes,
-            trailingWeeklyActiveDays: trailingWeeklyActiveDays,
-            backToBackHRDecouplingBPM: hrDecoupling,
-            volumeRatio48h: volumeRatio48h,
-            maxConsecutiveDays: maxDays,
-            volumeCompressionThreshold: compressionThreshold,
-            shouldRecommendRestDay: recommendRest,
-            restDayReason: reason
+        return BanisterReadinessCore.evaluateStreakAndVolume(
+            samples: samples,
+            experienceLevel: experienceLevel,
+            trainingGoal: trainingGoal,
+            now: now,
+            calendar: calendar
         )
     }
 }

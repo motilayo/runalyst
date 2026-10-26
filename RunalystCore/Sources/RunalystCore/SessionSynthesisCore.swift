@@ -96,6 +96,24 @@ public enum SessionIntensityZone: String, Sendable, Equatable, Codable {
 public enum PrimerDrillKey: String, Sendable, Equatable, Codable {
     case cadencePyramids, rhythmIntervals, tempoSurges, strides, recoveryJog, zone2Run
 
+    public init?(identifier: String) {
+        let normalized = identifier.lowercased().replacingOccurrences(of: " ", with: "_")
+        switch normalized {
+        case "cadence_pyramids", "cadencepyramids": self = .cadencePyramids
+        case "rhythm_intervals", "rhythmintervals": self = .rhythmIntervals
+        case "tempo_surges", "temposurges": self = .tempoSurges
+        case "strides": self = .strides
+        case "recovery_jog", "recoveryjog": self = .recoveryJog
+        case "zone_2_run", "zone2run": self = .zone2Run
+        default:
+            if let direct = PrimerDrillKey(rawValue: identifier) {
+                self = direct
+            } else {
+                return nil
+            }
+        }
+    }
+
     public var title: String {
         switch self {
         case .cadencePyramids: return "Cadence Pyramids"
