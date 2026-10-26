@@ -720,4 +720,33 @@ final class AnalystChatEngineTests: XCTestCase {
         XCTAssertNil(analystMsg.attachedSession, "Asking about weekly mileage must never attach a session card")
         XCTAssertNil(analystMsg.attachedDrillId, "Asking about weekly mileage must never attach a drill card")
     }
+
+    func testPrimerWorkoutPreservesSpecificDrillNameInScheduleAndMatcher() {
+        let date = Date()
+        let primerRun = makeRunRecord(date: date, duration: 420, distanceMeters: 680, cadence: 165, heartRate: 140, type: "Intervals")
+        primerRun.framboiseTags = ["drill:Cadence Pyramids", "prescribedDrill"]
+
+        XCTAssertTrue(primerRun.isPrimerWorkout)
+        XCTAssertEqual(primerRun.prescribedDrillName, "Cadence Pyramids")
+
+        let telemetry = HistoricalRunMatcher.extractTelemetry(from: primerRun)
+        XCTAssertEqual(telemetry.classification, "Cadence Pyramids (Primer)", "HistoricalRunMatcher must export specific drill name with (Primer) suffix")
+
+        let cal = TrainingCalendar(calendar: Calendar.current, now: date)
+        let schedule = cal.evaluateSchedule(
+            from: cal.startOfDay(for: date),
+            to: cal.startOfDay(for: date),
+            context: ScheduleEvaluationContext(
+                runRecords: [primerRun],
+                activeGoal: "Base Building",
+                profile: RunnerProfile.compute(from: [primerRun]),
+                useMetric: true
+            )
+        )
+        guard let todaySchedule = schedule.first else {
+            XCTFail("Schedule missing today")
+            return
+        }
+        XCTAssertEqual(todaySchedule.completed.first?.type, "Cadence Pyramids (Primer)")
+    }
 }

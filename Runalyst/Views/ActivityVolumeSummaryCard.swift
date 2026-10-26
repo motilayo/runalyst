@@ -9,8 +9,9 @@ struct ActivityVolumeSummaryCard: View {
     var activeGoal: String = "Base Building"
 
     private var calendar: Calendar {
-        var cal = Calendar.current
+        var cal = Calendar(identifier: .gregorian)
         cal.locale = Locale(identifier: "en_US_POSIX")
+        cal.firstWeekday = 1
         return cal
     }
 
@@ -92,8 +93,10 @@ struct ActivityVolumeSummaryCard: View {
     }
 
     private var trailing4Weeks: [WeekVolume] {
-        let today = calendar.startOfDay(for: Date())
-        let endOfToday = calendar.date(byAdding: .day, value: 1, to: today) ?? Date()
+        let tc = TrainingCalendar(calendar: calendar, now: Date())
+        let currentWeek = tc.weekInterval(containing: Date())
+        let currentSunday = currentWeek.start
+
         let weekOffsets: [(label: String, weeksAgo: Int)] = [
             ("3W Ago", 3),
             ("2W Ago", 2),
@@ -102,13 +105,11 @@ struct ActivityVolumeSummaryCard: View {
         ]
 
         return weekOffsets.map { item in
-            let endDays = item.weeksAgo * 7
-            let startDays = endDays + 7
-            guard let endDate = calendar.date(byAdding: .day, value: -endDays, to: endOfToday),
-                  let startDate = calendar.date(byAdding: .day, value: -startDays, to: endOfToday) else {
+            guard let startDate = calendar.date(byAdding: .day, value: -(item.weeksAgo * 7), to: currentSunday),
+                  let nextSunday = calendar.date(byAdding: .day, value: 7, to: startDate) else {
                 return WeekVolume(label: item.label, distanceMeters: 0, runCount: 0)
             }
-            let weekRuns = runs.filter { $0.date >= startDate && $0.date < endDate }
+            let weekRuns = runs.filter { $0.date >= startDate && $0.date < nextSunday }
             let dist = weekRuns.map(\.totalDistanceMeters).reduce(0, +)
             return WeekVolume(
                 label: item.label,

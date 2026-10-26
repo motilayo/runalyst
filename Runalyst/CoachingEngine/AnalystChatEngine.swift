@@ -351,29 +351,13 @@ class AnalystChatEngine: ObservableObject {
                 now: today
             )
             let activeSession = dailyState.activeSession
-            let scheduledTodayStr: String
-            if dailyState.isTodayCompleted {
-                let todayRuns = allRuns.filter { calendar.calendar.isDateInToday($0.date) && !$0.isDeleted }.sorted { $0.date < $1.date }
-                let completedParts = todayRuns.map { r -> String in
-                    let dist = (r.totalDistanceMeters > 0 ? (r.totalDistanceMeters / 1000.0) : (r.effectiveWorkingDistanceMeters / 1000.0))
-                    let unitDist = useMetric ? dist : (dist * 0.621371)
-                    let unit = useMetric ? "km" : "mi"
-                    let name = r.isPrimerWorkout ? "\(r.prescribedDrillName ?? "Primer") (Primer)" : r.normalizedClassification
-                    return String(format: "%.2f %@ %@", unitDist, unit, name)
-                }
-                let completedStr = completedParts.isEmpty ? "Completed today" : "Completed today: \(completedParts.joined(separator: ", "))"
-                scheduledTodayStr = "\(completedStr). Tomorrow: \(activeSession.sessionTitle) (\(activeSession.durationBand))"
-            } else {
-                scheduledTodayStr = "\(activeSession.sessionTitle) (\(activeSession.durationBand))"
-            }
-
-            let benchmark = profile.goalBenchmark
-            let ageStr = profile.age.map { ", Age \($0)" } ?? ""
-            let vo2Str = profile.vo2Max.map { ", VO2max \(String(format: "%.1f", $0))" } ?? ""
-            let runnerLine = "Runner: \(profile.name) (\(Int(profile.userHeightCm))cm\(ageStr)\(vo2Str)) | \(profile.experienceLevel) | \(profile.trainingGoal) (\(Int(benchmark.targetWeeklyKmMin))–\(Int(benchmark.targetWeeklyKmMax))k/wk: \(benchmark.weeklyVolumeStatus.displayText))."
             let currentWeek = calendar.weekInterval(containing: today)
             let weekRange = "Week: \(calendar.formatISO(currentWeek.start))..\(calendar.formatISO(currentWeek.end))"
-            contextBlock = "\(runnerLine)\nToday: \(todayDateStr) | \(weekRange)\nPlanned: \(scheduledTodayStr)."
+            let statusStr = dailyState.isTodayCompleted
+                ? "Today's training is complete; next is tomorrow's \(activeSession.sessionTitle) (\(activeSession.durationBand))."
+                : "Today: \(activeSession.sessionTitle) (\(activeSession.durationBand))."
+            let runnerLine = "Runner: \(profile.name) | \(profile.experienceLevel) | \(profile.trainingGoal)."
+            contextBlock = "\(runnerLine)\nToday: \(todayDateStr) | \(weekRange)\nStatus: \(statusStr)"
         } else if let runRecord {
             let daysDiff = max(0, Calendar.current.dateComponents([.day], from: runRecord.date, to: Date()).day ?? 0)
             let runDateStr = df.string(from: runRecord.date)
@@ -416,7 +400,7 @@ class AnalystChatEngine: ObservableObject {
         let toolsBlock = toolLines.joined(separator: "\n")
 
         return """
-        Runalyst running coach. Answer warmly in 2–3 sentences.
+        Runalyst running coach. Converse naturally with the runner in 1–3 sentences—we do the calculations, you do the presentation.
 
         CONTEXT:
         \(contextBlock)\(recentContextBlock)
@@ -426,9 +410,9 @@ class AnalystChatEngine: ObservableObject {
 
         RULES:
         • Anchor: Ground in today. Don't call future runs tomorrow's run.
-        • Voice: Talk effort, breath, recovery. No clichés or tokens.
-        • Workload: Trust 'workload_zone'. Underload means fresh legs; do not diagnose overload.
-        • Medical Safety: Urge rest on pain or fatigue. No unasked 2nd runs today.
+        • Voice: Talk effort, breath, recovery. Never leak tokens or code words.
+        • Workload: Trust 'workload_zone'. Underload means fresh legs; never say 'underload' or diagnose overload.
+        • Medical Safety: Urge rest on pain or fatigue. No unasked 2nd runs today; do not contradict tomorrow's planned run.
         • Outside Running: Units: SPM, min/km (no LaTeX). Sidestep non-running topics.
         • Silent Tools: Never write command names. Stop cleanly.
 

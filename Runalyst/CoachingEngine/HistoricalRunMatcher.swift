@@ -524,7 +524,7 @@ struct HistoricalRunMatcher {
 
         let currentType: String = {
             if run.isPrimerWorkout {
-                return run.normalizedClassification
+                return run.prescribedDrillName.map { "\($0) (Primer)" } ?? "\(run.normalizedClassification) (Primer)"
             }
             return run.detectedTypeRaw.isEmpty ? run.normalizedClassification : run.detectedTypeRaw
         }()
