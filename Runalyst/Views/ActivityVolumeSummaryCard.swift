@@ -92,7 +92,8 @@ struct ActivityVolumeSummaryCard: View {
     }
 
     private var trailing4Weeks: [WeekVolume] {
-        let today = Date()
+        let today = calendar.startOfDay(for: Date())
+        let endOfToday = calendar.date(byAdding: .day, value: 1, to: today) ?? Date()
         let weekOffsets: [(label: String, weeksAgo: Int)] = [
             ("3W Ago", 3),
             ("2W Ago", 2),
@@ -103,11 +104,11 @@ struct ActivityVolumeSummaryCard: View {
         return weekOffsets.map { item in
             let endDays = item.weeksAgo * 7
             let startDays = endDays + 7
-            guard let endDate = calendar.date(byAdding: .day, value: -endDays, to: today),
-                  let startDate = calendar.date(byAdding: .day, value: -startDays, to: today) else {
+            guard let endDate = calendar.date(byAdding: .day, value: -endDays, to: endOfToday),
+                  let startDate = calendar.date(byAdding: .day, value: -startDays, to: endOfToday) else {
                 return WeekVolume(label: item.label, distanceMeters: 0, runCount: 0)
             }
-            let weekRuns = runs.filter { $0.date >= startDate && $0.date <= endDate }
+            let weekRuns = runs.filter { $0.date >= startDate && $0.date < endDate }
             let dist = weekRuns.map(\.totalDistanceMeters).reduce(0, +)
             return WeekVolume(
                 label: item.label,
@@ -178,11 +179,14 @@ struct ActivityVolumeSummaryCard: View {
                     Text(formattedTotalDistance.value)
                         .font(.system(size: 32, weight: .bold, design: .rounded))
                         .monospacedDigit()
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
                         .foregroundColor(.primary)
                     Text(formattedTotalDistance.unit)
                         .font(.subheadline.bold())
                         .foregroundColor(.secondary)
                 }
+                .fixedSize(horizontal: true, vertical: false)
 
                 Divider()
                     .frame(height: 28)

@@ -780,7 +780,7 @@ public struct GetTrainingScheduleQuery: Sendable {
     @Guide(description: "Start of schedule window in ISO format 'yyyy-MM-dd' (e.g. '2026-10-20').")
     public var from: String
 
-    @Guide(description: "Optional end of schedule window in ISO format 'yyyy-MM-dd'. If omitted, defaults to 6 days after 'from' (a full 7-day microcycle).")
+    @Guide(description: "Optional end of schedule window in ISO format 'yyyy-MM-dd' (e.g. for 'rest of the week', use this week's Saturday end date from CONTEXT). If omitted, defaults to 6 days after 'from'.")
     public var to: String?
 
     public init(from: String, to: String? = nil) {

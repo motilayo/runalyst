@@ -522,7 +522,12 @@ struct HistoricalRunMatcher {
         let currentFormattedDate = dateFormatter.string(from: run.date)
         let currentWeekday = weekdayFormatter.string(from: run.date)
 
-        let currentType = run.detectedTypeRaw.isEmpty ? run.normalizedClassification : run.detectedTypeRaw
+        let currentType: String = {
+            if run.isPrimerWorkout {
+                return run.normalizedClassification
+            }
+            return run.detectedTypeRaw.isEmpty ? run.normalizedClassification : run.detectedTypeRaw
+        }()
         let currentPace = run.workingAvgPace > 0 ? run.workingAvgPace : run.rawAvgPace
         let currentCad = Int(round(run.workingAvgCadence > 0 ? run.workingAvgCadence : run.rawAvgCadence))
         let currentHR = Int(round(run.workingAvgHeartRate > 0 ? run.workingAvgHeartRate : run.rawAvgHeartRate))

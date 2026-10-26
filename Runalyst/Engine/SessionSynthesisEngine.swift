@@ -1210,46 +1210,9 @@ enum SessionSynthesisEngine {
 
         let dayOffset = calendar.dateComponents([.day], from: today, to: targetDay).day ?? 0
         if dayOffset >= 2 && dayOffset <= 5 {
-            if let matchedDay = microcycle.first(where: { $0.id == "day-\(dayOffset)" }) {
-                if let planned = matchedDay.plannedSession {
-                    return planned
-                }
-                var cal = calendar
-                cal.firstWeekday = 1
-                let weekday = cal.component(.weekday, from: targetDay)
-                let template = templateSessionForWeekday(weekday: weekday, activeGoal: activeGoal, profile: profile, useMetric: useMetric)
-                let (minsLow, minsHigh): (Int, Int) = {
-                    if matchedDay.isRestDay { return (0, 0) }
-                    if matchedDay.sessionTitle.contains("Recovery Flush") { return (35, 40) }
-                    return (template.minutesLow, template.minutesHigh)
-                }()
-                let dayIntent: DailySessionIntent = {
-                    if matchedDay.isRestDay { return .fullRest }
-                    if matchedDay.sessionTitle.contains("Recovery Flush") { return .recoveryFlush }
-                    return .train
-                }()
-                let resolvedPaceBand: String? = {
-                    if matchedDay.isRestDay { return nil }
-                    let weightedBase = computeWeightedBaseline(from: runRecords, priorTo: now)
-                    let zones = TrainingZoneCore.calculateZones(anchorPaceSecPerKm: weightedBase.pace, activeGoal: activeGoal)
-                    if matchedDay.sessionTitle.contains("Recovery Flush") {
-                        return zones.zone1Recovery.formatted(useMetric: useMetric)
-                    }
-                    return template.paceBand ?? zones.zone2AerobicBase.formatted(useMetric: useMetric)
-                }()
-                return PlannedSession(
-                    kind: matchedDay.isRestDay ? .rest : .run,
-                    intent: dayIntent,
-                    title: matchedDay.sessionTitle,
-                    minutesLow: minsLow,
-                    minutesHigh: minsHigh,
-                    paceBand: resolvedPaceBand,
-                    hrCap: matchedDay.isRestDay ? "HR: Rest / < 125 BPM" : (dayIntent == .recoveryFlush ? "HR: < 135 BPM" : (template.hrCap ?? "HR: < 150 BPM")),
-                    cadenceFloor: matchedDay.isRestDay ? nil : (template.cadenceFloor ?? profile.heightAdjustedCadenceFloor),
-                    primerTitle: matchedDay.isRestDay ? nil : template.primerTitle,
-                    adjustmentTriggers: [],
-                    provisional: true
-                )
+            if let matchedDay = microcycle.first(where: { $0.id == "day-\(dayOffset)" }),
+               let planned = matchedDay.plannedSession {
+                return planned
             }
         }
 
@@ -1257,7 +1220,41 @@ enum SessionSynthesisEngine {
         var cal = calendar
         cal.firstWeekday = 1
         let weekday = cal.component(.weekday, from: targetDay)
-        return templateSessionForWeekday(weekday: weekday, activeGoal: activeGoal, profile: profile, useMetric: useMetric)
+        let template = templateSessionForWeekday(weekday: weekday, activeGoal: activeGoal, profile: profile, useMetric: useMetric)
+        if template.kind == .rest { return template }
+
+        let weightedBase = computeWeightedBaseline(from: runRecords, priorTo: now)
+        let zones = TrainingZoneCore.calculateZones(anchorPaceSecPerKm: weightedBase.pace, activeGoal: activeGoal)
+        let spec = SessionHorizonCore.templateSpecForWeekday(
+            weekday: weekday,
+            activeGoal: activeGoal,
+            experienceLevel: profile.experienceLevel,
+            useMetric: useMetric
+        )
+        let resolvedPace: String = {
+            switch spec.intensityZone {
+            case .rest: return ""
+            case .zone1Flush: return zones.zone1Recovery.formatted(useMetric: useMetric)
+            case .zone2Base: return zones.zone2AerobicBase.formatted(useMetric: useMetric)
+            case .zone3Steady: return zones.zone3Steady.formatted(useMetric: useMetric)
+            case .zone4Tempo: return zones.zone4Threshold.formatted(useMetric: useMetric)
+            case .zone5Interval: return zones.zone5Interval.formatted(useMetric: useMetric)
+            }
+        }()
+
+        return PlannedSession(
+            kind: template.kind,
+            intent: template.intent,
+            title: template.title,
+            minutesLow: template.minutesLow,
+            minutesHigh: template.minutesHigh,
+            paceBand: resolvedPace.isEmpty ? template.paceBand : resolvedPace,
+            hrCap: template.hrCap,
+            cadenceFloor: template.cadenceFloor,
+            primerTitle: template.primerTitle,
+            adjustmentTriggers: template.adjustmentTriggers,
+            provisional: true
+        )
     }
 
     /// Pure weekday template for goals (Sun = 1, Mon = 2, Tue = 3, Wed = 4, Thu = 5, Fri = 6, Sat = 7).
@@ -1276,14 +1273,17 @@ enum SessionSynthesisEngine {
         let isRest = spec.kind == "rest"
         let paceBand: String? = {
             if isRest { return nil }
-            switch spec.intensityZone {
-            case .rest: return nil
-            case .zone1Flush: return "Zone 1 Flush"
-            case .zone2Base: return "Zone 2 Base"
-            case .zone3Steady: return "Zone 3 Steady"
-            case .zone4Tempo: return "Zone 4 Tempo"
-            case .zone5Interval: return "Zone 5 Intervals"
+            if activeGoal == "Base Building" {
+                switch spec.intensityZone {
+                case .rest: return nil
+                case .zone1Flush: return "Zone 1 Flush"
+                case .zone2Base: return "Zone 2 Base"
+                case .zone3Steady: return "Zone 3 Steady"
+                case .zone4Tempo: return "Zone 4 Tempo"
+                case .zone5Interval: return "Zone 5 Intervals"
+                }
             }
+            return nil
         }()
         return PlannedSession(
             kind: isRest ? .rest : .run,
@@ -1387,26 +1387,6 @@ enum SessionSynthesisEngine {
             return "\(weekday)'s \(workoutType)"
         }
         return "Recent \(workoutType)"
-    }
-
-    private static func formatPaceRange(lowSec: Double, highSec: Double, useMetric: Bool) -> String {
-        let low = Int(lowSec.rounded())
-        let high = Int(highSec.rounded())
-        let p1M = low / 60
-        let p1S = low % 60
-        let p2M = high / 60
-        let p2S = high % 60
-        if useMetric {
-            return String(format: "%d:%02d–%d:%02d/km", p1M, p1S, p2M, p2S)
-        } else {
-            let lowMi = Int((lowSec * 1.609344).rounded())
-            let highMi = Int((highSec * 1.609344).rounded())
-            let mi1M = lowMi / 60
-            let mi1S = lowMi % 60
-            let mi2M = highMi / 60
-            let mi2S = highMi % 60
-            return String(format: "%d:%02d–%d:%02d/mi", mi1M, mi1S, mi2M, mi2S)
-        }
     }
 
     public typealias WeightedBaselineStats = RunalystCore.WeightedBaselineStats

@@ -336,8 +336,13 @@ public enum SessionSynthesisCore {
         }
     }
 
-    public static func computeWeightedBaselineStats(from runs: [SynthesisRunSample], priorTo date: Date) -> WeightedBaselineStats? {
-        let thirtyDaysAgo = date.addingTimeInterval(-30 * 86400)
+    public static func computeWeightedBaselineStats(
+        from runs: [SynthesisRunSample],
+        priorTo date: Date,
+        calendar: Calendar? = nil
+    ) -> WeightedBaselineStats? {
+        let cal = calendar ?? Calendar(identifier: .gregorian)
+        let thirtyDaysAgo = cal.date(byAdding: .day, value: -30, to: date) ?? date.addingTimeInterval(-30 * 86400)
         let valid = runs.filter {
             $0.workingAvgPaceSecPerKm > 0 && $0.durationSeconds > 0 &&
             $0.date < date && $0.date >= thirtyDaysAgo
@@ -345,6 +350,7 @@ public enum SessionSynthesisCore {
         guard !valid.isEmpty else { return nil }
 
         func aerobicWeight(for r: SynthesisRunSample) -> Double {
+            if valid.count < 3 { return 1.0 * r.durationSeconds }
             switch r.detectedType {
             case "Steady Effort", "Easy Run", "Long Run": return 1.0 * r.durationSeconds
             case "Tempo Run", "Progression Run", "Recovery Run": return 0.8 * r.durationSeconds
@@ -389,8 +395,12 @@ public enum SessionSynthesisCore {
         return WeightedBaselineStats(avgPace: pace, avgCadence: cad, avgHR: hr, avgOscillation: osc, avgStrideLength: stride, avgVerticalRatio: vr)
     }
 
-    public static func computeWeightedBaseline(from runs: [SynthesisRunSample], priorTo date: Date) -> (pace: Double, cadence: Int) {
-        if let stats = computeWeightedBaselineStats(from: runs, priorTo: date) {
+    public static func computeWeightedBaseline(
+        from runs: [SynthesisRunSample],
+        priorTo date: Date,
+        calendar: Calendar? = nil
+    ) -> (pace: Double, cadence: Int) {
+        if let stats = computeWeightedBaselineStats(from: runs, priorTo: date, calendar: calendar) {
             return (stats.avgPace, Int(stats.avgCadence.rounded()))
         }
         let fallback = runs.filter { $0.workingAvgPaceSecPerKm > 0 && $0.date < date }
@@ -399,13 +409,18 @@ public enum SessionSynthesisCore {
         return (pace, cad)
     }
 
-    public static func evaluate30DayTrajectory(from runs: [SynthesisRunSample], now: Date) -> TrajectoryAssessment {
-        let thirtyDaysAgo = now.addingTimeInterval(-30 * 86400)
+    public static func evaluate30DayTrajectory(
+        from runs: [SynthesisRunSample],
+        now: Date,
+        calendar: Calendar? = nil
+    ) -> TrajectoryAssessment {
+        let cal = calendar ?? Calendar(identifier: .gregorian)
+        let thirtyDaysAgo = cal.date(byAdding: .day, value: -30, to: now) ?? now.addingTimeInterval(-30 * 86400)
         let valid = runs.filter {
             $0.date >= thirtyDaysAgo && $0.date <= now &&
             $0.workingAvgPaceSecPerKm > 0 && $0.workingAvgHeartRateBPM > 0
         }
-        let midDate = now.addingTimeInterval(-15 * 86400)
+        let midDate = cal.date(byAdding: .day, value: -15, to: now) ?? now.addingTimeInterval(-15 * 86400)
         let recent = valid.filter { $0.date >= midDate }
         let older = valid.filter { $0.date < midDate }
 

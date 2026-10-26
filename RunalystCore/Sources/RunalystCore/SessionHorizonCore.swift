@@ -99,7 +99,7 @@ public enum SessionHorizonCore {
             case 4:
                 return WeekdayTemplateSpec(kind: "rest", title: "Rest Day", intensityZone: .rest, minutesLow: 0, minutesHigh: 0, primerTitle: nil, iconName: "bed.double.fill")
             case 5:
-                return WeekdayTemplateSpec(kind: "run", title: "Zone 1 Recovery Flush (40m)", intensityZone: .zone1Flush, minutesLow: 35, minutesHigh: 40, primerTitle: nil, iconName: "leaf.fill")
+                return WeekdayTemplateSpec(kind: "run", title: "Zone 1 Recovery Flush (40m)", intensityZone: .zone1Flush, minutesLow: 35, minutesHigh: 40, primerTitle: "Optional 10m Walk", iconName: "leaf.fill")
             case 6:
                 return WeekdayTemplateSpec(kind: "run", title: "Aerobic Consistency Run (30m)", intensityZone: .zone2Base, minutesLow: 25, minutesHigh: 30, primerTitle: "Rhythm Intervals", iconName: "figure.run")
             case 7:
