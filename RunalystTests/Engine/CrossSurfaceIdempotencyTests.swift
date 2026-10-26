@@ -68,8 +68,9 @@ final class CrossSurfaceIdempotencyTests: XCTestCase {
 
         let workoutsSession = workoutsState.activeSession
         XCTAssertEqual(workoutsSession.intent, .recoveryFlush, "Fatigue/drift must lock into .recoveryFlush, not .train or .fullRest")
-        XCTAssertEqual(workoutsSession.durationBand, "15–20 Min")
+        XCTAssertEqual(workoutsSession.durationBand, "27 Min")
         XCTAssertEqual(workoutsSession.mainRunDurationMinutes, 20)
+        XCTAssertEqual(workoutsSession.totalDurationMinutes, 27)
         XCTAssertFalse(workoutsSession.paceBand.isEmpty)
 
         // 2. Surface 2: Training Zone Engine Prescription (Powers Dashboard Glass-Box & Targets)
@@ -106,14 +107,14 @@ final class CrossSurfaceIdempotencyTests: XCTestCase {
         }
 
         XCTAssertEqual(todaySchedule.planned.title, workoutsSession.sessionTitle, "Chat planned session title must match Workouts tab")
-        XCTAssertEqual(todaySchedule.planned.minutesHigh, workoutsSession.mainRunDurationMinutes, "Chat planned minutes must match Workouts tab")
+        XCTAssertEqual(todaySchedule.planned.minutesHigh, workoutsSession.totalDurationMinutes, "Chat planned minutes must match Workouts tab")
         XCTAssertEqual(todaySchedule.planned.paceBand, workoutsSession.paceBand, "Chat planned pace band must match Workouts tab")
         XCTAssertEqual(todaySchedule.planned.intent, .recoveryFlush, "Chat planned intent must be .recoveryFlush")
 
         // 4. Compact Summary Token Parity
         let compactSummary = TrainingCalendar.formatCompactScheduleSummary(days: [todaySchedule])
         XCTAssertTrue(compactSummary.contains(workoutsSession.sessionTitle), "Chat summary must contain exact session title")
-        XCTAssertTrue(compactSummary.contains("15-20 min"), "Chat summary must contain 15-20 min")
+        XCTAssertTrue(compactSummary.contains("\(workoutsSession.totalDurationMinutes) min"), "Chat summary must contain exact duration")
         XCTAssertTrue(compactSummary.contains(workoutsSession.paceBand), "Chat summary must contain exact pace band")
     }
 

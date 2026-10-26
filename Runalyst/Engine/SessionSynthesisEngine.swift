@@ -61,7 +61,7 @@ public struct PlannedSession: Sendable, Equatable, Codable {
 struct PrescribedDailySession: Sendable, Equatable {
     let targetGoal: String
     let sessionTitle: String
-    let durationBand: String
+    var durationBand: String
     let paceBand: String
     let hrCap: String
     let cadenceFloor: Int
@@ -77,6 +77,7 @@ struct PrescribedDailySession: Sendable, Equatable {
     let microcycle: [MicrocycleDay]
     var mainSessionTemplateId: PreRunDrillId = .zone2Run
     var mainRunDurationMinutes: Int = 30
+    var primerDurationMinutes: Int = 10
     var completedPrimerRun: RunRecordSnapshot?
     var intent: DailySessionIntent = .train
     var isRestDay: Bool {
@@ -86,6 +87,19 @@ struct PrescribedDailySession: Sendable, Equatable {
     var dayLabel: String?
     var isToday: Bool = false
     var readinessState: ReadinessState = .productive
+
+    /// Total planned duration for the entire workout (Primer + Main Run).
+    var totalDurationMinutes: Int {
+        if intent == .fullRest { return 0 }
+        return primerDurationMinutes + mainRunDurationMinutes
+    }
+
+    /// Remaining duration left to run today (drops primer once completed).
+    var remainingDurationMinutes: Int {
+        if intent == .fullRest { return 0 }
+        let activePrimer = (completedPrimerRun != nil) ? 0 : primerDurationMinutes
+        return activePrimer + mainRunDurationMinutes
+    }
 
     init(
         targetGoal: String,
@@ -106,6 +120,7 @@ struct PrescribedDailySession: Sendable, Equatable {
         microcycle: [MicrocycleDay],
         mainSessionTemplateId: PreRunDrillId = .zone2Run,
         mainRunDurationMinutes: Int = 30,
+        primerDurationMinutes: Int? = nil,
         completedPrimerRun: RunRecordSnapshot? = nil,
         intent: DailySessionIntent? = nil,
         isRestDay: Bool? = nil,
@@ -139,6 +154,27 @@ struct PrescribedDailySession: Sendable, Equatable {
         } else {
             self.intent = .train
         }
+
+        if let primerDurationMinutes {
+            self.primerDurationMinutes = primerDurationMinutes
+        } else if self.intent == .fullRest {
+            self.primerDurationMinutes = 0
+        } else {
+            if primerPhasesDuration.contains("15") {
+                self.primerDurationMinutes = 15
+            } else if primerPhasesDuration.contains("12") {
+                self.primerDurationMinutes = 12
+            } else if primerPhasesDuration.contains("10") {
+                self.primerDurationMinutes = 10
+            } else if primerPhasesDuration.contains("7") || primerPhasesDuration.contains("8") {
+                self.primerDurationMinutes = 8
+            } else if primerPhasesDuration.contains("5") {
+                self.primerDurationMinutes = 5
+            } else {
+                self.primerDurationMinutes = primerDrillId.defaultDuration.rawValue
+            }
+        }
+
         self.dayLabel = dayLabel
         self.isToday = isToday
         self.readinessState = readinessState
@@ -326,6 +362,7 @@ enum SessionSynthesisEngine {
             )
             if let completedPrimer = todayRuns.first(where: { isShortPrimerWorkout($0) }) ?? todayRuns.first {
                 todaySession.completedPrimerRun = buildSnapshot(from: completedPrimer, useMetric: useMetric)
+                todaySession.durationBand = "\(todaySession.mainRunDurationMinutes) Min"
             }
             return .preRun(session: todaySession)
         }
@@ -529,6 +566,7 @@ enum SessionSynthesisEngine {
                 microcycle: microcycle,
                 mainSessionTemplateId: .recoveryJog,
                 mainRunDurationMinutes: 0,
+                primerDurationMinutes: 0,
                 completedPrimerRun: nil,
                 intent: .fullRest,
                 dayLabel: "Today",
@@ -764,10 +802,18 @@ enum SessionSynthesisEngine {
             }
         }()
 
+        let totalSessionMins = (todayIntent == .fullRest) ? 0 : (primerMins + mainRunDurationMinutes)
+        let effectiveDurationBand: String = {
+            if todayIntent == .fullRest {
+                return "Rest Day (or 15m Walk/Mobility)"
+            }
+            return "\(totalSessionMins) Min"
+        }()
+
         return PrescribedDailySession(
             targetGoal: activeGoal,
             sessionTitle: sessionTitle,
-            durationBand: durationBand,
+            durationBand: effectiveDurationBand,
             paceBand: paceBand,
             hrCap: hrCap,
             cadenceFloor: cadenceFloor,
@@ -785,6 +831,7 @@ enum SessionSynthesisEngine {
             microcycle: microcycle,
             mainSessionTemplateId: mainSessionTemplateId,
             mainRunDurationMinutes: mainRunDurationMinutes,
+            primerDurationMinutes: todayIntent == .fullRest ? 0 : primerMins,
             completedPrimerRun: nil,
             intent: todayIntent,
             dayLabel: "Today",
@@ -896,6 +943,7 @@ enum SessionSynthesisEngine {
                 microcycle: microcycle,
                 mainSessionTemplateId: .recoveryJog,
                 mainRunDurationMinutes: 0,
+                primerDurationMinutes: 0,
                 completedPrimerRun: nil,
                 intent: .fullRest,
                 dayLabel: tomorrowWeekday,
@@ -1004,10 +1052,18 @@ enum SessionSynthesisEngine {
             isTomorrowRest: false
         )
 
+        let totalTomorrowMins = (tomorrowIntent == .fullRest) ? 0 : (tomorrowPrimerMins + mainRunDurationMinutes)
+        let effectiveTomorrowDurationBand: String = {
+            if tomorrowIntent == .fullRest {
+                return "Rest Day (or 15m Walk/Mobility)"
+            }
+            return "\(totalTomorrowMins) Min"
+        }()
+
         return PrescribedDailySession(
             targetGoal: context.activeGoal,
             sessionTitle: tomorrowTitle,
-            durationBand: durationBand,
+            durationBand: effectiveTomorrowDurationBand,
             paceBand: paceBand,
             hrCap: hrCap,
             cadenceFloor: cadenceFloor,
@@ -1023,6 +1079,7 @@ enum SessionSynthesisEngine {
             microcycle: microcycle,
             mainSessionTemplateId: wasHardSession ? .recoveryJog : .zone2Run,
             mainRunDurationMinutes: mainRunDurationMinutes,
+            primerDurationMinutes: tomorrowIntent == .fullRest ? 0 : tomorrowPrimerMins,
             completedPrimerRun: nil,
             intent: tomorrowIntent,
             dayLabel: tomorrowWeekday,
@@ -1129,8 +1186,8 @@ enum SessionSynthesisEngine {
                     kind: session.isRestDay ? .rest : .run,
                     intent: session.intent,
                     title: session.sessionTitle,
-                    minutesLow: session.isRestDay ? 0 : max(15, session.mainRunDurationMinutes - 5),
-                    minutesHigh: session.isRestDay ? 0 : session.mainRunDurationMinutes,
+                    minutesLow: session.isRestDay ? 0 : session.totalDurationMinutes,
+                    minutesHigh: session.isRestDay ? 0 : session.totalDurationMinutes,
                     paceBand: session.isRestDay ? nil : session.paceBand,
                     hrCap: session.hrCap,
                     cadenceFloor: session.cadenceFloor > 0 ? session.cadenceFloor : nil,
@@ -1200,8 +1257,8 @@ enum SessionSynthesisEngine {
                 kind: tomorrowSession.isRestDay ? .rest : .run,
                 intent: tomorrowSession.intent,
                 title: tomorrowSession.sessionTitle,
-                minutesLow: tomorrowSession.isRestDay ? 0 : max(15, tomorrowSession.mainRunDurationMinutes - 5),
-                minutesHigh: tomorrowSession.isRestDay ? 0 : tomorrowSession.mainRunDurationMinutes,
+                minutesLow: tomorrowSession.isRestDay ? 0 : tomorrowSession.totalDurationMinutes,
+                minutesHigh: tomorrowSession.isRestDay ? 0 : tomorrowSession.totalDurationMinutes,
                 paceBand: tomorrowSession.isRestDay ? nil : tomorrowSession.paceBand,
                 hrCap: tomorrowSession.hrCap,
                 cadenceFloor: tomorrowSession.cadenceFloor > 0 ? tomorrowSession.cadenceFloor : nil,

@@ -165,6 +165,29 @@ struct PrescribedSessionCardView: View {
                 .accessibilityLabel("Learn more about today's prescribed workout")
             }
 
+            if session.intent != .fullRest && session.totalDurationMinutes > 0 {
+                HStack(spacing: 6) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "stopwatch.fill")
+                            .font(.system(size: 10, weight: .bold))
+                        Text("Total: \(session.totalDurationMinutes) Min")
+                            .font(.system(size: 11, weight: .bold))
+                    }
+                    .foregroundColor(.purple)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color.purple.opacity(0.12))
+                    .clipShape(Capsule())
+
+                    if session.primerDurationMinutes > 0 {
+                        Text("\(session.primerDurationMinutes)m Primer + \(session.mainRunDurationMinutes)m Main Run")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .padding(.top, 2)
+            }
+
             if let headline = parsed.headline {
                 Text(headline)
                     .font(.subheadline.weight(.semibold))
