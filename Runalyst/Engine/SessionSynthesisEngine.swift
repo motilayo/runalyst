@@ -404,8 +404,7 @@ enum SessionSynthesisEngine {
         let basePace = weightedBase.pace
         let baseCadence = weightedBase.cadence
 
-        let heightScale = max(130.0, min(220.0, userHeightCm)) / 175.0
-        let calibratedCadenceFloor = Int((150.0 / heightScale).rounded())
+        let calibratedCadenceFloor = SessionSynthesisCore.heightAdjustedCadenceFloor(heightCm: userHeightCm)
 
         let recentRun = runRecords.first(where: { !$0.isDeleted && $0.date < now })
         var hadCardiacDrift = readiness.triggers.contains(.cardiacDrift)
@@ -448,7 +447,6 @@ enum SessionSynthesisEngine {
         let readyForQuality = (readiness.state == .productive) && !hadCardiacDrift && recoveryTimeline.readyForHard && (hardSessionsLast7d < 2)
 
         let sessionTitle: String
-        let durationBand: String
         let paceBand: String
         let hrCap: String
         let cadenceFloor: Int
@@ -463,38 +461,17 @@ enum SessionSynthesisEngine {
         let mainRunDurationMinutes: Int
 
         // Biomechanical Limiter Detection on Recent Run (Closed-Loop Primer Selection)
-        let recentHadExcessiveBounce: Bool = {
-            guard let recent = recentRun else { return false }
-            let vr = recent.verticalRatio ?? 0.0
-            let osc = recent.workingAvgVerticalOscillation ?? recent.rawAvgVerticalOscillation ?? 0.0
-            let subFloor = recent.workingAvgCadence > 0 && recent.workingAvgCadence < Double(calibratedCadenceFloor)
-            return vr > 9.0 || osc > 10.0 || subFloor
-        }()
-        let recentHadCadenceFade: Bool = {
-            guard let recent = recentRun else { return false }
-            // Tier 1 (Tag): Persisted Tag
-            if recent.framboiseTags.contains(FramboiseReadinessTag.cadenceFade) {
-                return true
-            }
-            // Tier 2 (Linear Regression Slope): Slope < -0.15
-            if let slope = recent.cadenceSlope {
-                return slope < -0.15
-            }
-            // Tier 3 (Raw Split Telemetry Decay): >= 3 splits, mean cadence drop >= 5.0 SPM
-            let splits = recent.splits
-            if splits.count >= 3 {
-                let splitIdx = (splits.count * 2) / 3
-                let earlyCount = Double(splitIdx)
-                let lateCount = Double(splits.count - splitIdx)
-                guard earlyCount > 0 && lateCount > 0 else { return false }
-                let early = splits[0..<splitIdx].map(\.avgCadence).reduce(0, +) / earlyCount
-                let late = splits[splitIdx...].map(\.avgCadence).reduce(0, +) / lateCount
-                if (early - late) >= 5.0 {
-                    return true
-                }
-            }
-            return false
-        }()
+        let limiters = SessionSynthesisCore.detectRecentLimiters(
+            verticalRatio: recentRun?.verticalRatio,
+            verticalOscillationCm: recentRun?.workingAvgVerticalOscillation ?? recentRun?.rawAvgVerticalOscillation,
+            cadenceSPM: recentRun?.workingAvgCadence ?? 0.0,
+            cadenceFloor: calibratedCadenceFloor,
+            hasCadenceFadeTag: recentRun?.framboiseTags.contains(FramboiseReadinessTag.cadenceFade) ?? false,
+            cadenceSlope: recentRun?.cadenceSlope,
+            splitCadences: recentRun?.splits.map(\.avgCadence) ?? []
+        )
+        let recentHadExcessiveBounce = limiters.hadExcessiveBounce
+        let recentHadCadenceFade = limiters.hadCadenceFade
 
         // Evaluate Streak & 48-Hour Volume Compression
         let streakSummary = StreakAndVolumeSummary.evaluate(
@@ -569,7 +546,6 @@ enum SessionSynthesisEngine {
                 : "Active Recovery Window (Acute Fatigue)"
 
             sessionTitle = "Zone 1 Active Recovery Flush"
-            durationBand = "15–20 Min"
             mainRunDurationMinutes = 20
             mainSessionTemplateId = .recoveryJog
             paceBand = zones.zone1Recovery.formatted(useMetric: useMetric)
@@ -599,7 +575,6 @@ enum SessionSynthesisEngine {
         } else if readiness.state == .deload {
             readinessStatus = "Deload Week (Consolidation)"
             sessionTitle = "Zone 2 Easy Aerobic Maintenance"
-            durationBand = "30–35 Min"
             mainRunDurationMinutes = 30
             mainSessionTemplateId = .zone2Run
             paceBand = zones.zone2AerobicBase.formatted(useMetric: useMetric)
@@ -620,7 +595,6 @@ enum SessionSynthesisEngine {
 
             if activeGoal.localizedCaseInsensitiveContains("5K") {
                 sessionTitle = "5K Rhythm Intervals"
-                durationBand = "30–35 Min"
                 mainRunDurationMinutes = 30
                 mainSessionTemplateId = .rhythmIntervals
                 paceBand = zones.zone5Interval.formatted(useMetric: useMetric)
@@ -634,7 +608,6 @@ enum SessionSynthesisEngine {
                 primerDuration = "10 min drill"
             } else if activeGoal.localizedCaseInsensitiveContains("10K") {
                 sessionTitle = "10K Threshold Surges"
-                durationBand = "35–40 Min"
                 mainRunDurationMinutes = 35
                 mainSessionTemplateId = .tempoSurges
                 paceBand = zones.zone4Threshold.formatted(useMetric: useMetric)
@@ -649,7 +622,6 @@ enum SessionSynthesisEngine {
             } else if activeGoal.localizedCaseInsensitiveContains("Half") || activeGoal.localizedCaseInsensitiveContains("Marathon") {
                 if hardSessionsLast7d == 0 {
                     sessionTitle = "Lactate Threshold Tempo Surges"
-                    durationBand = "35–40 Min"
                     mainRunDurationMinutes = 35
                     mainSessionTemplateId = .tempoSurges
                     paceBand = zones.zone4Threshold.formatted(useMetric: useMetric)
@@ -664,8 +636,7 @@ enum SessionSynthesisEngine {
                 } else {
                     // Polarized Base Consolidation for Half/Full
                     sessionTitle = "Zone 2 Easy Aerobic Base"
-                    let (band, mins) = aerobicDurationForExperience(experienceLevel)
-                    durationBand = band
+                    let (_, mins) = aerobicDurationForExperience(experienceLevel)
                     mainRunDurationMinutes = mins
                     mainSessionTemplateId = .zone2Run
                     paceBand = zones.zone2AerobicBase.formatted(useMetric: useMetric)
@@ -681,8 +652,7 @@ enum SessionSynthesisEngine {
             } else {
                 // Base Building / Default Aerobic Progression
                 sessionTitle = "Zone 2 Easy Aerobic Base"
-                let (band, mins) = aerobicDurationForExperience(experienceLevel)
-                durationBand = band
+                let (_, mins) = aerobicDurationForExperience(experienceLevel)
                 mainRunDurationMinutes = mins
                 mainSessionTemplateId = .zone2Run
                 paceBand = zones.zone2AerobicBase.formatted(useMetric: useMetric)
@@ -706,8 +676,7 @@ enum SessionSynthesisEngine {
             readinessStatus = "Productive Training (Aerobic Consolidation)"
             isTrimmed = false
             sessionTitle = "Zone 2 Easy Aerobic Base"
-            let (band, mins) = aerobicDurationForExperience(experienceLevel)
-            durationBand = band
+            let (_, mins) = aerobicDurationForExperience(experienceLevel)
             mainRunDurationMinutes = mins
             mainSessionTemplateId = .zone2Run
             paceBand = zones.zone2AerobicBase.formatted(useMetric: useMetric)
@@ -845,8 +814,7 @@ enum SessionSynthesisEngine {
         let rollingBasePace = weightedBase.pace
         let rollingBaseCadence = weightedBase.cadence
 
-        let heightScale = max(130.0, min(220.0, context.userHeightCm)) / 175.0
-        let calibratedCadenceFloor = Int((150.0 / heightScale).rounded())
+        let calibratedCadenceFloor = SessionSynthesisCore.heightAdjustedCadenceFloor(heightCm: context.userHeightCm)
 
         let basePace = rollingBasePace
         let baseCadence = rollingBaseCadence
@@ -924,8 +892,7 @@ enum SessionSynthesisEngine {
         let wasHardSession = todayRun.percentZone4 >= 0.20 || todayRun.detectedTypeRaw == "Intervals" || todayRun.detectedTypeRaw == "Fartlek" || todayRun.detectedTypeRaw == "Tempo Run"
 
         let tomorrowTitle = wasHardSession ? "Zone 1 Active Recovery Flush" : "Zone 2 Easy Aerobic Base"
-        let (aerobicBand, aerobicMins) = aerobicDurationForExperience(context.experienceLevel)
-        let durationBand = wasHardSession ? "15–20 Min" : aerobicBand
+        let (_, aerobicMins) = aerobicDurationForExperience(context.experienceLevel)
         let mainRunDurationMinutes = wasHardSession ? 20 : aerobicMins
 
         let zones = TrainingZoneCore.calculateZones(anchorPaceSecPerKm: basePace, activeGoal: context.activeGoal)
@@ -940,33 +907,17 @@ enum SessionSynthesisEngine {
             ? "Today's \(todayRun.detectedTypeRaw) workout banked heavy neuromuscular stimuli. Tomorrow automatically shifts to an active recovery flush to clear metabolic waste and protect your legs."
             : "Building continuous consistency toward \(context.activeGoal). Tomorrow keeps aerobic volume progressing at conversational intensity."
 
-        let todayHadExcessiveBounce: Bool = {
-            let vr = todayRun.verticalRatio ?? 0.0
-            let osc = todayRun.workingAvgVerticalOscillation ?? todayRun.rawAvgVerticalOscillation ?? 0.0
-            let subFloor = todayRun.workingAvgCadence > 0 && todayRun.workingAvgCadence < Double(calibratedCadenceFloor)
-            return vr > 9.0 || osc > 10.0 || subFloor
-        }()
-        let todayHadCadenceFade: Bool = {
-            if todayRun.framboiseTags.contains(FramboiseReadinessTag.cadenceFade) {
-                return true
-            }
-            if let slope = todayRun.cadenceSlope {
-                return slope < -0.15
-            }
-            let splits = todayRun.splits
-            if splits.count >= 3 {
-                let splitIdx = (splits.count * 2) / 3
-                let earlyCount = Double(splitIdx)
-                let lateCount = Double(splits.count - splitIdx)
-                guard earlyCount > 0 && lateCount > 0 else { return false }
-                let early = splits[0..<splitIdx].map(\.avgCadence).reduce(0, +) / earlyCount
-                let late = splits[splitIdx...].map(\.avgCadence).reduce(0, +) / lateCount
-                if (early - late) >= 5.0 {
-                    return true
-                }
-            }
-            return false
-        }()
+        let limiters = SessionSynthesisCore.detectRecentLimiters(
+            verticalRatio: todayRun.verticalRatio,
+            verticalOscillationCm: todayRun.workingAvgVerticalOscillation ?? todayRun.rawAvgVerticalOscillation,
+            cadenceSPM: todayRun.workingAvgCadence,
+            cadenceFloor: calibratedCadenceFloor,
+            hasCadenceFadeTag: todayRun.framboiseTags.contains(FramboiseReadinessTag.cadenceFade),
+            cadenceSlope: todayRun.cadenceSlope,
+            splitCadences: todayRun.splits.map(\.avgCadence)
+        )
+        let todayHadExcessiveBounce = limiters.hadExcessiveBounce
+        let todayHadCadenceFade = limiters.hadCadenceFade
 
         let primerDrillId: PreRunDrillId
         let primerTitle: String

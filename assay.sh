@@ -19,6 +19,15 @@ else
     echo "✅ [PURE] Zero Apple infrastructure frameworks found in Core."
 fi
 
+# 1b. Determinism Audit (Zero Wall-Clock Date() & Calendar.current)
+echo "⏱️  Checking Determinism Air-Gap (Zero Date() or Calendar.current)..."
+if grep -rE "Date\(\)|Calendar\.current" "$CORE_DIR" --include=\*.swift; then
+    echo "🚨 [IMPURE] Wall-clock time or dynamic Calendar detected in RunalystCore!"
+    ASSAY_PASSED=false
+else
+    echo "✅ [PURE] Zero wall-clock time or dynamic Calendar found in Core."
+fi
+
 # 2. Syntax & Lint Audit
 echo "🧹 Running strict SwiftLint..."
 if swiftlint --strict "$CORE_DIR"; then

@@ -91,14 +91,7 @@ enum DrillPatternRecognizer {
     ) -> DrillPatternMatch? {
         guard activities.count >= 4 else { return nil }
 
-        struct ActivityStats {
-            let activity: HKWorkoutActivity
-            let avgCadence: Double
-            let avgHR: Double
-            let duration: TimeInterval
-        }
-
-        var activityStats: [ActivityStats] = []
+        var segments: [DrillPatternCore.SegmentStatsCore] = []
         for act in activities {
             let actEnd = act.endDate ?? act.startDate.addingTimeInterval(act.duration)
             let actBuckets = buckets.filter { $0.startTime >= act.startDate && $0.startTime < actEnd }
@@ -116,111 +109,16 @@ enum DrillPatternRecognizer {
                 avgC = act.duration > 0 ? (steps / (act.duration / 60.0)) : 0
                 avgH = hrVal
             }
-            activityStats.append(ActivityStats(activity: act, avgCadence: avgC, avgHR: avgH, duration: act.duration))
+            segments.append(DrillPatternCore.SegmentStatsCore(avgCadence: avgC, avgHR: avgH, durationSeconds: act.duration))
         }
 
-        guard let minC = activityStats.map({ $0.avgCadence }).min(),
-              let maxC = activityStats.map({ $0.avgCadence }).max(),
-              (maxC - minC) >= 10.0 else {
-            return nil
-        }
+        guard let match = DrillPatternCore.recognizeFromSegments(
+            segments: segments,
+            baselineCadence: baselineCadence,
+            sourceLabel: "Structured workout activities"
+        ) else { return nil }
 
-        let threshold = (minC + maxC) / 2.0
-        let workActs = activityStats.filter { $0.avgCadence >= threshold && $0.duration >= 15.0 }
-        let recActs = activityStats.filter { $0.avgCadence < threshold }
-
-        guard workActs.count >= 3 else { return nil }
-
-        let workCadences = workActs.map { $0.avgCadence }
-        let wMean = workCadences.reduce(0, +) / Double(workCadences.count)
-        let wVariance = workCadences.map { pow($0 - wMean, 2) }.reduce(0, +) / Double(workCadences.count)
-        let wStd = sqrt(wVariance)
-        let avgRecC = recActs.isEmpty ? 0.0 : (recActs.map { $0.avgCadence }.reduce(0, +) / Double(recActs.count))
-
-        let totalActDuration = activityStats.map(\.duration).reduce(0, +)
-        let avgWorkDur = workActs.map(\.duration).reduce(0, +) / Double(workActs.count)
-        let avgRecDur = recActs.isEmpty ? 0.0 : (recActs.map(\.duration).reduce(0, +) / Double(recActs.count))
-
-        // Strides check
-        if let sched = DrillSchedule.findMatchingSchedule(
-            workoutDuration: totalActDuration,
-            detectedIterations: workActs.count,
-            avgWorkDuration: avgWorkDur,
-            avgRecoveryDuration: avgRecDur,
-            candidateDrills: [.strides]
-        ), workActs.allSatisfy({ $0.duration <= 45.0 }) && (wMean >= 174.0 || wMean >= Double(baselineCadence) + 16.0) {
-            return DrillPatternMatch(
-                drillId: .strides,
-                confidence: 0.95,
-                detectedIntervalCount: workActs.count,
-                avgWorkCadence: Int(round(wMean)),
-                avgRecoveryCadence: Int(round(avgRecC)),
-                signatureDescription: "Structured workout activities: \(workActs.count) short stride sprints (\(sched.durationCategory.title)) at \(Int(round(wMean))) SPM."
-            )
-        }
-
-        // Pyramids check
-        let isMonotonicUp: Bool = {
-            for i in 0..<(workCadences.count - 1) where (workCadences[i + 1] - workCadences[i]) < 2.0 {
-                return false
-            }
-            return true
-        }()
-        let spread = (workCadences.max() ?? 0) - (workCadences.min() ?? 0)
-        if let sched = DrillSchedule.findMatchingSchedule(
-            workoutDuration: totalActDuration,
-            detectedIterations: workActs.count,
-            avgWorkDuration: avgWorkDur,
-            avgRecoveryDuration: avgRecDur,
-            candidateDrills: [.cadencePyramids]
-        ), isMonotonicUp && spread >= 5.0 {
-            return DrillPatternMatch(
-                drillId: .cadencePyramids,
-                confidence: 0.96,
-                detectedIntervalCount: workActs.count,
-                avgWorkCadence: Int(round(wMean)),
-                avgRecoveryCadence: Int(round(avgRecC)),
-                signatureDescription: "Structured workout activities: \(workActs.count) progressive pyramid reps (\(sched.durationCategory.title), \(Int(round(workCadences.min() ?? 0)))–\(Int(round(workCadences.max() ?? 0))) SPM)."
-            )
-        }
-
-        // Rhythm intervals check
-        if let sched = DrillSchedule.findMatchingSchedule(
-            workoutDuration: totalActDuration,
-            detectedIterations: workActs.count,
-            avgWorkDuration: avgWorkDur,
-            avgRecoveryDuration: avgRecDur,
-            candidateDrills: [.rhythmIntervals]
-        ), wStd <= 3.8 {
-            return DrillPatternMatch(
-                drillId: .rhythmIntervals,
-                confidence: 0.95,
-                detectedIntervalCount: workActs.count,
-                avgWorkCadence: Int(round(wMean)),
-                avgRecoveryCadence: Int(round(avgRecC)),
-                signatureDescription: "Structured workout activities: \(workActs.count) interval reps (\(sched.durationCategory.title)) dialed to \(Int(round(wMean))) SPM."
-            )
-        }
-
-        // Tempo surges check
-        if let sched = DrillSchedule.findMatchingSchedule(
-            workoutDuration: totalActDuration,
-            detectedIterations: workActs.count,
-            avgWorkDuration: avgWorkDur,
-            avgRecoveryDuration: avgRecDur,
-            candidateDrills: [.tempoSurges]
-        ), wMean >= Double(baselineCadence) + 5.0 {
-            return DrillPatternMatch(
-                drillId: .tempoSurges,
-                confidence: 0.95,
-                detectedIntervalCount: workActs.count,
-                avgWorkCadence: Int(round(wMean)),
-                avgRecoveryCadence: Int(round(avgRecC)),
-                signatureDescription: "Structured workout activities: \(workActs.count) tempo surge reps (\(sched.durationCategory.title)) at \(Int(round(wMean))) SPM."
-            )
-        }
-
-        return nil
+        return DrillPatternMatch(core: match)
     }
 
     // MARK: - Tier 2: HKWorkoutEvent Lap/Segment Structural Extraction
@@ -234,14 +132,7 @@ enum DrillPatternRecognizer {
         let intervalEvents = events.filter { $0.type == .lap || $0.type == .segment }
         guard intervalEvents.count >= 4 else { return nil }
 
-        struct LapStats {
-            let start: Date
-            let end: Date
-            let avgCadence: Double
-            let duration: TimeInterval
-        }
-
-        var lapStats: [LapStats] = []
+        var segments: [DrillPatternCore.SegmentStatsCore] = []
         for evt in intervalEvents {
             let start = evt.dateInterval.start
             let end = evt.dateInterval.end
@@ -250,76 +141,18 @@ enum DrillPatternRecognizer {
             }
             guard !lapBuckets.isEmpty else { continue }
             let avgC = lapBuckets.map(\.meanCadence).reduce(0, +) / Double(lapBuckets.count)
-            lapStats.append(LapStats(start: start, end: end, avgCadence: avgC, duration: evt.dateInterval.duration))
+            let validHRs = lapBuckets.map(\.meanHR).filter { $0 > 0 }
+            let avgH = validHRs.isEmpty ? 0.0 : (validHRs.reduce(0, +) / Double(validHRs.count))
+            segments.append(DrillPatternCore.SegmentStatsCore(avgCadence: avgC, avgHR: avgH, durationSeconds: evt.dateInterval.duration))
         }
 
-        guard lapStats.count >= 4 else { return nil }
-        guard let minC = lapStats.map({ $0.avgCadence }).min(),
-              let maxC = lapStats.map({ $0.avgCadence }).max(),
-              (maxC - minC) >= 10.0 else {
-            return nil
-        }
+        guard let match = DrillPatternCore.recognizeFromSegments(
+            segments: segments,
+            baselineCadence: baselineCadence,
+            sourceLabel: "Event lap markers"
+        ) else { return nil }
 
-        let threshold = (minC + maxC) / 2.0
-        let workLaps = lapStats.filter { $0.avgCadence >= threshold }
-        let recLaps = lapStats.filter { $0.avgCadence < threshold }
-
-        guard workLaps.count >= 3 else { return nil }
-
-        let workCadences = workLaps.map { $0.avgCadence }
-        let wMean = workCadences.reduce(0, +) / Double(workCadences.count)
-        let wVariance = workCadences.map { pow($0 - wMean, 2) }.reduce(0, +) / Double(workCadences.count)
-        let wStd = sqrt(wVariance)
-        let avgRecC = recLaps.isEmpty ? 0.0 : (recLaps.map { $0.avgCadence }.reduce(0, +) / Double(recLaps.count))
-
-        let totalEvtDuration = lapStats.map(\.duration).reduce(0, +)
-        let avgWorkDur = workLaps.map(\.duration).reduce(0, +) / Double(workLaps.count)
-        let avgRecDur = recLaps.isEmpty ? 0.0 : (recLaps.map(\.duration).reduce(0, +) / Double(recLaps.count))
-
-        // Check Pyramids
-        let isMonotonicUp: Bool = {
-            for i in 0..<(workCadences.count - 1) where (workCadences[i + 1] - workCadences[i]) < 2.0 {
-                return false
-            }
-            return true
-        }()
-        let spread = (workCadences.max() ?? 0) - (workCadences.min() ?? 0)
-        if let sched = DrillSchedule.findMatchingSchedule(
-            workoutDuration: totalEvtDuration,
-            detectedIterations: workLaps.count,
-            avgWorkDuration: avgWorkDur,
-            avgRecoveryDuration: avgRecDur,
-            candidateDrills: [.cadencePyramids]
-        ), isMonotonicUp && spread >= 5.0 {
-            return DrillPatternMatch(
-                drillId: .cadencePyramids,
-                confidence: 0.94,
-                detectedIntervalCount: workLaps.count,
-                avgWorkCadence: Int(round(wMean)),
-                avgRecoveryCadence: Int(round(avgRecC)),
-                signatureDescription: "Event lap markers: \(workLaps.count) progressive cadence pyramid laps (\(sched.durationCategory.title))."
-            )
-        }
-
-        // Check Rhythm Intervals
-        if let sched = DrillSchedule.findMatchingSchedule(
-            workoutDuration: totalEvtDuration,
-            detectedIterations: workLaps.count,
-            avgWorkDuration: avgWorkDur,
-            avgRecoveryDuration: avgRecDur,
-            candidateDrills: [.rhythmIntervals]
-        ), wStd <= 3.8 {
-            return DrillPatternMatch(
-                drillId: .rhythmIntervals,
-                confidence: 0.93,
-                detectedIntervalCount: workLaps.count,
-                avgWorkCadence: Int(round(wMean)),
-                avgRecoveryCadence: Int(round(avgRecC)),
-                signatureDescription: "Event lap markers: \(workLaps.count) steady rhythm interval laps (\(sched.durationCategory.title)) at \(Int(round(wMean))) SPM."
-            )
-        }
-
-        return nil
+        return DrillPatternMatch(core: match)
     }
 
     // MARK: - Dynamic Zone Thresholds Extraction

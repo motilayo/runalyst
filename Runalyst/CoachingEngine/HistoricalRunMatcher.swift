@@ -82,7 +82,11 @@ struct HistoricalQueryCriteria: Sendable, Equatable {
     }
 
     static func parse(from query: String, relativeTo currentRun: RunRecord? = nil) -> HistoricalQueryCriteria {
-        let core = HistoricalQueryCriteriaCore.parse(from: query, currentRunIsIndoor: currentRun?.isIndoor)
+        let core = HistoricalQueryCriteriaCore.parse(
+            from: query,
+            currentRunIsIndoor: currentRun?.isIndoor,
+            referenceDate: currentRun?.date
+        )
         return HistoricalQueryCriteria(core: core)
     }
 }

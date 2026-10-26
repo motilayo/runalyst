@@ -56,7 +56,12 @@ public struct HistoricalQueryCriteriaCore: Sendable, Equatable {
         self.requiresPriorToCurrentRun = requiresPriorToCurrentRun
     }
 
-    public static func parse(from query: String, currentRunIsIndoor: Bool? = nil, referenceDate: Date? = nil) -> HistoricalQueryCriteriaCore {
+    public static func parse(
+        from query: String,
+        currentRunIsIndoor: Bool? = nil,
+        referenceDate: Date? = nil,
+        calendar: Calendar = Calendar(identifier: .gregorian)
+    ) -> HistoricalQueryCriteriaCore {
         let lower = query.lowercased()
         var criteria = HistoricalQueryCriteriaCore()
 
@@ -163,10 +168,9 @@ public struct HistoricalQueryCriteriaCore: Sendable, Equatable {
             }
         }
 
-        if lower.contains("yesterday") {
-            let base = referenceDate ?? Date()
+        if lower.contains("yesterday"), let base = referenceDate {
             let yesterday = base.addingTimeInterval(-86400)
-            let comps = Calendar.current.dateComponents([.year, .month, .day], from: yesterday)
+            let comps = calendar.dateComponents([.year, .month, .day], from: yesterday)
             criteria.targetYear = comps.year
             criteria.targetMonth = comps.month
             criteria.targetDay = comps.day
@@ -240,7 +244,8 @@ public enum HistoricalQueryCore {
     public static func filterAndSort(
         candidates: [HistoricalCandidateSampleCore],
         criteria: HistoricalQueryCriteriaCore,
-        referenceDate: Date? = nil
+        referenceDate: Date? = nil,
+        calendar: Calendar = Calendar(identifier: .gregorian)
     ) -> [HistoricalCandidateSampleCore] {
         guard !candidates.isEmpty else { return [] }
         var working = candidates
@@ -262,7 +267,6 @@ public enum HistoricalQueryCore {
         }
 
         if criteria.targetYear != nil || criteria.targetMonth != nil || criteria.targetDay != nil {
-            let calendar = Calendar.current
             working = working.filter { run in
                 let comps = calendar.dateComponents([.year, .month, .day], from: run.date)
                 if let y = criteria.targetYear, comps.year != y { return false }
@@ -357,7 +361,8 @@ public enum HistoricalQueryCore {
 
     public static func computeDeltas(
         current: HistoricalCandidateSampleCore,
-        prior: HistoricalCandidateSampleCore
+        prior: HistoricalCandidateSampleCore,
+        calendar: Calendar = Calendar(identifier: .gregorian)
     ) -> (paceDeltaSec: Int, cadDelta: Int, hrDelta: Int, distDelta: Double, durDelta: Double, daysDiff: Int) {
         let paceDeltaSec = Int(prior.paceSecondsPerKm.rounded() - current.paceSecondsPerKm.rounded())
         let cadDelta = Int(round(current.cadenceSPM)) - Int(round(prior.cadenceSPM))
@@ -365,8 +370,7 @@ public enum HistoricalQueryCore {
         let distDelta = current.distanceMeters - prior.distanceMeters
         let durDelta = current.durationSeconds - prior.durationSeconds
 
-        let cal = Calendar.current
-        let daysDiff = cal.dateComponents([.day], from: cal.startOfDay(for: prior.date), to: cal.startOfDay(for: current.date)).day ?? 0
+        let daysDiff = calendar.dateComponents([.day], from: calendar.startOfDay(for: prior.date), to: calendar.startOfDay(for: current.date)).day ?? 0
 
         return (paceDeltaSec, cadDelta, hrDelta, distDelta, durDelta, daysDiff)
     }

@@ -75,7 +75,7 @@ public struct AthleteSynthesisContext: Sendable, Equatable {
         experienceLevel: String = "Intermediate",
         useMetric: Bool = true,
         userHeightCm: Double = 175.0,
-        now: Date = Date(),
+        now: Date,
         calendar: Calendar = Calendar(identifier: .gregorian)
     ) {
         self.activeGoal = activeGoal
@@ -269,6 +269,49 @@ public struct WeekdayTemplateSpec: Sendable, Equatable {
 // MARK: - Core Engine
 
 public enum SessionSynthesisCore {
+
+    public struct RecentLimiterAssessment: Sendable, Equatable {
+        public let hadExcessiveBounce: Bool
+        public let hadCadenceFade: Bool
+
+        public init(hadExcessiveBounce: Bool, hadCadenceFade: Bool) {
+            self.hadExcessiveBounce = hadExcessiveBounce
+            self.hadCadenceFade = hadCadenceFade
+        }
+    }
+
+    public static func detectRecentLimiters(
+        verticalRatio: Double?,
+        verticalOscillationCm: Double?,
+        cadenceSPM: Double,
+        cadenceFloor: Int,
+        hasCadenceFadeTag: Bool,
+        cadenceSlope: Double?,
+        splitCadences: [Double]
+    ) -> RecentLimiterAssessment {
+        let vr = verticalRatio ?? 0.0
+        let osc = verticalOscillationCm ?? 0.0
+        let subFloor = cadenceSPM > 0 && cadenceSPM < Double(cadenceFloor)
+        let hadExcessiveBounce = vr > 9.0 || osc > 10.0 || subFloor
+
+        var hadCadenceFade = hasCadenceFadeTag
+        if !hadCadenceFade, let slope = cadenceSlope {
+            hadCadenceFade = slope < -0.15
+        }
+        if !hadCadenceFade, splitCadences.count >= 3 {
+            let splitIdx = (splitCadences.count * 2) / 3
+            let earlyCount = Double(splitIdx)
+            let lateCount = Double(splitCadences.count - splitIdx)
+            if earlyCount > 0 && lateCount > 0 {
+                let early = splitCadences[0..<splitIdx].reduce(0, +) / earlyCount
+                let late = splitCadences[splitIdx...].reduce(0, +) / lateCount
+                if (early - late) >= 5.0 {
+                    hadCadenceFade = true
+                }
+            }
+        }
+        return RecentLimiterAssessment(hadExcessiveBounce: hadExcessiveBounce, hadCadenceFade: hadCadenceFade)
+    }
 
     public static func heightAdjustedCadenceFloor(heightCm: Double) -> Int {
         let clamped = max(130.0, min(220.0, heightCm))

@@ -255,7 +255,7 @@ public enum BanisterReadinessCore {
         samples: [StreakRunSample],
         experienceLevel: String,
         trainingGoal: String,
-        now: Date = Date(),
+        now: Date,
         calendar: Calendar = Calendar(identifier: .gregorian)
     ) -> StreakAndVolumeSummary {
         // 1. Separate main runs (>= 20 min or non-primer) from short primers (< 20 min)
