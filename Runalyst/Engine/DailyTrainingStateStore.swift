@@ -33,7 +33,7 @@ final class DailyTrainingStateStore {
     ) -> DailyTrainingState {
         let calendar = Calendar.current
         let dayStart = calendar.startOfDay(for: now)
-        let fingerprint = computeFingerprint(runs: runRecords)
+        let fingerprint = Self.computeFingerprint(runs: runRecords)
 
         let key = CacheKey(
             dayStart: dayStart,
@@ -68,9 +68,17 @@ final class DailyTrainingStateStore {
         cachedState = nil
     }
 
-    private func computeFingerprint(runs: [RunRecord]) -> String {
+    static func computeFingerprint(runs: [RunRecord]) -> String {
         let active = runs.filter { !$0.isDeleted }
         guard let first = active.first else { return "empty" }
-        return "\(active.count)-\(first.id.uuidString)-\(Int(first.date.timeIntervalSince1970))"
+        let tagsHash = first.framboiseTags.joined(separator: ",")
+        let indoorStr = (first.isIndoor ?? false) ? "indoor" : "outdoor"
+        let detectedType = first.detectedTypeRaw
+        let prov = first.classificationProvenanceRaw ?? "none"
+        let dur = Int(first.duration.rounded())
+        let cal = Calendar.current
+        let todayRuns = active.filter { cal.isDateInToday($0.date) }
+        let todayRunsKey = todayRuns.map { "\($0.id.uuidString):\($0.prescribedDrillName ?? "none"):\(Int($0.duration))" }.joined(separator: "|")
+        return "\(active.count)-\(first.id.uuidString)-\(Int(first.date.timeIntervalSince1970))-\(dur)-\(indoorStr)-\(detectedType)-\(prov)-\(tagsHash)-today[\(todayRunsKey)]"
     }
 }

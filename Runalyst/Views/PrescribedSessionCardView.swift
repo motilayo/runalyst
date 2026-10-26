@@ -295,7 +295,9 @@ struct PrescribedSessionCardView: View {
                 customTarget: cleanPrimerTarget(session: session),
                 categoryLabel: effectiveIsToday ? "PRE-RUN PRIMER" : "\(headerDayText.uppercased()) PRIMER",
                 canChangeDuration: false,
-                lockedDuration: session.primerDrillId.defaultDuration
+                lockedDuration: DrillDuration.nearest(toMinutes: session.primerDurationMinutes),
+                lockedDurationMinutes: session.primerDurationMinutes,
+                readinessState: session.resolvedReadinessState
             ),
             baselineCadence: session.cadenceFloor,
             onPreview: onPreviewPrimer

@@ -173,4 +173,147 @@ final class CrossSurfaceIdempotencyTests: XCTestCase {
         let summary = TrainingCalendar.formatCompactScheduleSummary(days: [todayDay])
         XCTAssertTrue(summary.contains("Rest Day (No run scheduled)"), "Chat summary must indicate Rest Day")
     }
+
+    @MainActor
+    func testUpcomingSchedule_CalendarToolAndActiveSessionMicrocycleMatch() {
+        let calendar = Calendar.current
+        let now = Date()
+        guard let twoDaysAgo = calendar.date(byAdding: .day, value: -2, to: now) else {
+            XCTFail("Failed to construct date")
+            return
+        }
+        let run1 = makeRun(date: twoDaysAgo, duration: 2400, distanceMeters: 6000, detectedTypeRaw: "Easy Run")
+        let runs = [run1]
+
+        let profile = RunnerProfile.compute(from: runs, trainingGoal: "Base Building", experienceLevel: "Intermediate", now: now)
+
+        DailyTrainingStateStore.shared.invalidate()
+        let state = DailyTrainingStateStore.shared.resolveState(
+            runRecords: runs,
+            activeGoal: "Base Building",
+            experienceLevel: profile.experienceLevel,
+            useMetric: true,
+            now: now
+        )
+
+        let cal = TrainingCalendar(calendar: calendar)
+        guard let horizonEnd = calendar.date(byAdding: .day, value: 5, to: now) else {
+            XCTFail("Failed to construct horizon end date")
+            return
+        }
+        let schedule = cal.evaluateSchedule(
+            from: now,
+            to: horizonEnd,
+            context: ScheduleEvaluationContext(runRecords: runs, activeGoal: "Base Building", profile: profile, useMetric: true)
+        )
+
+        // Today matches
+        guard let todaySched = schedule.first(where: { $0.relative == .today }) else {
+            XCTFail("Missing today in schedule")
+            return
+        }
+        XCTAssertEqual(todaySched.planned.title, state.activeSession.sessionTitle)
+        XCTAssertEqual(todaySched.planned.minutesHigh, state.activeSession.totalDurationMinutes)
+
+        // Upcoming days in microcycle (Tomorrow + future horizon) match schedule
+        let upcomingDays = schedule.filter { $0.relative == .tomorrow || $0.relative == .future }
+        XCTAssertEqual(upcomingDays.count, state.activeSession.microcycle.count)
+        for (schedDay, microSession) in zip(upcomingDays, state.activeSession.microcycle) {
+            XCTAssertEqual(schedDay.planned.title, microSession.sessionTitle, "Schedule title must match microcycle title for \(schedDay.date)")
+            XCTAssertEqual(schedDay.planned.kind == .rest, microSession.isRestDay, "Schedule rest state must match microcycle rest state for \(schedDay.date)")
+        }
+    }
+
+    func testWeightedBaselineStats_EquivalenceAcrossCallSites() {
+        let calendar = Calendar.current
+        let now = Date()
+        guard let d1 = calendar.date(byAdding: .day, value: -3, to: now),
+              let d2 = calendar.date(byAdding: .day, value: -5, to: now),
+              let d3 = calendar.date(byAdding: .day, value: -10, to: now) else {
+            XCTFail("Failed to construct dates")
+            return
+        }
+
+        let r1 = makeRun(date: d1, duration: 1800, distanceMeters: 4500, detectedTypeRaw: "Easy Run")
+        let r2 = makeRun(date: d2, duration: 3600, distanceMeters: 10000, detectedTypeRaw: "Tempo Run")
+        r2.workingAvgCadence = 162.0
+        let r3 = makeRun(date: d3, duration: 5400, distanceMeters: 15000, detectedTypeRaw: "Long Run")
+        r3.workingAvgCadence = 150.0
+
+        let runs = [r1, r2, r3]
+
+        // 1. SessionSynthesisEngine.computeWeightedBaselineStats
+        guard let canonical = SessionSynthesisEngine.computeWeightedBaselineStats(from: runs, priorTo: now) else {
+            XCTFail("Failed to compute weighted baseline stats")
+            return
+        }
+
+        // 2. RunRecord.computeHistoricalBaselineCadence prior to r1.date
+        let runRecordBaseline = r1.computeHistoricalBaselineCadence(in: runs)
+        let priorToR1Canonical = SessionSynthesisEngine.computeWeightedBaselineStats(from: runs, priorTo: r1.date)
+
+        // Calculate expected duration-weighted cadence across all 3 runs:
+        // (156*1800 + 162*3600 + 150*5400) / (1800 + 3600 + 5400)
+        // = (280800 + 583200 + 810000) / 10800 = 1674000 / 10800 = 155.0
+        XCTAssertEqual(Int(canonical.avgCadence.rounded()), 155)
+        XCTAssertEqual(runRecordBaseline, priorToR1Canonical?.avgCadence, "RunRecord cadence baseline must strictly match canonical engine stats prior to run date")
+
+        // 3. GoalReadinessCard dynamic metrics delegated to RunnerProfile.compute
+        let profile = RunnerProfile.compute(from: runs, trainingGoal: "Base Building", now: now)
+        XCTAssertEqual(profile.current30DayDistanceKm, 29.5, accuracy: 0.1)
+        XCTAssertEqual(profile.weeklyAverageKm, 29.5 / (30.0 / 7.0), accuracy: 0.1)
+        XCTAssertEqual(profile.longestRunKm, 15.0, accuracy: 0.1)
+    }
+
+    func testDrillCardConfig_LockedDurationTrimmingUnderFatigue() {
+        let fatigueConfig = DrillCardConfig(
+            lockedDurationMinutes: 7,
+            readinessState: .acuteFatigue
+        )
+        XCTAssertEqual(fatigueConfig.effectiveDurationTitle, "7 min")
+
+        let productiveConfig = DrillCardConfig(
+            lockedDurationMinutes: 10,
+            readinessState: .productive
+        )
+        XCTAssertEqual(productiveConfig.effectiveDurationTitle, "10 min")
+    }
+
+    @MainActor
+    func testReadinessAndWorkloadFacts_TargetMinutesMatchesLockedDailyState() {
+        guard #available(iOS 26.0, *) else { return }
+        let calendar = Calendar.current
+        let now = Date()
+        guard let yesterday = calendar.date(byAdding: .day, value: -1, to: now) else {
+            XCTFail("Failed to construct date")
+            return
+        }
+        let run1 = makeRun(date: yesterday, duration: 2400, distanceMeters: 6000, detectedTypeRaw: "Easy Run")
+        let runs = [run1]
+
+        UserDefaults.standard.set("Base Building", forKey: "trainingGoal")
+        UserDefaults.standard.set(true, forKey: "useMetricSystem")
+        let profile = RunnerProfile.compute(from: runs, trainingGoal: "Base Building", now: now)
+        UserDefaults.standard.set(profile.experienceLevel, forKey: "experienceLevel")
+
+        DailyTrainingStateStore.shared.invalidate()
+        let state = DailyTrainingStateStore.shared.resolveState(
+            runRecords: runs,
+            activeGoal: "Base Building",
+            experienceLevel: profile.experienceLevel,
+            useMetric: true,
+            now: now
+        )
+
+        let engine = AnalystChatEngine(runRecord: run1)
+        let json = engine.executeReadinessAndWorkloadQuery()
+        guard let data = json.data(using: .utf8),
+              let facts = try? JSONDecoder().decode(ReadinessFacts.self, from: data) else {
+            XCTFail("Failed to decode ReadinessFacts JSON")
+            return
+        }
+
+        XCTAssertEqual(facts.today_target_minutes, state.todaySession?.totalDurationMinutes ?? 0, "Chat tool facts must report identical today_target_minutes as locked state")
+        XCTAssertNil(facts.status_guidance, "Tool must not generate scripted dialogue strings")
+    }
 }

@@ -30,7 +30,7 @@ struct DashboardView: View {
     @AppStorage("cachedHeadline_AllTime") private var cachedHeadlineAllTime: String = ""
     @AppStorage("cachedBody_AllTime") private var cachedBodyAllTime: String = ""
 
-    @AppStorage("lastInsightRunCount") private var lastInsightRunCount: Int = 0
+    @AppStorage("lastInsightFingerprint") private var lastInsightFingerprint: String = ""
 
     @State private var isFetchingInsight = false
     @State private var showingAnalystChat = false
@@ -78,16 +78,7 @@ struct DashboardView: View {
     }
 
     var canonicalAthleteBaselineCadence: Int? {
-        let calendar = Calendar.current
-        let thirtyDaysAgo = calendar.date(byAdding: .day, value: -30, to: Date()) ?? Date()
-        let recentRuns = runRecords.filter { $0.date >= thirtyDaysAgo && $0.workingAvgCadence > 0 }
-        let candidateRuns = recentRuns.isEmpty ? runRecords.filter { $0.workingAvgCadence > 0 } : recentRuns
-        guard !candidateRuns.isEmpty else { return nil }
-        let totalDuration = candidateRuns.map(\.duration).reduce(0, +)
-        guard totalDuration > 0 else {
-            return Int(candidateRuns.map(\.workingAvgCadence).reduce(0, +)) / candidateRuns.count
-        }
-        return Int(candidateRuns.map { $0.workingAvgCadence * $0.duration }.reduce(0, +) / totalDuration)
+        SessionSynthesisEngine.computeWeightedBaselineStats(from: runRecords, priorTo: Date()).map { Int($0.avgCadence.rounded()) }
     }
 
     var baselineHeartRate: Int? {
@@ -101,16 +92,7 @@ struct DashboardView: View {
     }
 
     var canonicalAthleteBaselinePace: Double? {
-        let calendar = Calendar.current
-        let thirtyDaysAgo = calendar.date(byAdding: .day, value: -30, to: Date()) ?? Date()
-        let recentRuns = runRecords.filter { $0.date >= thirtyDaysAgo && $0.workingAvgPace > 0 }
-        let candidateRuns = recentRuns.isEmpty ? runRecords.filter { $0.workingAvgPace > 0 } : recentRuns
-        guard !candidateRuns.isEmpty else { return nil }
-        let totalDuration = candidateRuns.map(\.duration).reduce(0, +)
-        guard totalDuration > 0 else {
-            return candidateRuns.map(\.workingAvgPace).reduce(0, +) / Double(candidateRuns.count)
-        }
-        return candidateRuns.map { $0.workingAvgPace * $0.duration }.reduce(0, +) / totalDuration
+        SessionSynthesisEngine.computeWeightedBaselineStats(from: runRecords, priorTo: Date())?.avgPace
     }
 
     private var previousBaselineCadence: Int? {
@@ -159,25 +141,12 @@ struct DashboardView: View {
         return previousRuns.map { $0.workingAvgPace * $0.duration }.reduce(0, +) / totalDuration
     }
 
+    private var trajectoryAssessment: SessionSynthesisEngine.TrajectoryAssessment {
+        SessionSynthesisEngine.evaluate30DayTrajectory(from: timeRangeRuns, now: Date())
+    }
+
     private var isTrajectoryEaseUp: Bool {
-        if timeRange == "30 Days" {
-            let validRuns = timeRangeRuns.filter { $0.workingAvgPace > 0 && $0.workingAvgHeartRate > 0 }
-            let midDate = Calendar.current.date(byAdding: .day, value: -15, to: Date()) ?? Date()
-            let recentRuns = validRuns.filter { $0.date >= midDate }
-            let olderRuns = validRuns.filter { $0.date < midDate }
-            let recentEF = recentRuns.compactMap(\.efficiencyFactor)
-            let olderEF = olderRuns.compactMap(\.efficiencyFactor)
-            let avgRecentEF = recentEF.isEmpty ? 0.0 : (recentEF.reduce(0, +) / Double(recentEF.count))
-            let avgOlderEF = olderEF.isEmpty ? 0.0 : (olderEF.reduce(0, +) / Double(olderEF.count))
-            let efDelta = (avgRecentEF > 0 && avgOlderEF > 0) ? (avgRecentEF - avgOlderEF) : 0.0
-
-            let recentHR = recentRuns.map(\.workingAvgHeartRate).reduce(0, +) / Double(max(1, recentRuns.count))
-            let olderHR = olderRuns.map(\.workingAvgHeartRate).reduce(0, +) / Double(max(1, olderRuns.count))
-            let hrDelta = (recentHR > 0 && olderHR > 0) ? (recentHR - olderHR) : 0.0
-
-            return (efDelta <= -0.02 && olderEF.count >= 2) || (hrDelta >= 3.0 && olderHR > 0)
-        }
-        return false
+        timeRange == "30 Days" && trajectoryAssessment.verdict == .easeUp
     }
 
     private var workoutDensityTier: String {
@@ -280,7 +249,7 @@ struct DashboardView: View {
     }
 
     private var dashboardRunnerProfile: RunnerProfile {
-        RunnerProfile.compute(from: runRecords, now: Date())
+        RunnerProfile.compute(from: runRecords, trainingGoal: trainingGoal, now: Date())
     }
 
     private var dashboardRecoveryTimeline: RecoveryTimeline {
@@ -306,34 +275,6 @@ struct DashboardView: View {
             useMetric: useMetricSystem,
             userHeightCm: profile.userHeightCm
         )
-    }
-
-    private var deterministicPrescription: LockedTrainingPrescription? {
-        guard let latestRun = runRecords.first else { return nil }
-        let profile = dashboardRunnerProfile
-        let tzInput = TrainingZoneInput(
-            baselinePaceSec: canonicalAthleteBaselinePace ?? latestRun.workingAvgPace,
-            workoutPaceSec: latestRun.workingAvgPace,
-            activeGoal: trainingGoal,
-            experienceLevel: profile.experienceLevel,
-            readyForHard: dashboardRecoveryTimeline.readyForHard,
-            daysSinceWorkout: Calendar.current.dateComponents([.day], from: latestRun.date, to: Date()).day ?? 0,
-            heightAdjustedCadenceFloor: profile.heightAdjustedCadenceFloor,
-            useMetricSystem: useMetricSystem,
-            isSubjectiveDistress: false,
-            totalHistoricalRunsCount: runRecords.count
-        )
-        return TrainingZoneEngine.computePrescription(tzInput, runs: runRecords)
-    }
-
-    private func hrCapText(for rx: LockedTrainingPrescription) -> String {
-        if rx.intensityCategory.contains("RECOVERY") || rx.intensityCategory.contains("ZONE_2") || !dashboardRecoveryTimeline.readyForHard {
-            return "HR: < 145"
-        } else if rx.intensityCategory.contains("THRESHOLD") || rx.intensityCategory.contains("TEMPO") {
-            return "HR: 155–168"
-        } else {
-            return "HR: < 155"
-        }
     }
 
     private func targetPill(text: String, color: Color = .purple) -> some View {
@@ -548,8 +489,8 @@ struct DashboardView: View {
                     ? "ACWR = Acute Load (7D) ÷ Chronic Load (28D)"
                     : "Efficiency Factor = Speed (m/s) ÷ (Heart Rate - Resting HR)",
                 targetRange: is7Day
-                    ? "ACWR: 0.8–1.3 (Optimal Zone) • HR Cap: \(deterministicPrescription.map { hrCapText(for: $0) } ?? "< 145")"
-                    : "Cadence Floor: ≥ 156–160 SPM • Stable or Rising Efficiency Factor"
+                    ? "ACWR: 0.8–1.3 (Optimal Zone) • \(currentDailyTrainingState.activeSession.hrCap)"
+                    : "Cadence Floor: ≥ \(dashboardRunnerProfile.heightAdjustedCadenceFloor) SPM • Stable or Rising Efficiency Factor"
             )
         }
         .onAppear {
@@ -563,6 +504,10 @@ struct DashboardView: View {
             refreshBaselineVO2Max()
             lastBaselineChangeTimestamp = Date().timeIntervalSince1970
             autoSyncStaleWatchDrillIfNeeded()
+        }
+        .onChange(of: trainingGoal) {
+            checkAndFetchInsight()
+            DailyTrainingStateStore.shared.invalidate()
         }
         .onChange(of: minimumRunDistance) {
             lastBaselineChangeTimestamp = Date().timeIntervalSince1970
@@ -605,8 +550,8 @@ struct DashboardView: View {
             isFetchingInsight = false
             return
         }
-        let currentRunCount = runRecords.count
-        if currentRunCount != lastInsightRunCount {
+        let currentFingerprint = "\(timeRange)_\(trainingGoal)_\(DailyTrainingStateStore.computeFingerprint(runs: runRecords))"
+        if currentFingerprint != lastInsightFingerprint {
             // Invalidate cache
             cachedHeadline7Day = ""
             cachedBody7Day = ""
@@ -614,7 +559,7 @@ struct DashboardView: View {
             cachedBody30Day = ""
             cachedHeadlineAllTime = ""
             cachedBodyAllTime = ""
-            lastInsightRunCount = currentRunCount
+            lastInsightFingerprint = currentFingerprint
         }
 
         if currentHeadline().isEmpty || currentBody().isEmpty {
@@ -657,63 +602,34 @@ struct DashboardView: View {
             switch activeSession.intent {
             case .fullRest:
                 directiveContext = "PRIORITY_FULL_REST: Training state is locked to FULL REST (0 minutes running). RATIONALE: \(activeSession.groundedRationale). Direct the runner clearly to take a full rest day with zero running to let their musculoskeletal system adapt toward their \(trainingGoal) goal."
-                fatigueContext = activeSession.groundedRationale
             case .recoveryFlush:
                 directiveContext = "PRIORITY_RECOVERY_FLUSH: Training state is locked to ACTIVE RECOVERY FLUSH (\(activeSession.durationBand), \(activeSession.paceBand), \(activeSession.hrCap)). RATIONALE: \(activeSession.groundedRationale). Direct the runner to keep effort very light and heart rate strictly controlled toward their \(trainingGoal) goal."
-                fatigueContext = activeSession.groundedRationale
             case .train:
                 directiveContext = "PRIORITY_TRAIN: Training state is locked to \(activeSession.sessionTitle) (\(activeSession.durationBand), \(activeSession.paceBand)). RATIONALE: \(activeSession.groundedRationale). Guide the runner on target pacing, turnover discipline, and form toward their \(trainingGoal) goal."
-                fatigueContext = activeSession.groundedRationale
             }
+            fatigueContext = ""
             efficiencyContext = ""
             verticalOscillationContext = ""
         } else {
             // 30-DAY VIEW: Goal Readiness & Trajectory Analyst
-            let validRuns = timeRangeRuns.filter { $0.workingAvgPace > 0 && $0.workingAvgHeartRate > 0 }
-            let midDate = Calendar.current.date(byAdding: .day, value: -15, to: Date()) ?? Date()
-
-            let recentRuns = validRuns.filter { $0.date >= midDate }
-            let olderRuns = validRuns.filter { $0.date < midDate }
-
-            let recentEF = recentRuns.compactMap(\.efficiencyFactor)
-            let olderEF = olderRuns.compactMap(\.efficiencyFactor)
-
-            let avgRecentEF = recentEF.isEmpty ? 0.0 : (recentEF.reduce(0, +) / Double(recentEF.count))
-            let avgOlderEF = olderEF.isEmpty ? 0.0 : (olderEF.reduce(0, +) / Double(olderEF.count))
-            let efDelta = (avgRecentEF > 0 && avgOlderEF > 0) ? (avgRecentEF - avgOlderEF) : 0.0
-
-            let recentOscs = recentRuns.compactMap { $0.workingAvgVerticalOscillation ?? $0.rawAvgVerticalOscillation }
-            let olderOscs = olderRuns.compactMap { $0.workingAvgVerticalOscillation ?? $0.rawAvgVerticalOscillation }
-            let avgRecentOsc = recentOscs.isEmpty ? 0.0 : (recentOscs.reduce(0, +) / Double(recentOscs.count))
-            let avgOlderOsc = olderOscs.isEmpty ? 0.0 : (olderOscs.reduce(0, +) / Double(olderOscs.count))
-            let oscDelta = (avgRecentOsc > 0 && avgOlderOsc > 0) ? (avgRecentOsc - avgOlderOsc) : 0.0
-
-            let recentVRs = recentRuns.compactMap(\.verticalRatio)
-            let olderVRs = olderRuns.compactMap(\.verticalRatio)
-            let avgRecentVR = recentVRs.isEmpty ? 0.0 : (recentVRs.reduce(0, +) / Double(recentVRs.count))
-            let avgOlderVR = olderVRs.isEmpty ? 0.0 : (olderVRs.reduce(0, +) / Double(olderVRs.count))
-            let vrDelta = (avgRecentVR > 0 && avgOlderVR > 0) ? (avgRecentVR - avgOlderVR) : 0.0
-
-            let recentHR = recentRuns.map(\.workingAvgHeartRate).reduce(0, +) / Double(max(1, recentRuns.count))
-            let olderHR = olderRuns.map(\.workingAvgHeartRate).reduce(0, +) / Double(max(1, olderRuns.count))
-            let hrDelta = (recentHR > 0 && olderHR > 0) ? (recentHR - olderHR) : 0.0
-
-            if (efDelta <= -0.02 && olderEF.count >= 2) || (hrDelta >= 3.0 && olderHR > 0) {
+            let assessment = SessionSynthesisEngine.evaluate30DayTrajectory(from: timeRangeRuns, now: Date())
+            switch assessment.verdict {
+            case .easeUp:
                 directiveContext = "TRAJECTORY_EASE_UP: Over the past 30 days, training data indicates cumulative overworking and declining efficiency (aerobic cost is climbing). For their stated goal of \(trainingGoal), tell the runner clearly that they are overworking and need to ease up on volume or intensity so their body can absorb the training and avoid declining instead of improving."
                 efficiencyContext = "Efficiency Factor declined over the past month. Cardiac drift and physiological strain accumulating."
-            } else if efDelta > 0.02 || hrDelta < -2.0 || oscDelta < -0.2 || vrDelta < -0.3 {
-                let hrDeltaText = hrDelta < 0 ? "\(Int(abs(hrDelta))) BPM lower" : "stable"
-                let vrDeltaText = avgRecentVR > 0 ? ", Vertical Ratio: \(String(format: "%.1f", avgRecentVR))%" : ""
-                directiveContext = "TRAJECTORY_ON_TRACK: Over the past 30 days, aerobic efficiency, cardiac response, and running economy have clearly improved (Efficiency Factor increased by \(String(format: "%.2f", efDelta)), heart rate at \(paceContext) is \(hrDeltaText)\(vrDeltaText)). Tell the runner clearly that they are solidly on track for their \(trainingGoal) goal and their consistency is paying off."
-                efficiencyContext = "Efficiency Factor rose by +\(String(format: "%.2f", efDelta)) m/beat. Aerobic capacity expanding."
-            } else {
+            case .onTrack:
+                let hrDeltaText = assessment.hrDelta < 0 ? "\(Int(abs(assessment.hrDelta))) BPM lower" : "stable"
+                let vrDeltaText = assessment.avgRecentVR > 0 ? ", Vertical Ratio: \(String(format: "%.1f", assessment.avgRecentVR))%" : ""
+                directiveContext = "TRAJECTORY_ON_TRACK: Over the past 30 days, aerobic efficiency, cardiac response, and running economy have clearly improved (Efficiency Factor increased by \(String(format: "%.2f", assessment.efDelta)), heart rate at \(paceContext) is \(hrDeltaText)\(vrDeltaText)). Tell the runner clearly that they are solidly on track for their \(trainingGoal) goal and their consistency is paying off."
+                efficiencyContext = "Efficiency Factor rose by +\(String(format: "%.2f", assessment.efDelta)) m/beat. Aerobic capacity expanding."
+            case .stepItUp:
                 directiveContext = "TRAJECTORY_STEP_IT_UP: Over the past 30 days, baseline fitness is steady and well-calibrated, but performance has plateaued. Tell the runner their performances show their body has adapted and they have more to give, encouraging them to step up their training slightly in pace, volume, or quality to chase their \(trainingGoal) goal."
-                efficiencyContext = "Efficiency Factor stable at \(String(format: "%.2f", max(1.2, avgRecentEF))) m/beat."
+                efficiencyContext = "Efficiency Factor stable at \(String(format: "%.2f", max(1.2, assessment.avgRecentEF))) m/beat."
             }
-            if avgRecentVR > 0 {
-                verticalOscillationContext = "Vertical Oscillation: \(String(format: "%.1f", avgRecentOsc)) cm (VR: \(String(format: "%.1f", avgRecentVR))%)"
+            if assessment.avgRecentVR > 0 {
+                verticalOscillationContext = "Vertical Oscillation: \(String(format: "%.1f", assessment.avgRecentOsc)) cm (VR: \(String(format: "%.1f", assessment.avgRecentVR))%)"
             } else {
-                verticalOscillationContext = avgRecentOsc > 0 ? "Vertical Oscillation: \(String(format: "%.1f", avgRecentOsc)) cm" : "Vertical form steady"
+                verticalOscillationContext = assessment.avgRecentOsc > 0 ? "Vertical Oscillation: \(String(format: "%.1f", assessment.avgRecentOsc)) cm" : "Vertical form steady"
             }
             fatigueContext = ""
         }

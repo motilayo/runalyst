@@ -34,9 +34,7 @@ struct DrillsLibraryView: View {
     }
 
     private var baselineCadence: Int? {
-        let recentRuns = filteredRunRecords.filter { $0.workingAvgCadence > 0 }
-        guard !recentRuns.isEmpty else { return nil }
-        return Int(recentRuns.map(\.workingAvgCadence).reduce(0, +)) / recentRuns.count
+        SessionSynthesisEngine.computeWeightedBaselineStats(from: runRecords, priorTo: Date()).map { Int($0.avgCadence.rounded()) }
     }
 
     private var isExportStale: Bool {

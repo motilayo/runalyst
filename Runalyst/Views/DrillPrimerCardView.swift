@@ -19,6 +19,8 @@ struct DrillCardConfig: Sendable {
     var categoryLabel: String?
     var canChangeDuration: Bool
     var lockedDuration: DrillDuration?
+    var lockedDurationMinutes: Int?
+    var readinessState: ReadinessState
     var customMetrics: [DrillCardMetric]?
 
     init(
@@ -28,6 +30,8 @@ struct DrillCardConfig: Sendable {
         categoryLabel: String? = nil,
         canChangeDuration: Bool = true,
         lockedDuration: DrillDuration? = nil,
+        lockedDurationMinutes: Int? = nil,
+        readinessState: ReadinessState = .productive,
         customMetrics: [DrillCardMetric]? = nil
     ) {
         self.customTitle = customTitle
@@ -36,7 +40,16 @@ struct DrillCardConfig: Sendable {
         self.categoryLabel = categoryLabel
         self.canChangeDuration = canChangeDuration
         self.lockedDuration = lockedDuration
+        self.lockedDurationMinutes = lockedDurationMinutes
+        self.readinessState = readinessState
         self.customMetrics = customMetrics
+    }
+
+    var effectiveDurationTitle: String {
+        if let mins = lockedDurationMinutes {
+            return "\(mins) min"
+        }
+        return (lockedDuration ?? .tenMinutes).title
     }
 }
 
@@ -98,6 +111,13 @@ struct DrillPrimerCardView: View {
         return config.lockedDuration ?? drillId.defaultDuration
     }
 
+    private var effectiveDurationTitle: String {
+        if !config.canChangeDuration, let mins = config.lockedDurationMinutes {
+            return "\(mins) min"
+        }
+        return effectiveDuration.title
+    }
+
     var body: some View {
         let template = DrillTemplate.template(for: drillId)
         let displayTitle = config.customTitle ?? template.title
@@ -130,6 +150,7 @@ struct DrillPrimerCardView: View {
             targetCadence: targetCadence,
             duration: effectiveDuration,
             hapticMode: selectedHapticMode,
+            readinessState: config.readinessState,
             isIndoor: preferredWorkoutIsIndoor
         )
         let phases = previewDrill.generatePhases()
@@ -157,7 +178,7 @@ struct DrillPrimerCardView: View {
                         .font(.system(size: 10))
                         .foregroundColor(.secondary)
 
-                    Text(effectiveDuration.title.uppercased())
+                    Text(effectiveDurationTitle.uppercased())
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundColor(iconColor)
                         .padding(.horizontal, 7)
@@ -240,7 +261,7 @@ struct DrillPrimerCardView: View {
                     drillMetricCell(
                         icon: "stopwatch.fill",
                         title: "Duration",
-                        value: effectiveDuration.title,
+                        value: effectiveDurationTitle,
                         color: .secondary
                     )
                     drillMetricCell(

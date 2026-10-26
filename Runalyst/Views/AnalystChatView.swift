@@ -688,7 +688,7 @@ struct AnalystChatView: View {
             purpose: session.groundedRationale,
             targetCadence: session.primerTargetCadence,
             previousCadence: session.cadenceFloor,
-            durationMinutes: session.primerDrillId.defaultDuration.rawValue,
+            durationMinutes: session.primerDurationMinutes,
             hapticMode: "On",
             readinessState: state == .productive ? nil : state.rawValue,
             isIndoor: preferredWorkoutIsIndoor
@@ -766,35 +766,15 @@ struct InlineChatDrillCard: View {
         return title.isEmpty ? drillId.title : title
     }
 
-    private var currentPrescription: LockedTrainingPrescription? {
+    private var dailySession: PrescribedDailySession? {
         guard drillId.isAerobicContinuous else { return nil }
-        let useMetric = (UserDefaults.standard.object(forKey: "useMetricSystem") as? Bool) ?? true
-        let readiness = ReadinessEvaluator.assess(runRecords: runRecords)
-        let timeline = RecoveryTimeline.build(
-            runs: runRecords.map { ReadinessRunSnapshot(run: $0) },
-            readiness: readiness,
-            now: Date()
-        )
-        let profile = RunnerProfile.compute(from: runRecords)
-        let pace = (effectiveRun?.workingAvgPace ?? 0) > 0 ? effectiveRun?.workingAvgPace : nil
-        let daysDiff = effectiveRun.map { Calendar.current.dateComponents([.day], from: $0.date, to: Date()).day ?? 0 } ?? 0
-        let tzInput = TrainingZoneInput(
-            baselinePaceSec: pace,
-            workoutPaceSec: pace,
-            activeGoal: UserDefaults.standard.string(forKey: "trainingGoal") ?? "Base Building",
-            experienceLevel: profile.experienceLevel,
-            readyForHard: timeline.readyForHard,
-            daysSinceWorkout: daysDiff,
-            heightAdjustedCadenceFloor: profile.heightAdjustedCadenceFloor,
-            useMetricSystem: useMetric,
-            totalHistoricalRunsCount: runRecords.count
-        )
-        return TrainingZoneEngine.computePrescription(tzInput, runs: runRecords)
+        let state = DailyTrainingStateStore.shared.resolveState(runRecords: runRecords)
+        return state.activeSession
     }
 
     private var durationDisplay: String {
-        if let rx = currentPrescription, !rx.compactDurationBand.isEmpty && rx.compactDurationBand != "Rest Day" {
-            return rx.compactDurationBand
+        if let session = dailySession, !session.durationBand.isEmpty && session.intent != .fullRest {
+            return session.durationBand
         }
         return drillId.defaultDuration.title
     }
@@ -812,26 +792,8 @@ struct InlineChatDrillCard: View {
     }
 
     private var resolvedDrillDuration: DrillDuration {
-        if let rx = currentPrescription {
-            let band = rx.compactDurationBand
-            let digits = band.components(separatedBy: CharacterSet.decimalDigits.inverted).filter { !$0.isEmpty }
-            if let firstStr = digits.first, let firstVal = Int(firstStr) {
-                let secondVal = digits.count > 1 ? (Int(digits[1]) ?? firstVal) : firstVal
-                let targetMins = (firstVal + secondVal) / 2
-                if targetMins >= 45 {
-                    return .fiftyMinutes
-                } else if targetMins >= 35 {
-                    return .fortyMinutes
-                } else if targetMins >= 25 {
-                    return .thirtyMinutes
-                } else if targetMins >= 12 {
-                    return .fifteenMinutes
-                } else if targetMins >= 8 {
-                    return .tenMinutes
-                } else {
-                    return .fiveMinutes
-                }
-            }
+        if let session = dailySession {
+            return DrillDuration.nearest(toMinutes: session.mainRunDurationMinutes)
         }
         return drillId.defaultDuration
     }

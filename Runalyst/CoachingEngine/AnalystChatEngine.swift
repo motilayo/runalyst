@@ -1,6 +1,7 @@
 import Foundation
 import SwiftData
 import SwiftUI
+import RunalystCore
 #if canImport(FoundationModels)
 import FoundationModels
 #endif
@@ -114,14 +115,11 @@ class AnalystChatEngine: ObservableObject {
             predicate: #Predicate<RunRecord> { $0.date >= thirtyDaysAgo && $0.date < targetDate }
         )
         guard let prior = try? context.fetch(descriptor), !prior.isEmpty else { return nil }
-        let validPaces = prior.map(\.workingAvgPace).filter { $0 > 0 }
-        let validCads = prior.map(\.workingAvgCadence).filter { $0 > 0 }
-        let validHRs = prior.map(\.workingAvgHeartRate).filter { $0 > 0 }
-        guard !validPaces.isEmpty, !validCads.isEmpty, !validHRs.isEmpty else { return nil }
+        guard let stats = SessionSynthesisEngine.computeWeightedBaselineStats(from: prior, priorTo: targetDate) else { return nil }
         return (
-            avgPace: validPaces.reduce(0, +) / Double(validPaces.count),
-            avgCadence: validCads.reduce(0, +) / Double(validCads.count),
-            avgHR: validHRs.reduce(0, +) / Double(validHRs.count)
+            avgPace: stats.avgPace,
+            avgCadence: stats.avgCadence,
+            avgHR: stats.avgHR
         )
     }
 
@@ -354,7 +352,7 @@ class AnalystChatEngine: ObservableObject {
             )
             let activeSession = dailyState.activeSession
             let scheduledTodayStr = dailyState.isTodayCompleted
-                ? "Completed today. Tomorrow: \(activeSession.sessionTitle)"
+                ? "Completed today. Tomorrow: \(activeSession.sessionTitle) (\(activeSession.durationBand))"
                 : "\(activeSession.sessionTitle) (\(activeSession.durationBand))"
 
             let benchmark = profile.goalBenchmark
@@ -694,12 +692,21 @@ class AnalystChatEngine: ObservableObject {
         self.toolInvokedDuringActiveTurn = true
         let allRuns = (try? self.modelContext?.fetch(FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)]))) ?? (self.runRecord.map { [$0] } ?? [])
         let activeGoal = UserDefaults.standard.string(forKey: "trainingGoal") ?? "Base Building"
-        let profile = RunnerProfile.compute(from: allRuns)
+        let useMetric = (UserDefaults.standard.object(forKey: "useMetricSystem") as? Bool) ?? true
+        let profile = RunnerProfile.compute(from: allRuns, trainingGoal: activeGoal)
+        let dailyState = DailyTrainingStateStore.shared.resolveState(
+            runRecords: allRuns,
+            activeGoal: activeGoal,
+            experienceLevel: profile.experienceLevel,
+            useMetric: useMetric,
+            userHeightCm: profile.userHeightCm,
+            now: Date()
+        )
 
         let cal = Calendar.current
         let todayRuns = allRuns.filter { cal.isDateInToday($0.date) && !$0.isDeleted }
         let completedMinutes = todayRuns.reduce(0.0) { $0 + $1.duration } / 60.0
-        let (_, targetMinutes) = SessionSynthesisEngine.aerobicDurationForExperience(profile.experienceLevel)
+        let targetMinutes = dailyState.todaySession?.intent == .fullRest ? 0 : (dailyState.todaySession?.totalDurationMinutes ?? 0)
         let completionPercent = targetMinutes > 0 ? Int(round(Double(completedMinutes) / Double(targetMinutes) * 100.0)) : 100
 
         let streakSummary = StreakAndVolumeSummary.evaluate(
@@ -724,7 +731,11 @@ class AnalystChatEngine: ObservableObject {
         }
 
         let secondRunAdvisable: Bool
-        if todayRuns.isEmpty {
+        if dailyState.todaySession?.intent == .fullRest {
+            secondRunAdvisable = false
+        } else if dailyState.isTodayCompleted {
+            secondRunAdvisable = false
+        } else if todayRuns.isEmpty {
             secondRunAdvisable = true
         } else if todayRuns.count == 1 && (todayRuns[0].duration <= 1320 && (todayRuns[0].prescribedDrillName != nil || todayRuns[0].totalDistanceMeters <= 2000)) {
             secondRunAdvisable = true
@@ -750,19 +761,6 @@ class AnalystChatEngine: ObservableObject {
             workloadZone = .optimal
         }
 
-        let statusGuidance: String
-        if workloadZone == .underload && self.currentReadiness.state == .acuteFatigue {
-            statusGuidance = "Absorbing recent volume before building further. Overall chronic workload is light, but legs need recovery today from recent miles."
-        } else if workloadZone == .underload {
-            statusGuidance = "Fresh legs with low chronic training load. Well rested and primed to build."
-        } else if workloadZone == .optimal {
-            statusGuidance = "Balanced training load in the productive sweet spot."
-        } else if workloadZone == .overreaching {
-            statusGuidance = "Workload is elevated above baseline. Monitor recovery closely."
-        } else {
-            statusGuidance = "Acute training spike detected. Prioritize recovery to prevent overuse."
-        }
-
         let benchmark = profile.goalBenchmark
         let facts = ReadinessFacts(
             readiness_state: self.currentReadiness.state.rawValue,
@@ -783,7 +781,7 @@ class AnalystChatEngine: ObservableObject {
             experience_level: profile.experienceLevel,
             training_goal: activeGoal,
             cadence_floor_spm: profile.heightAdjustedCadenceFloor,
-            status_guidance: statusGuidance,
+            status_guidance: nil,
             athlete_name: (profile.name == "Runner" || profile.name.isEmpty) ? nil : profile.name,
             athlete_age: profile.age,
             athlete_vo2max: profile.vo2Max,
@@ -811,11 +809,17 @@ class AnalystChatEngine: ObservableObject {
 
         switch query.action {
         case .prescribeDrill:
-            let cal = Calendar.current
-            let todayRuns = allRuns.filter { cal.isDateInToday($0.date) && !$0.isDeleted }
-            let completedMinutes = todayRuns.reduce(0.0) { $0 + $1.duration } / 60.0
-            let (_, targetMinutes) = SessionSynthesisEngine.aerobicDurationForExperience(profile.experienceLevel)
-            let isFatigued = completedMinutes >= Double(targetMinutes) * 0.8 || todayRuns.count >= 2
+            let activeGoal = UserDefaults.standard.string(forKey: "trainingGoal") ?? "Base Building"
+            let useMetric = (UserDefaults.standard.object(forKey: "useMetricSystem") as? Bool) ?? true
+            let dailyState = DailyTrainingStateStore.shared.resolveState(
+                runRecords: allRuns,
+                activeGoal: activeGoal,
+                experienceLevel: profile.experienceLevel,
+                useMetric: useMetric,
+                userHeightCm: profile.userHeightCm,
+                now: Date()
+            )
+            let isFatigued = dailyState.isTodayCompleted || dailyState.todaySession?.intent == .fullRest
 
             if isFatigued {
                 return "{\"status\":\"drill_blocked_due_to_daily_fatigue\",\"message\":\"Runner already completed daily training volume. Rest is prioritized.\"}"
@@ -829,7 +833,8 @@ class AnalystChatEngine: ObservableObject {
         case .exportToWatch:
             let resolved = PreRunDrillId.resolve(from: query.payload ?? "") ?? .strides
             let template = DrillTemplate.template(for: resolved)
-            let baseCadence = Int(self.runRecord?.workingAvgCadence ?? 0) > 0 ? Int(self.runRecord?.workingAvgCadence ?? 0) : 155
+            let baselineCadence = SessionSynthesisEngine.computeWeightedBaselineStats(from: allRuns, priorTo: Date()).map { Int($0.avgCadence.rounded()) }
+            let baseCadence = Int(self.runRecord?.workingAvgCadence ?? 0) > 0 ? Int(self.runRecord?.workingAvgCadence ?? 0) : (baselineCadence ?? 155)
             let target = template.calculateTargetCadence(baseCadence)
             let dto = DrillPrescriptionDTO(
                 title: template.title,
@@ -869,6 +874,7 @@ class AnalystChatEngine: ObservableObject {
                 newGoal = "Base Building"
             }
             UserDefaults.standard.set(newGoal, forKey: "trainingGoal")
+            DailyTrainingStateStore.shared.invalidate()
             return "{\"goal\":\"\(newGoal)\",\"status\":\"training_goal_updated\"}"
 
         case .explainMetric:
@@ -883,6 +889,7 @@ class AnalystChatEngine: ObservableObject {
             if !feedback.isEmpty, let run = self.runRecord {
                 run.framboiseTags.append("feedback:\(feedback.prefix(40))")
                 try? run.modelContext?.save()
+                DailyTrainingStateStore.shared.invalidate()
             }
             return "{\"status\":\"feedback_recorded\"}"
         }

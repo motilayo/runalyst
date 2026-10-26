@@ -320,10 +320,8 @@ class CoachingEngine {
             GOAL: \(trainingGoal)
             TIMEFRAME: 7 Days (Immediate Next Run & Focus)
             DIRECTIVE: {{DIRECTIVE_CONTEXT}}
-            FATIGUE_TELEMETRY: {{FATIGUE_CONTEXT}}
             CADENCE_TURNOVER: {{CADENCE_CONTEXT}}
             CARDIAC_LOAD: {{HR_CONTEXT}}, {{ZONE4_CONTEXT}}
-            PACING_DYNAMICS: {{CV_CONTEXT}}, {{SLOPE_CONTEXT}}
             [AGGREGATE_DATA_END]
             """
         } else {

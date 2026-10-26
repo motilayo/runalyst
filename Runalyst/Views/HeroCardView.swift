@@ -16,42 +16,20 @@ struct HeroCardView: View {
         return formatter.string(from: runRecord.duration) ?? ""
     }
 
-    private var baselineRuns: [RunRecord] {
-        guard let thirtyDaysAgo = Calendar.current.date(byAdding: .day, value: -30, to: runRecord.date) else { return [] }
-        return allRuns.filter {
-            $0.date < runRecord.date &&
-            $0.date >= thirtyDaysAgo
-        }
+    private var baselineStats: SessionSynthesisEngine.WeightedBaselineStats? {
+        SessionSynthesisEngine.computeWeightedBaselineStats(from: allRuns, priorTo: runRecord.date)
     }
 
     private var baselinePace: Double? {
-        let runs = baselineRuns.filter { $0.workingAvgPace > 0 }
-        guard !runs.isEmpty else { return nil }
-        let totalDuration = runs.map(\.duration).reduce(0, +)
-        guard totalDuration > 0 else {
-            return runs.map(\.workingAvgPace).reduce(0, +) / Double(runs.count)
-        }
-        return runs.map { $0.workingAvgPace * $0.duration }.reduce(0, +) / totalDuration
+        baselineStats?.avgPace
     }
 
     private var baselineHR: Double? {
-        let runs = baselineRuns.filter { $0.workingAvgHeartRate > 0 }
-        guard !runs.isEmpty else { return nil }
-        let totalDuration = runs.map(\.duration).reduce(0, +)
-        guard totalDuration > 0 else {
-            return Double(runs.map(\.workingAvgHeartRate).reduce(0, +)) / Double(runs.count)
-        }
-        return runs.map { Double($0.workingAvgHeartRate) * $0.duration }.reduce(0, +) / totalDuration
+        baselineStats?.avgHR
     }
 
     private var baselineCadence: Double? {
-        let runs = baselineRuns.filter { $0.workingAvgCadence > 0 }
-        guard !runs.isEmpty else { return nil }
-        let totalDuration = runs.map(\.duration).reduce(0, +)
-        guard totalDuration > 0 else {
-            return Double(runs.map(\.workingAvgCadence).reduce(0, +)) / Double(runs.count)
-        }
-        return runs.map { Double($0.workingAvgCadence) * $0.duration }.reduce(0, +) / totalDuration
+        baselineStats?.avgCadence
     }
 
     private var hasBiometrics: Bool {

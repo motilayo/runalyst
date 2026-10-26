@@ -364,7 +364,7 @@ struct WorkoutsView: View {
             purpose: session.groundedRationale,
             targetCadence: session.primerTargetCadence,
             previousCadence: session.cadenceFloor,
-            durationMinutes: session.primerDrillId.defaultDuration.rawValue,
+            durationMinutes: session.primerDurationMinutes,
             hapticMode: "On",
             readinessState: state == .productive ? nil : state.rawValue,
             isIndoor: preferredWorkoutIsIndoor

@@ -40,48 +40,14 @@ actor RunAnalyzerActor {
         )
         let priorRuns = (try? modelContext.fetch(descriptor)) ?? []
 
-        // Every run counts with classification-aware weighting
-        // Steady, Easy, and Long runs provide primary aerobic anchor (1.0x).
-        // Tempo, Progression, and Recovery runs provide secondary aerobic context (0.8x).
-        // High-intensity interval drills contribute (0.3x) without distorting aerobic endurance baselines.
-        let validRuns = priorRuns.filter { $0.workingAvgPace > 0 && $0.duration > 0 }
-
-        func aerobicWeight(for r: RunRecord) -> Double {
-            switch r.detectedTypeRaw {
-            case "Steady Effort", "Easy Run", "Long Run":
-                return 1.0 * r.duration
-            case "Tempo Run", "Progression Run", "Recovery Run":
-                return 0.8 * r.duration
-            case "Intervals", "Pyramids", "Fartlek":
-                return 0.3 * r.duration
-            default:
-                return 0.7 * r.duration
-            }
-        }
-
-        var baseline: BaselineStats?
-        if validRuns.count >= 3 {
-            let totalWeight = validRuns.map { aerobicWeight(for: $0) }.reduce(0, +)
-            if totalWeight > 0 {
-                let weightedPace = validRuns.map { $0.workingAvgPace * aerobicWeight(for: $0) }.reduce(0, +) / totalWeight
-                let weightedHR = validRuns.map { $0.workingAvgHeartRate * aerobicWeight(for: $0) }.reduce(0, +) / totalWeight
-                let weightedCadence = validRuns.map { $0.workingAvgCadence * aerobicWeight(for: $0) }.reduce(0, +) / totalWeight
-                let weightedOsc = validRuns.map { ($0.workingAvgVerticalOscillation ?? $0.rawAvgVerticalOscillation ?? 9.5) * aerobicWeight(for: $0) }.reduce(0, +) / totalWeight
-
-                let strideRuns = validRuns.filter { ($0.workingAvgStrideLength ?? $0.rawAvgStrideLength ?? 0) > 0 }
-                let totalStrideWeight = strideRuns.map { aerobicWeight(for: $0) }.reduce(0, +)
-                let weightedStride: Double? = totalStrideWeight > 0
-                    ? (strideRuns.map { ($0.workingAvgStrideLength ?? $0.rawAvgStrideLength ?? 0) * aerobicWeight(for: $0) }.reduce(0, +) / totalStrideWeight)
-                    : nil
-
-                baseline = BaselineStats(
-                    avgPace: weightedPace,
-                    avgCadence: weightedCadence,
-                    avgHR: weightedHR,
-                    avgOscillation: weightedOsc,
-                    avgStrideLength: weightedStride
-                )
-            }
+        let baseline = SessionSynthesisEngine.computeWeightedBaselineStats(from: priorRuns, priorTo: targetDate).map { stats in
+            BaselineStats(
+                avgPace: stats.avgPace,
+                avgCadence: stats.avgCadence,
+                avgHR: stats.avgHR,
+                avgOscillation: stats.avgOscillation ?? 9.5,
+                avgStrideLength: stats.avgStrideLength
+            )
         }
 
         var directiveContext: String

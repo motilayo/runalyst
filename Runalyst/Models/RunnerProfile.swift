@@ -158,7 +158,7 @@ struct RunnerProfile: Equatable, Sendable {
         let storedVO2 = defaults.double(forKey: "cachedVO2Max")
         let resolvedVO2 = vo2Max ?? (storedVO2 > 0 ? storedVO2 : nil)
 
-        let goal = trainingGoal ?? defaults.string(forKey: "trainingGoal") ?? "5K Race"
+        let goal = trainingGoal ?? defaults.string(forKey: "trainingGoal") ?? "Base Building"
         let storedLevel = defaults.string(forKey: "userExperienceLevel") ?? "Auto"
         let storedHeight = defaults.double(forKey: "userHeightCm")
         let height = userHeightCm ?? (storedHeight > 0 ? storedHeight : 175.0)
