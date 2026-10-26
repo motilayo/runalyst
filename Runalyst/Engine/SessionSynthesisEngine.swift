@@ -9,6 +9,8 @@ struct MicrocycleDay: Identifiable, Sendable, Equatable {
     let sessionTitle: String   // e.g. "4x800m Threshold", "6 mi Easy Run", "Rest Day", "10x1 min Hill Repeats", "Long Run 13 mi"
     let iconName: String       // e.g. "flag.fill", "tree.fill", "bed.double.fill", "mountain.2.fill", "figure.run"
     let isRestDay: Bool
+    var date: Date?
+    var plannedSession: PlannedSession?
 }
 
 /// Pure, date-addressable planned training session.
@@ -867,8 +869,8 @@ enum SessionSynthesisEngine {
         let heightScale = max(130.0, min(220.0, context.userHeightCm)) / 175.0
         let calibratedCadenceFloor = Int((150.0 / heightScale).rounded())
 
-        let basePace = todayRun.workingAvgPace > 0 ? todayRun.workingAvgPace : rollingBasePace
-        let baseCadence = todayRun.workingAvgCadence > 0 ? Int(todayRun.workingAvgCadence) : rollingBaseCadence
+        let basePace = rollingBasePace
+        let baseCadence = rollingBaseCadence
 
         // Evaluate Streak & 48-Hour Volume Compression
         let streakSummary = StreakAndVolumeSummary.evaluate(
@@ -900,7 +902,9 @@ enum SessionSynthesisEngine {
             let tomorrowWeekday = TrainingCalendar.weekdayFormatter.string(from: tomorrowDate)
             let microcycle = generateMicrocycle(
                 activeGoal: context.activeGoal,
-                now: tomorrowDate,
+                now: context.now,
+                runRecords: runRecords,
+                profile: RunnerProfile.compute(from: runRecords, trainingGoal: context.activeGoal, now: context.now),
                 useMetric: context.useMetric,
                 isRecoveryWindow: true,
                 startsAfterTomorrow: true,
@@ -950,7 +954,7 @@ enum SessionSynthesisEngine {
             ? zones.zone1Recovery.formatted(useMetric: context.useMetric)
             : zones.zone2AerobicBase.formatted(useMetric: context.useMetric)
         let hrCap = wasHardSession ? "HR: < 135 BPM" : "HR: < 150 BPM"
-        let cadenceFloor = max(140, calibratedCadenceFloor - 6)
+        let cadenceFloor = wasHardSession ? max(140, calibratedCadenceFloor - 6) : calibratedCadenceFloor
         let tomorrowIntent: DailySessionIntent = wasHardSession ? .recoveryFlush : .train
 
         let rationale = wasHardSession
@@ -987,30 +991,28 @@ enum SessionSynthesisEngine {
 
         let primerDrillId: PreRunDrillId
         let primerTitle: String
-        let primerTarget: String
         let primerWork: String
 
         if wasHardSession {
             primerDrillId = .cadencePyramids
             primerTitle = "Cadence Pyramids"
-            primerTarget = "\(baseCadence - 2)–\(baseCadence + 4) SPM"
             primerWork = "2 x 30 sec work • 45 sec walk • Gentle"
         } else if todayHadExcessiveBounce {
             primerDrillId = .cadencePyramids
             primerTitle = "Cadence Pyramids"
-            primerTarget = "\(baseCadence - 2)–\(baseCadence + 4) SPM"
             primerWork = "4 x 30 sec work • 45 sec walk"
         } else if todayHadCadenceFade {
             primerDrillId = .rhythmIntervals
             primerTitle = "Rhythm Intervals"
-            primerTarget = "\(baseCadence + 4)–\(baseCadence + 8) SPM"
             primerWork = "4 x 30 sec work • 45 sec jog"
         } else {
             primerDrillId = .strides
             primerTitle = "Strides"
-            primerTarget = "\(baseCadence + 4)–\(baseCadence + 10) SPM"
             primerWork = "4 x 15 sec strides • 45 sec walk"
         }
+
+        let tomorrowReadinessState: ReadinessState = wasHardSession ? .acuteFatigue : .productive
+        let primerTarget = targetCadenceBand(for: primerDrillId, state: tomorrowReadinessState, baseCadence: baseCadence)
 
         let tomorrowPrimerDrill = PreRunDrill(
             id: primerDrillId,
@@ -1028,7 +1030,9 @@ enum SessionSynthesisEngine {
         let tomorrowWeekday = TrainingCalendar.weekdayFormatter.string(from: tomorrowDate)
         let microcycle = generateMicrocycle(
             activeGoal: context.activeGoal,
-            now: tomorrowDate,
+            now: context.now,
+            runRecords: runRecords,
+            profile: RunnerProfile.compute(from: runRecords, trainingGoal: context.activeGoal, now: context.now),
             useMetric: context.useMetric,
             isRecoveryWindow: wasHardSession,
             startsAfterTomorrow: true,
@@ -1261,11 +1265,25 @@ enum SessionSynthesisEngine {
             )
         }
 
-        // 2. Target day within active microcycle horizon (+2...+5 days)
+        // 2. Target day within active microcycle horizon (match by calendar date first, fallback to dayOffset)
+        let microcycle = dailyState.activeSession.microcycle
+        if let matchedDay = microcycle.first(where: {
+            if let d = $0.date {
+                return calendar.isDate(d, inSameDayAs: targetDay)
+            }
+            return false
+        }) {
+            if let planned = matchedDay.plannedSession {
+                return planned
+            }
+        }
+
         let dayOffset = calendar.dateComponents([.day], from: today, to: targetDay).day ?? 0
         if dayOffset >= 2 && dayOffset <= 5 {
-            let microcycle = dailyState.activeSession.microcycle
             if let matchedDay = microcycle.first(where: { $0.id == "day-\(dayOffset)" }) {
+                if let planned = matchedDay.plannedSession {
+                    return planned
+                }
                 var cal = calendar
                 cal.firstWeekday = 1
                 let weekday = cal.component(.weekday, from: targetDay)
@@ -1435,74 +1453,57 @@ enum SessionSynthesisEngine {
         consecutiveRunDays: Int = 0,
         isTomorrowRest: Bool = false
     ) -> [MicrocycleDay] {
-        let calendar = Calendar.current
-        var days: [MicrocycleDay] = []
-        let dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
         let effectiveProfile = profile ?? RunnerProfile.compute(from: runRecords, now: now)
+        let calendar = Calendar.current
+        let startDate = startsAfterTomorrow
+            ? (calendar.date(byAdding: .day, value: 2, to: now) ?? now)
+            : (calendar.date(byAdding: .day, value: 1, to: now) ?? now)
 
-        for offset in 1...5 {
-            guard let targetDate = calendar.date(byAdding: .day, value: offset, to: now) else { continue }
-            let weekday = calendar.component(.weekday, from: targetDate)
-            let dayLabel = (offset == 1 && !startsAfterTomorrow) ? "Tomorrow" : dayNames[weekday - 1]
+        let context = AthleteSynthesisContext(
+            activeGoal: activeGoal,
+            experienceLevel: effectiveProfile.experienceLevel,
+            useMetric: useMetric,
+            userHeightCm: effectiveProfile.userHeightCm,
+            now: now,
+            calendar: calendar
+        )
 
-            let template = templateSessionForWeekday(
-                weekday: weekday,
-                activeGoal: activeGoal,
-                profile: effectiveProfile,
-                useMetric: useMetric
+        let samples = runRecords.map { $0.toSynthesisSample() }
+
+        let horizon = SessionHorizonCore.synthesizeHorizon(
+            startDate: startDate,
+            daysCount: 5,
+            runs: samples,
+            context: context,
+            isTomorrowRecovery: !startsAfterTomorrow && isRecoveryWindow,
+            isTomorrowRest: !startsAfterTomorrow && isTomorrowRest,
+            hasRecentLongRun: hasRecentLongRun
+        )
+
+        return horizon.enumerated().map { index, day in
+            let planned = PlannedSession(
+                kind: day.spec.kind == "rest" ? .rest : .run,
+                intent: day.spec.intent,
+                title: day.spec.title,
+                minutesLow: day.spec.minutesLow,
+                minutesHigh: day.spec.minutesHigh,
+                paceBand: day.spec.paceBand,
+                hrCap: day.spec.hrCap,
+                cadenceFloor: day.spec.cadenceFloor,
+                primerTitle: day.spec.primerTitle,
+                adjustmentTriggers: day.spec.adjustmentTriggers,
+                provisional: day.spec.provisional
             )
-
-            let isTomorrowShiftedToRecovery = (offset == 1 && !startsAfterTomorrow && isRecoveryWindow)
-            let isRest = template.kind == .rest || (offset == 1 && isTomorrowRest && !startsAfterTomorrow)
-
-            let sessionTitle: String = {
-                if isRest {
-                    return "Rest Day"
-                }
-                if isTomorrowShiftedToRecovery {
-                    return "Zone 1 Recovery Flush (40m)"
-                }
-                // If 5th day and no long run has been scheduled in the 5-day horizon for race goals, include the calibrated long run
-                if offset == 5 && !hasRecentLongRun && !days.contains(where: { $0.sessionTitle.lowercased().contains("long") }) {
-                    if activeGoal.localizedCaseInsensitiveContains("5K") {
-                        return useMetric ? "Long Run 7 km" : "Long Run 4.5 mi"
-                    } else if activeGoal.localizedCaseInsensitiveContains("10K") {
-                        return useMetric ? "Long Run 10 km" : "Long Run 6 mi"
-                    } else if activeGoal.localizedCaseInsensitiveContains("Half") || activeGoal.localizedCaseInsensitiveContains("Marathon") {
-                        return useMetric ? "Long Run 14 km" : "Long Run 8.5 mi"
-                    }
-                }
-                return template.title
-            }()
-
-            let iconName: String = {
-                if isRest {
-                    return "bed.double.fill"
-                }
-                let lower = sessionTitle.lowercased()
-                if lower.contains("interval") || lower.contains("surge") || lower.contains("stride") {
-                    return "flag.fill"
-                } else if lower.contains("tempo") || lower.contains("progress") {
-                    return "bolt.fill"
-                } else if lower.contains("recovery") || lower.contains("flush") {
-                    return "leaf.fill"
-                } else if lower.contains("long") {
-                    return "point.topleft.down.to.point.bottomright.curvepath.fill"
-                } else {
-                    return "figure.run"
-                }
-            }()
-
-            days.append(MicrocycleDay(
-                id: "day-\(offset)",
-                dayLabel: dayLabel,
-                sessionTitle: sessionTitle,
-                iconName: iconName,
-                isRestDay: isRest
-            ))
+            return MicrocycleDay(
+                id: "day-\(index + 1)",
+                dayLabel: day.dayLabel,
+                sessionTitle: day.sessionTitle,
+                iconName: day.iconName,
+                isRestDay: day.isRestDay,
+                date: day.date,
+                plannedSession: planned
+            )
         }
-
-        return days
     }
 
     /// Generates human coaching relative references (e.g. "Thursday's Fartlek", "Yesterday's Tempo Run", "Today's Intervals", "Recent Fartlek").

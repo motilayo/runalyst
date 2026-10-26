@@ -316,4 +316,80 @@ final class CrossSurfaceIdempotencyTests: XCTestCase {
         XCTAssertEqual(facts.today_target_minutes, state.todaySession?.totalDurationMinutes ?? 0, "Chat tool facts must report identical today_target_minutes as locked state")
         XCTAssertNil(facts.status_guidance, "Tool must not generate scripted dialogue strings")
     }
+
+    @MainActor
+    func testCompletedToday_MicrocycleMatchesTrainingCalendarScheduleOneForOne() {
+        var cal = Calendar(identifier: .gregorian)
+        cal.locale = Locale(identifier: "en_US_POSIX")
+        var comps = DateComponents()
+        comps.year = 2026
+        comps.month = 10
+        comps.day = 26 // Monday
+        comps.hour = 8
+        guard let monday = cal.date(from: comps) else {
+            XCTFail("Failed to build Monday date")
+            return
+        }
+
+        // 2 completed runs on Monday (Primer + Main Run)
+        let primer = makeRun(date: monday.addingTimeInterval(-1800), duration: 600, distanceMeters: 1500, detectedTypeRaw: "Strides")
+        primer.framboiseTags = ["prescribedDrill", "drill:Strides"]
+
+        let mainRun = makeRun(date: monday, duration: 2400, distanceMeters: 6000, detectedTypeRaw: "Easy Run")
+
+        let runs = [primer, mainRun]
+        let goal = "10K Progression"
+        let profile = RunnerProfile.compute(from: runs, trainingGoal: goal, now: monday)
+
+        DailyTrainingStateStore.shared.invalidate()
+        let dailyState = DailyTrainingStateStore.shared.resolveState(
+            runRecords: runs,
+            activeGoal: goal,
+            experienceLevel: profile.experienceLevel,
+            useMetric: true,
+            userHeightCm: profile.userHeightCm,
+            now: monday
+        )
+
+        guard case .completedToday(_, let tomorrowSession) = dailyState else {
+            XCTFail("State must be .completedToday after main run is complete")
+            return
+        }
+
+        let trainingCal = TrainingCalendar(calendar: cal, now: monday)
+        let evalContext = ScheduleEvaluationContext(
+            runRecords: runs,
+            activeGoal: goal,
+            profile: profile,
+            useMetric: true
+        )
+
+        // Evaluate calendar schedule for rest of the week (Tuesday through Saturday)
+        guard let tuesday = cal.date(byAdding: .day, value: 1, to: monday),
+              let saturday = cal.date(byAdding: .day, value: 5, to: monday) else {
+            XCTFail("Failed to construct horizon bounds")
+            return
+        }
+
+        let scheduleDays = trainingCal.evaluateSchedule(from: tuesday, to: saturday, context: evalContext)
+        XCTAssertEqual(scheduleDays.count, 5, "Expected 5 upcoming days (Tue-Sat)")
+
+        // Check 1: Tuesday matches tomorrowSession
+        let tuesdaySchedule = scheduleDays[0]
+        XCTAssertEqual(tuesdaySchedule.planned.title, tomorrowSession.sessionTitle)
+        XCTAssertEqual(tuesdaySchedule.planned.paceBand, tomorrowSession.paceBand)
+        XCTAssertEqual(tuesdaySchedule.planned.cadenceFloor, tomorrowSession.cadenceFloor)
+
+        // Check 2: Days +2...+5 match microcycle 1-for-1
+        for (idx, microDay) in tomorrowSession.microcycle.enumerated() {
+            guard idx + 1 < scheduleDays.count else { break }
+            let schedDay = scheduleDays[idx + 1]
+            XCTAssertEqual(microDay.sessionTitle, schedDay.planned.title, "Microcycle title must match schedule query for \(schedDay.weekday)")
+            if let planned = microDay.plannedSession {
+                XCTAssertEqual(planned.paceBand, schedDay.planned.paceBand, "Pace band must match for \(schedDay.weekday)")
+                XCTAssertEqual(planned.minutesLow, schedDay.planned.minutesLow, "Minutes low must match for \(schedDay.weekday)")
+                XCTAssertEqual(planned.minutesHigh, schedDay.planned.minutesHigh, "Minutes high must match for \(schedDay.weekday)")
+            }
+        }
+    }
 }

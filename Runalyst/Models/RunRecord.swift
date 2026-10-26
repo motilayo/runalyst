@@ -1,5 +1,6 @@
 import Foundation
 import SwiftData
+import RunalystCore
 
 /// Represents a historical running workout extracted from Apple HealthKit.
 /// Persisted locally via SwiftData.
@@ -487,5 +488,30 @@ extension RunRecord {
             return true
         }
         return false
+    }
+
+    /// Converts this SwiftData RunRecord into a pure RunalystCore SynthesisRunSample.
+    func toSynthesisSample() -> SynthesisRunSample {
+        let osc = workingAvgVerticalOscillation ?? rawAvgVerticalOscillation
+        let stride = workingAvgStrideLength ?? rawAvgStrideLength
+        return SynthesisRunSample(
+            id: id,
+            date: date,
+            durationSeconds: duration,
+            distanceMeters: totalDistanceMeters > 0 ? totalDistanceMeters : (workingDistanceMeters ?? 0.0),
+            workingAvgPaceSecPerKm: workingAvgPace,
+            workingAvgCadenceSPM: workingAvgCadence,
+            workingAvgHeartRateBPM: workingAvgHeartRate,
+            percentZone4: percentZone4,
+            detectedType: detectedTypeRaw,
+            isPrimer: isPrimerWorkout,
+            hadCardiacDrift: framboiseTags.contains("cardiacDrift") || framboiseTags.contains("fatigueDrift"),
+            driftBPM: 0,
+            hadCadenceFade: framboiseTags.contains(FramboiseReadinessTag.cadenceFade),
+            efficiencyFactor: efficiencyFactor,
+            verticalOscillationCm: osc,
+            strideLengthMeters: stride,
+            verticalRatio: verticalRatio
+        )
     }
 }
