@@ -145,10 +145,10 @@ public enum GoalBenchmarkCore {
 
         let volumeStatus: GoalVolumeStatus
         let volumeGap: Double
-        if currentWeeklyKm < targetWeeklyMin * 0.75 {
+        if currentWeeklyKm < targetWeeklyMin {
             volumeStatus = .building
             volumeGap = max(0.0, targetWeeklyMin - currentWeeklyKm)
-        } else if currentWeeklyKm > targetWeeklyMax * 1.25 {
+        } else if currentWeeklyKm > targetWeeklyMax {
             volumeStatus = .exceeding
             volumeGap = 0.0
         } else {
@@ -157,9 +157,9 @@ public enum GoalBenchmarkCore {
         }
 
         let longStatus: GoalVolumeStatus
-        if longestRunKm < targetLongMin * 0.70 {
+        if longestRunKm < targetLongMin {
             longStatus = .building
-        } else if longestRunKm > targetLongMax * 1.25 {
+        } else if longestRunKm > targetLongMax {
             longStatus = .exceeding
         } else {
             longStatus = .onTrack

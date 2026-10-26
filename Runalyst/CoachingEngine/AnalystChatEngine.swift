@@ -411,7 +411,7 @@ class AnalystChatEngine: ObservableObject {
         RULES:
         • Anchor: Ground in today. Don't call future runs tomorrow's run.
         • Voice: Talk effort, breath, recovery. Never leak tokens or code words.
-        • Workload: Trust 'workload_zone'. Underload means fresh legs; never say 'underload' or diagnose overload.
+        • Workload: Trust 'workload_zone' and load balance. Light load means fresh legs; do not diagnose overload.
         • Medical Safety: Urge rest on pain or fatigue. No unasked 2nd runs today; do not contradict tomorrow's planned run.
         • Outside Running: Units: SPM, min/km (no LaTeX). Sidestep non-running topics.
         • Silent Tools: Never write command names. Stop cleanly.
@@ -449,7 +449,7 @@ class AnalystChatEngine: ObservableObject {
 
         let getReadinessAndWorkloadTool = GetReadinessAndWorkloadTool { [weak self] _ in
             guard let self else { return "{}" }
-            return self.executeReadinessAndWorkloadQuery()
+            return self.executeReadinessAndWorkloadQueryForModel()
         }
 
         let queryWorkoutHistoryTool = QueryWorkoutHistoryTool { [weak self] query in
@@ -800,6 +800,88 @@ class AnalystChatEngine: ObservableObject {
 
     @available(iOS 26.0, *)
     @discardableResult
+    func executeReadinessAndWorkloadQueryForModel() -> String {
+        self.toolInvokedDuringActiveTurn = true
+        let allRuns = (try? self.modelContext?.fetch(FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)]))) ?? (self.runRecord.map { [$0] } ?? [])
+        let activeGoal = UserDefaults.standard.string(forKey: "trainingGoal") ?? "Base Building"
+        let useMetric = (UserDefaults.standard.object(forKey: "useMetricSystem") as? Bool) ?? true
+        let profile = RunnerProfile.compute(from: allRuns, trainingGoal: activeGoal)
+        let dailyState = DailyTrainingStateStore.shared.resolveState(
+            runRecords: allRuns,
+            activeGoal: activeGoal,
+            experienceLevel: profile.experienceLevel,
+            useMetric: useMetric,
+            userHeightCm: profile.userHeightCm,
+            now: Date()
+        )
+
+        let cal = Calendar.current
+        let todayRuns = allRuns.filter { cal.isDateInToday($0.date) && !$0.isDeleted }
+        let completedMinutes = todayRuns.reduce(0.0) { $0 + $1.duration } / 60.0
+        let targetMinutes = dailyState.todaySession?.intent == .fullRest ? 0 : (dailyState.todaySession?.totalDurationMinutes ?? 0)
+
+        let streakSummary = StreakAndVolumeSummary.evaluate(
+            runs: allRuns,
+            experienceLevel: profile.experienceLevel,
+            trainingGoal: activeGoal,
+            now: Date()
+        )
+
+        let acwrVal = self.currentReadiness.acwr
+        let loadBalanceDescription: String
+        if let acwr = acwrVal {
+            if acwr < 0.8 {
+                loadBalanceDescription = "Light & Fresh (ACWR: \(String(format: "%.2f", acwr))) — legs are well-recovered"
+            } else if acwr <= 1.3 {
+                loadBalanceDescription = "Balanced & Productive (ACWR: \(String(format: "%.2f", acwr))) — optimal training zone"
+            } else if acwr <= 1.5 {
+                loadBalanceDescription = "Elevated Acute Load (ACWR: \(String(format: "%.2f", acwr))) — monitor fatigue"
+            } else {
+                loadBalanceDescription = "High Acute Spike (ACWR: \(String(format: "%.2f", acwr))) — deload recommended"
+            }
+        } else {
+            loadBalanceDescription = "Optimal (calibrating)"
+        }
+
+        let benchmark = profile.goalBenchmark
+        let volumeStatusDesc: String
+        switch benchmark.weeklyVolumeStatus {
+        case .building:
+            volumeStatusDesc = "Building Base (\(String(format: "%.1f", benchmark.volumeGapKm)) km below \(Int(benchmark.targetWeeklyKmMin)) km target minimum)"
+        case .onTrack:
+            volumeStatusDesc = "On Track (within target band)"
+        case .exceeding:
+            volumeStatusDesc = "Exceeding Target (\(Int(benchmark.targetWeeklyKmMax)) km target maximum)"
+        }
+
+        let todayStatusDesc = dailyState.isTodayCompleted
+            ? "Completed (\(Int(round(completedMinutes))) min logged vs \(targetMinutes) min target)"
+            : "\(Int(round(completedMinutes))) min logged of \(targetMinutes) min planned"
+
+        var lines: [String] = [
+            "READINESS & WORKLOAD TELEMETRY:",
+            "• Readiness State: \(self.currentReadiness.state.rawValue.capitalized)",
+            "• Training Load Balance: \(loadBalanceDescription)",
+            "• Today's Work: \(todayStatusDesc)",
+            "• 48-Hour Volume: \(Int(round(streakSummary.last48hDurationMinutes))) min (\(streakSummary.consecutiveRunDays) consecutive run \(streakSummary.consecutiveRunDays == 1 ? "day" : "days"))",
+            "• Weekly Mileage: \(String(format: "%.1f", profile.weeklyAverageKm)) km/wk (Goal: \(activeGoal), Target: \(Int(benchmark.targetWeeklyKmMin))–\(Int(benchmark.targetWeeklyKmMax)) km/wk, Status: \(volumeStatusDesc))",
+            "• Primary Stimulus: \(benchmark.primaryStimulus)",
+            "• Cadence Floor: \(profile.heightAdjustedCadenceFloor) SPM"
+        ]
+
+        if streakSummary.shouldRecommendRestDay || streakSummary.consecutiveRunDays >= streakSummary.maxConsecutiveDays {
+            lines.append("• Limiting Factor: Streak limit reached (\(streakSummary.consecutiveRunDays) days); rest advised.")
+        } else if streakSummary.volumeRatio48h >= streakSummary.volumeCompressionThreshold && streakSummary.last48hDurationMinutes >= 60.0 {
+            lines.append("• Limiting Factor: 48-hour volume compression; light effort advised.")
+        } else if streakSummary.backToBackHRDecouplingBPM >= 5.0 {
+            lines.append("• Limiting Factor: Elevated cardiac drift detected; easy aerobic pace advised.")
+        }
+
+        return lines.joined(separator: "\n")
+    }
+
+    @available(iOS 26.0, *)
+    @discardableResult
     func executeCoachAction(query: ExecuteCoachActionQuery) async -> String {
         self.toolInvokedDuringActiveTurn = true
         let allRuns = (try? self.modelContext?.fetch(FetchDescriptor<RunRecord>(sortBy: [SortDescriptor(\.date, order: .reverse)]))) ?? (self.runRecord.map { [$0] } ?? [])
@@ -807,22 +889,6 @@ class AnalystChatEngine: ObservableObject {
 
         switch query.action {
         case .prescribeDrill:
-            let activeGoal = UserDefaults.standard.string(forKey: "trainingGoal") ?? "Base Building"
-            let useMetric = (UserDefaults.standard.object(forKey: "useMetricSystem") as? Bool) ?? true
-            let dailyState = DailyTrainingStateStore.shared.resolveState(
-                runRecords: allRuns,
-                activeGoal: activeGoal,
-                experienceLevel: profile.experienceLevel,
-                useMetric: useMetric,
-                userHeightCm: profile.userHeightCm,
-                now: Date()
-            )
-            let isFatigued = dailyState.isTodayCompleted || dailyState.todaySession?.intent == .fullRest
-
-            if isFatigued {
-                return "{\"status\":\"drill_blocked_due_to_daily_fatigue\",\"message\":\"Runner already completed daily training volume. Rest is prioritized.\"}"
-            }
-
             let resolved = PreRunDrillId.resolve(from: query.payload ?? "") ?? .strides
             self.drillRecommendedThisTurn = resolved
             harmonizeAttachments()

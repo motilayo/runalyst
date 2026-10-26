@@ -749,4 +749,29 @@ final class AnalystChatEngineTests: XCTestCase {
         }
         XCTAssertEqual(todaySchedule.completed.first?.type, "Cadence Pyramids (Primer)")
     }
+
+    func testPrescribeDrillAttachesCardEvenWhenRunCompletedToday() async {
+        let date = Date()
+        let todayRun = makeRunRecord(date: date, duration: 2400, distanceMeters: 6000, type: "Easy Run")
+        let engine = AnalystChatEngine(runRecord: todayRun, mode: .macroCoach)
+
+        if #available(iOS 26.0, *) {
+            let result = await engine.executeCoachAction(query: ExecuteCoachActionQuery(action: .prescribeDrill, payload: "cadence_pyramids"))
+            XCTAssertTrue(result.contains("drill_prescribed"), "Prescribing a drill in chat must not be blocked when run is completed today")
+            XCTAssertEqual(engine.drillRecommendedThisTurn, .cadencePyramids, "Drill card must attach cleanly")
+        }
+    }
+
+    func testExecuteReadinessAndWorkloadQueryForModelOmitsUnderloadAndDailyVolumeSatisfied() {
+        let date = Date()
+        let todayRun = makeRunRecord(date: date, duration: 2400, distanceMeters: 6000, type: "Easy Run")
+        let engine = AnalystChatEngine(runRecord: todayRun, mode: .macroCoach)
+
+        if #available(iOS 26.0, *) {
+            let output = engine.executeReadinessAndWorkloadQueryForModel()
+            XCTAssertTrue(output.contains("READINESS & WORKLOAD TELEMETRY:"))
+            XCTAssertFalse(output.contains("underload"), "Model tool telemetry must never leak raw 'underload' token")
+            XCTAssertFalse(output.contains("daily_volume_satisfied"), "Model tool telemetry must never label completed run as limiting factor")
+        }
+    }
 }
