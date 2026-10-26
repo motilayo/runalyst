@@ -1,41 +1,57 @@
 import Foundation
+import RunalystCore
 import SwiftData
 
-enum HistoricalSortMetric: Sendable, Equatable {
-    case date
-    case distance
-    case duration
-    case pace
-    case cadence
-    case heartRate
-    case efficiencyFactor
-}
+public typealias HistoricalSortMetric = HistoricalSortMetricCore
+public typealias HistoricalSortDirection = HistoricalSortDirectionCore
+public typealias HistoricalEnvironmentFilter = HistoricalEnvironmentFilterCore
 
-enum HistoricalSortDirection: Sendable, Equatable {
-    case ascending
-    case descending
-}
-
-enum HistoricalEnvironmentFilter: Sendable, Equatable {
-    case all
-    case outdoor
-    case indoor
-}
+public typealias WorkoutMathResult = WorkoutMathResultCore
+public typealias WorkoutMathCalculator = WorkoutMathCalculatorCore
 
 struct HistoricalQueryCriteria: Sendable, Equatable {
     typealias SortMetric = HistoricalSortMetric
     typealias Direction = HistoricalSortDirection
     typealias Environment = HistoricalEnvironmentFilter
 
-    var metric: SortMetric = .date
-    var direction: Direction = .descending
-    var environment: Environment = .all
-    var modality: String?
-    var targetYear: Int?
-    var targetMonth: Int?
-    var targetDay: Int?
-    var limit: Int = 1
-    var requiresPriorToCurrentRun: Bool = false
+    var core: HistoricalQueryCriteriaCore
+
+    var metric: SortMetric {
+        get { core.metric }
+        set { core.metric = newValue }
+    }
+    var direction: Direction {
+        get { core.direction }
+        set { core.direction = newValue }
+    }
+    var environment: Environment {
+        get { core.environment }
+        set { core.environment = newValue }
+    }
+    var modality: String? {
+        get { core.modality }
+        set { core.modality = newValue }
+    }
+    var targetYear: Int? {
+        get { core.targetYear }
+        set { core.targetYear = newValue }
+    }
+    var targetMonth: Int? {
+        get { core.targetMonth }
+        set { core.targetMonth = newValue }
+    }
+    var targetDay: Int? {
+        get { core.targetDay }
+        set { core.targetDay = newValue }
+    }
+    var limit: Int {
+        get { core.limit }
+        set { core.limit = newValue }
+    }
+    var requiresPriorToCurrentRun: Bool {
+        get { core.requiresPriorToCurrentRun }
+        set { core.requiresPriorToCurrentRun = newValue }
+    }
 
     init(
         metric: SortMetric = .date,
@@ -48,143 +64,48 @@ struct HistoricalQueryCriteria: Sendable, Equatable {
         limit: Int = 1,
         requiresPriorToCurrentRun: Bool = false
     ) {
-        self.metric = metric
-        self.direction = direction
-        self.environment = environment
-        self.modality = modality
-        self.targetYear = targetYear
-        self.targetMonth = targetMonth
-        self.targetDay = targetDay
-        self.limit = limit
-        self.requiresPriorToCurrentRun = requiresPriorToCurrentRun
+        self.core = HistoricalQueryCriteriaCore(
+            metric: metric,
+            direction: direction,
+            environment: environment,
+            modality: modality,
+            targetYear: targetYear,
+            targetMonth: targetMonth,
+            targetDay: targetDay,
+            limit: limit,
+            requiresPriorToCurrentRun: requiresPriorToCurrentRun
+        )
+    }
+
+    init(core: HistoricalQueryCriteriaCore) {
+        self.core = core
     }
 
     static func parse(from query: String, relativeTo currentRun: RunRecord? = nil) -> HistoricalQueryCriteria {
-        let lower = query.lowercased()
-        var criteria = HistoricalQueryCriteria()
+        let core = HistoricalQueryCriteriaCore.parse(from: query, currentRunIsIndoor: currentRun?.isIndoor)
+        return HistoricalQueryCriteria(core: core)
+    }
+}
 
-        // 1. Environment extraction
-        let mentionsOutdoor = lower.contains("outdoor") || lower.contains("outside") || lower.contains("road") || lower.contains("trail")
-        let mentionsIndoor = lower.contains("indoor") || lower.contains("treadmill")
-
-        if mentionsOutdoor && !mentionsIndoor {
-            criteria.environment = .outdoor
-        } else if mentionsIndoor && !mentionsOutdoor {
-            criteria.environment = .indoor
-        } else if mentionsOutdoor && mentionsIndoor {
-            if let current = currentRun {
-                criteria.environment = (current.isIndoor ?? false) ? .outdoor : .indoor
-            } else {
-                criteria.environment = .outdoor
-            }
-        }
-
-        // 2. Metric & Direction (Superlatives and Chronological Extremes)
-        let isChronologicalOldest = lower.contains("oldest") || lower.contains("first") || lower.contains("earliest") || lower.contains("initial") || lower.contains("beginning")
-        let isFastestOrBest = lower.contains("fastest") || lower.contains("best") || lower.contains("peak efficiency") || lower.contains("highest efficiency")
-        let isSlowestOrWorst = lower.contains("slowest") || lower.contains("worst") || lower.contains("toughest") || lower.contains("lowest efficiency")
-
-        if isChronologicalOldest {
-            criteria.metric = .date
-            criteria.direction = .ascending
-        } else if lower.contains("longest") {
-            criteria.metric = .distance
-            criteria.direction = .descending
-        } else if lower.contains("shortest") {
-            criteria.metric = .distance
-            criteria.direction = .ascending
-        } else if isFastestOrBest {
-            criteria.metric = .efficiencyFactor
-            criteria.direction = .descending
-        } else if isSlowestOrWorst {
-            criteria.metric = .efficiencyFactor
-            criteria.direction = .ascending
-        } else if lower.contains("highest hr") || lower.contains("highest heart rate") || lower.contains("max hr") {
-            criteria.metric = .heartRate
-            criteria.direction = .descending
-        } else if lower.contains("lowest hr") || lower.contains("lowest heart rate") {
-            criteria.metric = .heartRate
-            criteria.direction = .ascending
-        } else {
-            criteria.metric = .date
-            criteria.direction = .descending
-        }
-
-        let mentionsPriorExplicitly = lower.contains("previous") || lower.contains("prior") || lower.contains("before this") || (lower.contains("last run") && !lower.contains("first"))
-        criteria.requiresPriorToCurrentRun = mentionsPriorExplicitly
-
-        // 3. Date Components (Year, Month, Day)
-        if let yearRegex = try? NSRegularExpression(pattern: #"\b(20\d{2})\b"#) {
-            let nsRange = NSRange(lower.startIndex..<lower.endIndex, in: lower)
-            if let match = yearRegex.firstMatch(in: lower, range: nsRange),
-               let r = Range(match.range(at: 1), in: lower),
-               let y = Int(lower[r]) {
-                criteria.targetYear = y
-            }
-        }
-
-        let months: [(name: String, number: Int)] = [
-            ("january", 1), ("jan", 1),
-            ("february", 2), ("feb", 2),
-            ("march", 3), ("mar", 3),
-            ("april", 4), ("apr", 4),
-            ("may", 5),
-            ("june", 6), ("jun", 6),
-            ("july", 7), ("jul", 7),
-            ("august", 8), ("aug", 8),
-            ("september", 9), ("sept", 9), ("sep", 9),
-            ("october", 10), ("oct", 10),
-            ("november", 11), ("nov", 11),
-            ("december", 12), ("dec", 12)
-        ]
-        for m in months where lower.contains(m.name) {
-            criteria.targetMonth = m.number
-            break
-        }
-
-        if let dayRegex = try? NSRegularExpression(pattern: #"\b(\d{1,2})(?:st|nd|rd|th)?\b"#) {
-            let nsRange = NSRange(lower.startIndex..<lower.endIndex, in: lower)
-            let matches = dayRegex.matches(in: lower, range: nsRange)
-            for match in matches {
-                if let dayRange = Range(match.range(at: 1), in: lower),
-                   let dayVal = Int(lower[dayRange]), dayVal >= 1 && dayVal <= 31,
-                   dayVal != criteria.targetYear {
-                    criteria.targetDay = dayVal
-                    break
-                }
-            }
-        }
-
-        if criteria.targetMonth == nil || criteria.targetDay == nil {
-            if let slashRegex = try? NSRegularExpression(pattern: #"\b(\d{1,2})/(\d{1,2})\b"#) {
-                let nsRange = NSRange(lower.startIndex..<lower.endIndex, in: lower)
-                if let match = slashRegex.firstMatch(in: lower, range: nsRange),
-                   let mRange = Range(match.range(at: 1), in: lower),
-                   let dRange = Range(match.range(at: 2), in: lower),
-                   let mVal = Int(lower[mRange]), let dVal = Int(lower[dRange]),
-                   mVal >= 1 && mVal <= 12, dVal >= 1 && dVal <= 31 {
-                    criteria.targetMonth = mVal
-                    criteria.targetDay = dVal
-                }
-            }
-        }
-
-        if lower.contains("yesterday") {
-            let yesterday = Date().addingTimeInterval(-86400)
-            let comps = Calendar.current.dateComponents([.year, .month, .day], from: yesterday)
-            criteria.targetYear = comps.year
-            criteria.targetMonth = comps.month
-            criteria.targetDay = comps.day
-        }
-
-        // 4. Modality
-        let modalities = ["intervals", "tempo", "steady", "progression", "recovery", "fartlek", "long run", "pyramids", "hill repeats"]
-        for mod in modalities where lower.contains(mod) {
-            criteria.modality = mod
-            break
-        }
-
-        return criteria
+extension RunRecord {
+    var toHistoricalCandidateSample: HistoricalCandidateSampleCore {
+        let pace = workingAvgPace > 0 ? workingAvgPace : rawAvgPace
+        let cad = workingAvgCadence > 0 ? workingAvgCadence : rawAvgCadence
+        let hr = workingAvgHeartRate > 0 ? workingAvgHeartRate : rawAvgHeartRate
+        return HistoricalCandidateSampleCore(
+            id: id,
+            date: date,
+            durationSeconds: duration,
+            distanceMeters: totalDistanceMeters,
+            paceSecondsPerKm: pace,
+            cadenceSPM: cad,
+            heartRateBPM: hr,
+            isIndoor: isIndoor ?? false,
+            efficiencyFactor: efficiencyFactor,
+            classification: normalizedClassification,
+            detectedTypeRaw: detectedTypeRaw,
+            isPrimerWorkout: isPrimerWorkout
+        )
     }
 }
 
@@ -504,42 +425,7 @@ struct HistoricalRunMatcher {
 
     /// Parses potential two-run comparison targets from a single query string.
     static func parseComparisonTargets(from query: String) -> (targetA: String, targetB: String)? {
-        let lower = query.lowercased()
-
-        // 1. Environment contrast detection: "indoor" and "outdoor"
-        let mentionsOutdoor = lower.contains("outdoor") || lower.contains("outside") || lower.contains("road")
-        let mentionsIndoor = lower.contains("indoor") || lower.contains("treadmill")
-
-        if mentionsOutdoor && mentionsIndoor {
-            let outRange = lower.range(of: "outdoor") ?? lower.range(of: "outside") ?? lower.range(of: "road")
-            let inRange = lower.range(of: "indoor") ?? lower.range(of: "treadmill")
-            if let oR = outRange, let iR = inRange {
-                if oR.lowerBound < iR.lowerBound {
-                    return (targetA: "outdoor", targetB: "indoor")
-                } else {
-                    return (targetA: "indoor", targetB: "outdoor")
-                }
-            }
-        }
-
-        // 2. Phrasing splitters: " vs ", " vs. ", " versus ", " compared to ", " to "
-        let splitters = [" vs ", " vs. ", " versus ", " compared to ", " to "]
-        for split in splitters {
-            if let range = lower.range(of: split) {
-                var first = String(query[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
-                let second = String(query[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
-
-                for prefix in ["compare my ", "compare ", "what is the difference between ", "what's the difference between "]
-                    where first.lowercased().hasPrefix(prefix) {
-                    first = String(first.dropFirst(prefix.count))
-                }
-                if !first.isEmpty && !second.isEmpty && second.count >= 3 {
-                    return (targetA: first, targetB: second)
-                }
-            }
-        }
-
-        return nil
+        HistoricalQueryCore.parseComparisonTargets(from: query)
     }
 
     /// Compares two arbitrary workouts (e.g. last outdoor run vs last indoor run) from the stored database.
@@ -599,102 +485,14 @@ struct HistoricalRunMatcher {
         relativeTo currentRun: RunRecord? = nil
     ) -> RunRecord? {
         guard !pool.isEmpty else { return nil }
-        var candidates = pool
-
-        // If filtering relative to current run when query explicitly demands a prior run:
-        if criteria.requiresPriorToCurrentRun, let current = currentRun {
-            let priorOnly = candidates.filter { $0.date < current.date }
-            if !priorOnly.isEmpty {
-                candidates = priorOnly
-            }
-        }
-
-        // 1. Filter by environment
-        switch criteria.environment {
-        case .outdoor:
-            candidates = candidates.filter { !($0.isIndoor ?? false) }
-        case .indoor:
-            candidates = candidates.filter { $0.isIndoor == true }
-        case .all:
-            break
-        }
-
-        // 2. Filter by date components
-        if criteria.targetYear != nil || criteria.targetMonth != nil || criteria.targetDay != nil {
-            let calendar = Calendar.current
-            candidates = candidates.filter { run in
-                let comps = calendar.dateComponents([.year, .month, .day], from: run.date)
-                if let y = criteria.targetYear, comps.year != y { return false }
-                if let m = criteria.targetMonth, comps.month != m { return false }
-                if let d = criteria.targetDay, comps.day != d { return false }
-                return true
-            }
-        }
-
-        // 3. Filter by modality
-        if let mod = criteria.modality {
-            let filteredByMod = candidates.filter {
-                $0.detectedTypeRaw.localizedCaseInsensitiveContains(mod) ||
-                $0.normalizedClassification.localizedCaseInsensitiveContains(mod)
-            }
-            if !filteredByMod.isEmpty {
-                candidates = filteredByMod
-            }
-        }
-
-        guard !candidates.isEmpty else { return nil }
-
-        // Helper for efficiency factor
-        func efficiencyScore(for run: RunRecord) -> Double {
-            if let ef = run.efficiencyFactor, ef > 0 { return ef }
-            let pace = run.workingAvgPace > 0 ? run.workingAvgPace : run.rawAvgPace
-            let hr = run.workingAvgHeartRate > 0 ? run.workingAvgHeartRate : run.rawAvgHeartRate
-            guard pace > 0, hr > 0 else { return 0.0 }
-            return (60_000.0 / pace) / hr
-        }
-
-        // Meaningful runs filter for pace / efficiency superlatives
-        if criteria.metric == .efficiencyFactor || criteria.metric == .pace {
-            let meaningful = candidates.filter { $0.totalDistanceMeters >= 500 && $0.duration >= 180 }
-            if !meaningful.isEmpty {
-                candidates = meaningful
-            }
-        }
-
-        // 4. Sort by criteria metric & direction
-        let sorted = candidates.sorted { r1, r2 in
-            switch criteria.metric {
-            case .date:
-                return criteria.direction == .ascending ? r1.date < r2.date : r1.date > r2.date
-            case .distance:
-                return criteria.direction == .ascending ? r1.totalDistanceMeters < r2.totalDistanceMeters : r1.totalDistanceMeters > r2.totalDistanceMeters
-            case .duration:
-                return criteria.direction == .ascending ? r1.duration < r2.duration : r1.duration > r2.duration
-            case .pace:
-                let p1 = r1.workingAvgPace > 0 ? r1.workingAvgPace : r1.rawAvgPace
-                let p2 = r2.workingAvgPace > 0 ? r2.workingAvgPace : r2.rawAvgPace
-                return criteria.direction == .ascending ? p1 < p2 : p1 > p2
-            case .cadence:
-                let c1 = r1.workingAvgCadence > 0 ? r1.workingAvgCadence : r1.rawAvgCadence
-                let c2 = r2.workingAvgCadence > 0 ? r2.workingAvgCadence : r2.rawAvgCadence
-                return criteria.direction == .ascending ? c1 < c2 : c1 > c2
-            case .heartRate:
-                let h1 = r1.workingAvgHeartRate > 0 ? r1.workingAvgHeartRate : r1.rawAvgHeartRate
-                let h2 = r2.workingAvgHeartRate > 0 ? r2.workingAvgHeartRate : r2.rawAvgHeartRate
-                return criteria.direction == .ascending ? h1 < h2 : h1 > h2
-            case .efficiencyFactor:
-                let ef1 = efficiencyScore(for: r1)
-                let ef2 = efficiencyScore(for: r2)
-                if abs(ef1 - ef2) > 0.001 {
-                    return criteria.direction == .ascending ? ef1 < ef2 : ef1 > ef2
-                }
-                let p1 = r1.workingAvgPace > 0 ? r1.workingAvgPace : r1.rawAvgPace
-                let p2 = r2.workingAvgPace > 0 ? r2.workingAvgPace : r2.rawAvgPace
-                return criteria.direction == .ascending ? p1 > p2 : p1 < p2
-            }
-        }
-
-        return sorted.first
+        let candidateSamples = pool.map(\.toHistoricalCandidateSample)
+        let sortedSamples = HistoricalQueryCore.filterAndSort(
+            candidates: candidateSamples,
+            criteria: criteria.core,
+            referenceDate: currentRun?.date
+        )
+        guard let firstMatch = sortedSamples.first else { return nil }
+        return pool.first { $0.id == firstMatch.id }
     }
 
     /// Finds a matching run within an explicit pool of runs.
@@ -812,7 +610,6 @@ struct HistoricalRunMatcher {
             )
         }
 
-        // Exclude short primer technique drills and warmups from 30-day endurance progression ranking
         let enduranceRuns = past30DaysRuns.filter { !$0.isPrimerWorkout && $0.totalDistanceMeters >= 1000 && $0.duration >= 600 }
         let candidateRuns: [RunRecord]
         if enduranceRuns.count >= 2 {
@@ -822,26 +619,14 @@ struct HistoricalRunMatcher {
             candidateRuns = nonPrimers.count >= 2 ? nonPrimers : past30DaysRuns
         }
 
-        func efficiencyScore(for run: RunRecord) -> Double {
-            if let ef = run.efficiencyFactor, ef > 0 { return ef }
-            let pace = run.workingAvgPace > 0 ? run.workingAvgPace : run.rawAvgPace
-            let hr = run.workingAvgHeartRate > 0 ? run.workingAvgHeartRate : run.rawAvgHeartRate
-            guard pace > 0, hr > 0 else { return 0.0 }
-            return (60_000.0 / pace) / hr
-        }
+        let candidateSamples = candidateRuns.map(\.toHistoricalCandidateSample)
+        let sortedSamples = HistoricalQueryCore.filterAndSort(
+            candidates: candidateSamples,
+            criteria: HistoricalQueryCriteriaCore(metric: .efficiencyFactor, direction: .descending)
+        )
 
-        let sorted = candidateRuns.sorted { r1, r2 in
-            let ef1 = efficiencyScore(for: r1)
-            let ef2 = efficiencyScore(for: r2)
-            if abs(ef1 - ef2) > 0.001 {
-                return ef1 > ef2
-            }
-            let p1 = r1.workingAvgPace > 0 ? r1.workingAvgPace : r1.rawAvgPace
-            let p2 = r2.workingAvgPace > 0 ? r2.workingAvgPace : r2.rawAvgPace
-            return p1 < p2
-        }
-
-        guard let bestRecord = sorted.first else {
+        guard let bestId = sortedSamples.first?.id,
+              let bestRecord = candidateRuns.first(where: { $0.id == bestId }) else {
             return PerformanceArcAnalysis(
                 totalRunsInPast30Days: past30DaysRuns.count,
                 bestRun: currentTelemetry,
@@ -849,7 +634,7 @@ struct HistoricalRunMatcher {
                 currentRun: currentTelemetry
             )
         }
-        let worstRecord = sorted.count > 1 ? sorted.last : nil
+        let worstRecord = sortedSamples.count > 1 ? candidateRuns.first(where: { $0.id == sortedSamples.last?.id }) : nil
 
         let bestTelemetry = extractTelemetry(from: bestRecord)
         let worstTelemetry = worstRecord.map { extractTelemetry(from: $0) }
@@ -867,20 +652,19 @@ struct HistoricalRunMatcher {
         let currentTelemetry = extractTelemetry(from: current)
         let priorTelemetry = extractTelemetry(from: prior)
 
-        let paceDeltaSec = Int(priorTelemetry.paceSecondsPerKm.rounded() - currentTelemetry.paceSecondsPerKm.rounded())
-        let cadDelta = currentTelemetry.cadenceSPM - priorTelemetry.cadenceSPM
-        let hrDelta = currentTelemetry.heartRateBPM - priorTelemetry.heartRateBPM
-        let distDelta = currentTelemetry.distanceMeters - priorTelemetry.distanceMeters
-        let durDelta = currentTelemetry.durationSeconds - priorTelemetry.durationSeconds
+        let deltas = HistoricalQueryCore.computeDeltas(
+            current: current.toHistoricalCandidateSample,
+            prior: prior.toHistoricalCandidateSample
+        )
 
         return ComparisonTelemetry(
             current: currentTelemetry,
             prior: priorTelemetry,
-            paceDeltaSeconds: paceDeltaSec,
-            cadenceDelta: cadDelta,
-            heartRateDelta: hrDelta,
-            distanceDeltaMeters: distDelta,
-            durationDeltaSeconds: durDelta
+            paceDeltaSeconds: deltas.paceDeltaSec,
+            cadenceDelta: deltas.cadDelta,
+            heartRateDelta: deltas.hrDelta,
+            distanceDeltaMeters: deltas.distDelta,
+            durationDeltaSeconds: deltas.durDelta
         )
     }
 
@@ -992,371 +776,5 @@ struct HistoricalRunMatcher {
         let ascending = allRuns.sorted(by: { $0.date < $1.date })
         let rank = ascending.firstIndex(where: { $0.id == match.id }).map { $0 + 1 }
         return formatSingleRun(match, totalWorkoutsCount: allRuns.count, rankInHistory: rank)
-    }
-}
-
-// MARK: - Workout Math Calculator
-
-/// Definitive mathematical result returned to the LLM and UI for running metrics math.
-public struct WorkoutMathResult: Codable, Sendable, Equatable {
-    public let operation: String
-    public let valueA: String
-    public let valueB: String
-    public let delta: String
-    public let deltaNumeric: Double?
-    public let percentageChange: String?
-    public let summary: String
-
-    public init(
-        operation: String,
-        valueA: String,
-        valueB: String,
-        delta: String,
-        deltaNumeric: Double? = nil,
-        percentageChange: String? = nil,
-        summary: String
-    ) {
-        self.operation = operation
-        self.valueA = valueA
-        self.valueB = valueB
-        self.delta = delta
-        self.deltaNumeric = deltaNumeric
-        self.percentageChange = percentageChange
-        self.summary = summary
-    }
-
-    /// Structured mathematical facts for FoundationModels tool injection.
-    public var structuredFacts: String {
-        return """
-        WORKOUT MATH CALCULATION:
-        - Operation: \(operation)
-        - Value A: \(valueA)
-        - Value B: \(valueB)
-        - Mathematical Delta: \(delta)
-        - Percentage Change: \(percentageChange ?? "N/A")
-        - Verified Conclusion: \(summary)
-        """
-    }
-}
-
-/// Deterministic calculator for running math.
-/// Executes exact pace subtraction, distance deltas, heart rate and turnover changes, and percentage differences in Swift
-/// so the LLM never performs mental arithmetic or hallucinates numbers.
-public enum WorkoutMathCalculator {
-
-    /// Performs running math based on operation and input strings.
-    public static func calculate(
-        operation: String,
-        valueA: String,
-        valueB: String,
-        metricType: String? = nil
-    ) -> WorkoutMathResult {
-        let opLower = operation.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-        let typeLower = (metricType ?? "").lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-
-        // 1. Pace operations
-        if opLower.contains("pace") || typeLower.contains("pace") || isPaceString(valueA) || isPaceString(valueB) {
-            return calculatePaceDelta(paceAString: valueA, paceBString: valueB)
-        }
-
-        // 2. Distance operations
-        if opLower.contains("dist") || typeLower.contains("dist") || valueA.lowercased().contains("km") || valueA.lowercased().contains("mi") {
-            return calculateDistanceDelta(distAString: valueA, distBString: valueB)
-        }
-
-        // 3. Heart rate operations
-        if opLower.contains("heart") || opLower.contains("hr") || typeLower.contains("heart") || typeLower.contains("hr") || valueA.lowercased().contains("bpm") {
-            return calculateHeartRateDelta(hrAString: valueA, hrBString: valueB)
-        }
-
-        // 4. Cadence operations
-        if opLower.contains("cadence") || opLower.contains("spm") || opLower.contains("turnover") || typeLower.contains("cadence") || valueA.lowercased().contains("spm") {
-            return calculateCadenceDelta(cadAString: valueA, cadBString: valueB)
-        }
-
-        // 5. Explicit percentage change
-        if opLower.contains("percent") {
-            guard let numA = parseNumericValue(from: valueA),
-                  let numB = parseNumericValue(from: valueB) else {
-                return fallbackErrorResult(operation: operation, valueA: valueA, valueB: valueB)
-            }
-            return calculatePercentageChange(valA: numA, valB: numB, rawA: valueA, rawB: valueB)
-        }
-
-        // 6. Generic difference
-        guard let numA = parseNumericValue(from: valueA),
-              let numB = parseNumericValue(from: valueB) else {
-            return fallbackErrorResult(operation: operation, valueA: valueA, valueB: valueB)
-        }
-
-        let delta = numA - numB
-        let deltaFormatted = delta >= 0 ? "+\(formatDouble(delta))" : "\(formatDouble(delta))"
-        let pct = numB != 0 ? ((numA - numB) / abs(numB)) * 100.0 : 0.0
-        let pctStr = pct >= 0 ? "+\(String(format: "%.1f", pct))%" : "\(String(format: "%.1f", pct))%"
-
-        return WorkoutMathResult(
-            operation: "difference",
-            valueA: valueA,
-            valueB: valueB,
-            delta: deltaFormatted,
-            deltaNumeric: delta,
-            percentageChange: pctStr,
-            summary: "Value A (\(valueA)) is \(deltaFormatted) compared to Value B (\(valueB)) (\(pctStr))."
-        )
-    }
-
-    // MARK: - Specialized Metric Calculators
-
-    public static func calculatePaceDelta(paceAString: String, paceBString: String) -> WorkoutMathResult {
-        guard let secA = parsePaceSeconds(from: paceAString),
-              let secB = parsePaceSeconds(from: paceBString) else {
-            return fallbackErrorResult(operation: "pace_delta", valueA: paceAString, valueB: paceBString)
-        }
-
-        let paceFormattedA = formatPace(seconds: secA)
-        let paceFormattedB = formatPace(seconds: secB)
-
-        // Delta in seconds: secA - secB. Negative means paceA took fewer seconds (faster).
-        let paceDiffSec = Int(secA.rounded() - secB.rounded())
-        let absDiff = abs(paceDiffSec)
-
-        let verdict: String
-        let deltaStr: String
-        if paceDiffSec < 0 {
-            deltaStr = "-\(absDiff) s/km"
-            verdict = "\(absDiff) seconds/km faster (Value A is faster than Value B)"
-        } else if paceDiffSec > 0 {
-            deltaStr = "+\(absDiff) s/km"
-            verdict = "\(absDiff) seconds/km slower (Value A is slower than Value B)"
-        } else {
-            deltaStr = "0 s/km"
-            verdict = "Identical pace across both values"
-        }
-
-        // Speed percentage difference: velocity is proportional to 1 / pace.
-        let speedPct: String?
-        if secA > 0 && secB > 0 {
-            let speedA = 1000.0 / secA
-            let speedB = 1000.0 / secB
-            let change = ((speedA - speedB) / speedB) * 100.0
-            speedPct = change >= 0 ? "+\(String(format: "%.1f", change))% faster speed" : "\(String(format: "%.1f", change))% slower speed"
-        } else {
-            speedPct = nil
-        }
-
-        let speedNote = speedPct.map { " [\($0)]" } ?? ""
-        return WorkoutMathResult(
-            operation: "pace_delta",
-            valueA: paceFormattedA,
-            valueB: paceFormattedB,
-            delta: deltaStr,
-            deltaNumeric: Double(paceDiffSec),
-            percentageChange: speedPct,
-            summary: "\(verdict)\(speedNote)."
-        )
-    }
-
-    public static func calculateDistanceDelta(distAString: String, distBString: String) -> WorkoutMathResult {
-        guard let distA = parseNumericValue(from: distAString),
-              let distB = parseNumericValue(from: distBString) else {
-            return fallbackErrorResult(operation: "distance_delta", valueA: distAString, valueB: distBString)
-        }
-
-        let diff = distA - distB
-        let absDiff = abs(diff)
-        let diffFormatted = diff >= 0 ? "+\(String(format: "%.2f", diff)) km" : "-\(String(format: "%.2f", absDiff)) km"
-
-        let pct = distB > 0 ? ((distA - distB) / distB) * 100.0 : 0.0
-        let pctStr = pct >= 0 ? "+\(String(format: "%.1f", pct))%" : "\(String(format: "%.1f", pct))%"
-
-        let summary = diff >= 0
-            ? "Value A (\(String(format: "%.2f", distA)) km) is \(diffFormatted) longer than Value B (\(String(format: "%.2f", distB)) km) (\(pctStr))."
-            : "Value A (\(String(format: "%.2f", distA)) km) is \(String(format: "%.2f", absDiff)) km shorter than Value B (\(String(format: "%.2f", distB)) km) (\(pctStr))."
-
-        return WorkoutMathResult(
-            operation: "distance_delta",
-            valueA: "\(String(format: "%.2f", distA)) km",
-            valueB: "\(String(format: "%.2f", distB)) km",
-            delta: diffFormatted,
-            deltaNumeric: diff,
-            percentageChange: pctStr,
-            summary: summary
-        )
-    }
-
-    public static func calculateHeartRateDelta(hrAString: String, hrBString: String) -> WorkoutMathResult {
-        guard let hrA = parseNumericValue(from: hrAString),
-              let hrB = parseNumericValue(from: hrBString) else {
-            return fallbackErrorResult(operation: "heart_rate_delta", valueA: hrAString, valueB: hrBString)
-        }
-
-        let intA = Int(hrA.rounded())
-        let intB = Int(hrB.rounded())
-        let diff = intA - intB
-        let absDiff = abs(diff)
-        let diffFormatted = diff >= 0 ? "+\(diff) BPM" : "-\(absDiff) BPM"
-
-        let pct = hrB > 0 ? ((hrA - hrB) / hrB) * 100.0 : 0.0
-        let pctStr = pct >= 0 ? "+\(String(format: "%.1f", pct))%" : "\(String(format: "%.1f", pct))%"
-
-        let summary: String
-        if diff > 0 {
-            summary = "Value A (\(intA) BPM) is +\(diff) BPM higher cardiac cost than Value B (\(intB) BPM) (\(pctStr))."
-        } else if diff < 0 {
-            summary = "Value A (\(intA) BPM) is \(absDiff) BPM lower cardiovascular demand than Value B (\(intB) BPM) (\(pctStr))."
-        } else {
-            summary = "Identical heart rate across both values (\(intA) BPM)."
-        }
-
-        return WorkoutMathResult(
-            operation: "heart_rate_delta",
-            valueA: "\(intA) BPM",
-            valueB: "\(intB) BPM",
-            delta: diffFormatted,
-            deltaNumeric: Double(diff),
-            percentageChange: pctStr,
-            summary: summary
-        )
-    }
-
-    public static func calculateCadenceDelta(cadAString: String, cadBString: String) -> WorkoutMathResult {
-        guard let cadA = parseNumericValue(from: cadAString),
-              let cadB = parseNumericValue(from: cadBString) else {
-            return fallbackErrorResult(operation: "cadence_delta", valueA: cadAString, valueB: cadBString)
-        }
-
-        let intA = Int(cadA.rounded())
-        let intB = Int(cadB.rounded())
-        guard intA > 0 && intB > 0 else {
-            return fallbackErrorResult(operation: "cadence_delta", valueA: cadAString, valueB: cadBString)
-        }
-        let diff = intA - intB
-        let absDiff = abs(diff)
-        let diffFormatted = diff >= 0 ? "+\(diff) SPM" : "-\(absDiff) SPM"
-
-        let pct = cadB > 0 ? ((cadA - cadB) / cadB) * 100.0 : 0.0
-        let pctStr = pct >= 0 ? "+\(String(format: "%.1f", pct))%" : "\(String(format: "%.1f", pct))%"
-
-        let summary: String
-        if diff > 0 {
-            summary = "Value A (\(intA) SPM) has +\(diff) SPM higher turnover than Value B (\(intB) SPM) (\(pctStr))."
-        } else if diff < 0 {
-            summary = "Value A (\(intA) SPM) has \(absDiff) SPM lower turnover than Value B (\(intB) SPM) (\(pctStr))."
-        } else {
-            summary = "Matched cadence turnover across both values (\(intA) SPM)."
-        }
-
-        return WorkoutMathResult(
-            operation: "cadence_delta",
-            valueA: "\(intA) SPM",
-            valueB: "\(intB) SPM",
-            delta: diffFormatted,
-            deltaNumeric: Double(diff),
-            percentageChange: pctStr,
-            summary: summary
-        )
-    }
-
-    public static func calculatePercentageChange(valA: Double, valB: Double, rawA: String, rawB: String) -> WorkoutMathResult {
-        guard valB != 0 else {
-            return WorkoutMathResult(
-                operation: "percentage_change",
-                valueA: rawA,
-                valueB: rawB,
-                delta: "Undefined (division by zero)",
-                deltaNumeric: nil,
-                percentageChange: nil,
-                summary: "Cannot compute percentage change when baseline (Value B) is zero."
-            )
-        }
-
-        let diff = valA - valB
-        let pct = (diff / abs(valB)) * 100.0
-        let pctStr = pct >= 0 ? "+\(String(format: "%.1f", pct))%" : "\(String(format: "%.1f", pct))%"
-        let diffStr = diff >= 0 ? "+\(formatDouble(diff))" : "\(formatDouble(diff))"
-
-        return WorkoutMathResult(
-            operation: "percentage_change",
-            valueA: rawA,
-            valueB: rawB,
-            delta: diffStr,
-            deltaNumeric: diff,
-            percentageChange: pctStr,
-            summary: "Value A is \(pctStr) relative to baseline Value B (delta of \(diffStr))."
-        )
-    }
-
-    // MARK: - Parsing Helpers
-
-    public static func parsePaceSeconds(from string: String) -> Double? {
-        let clean = string.lowercased()
-            .replacingOccurrences(of: "/km", with: "")
-            .replacingOccurrences(of: "/mi", with: "")
-            .replacingOccurrences(of: "min/km", with: "")
-            .replacingOccurrences(of: "min/mi", with: "")
-            .replacingOccurrences(of: "s/km", with: "")
-            .replacingOccurrences(of: "sec", with: "")
-            .replacingOccurrences(of: "s", with: "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-
-        // Check if formatted as "M:SS" or "MM:SS"
-        if clean.contains(":") {
-            let parts = clean.split(separator: ":")
-            if parts.count == 2,
-               let mins = Double(parts[0].trimmingCharacters(in: .whitespaces)),
-               let secs = Double(parts[1].trimmingCharacters(in: .whitespaces)) {
-                return mins * 60.0 + secs
-            }
-        }
-
-        // Check if raw seconds (e.g. "362" or "374")
-        if let totalSec = Double(clean), totalSec >= 120 && totalSec <= 1200 {
-            return totalSec
-        }
-
-        return nil
-    }
-
-    public static func parseNumericValue(from string: String) -> Double? {
-        let clean = string.lowercased()
-            .replacingOccurrences(of: "km", with: "")
-            .replacingOccurrences(of: "mi", with: "")
-            .replacingOccurrences(of: "bpm", with: "")
-            .replacingOccurrences(of: "spm", with: "")
-            .replacingOccurrences(of: "min", with: "")
-            .replacingOccurrences(of: "sec", with: "")
-            .replacingOccurrences(of: "m", with: "")
-            .replacingOccurrences(of: ",", with: ".")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-
-        return Double(clean)
-    }
-
-    public static func formatPace(seconds: Double) -> String {
-        PaceFormatter.formatPace(secondsPerKilometer: seconds)
-    }
-
-    private static func isPaceString(_ string: String) -> Bool {
-        let lower = string.lowercased()
-        return lower.contains(":") || lower.contains("/km") || lower.contains("/mi")
-    }
-
-    private static func formatDouble(_ val: Double) -> String {
-        if val.truncatingRemainder(dividingBy: 1) == 0 {
-            return "\(Int(val))"
-        }
-        return String(format: "%.2f", val)
-    }
-
-    private static func fallbackErrorResult(operation: String, valueA: String, valueB: String) -> WorkoutMathResult {
-        return WorkoutMathResult(
-            operation: operation,
-            valueA: valueA,
-            valueB: valueB,
-            delta: "Invalid input",
-            deltaNumeric: nil,
-            percentageChange: nil,
-            summary: "Could not parse values '\(valueA)' and '\(valueB)' into valid numeric telemetry for operation '\(operation)'."
-        )
     }
 }
