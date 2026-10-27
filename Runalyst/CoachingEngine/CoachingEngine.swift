@@ -116,7 +116,7 @@ struct AggregateRunDataForAI: Sendable {
 @available(iOS 26.0, *)
 @Generable
 struct DashboardFatigueInsight {
-    @Guide(description: "Constrain strictly to a 2–4 word title capturing the primary coaching takeaway (e.g. 'Ready For Speed', 'Active Recovery Needed', 'On Track For Goal', 'Time To Step Up').")
+    @Guide(description: "Constrain strictly to a 2–4 word title capturing the primary coaching takeaway (e.g. 'Building Aerobic Base', 'Ready For Speed', 'Active Recovery Needed', 'On Track For Goal', 'Time To Step Up').")
     var headline: String
 
     @Guide(description: "Write 1 to 4 flowing, natural sentences in plain English like an experienced personal running coach speaking directly to the runner. Follow the directive and connect to their stated goal. Zero numbers.")

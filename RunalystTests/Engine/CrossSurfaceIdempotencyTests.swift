@@ -392,4 +392,70 @@ final class CrossSurfaceIdempotencyTests: XCTestCase {
             }
         }
     }
+
+    @MainActor
+    func testBuildingBaseVolume_DashboardAndChatSurfacesAgreeOnBuildingStatusAndNeverSayOnTrack() throws {
+        let now = Date()
+        let cal = Calendar.current
+
+        let schema = Schema([RunRecord.self])
+        let config = ModelConfiguration(isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        let context = ModelContext(container)
+
+        // 30 days of runs totaling 87.1 km (averaging 20.3 km/wk: 87.1 / (30/7) = 20.3 km/wk)
+        // 14 runs over 30 days
+        var runs: [RunRecord] = []
+        for i in 0..<14 {
+            let runDate = cal.date(byAdding: .day, value: -(i * 2), to: now) ?? now
+            let run = makeRun(
+                date: runDate,
+                duration: 2700,
+                distanceMeters: 6221.0, // ~6.22 km per run * 14 = ~87.1 km total
+                detectedTypeRaw: "Easy Run",
+                framboiseTags: i == 0 ? ["cardiacDrift"] : []
+            )
+            context.insert(run)
+            runs.append(run)
+        }
+        try context.save()
+
+        let goal = "10K Race"
+        UserDefaults.standard.set(goal, forKey: "trainingGoal")
+
+        let profile = RunnerProfile.compute(from: runs, trainingGoal: goal, now: now)
+        XCTAssertEqual(profile.goalBenchmark.weeklyVolumeStatus, .building, "20.3 km/wk against 25-42 km target must evaluate to .building")
+        XCTAssertEqual(profile.goalBenchmark.volumeGapKm, 4.7, accuracy: 0.1, "Volume gap must be 4.7 km")
+
+        // 1. Chat Surface Verification
+        if #available(iOS 26.0, *) {
+            let chatEngine = AnalystChatEngine(modelContext: context, runRecord: runs.first, mode: .macroCoach)
+            let chatTelemetry = chatEngine.executeReadinessAndWorkloadQueryForModel()
+
+            XCTAssertTrue(chatTelemetry.contains("Building Base"), "Chat telemetry must state Building Base")
+            XCTAssertTrue(chatTelemetry.contains("4.7 km below"), "Chat telemetry must specify volume gap")
+            XCTAssertFalse(chatTelemetry.contains("Status: On Track"), "Chat telemetry must NEVER say On Track when building base")
+            XCTAssertFalse(chatTelemetry.contains("Acutefatigue"), "Chat telemetry must NEVER leak raw camelCase code token Acutefatigue")
+            XCTAssertTrue(chatTelemetry.contains("Biological Readiness: Recovering from Recent Effort"), "Chat telemetry must explain readiness in human coaching English")
+        }
+
+        // 2. Dashboard Surface Verification
+        let assessment = SessionSynthesisEngine.evaluate30DayTrajectory(from: runs, now: now)
+        let benchmark = profile.goalBenchmark
+        let volumeStatus = benchmark.weeklyVolumeStatus
+
+        let directiveContext: String
+        if assessment.verdict == .easeUp {
+            directiveContext = "TRAJECTORY_EASE_UP"
+        } else if volumeStatus == .building {
+            directiveContext = "TRAJECTORY_BUILDING_BASE"
+        } else if volumeStatus == .exceeding {
+            directiveContext = "TRAJECTORY_EXCEEDING"
+        } else {
+            directiveContext = "TRAJECTORY_ON_TRACK"
+        }
+
+        XCTAssertEqual(directiveContext, "TRAJECTORY_BUILDING_BASE", "Dashboard 30-day directive must evaluate to TRAJECTORY_BUILDING_BASE")
+        XCTAssertNotEqual(directiveContext, "TRAJECTORY_ON_TRACK", "Dashboard 30-day directive must NEVER evaluate to TRAJECTORY_ON_TRACK when volume is below target band")
+    }
 }

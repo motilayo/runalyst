@@ -506,6 +506,17 @@ struct HistoricalRunMatcher {
         relativeTo currentRun: RunRecord? = nil
     ) -> RunRecord? {
         let criteria = HistoricalQueryCriteria.parse(from: query, relativeTo: currentRun)
+        let isOldestOrFirst = criteria.metric == .date && criteria.direction == .ascending
+        let lower = query.lowercased()
+        let isExplicitAllTime = isOldestOrFirst || lower.contains("all-time") || lower.contains("all time") || lower.contains("ever") || lower.contains("history") || lower.contains("lifetime") || lower.contains("pr") || lower.contains("record") || lower.contains("oldest") || lower.contains("first")
+        if !isExplicitAllTime && criteria.core.targetYear == nil && criteria.core.targetMonth == nil && criteria.core.targetDay == nil {
+            let refDate = currentRun?.date ?? Date()
+            let cutoff = Calendar.current.date(byAdding: .day, value: -90, to: refDate) ?? refDate.addingTimeInterval(-90 * 86400)
+            let seasonPool = pool.filter { $0.date >= cutoff }
+            if !seasonPool.isEmpty, let match = findRun(matching: criteria, in: seasonPool, relativeTo: currentRun) {
+                return match
+            }
+        }
         return findRun(matching: criteria, in: pool, relativeTo: currentRun)
     }
 

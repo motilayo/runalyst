@@ -438,6 +438,7 @@ struct DashboardView: View {
                             .foregroundColor(.orange)
                             .clipShape(Capsule())
 
+                        let benchmark = dashboardRunnerProfile.goalBenchmark
                         if isTrajectoryEaseUp {
                             Text("Cumulative Strain")
                                 .font(.caption.bold())
@@ -445,6 +446,22 @@ struct DashboardView: View {
                                 .padding(.vertical, 4)
                                 .background(Color.red.opacity(0.12))
                                 .foregroundColor(.red)
+                                .clipShape(Capsule())
+                        } else if benchmark.weeklyVolumeStatus == .building {
+                            Text("Building Base")
+                                .font(.caption.bold())
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color.blue.opacity(0.12))
+                                .foregroundColor(.blue)
+                                .clipShape(Capsule())
+                        } else if benchmark.weeklyVolumeStatus == .exceeding {
+                            Text("Exceeding Target")
+                                .font(.caption.bold())
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color.purple.opacity(0.12))
+                                .foregroundColor(.purple)
                                 .clipShape(Capsule())
                         } else {
                             Text("Aerobic Base Expanding")
@@ -611,20 +628,27 @@ struct DashboardView: View {
             efficiencyContext = ""
             verticalOscillationContext = ""
         } else {
-            // 30-DAY VIEW: Goal Readiness & Trajectory Analyst
+            // 30-DAY VIEW: Goal Readiness & Trajectory Analyst (Unified SSOT with RunnerProfile.goalBenchmark)
             let assessment = SessionSynthesisEngine.evaluate30DayTrajectory(from: timeRangeRuns, now: Date())
-            switch assessment.verdict {
-            case .easeUp:
+            let benchmark = dashboardRunnerProfile.goalBenchmark
+            let volumeStatus = benchmark.weeklyVolumeStatus
+            let weeklyAvgKm = dashboardRunnerProfile.weeklyAverageKm
+
+            if assessment.verdict == .easeUp {
                 directiveContext = "TRAJECTORY_EASE_UP: Over the past 30 days, training data indicates cumulative overworking and declining efficiency (aerobic cost is climbing). For their stated goal of \(trainingGoal), tell the runner clearly that they are overworking and need to ease up on volume or intensity so their body can absorb the training and avoid declining instead of improving."
                 efficiencyContext = "Efficiency Factor declined over the past month. Cardiac drift and physiological strain accumulating."
-            case .onTrack:
+            } else if volumeStatus == .building {
+                let efNote = assessment.efDelta > 0 ? "Aerobic efficiency is improving (+`\(String(format: "%.2f", assessment.efDelta))` m/beat), but weekly volume is still below the foundation band." : "Aerobic base is in the building phase."
+                directiveContext = "TRAJECTORY_BUILDING_BASE: The runner is actively building their aerobic foundation for the \(trainingGoal) goal. Currently averaging \(String(format: "%.1f", weeklyAvgKm)) km/wk, which is \(String(format: "%.1f", benchmark.volumeGapKm)) km below the \(Int(benchmark.targetWeeklyKmMin)) km/wk target minimum. Tell the runner clearly that they are in the 'Building Base' phase: their consistency is building momentum, and steady easy miles will help close the volume gap."
+                efficiencyContext = "\(efNote) Volume gap: \(String(format: "%.1f", benchmark.volumeGapKm)) km."
+            } else if volumeStatus == .exceeding {
+                directiveContext = "TRAJECTORY_EXCEEDING: The runner is averaging \(String(format: "%.1f", weeklyAvgKm)) km/wk, exceeding the target maximum (\(Int(benchmark.targetWeeklyKmMax)) km/wk) for their \(trainingGoal) goal. Commend their high capacity and advise smart recovery to avoid overtraining."
+                efficiencyContext = "Weekly volume is high (\(String(format: "%.1f", weeklyAvgKm)) km/wk)."
+            } else {
                 let hrDeltaText = assessment.hrDelta < 0 ? "\(Int(abs(assessment.hrDelta))) BPM lower" : "stable"
                 let vrDeltaText = assessment.avgRecentVR > 0 ? ", Vertical Ratio: \(String(format: "%.1f", assessment.avgRecentVR))%" : ""
-                directiveContext = "TRAJECTORY_ON_TRACK: Over the past 30 days, aerobic efficiency, cardiac response, and running economy have clearly improved (Efficiency Factor increased by \(String(format: "%.2f", assessment.efDelta)), heart rate at \(paceContext) is \(hrDeltaText)\(vrDeltaText)). Tell the runner clearly that they are solidly on track for their \(trainingGoal) goal and their consistency is paying off."
+                directiveContext = "TRAJECTORY_ON_TRACK: Over the past 30 days, aerobic efficiency, cardiac response, and running economy have clearly improved (Efficiency Factor increased by \(String(format: "%.2f", assessment.efDelta)), heart rate at \(paceContext) is \(hrDeltaText)\(vrDeltaText)) and weekly volume is on track for their \(trainingGoal) goal. Tell the runner clearly that they are solidly on track for their \(trainingGoal) goal and their consistency is paying off."
                 efficiencyContext = "Efficiency Factor rose by +\(String(format: "%.2f", assessment.efDelta)) m/beat. Aerobic capacity expanding."
-            case .stepItUp:
-                directiveContext = "TRAJECTORY_STEP_IT_UP: Over the past 30 days, baseline fitness is steady and well-calibrated, but performance has plateaued. Tell the runner their performances show their body has adapted and they have more to give, encouraging them to step up their training slightly in pace, volume, or quality to chase their \(trainingGoal) goal."
-                efficiencyContext = "Efficiency Factor stable at \(String(format: "%.2f", max(1.2, assessment.avgRecentEF))) m/beat."
             }
             if assessment.avgRecentVR > 0 {
                 verticalOscillationContext = "Vertical Oscillation: \(String(format: "%.1f", assessment.avgRecentOsc)) cm (VR: \(String(format: "%.1f", assessment.avgRecentVR))%)"

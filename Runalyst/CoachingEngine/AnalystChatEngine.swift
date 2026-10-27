@@ -856,12 +856,37 @@ class AnalystChatEngine: ObservableObject {
         if let vo2 = profile.vo2Max {
             lines.append("• VO2 Max: \(Int(round(vo2)))")
         }
+        let readinessStateDesc: String
+        switch self.currentReadiness.state {
+        case .acuteFatigue:
+            let triggers = self.currentReadiness.triggers.map { t -> String in
+                switch t {
+                case .cardiacDrift: return "recent cardiac drift detected on last run"
+                case .consecutiveHardDays: return "back-to-back hard training days"
+                case .cadenceFade: return "cadence turnover fade"
+                case .acwrSpike(let r): return "acute load spike (ACWR: \(String(format: "%.2f", r)))"
+                case .mileageDeload(let drop): return "volume deload (\(Int(drop * 100))% reduction)"
+                }
+            }
+            let triggerNote = triggers.isEmpty ? "recent training strain" : triggers.joined(separator: ", ")
+            readinessStateDesc = "Recovering from Recent Effort (\(triggerNote)) — easy pace advised"
+        case .productive:
+            readinessStateDesc = "Productive & Ready — body is adapting well"
+        case .deload:
+            readinessStateDesc = "Deload Phase — controlled volume reduction allows musculoskeletal recovery"
+        }
+
+        let streakDesc = streakSummary.consecutiveRunDays == 0
+            ? "0-day streak (well-rested, legs ready)"
+            : "\(streakSummary.consecutiveRunDays) consecutive running \(streakSummary.consecutiveRunDays == 1 ? "day" : "days")"
+        let loadDesc = "Recent 48-Hour Work: \(Int(round(streakSummary.last48hDurationMinutes))) min logged (\(streakDesc))"
+
         lines.append("")
         lines.append("READINESS & WORKLOAD TELEMETRY:")
-        lines.append("• Readiness State: \(self.currentReadiness.state.rawValue.capitalized)")
-        lines.append("• Training Load Balance: \(loadBalanceDescription)")
+        lines.append("• Biological Readiness: \(readinessStateDesc)")
+        lines.append("• 28-Day Load Balance: \(loadBalanceDescription)")
         lines.append("• Today's Work: \(todayStatusDesc)")
-        lines.append("• 48-Hour Volume: \(Int(round(streakSummary.last48hDurationMinutes))) min (\(streakSummary.consecutiveRunDays) consecutive run \(streakSummary.consecutiveRunDays == 1 ? "day" : "days"))")
+        lines.append("• \(loadDesc)")
         lines.append("• Weekly Mileage: \(String(format: "%.1f", profile.weeklyAverageKm)) km/wk (Target: \(Int(benchmark.targetWeeklyKmMin))–\(Int(benchmark.targetWeeklyKmMax)) km/wk, Status: \(volumeStatusDesc))")
         lines.append("• Primary Stimulus: \(benchmark.primaryStimulus)")
 
