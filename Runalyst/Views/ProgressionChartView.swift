@@ -1,6 +1,7 @@
 import SwiftUI
 import Charts
 import SwiftData
+import RunalystCore
 
 enum ProgressionMetric: String, CaseIterable, Identifiable {
     case efficiencyFactor = "Efficiency Factor"
@@ -12,6 +13,13 @@ enum ProgressionMetric: String, CaseIterable, Identifiable {
         switch self {
         case .efficiencyFactor: return "Eff. Factor (Speed ÷ HR)"
         case .pace: return "Average Pace"
+        }
+    }
+
+    var coreMetric: ProgressionMetricCore {
+        switch self {
+        case .efficiencyFactor: return .efficiencyFactor
+        case .pace: return .pace
         }
     }
 }
@@ -59,8 +67,16 @@ struct ProgressionChartView: View {
     @State private var selectedDate: Date?
     @State private var showingInfo = false
 
+    private var chartInputs: [ChartRunInputCore] {
+        allRuns.filter { !$0.isDeleted }.map { $0.toChartRunInputCore() }
+    }
+
     private var latestMetricDisplay: String? {
-        let matchingRuns = horizonRuns.filter { run in
+        let matchingRuns = allRuns.filter { run in
+            guard !run.isDeleted else { return false }
+            if let days = selectedHorizon.days, let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date()), run.date < cutoff {
+                return false
+            }
             if let selType = selectedRunType {
                 return run.normalizedClassification == selType
             }
@@ -92,34 +108,14 @@ struct ProgressionChartView: View {
         return ChartTimeHorizon.allCases
     }
 
-    private var horizonRuns: [RunRecord] {
-        let baseRuns: [RunRecord]
-        if let days = selectedHorizon.days,
-           let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date()) {
-            baseRuns = allRuns.filter { $0.date >= cutoff }
-        } else {
-            baseRuns = allRuns
-        }
-
-        if selectedMetric == .efficiencyFactor {
-            return baseRuns.filter { run in
-                guard run.workingAvgHeartRate > 0, run.workingAvgPace > 0 else { return false }
-                guard let ef = run.efficiencyFactor, ef > 0 else { return false }
-                return true
-            }
-        } else {
-            return baseRuns.filter { $0.workingAvgPace > 0 }
-        }
-    }
-
-    /// Sorted unique run classifications by frequency in the selected horizon
+    /// Sorted unique run classifications by frequency in the selected horizon (evaluated via Core SSOT)
     private var availableRunTypesSorted: [String] {
-        var counts: [String: Int] = [:]
-        for run in horizonRuns {
-            let type = run.normalizedClassification
-            counts[type, default: 0] += 1
-        }
-        return counts.sorted { $0.value > $1.value }.map(\.key)
+        ProgressionChartCore.availableRunTypesSorted(
+            runs: chartInputs,
+            metric: selectedMetric.coreMetric,
+            horizonDays: selectedHorizon.days,
+            now: Date()
+        )
     }
 
     /// Color mapping for canonical run classifications
@@ -138,135 +134,44 @@ struct ProgressionChartView: View {
         }
     }
 
-    /// Generates segmented, daily-aggregated chart points for strictly the single active run type
-    private var activeSegments: [ChartSegment] {
+    private var coreSegments: [ChartSegmentCore] {
         guard let type = selectedRunType else { return [] }
-
-        let runsOfType = horizonRuns
-            .filter { $0.normalizedClassification == type }
-            .sorted { $0.date < $1.date }
-
-        guard !runsOfType.isEmpty else { return [] }
-
-        // Group by calendar day to eliminate same-day vertical spikes
-        var dailyRuns: [Date: [RunRecord]] = [:]
-        for run in runsOfType {
-            let day = Calendar.current.startOfDay(for: run.date)
-            dailyRuns[day, default: []].append(run)
-        }
-
-        var dailyPoints: [ChartRunPoint] = []
-        for (day, dayRuns) in dailyRuns {
-            let totalDuration = dayRuns.map(\.duration).reduce(0, +)
-            let value: Double
-            let pace: Double
-            let ef: Double?
-
-            if totalDuration > 0 {
-                pace = dayRuns.map { $0.workingAvgPace * $0.duration }.reduce(0, +) / totalDuration
-                if selectedMetric == .efficiencyFactor {
-                    let validEfs = dayRuns.compactMap { r -> (Double, Double)? in
-                        guard let val = r.efficiencyFactor else { return nil }
-                        return (val, r.duration)
-                    }
-                    let efDuration = validEfs.map(\.1).reduce(0, +)
-                    value = efDuration > 0 ? (validEfs.map { $0.0 * $0.1 }.reduce(0, +) / efDuration) : 0
-                    ef = value
-                } else {
-                    value = pace
-                    let validEfs = dayRuns.compactMap(\.efficiencyFactor)
-                    ef = validEfs.isEmpty ? nil : (validEfs.reduce(0, +) / Double(validEfs.count))
-                }
-            } else {
-                pace = dayRuns.map(\.workingAvgPace).reduce(0, +) / Double(dayRuns.count)
-                if selectedMetric == .efficiencyFactor {
-                    let validEfs = dayRuns.compactMap(\.efficiencyFactor)
-                    value = validEfs.isEmpty ? 0 : (validEfs.reduce(0, +) / Double(validEfs.count))
-                    ef = value
-                } else {
-                    value = pace
-                    let validEfs = dayRuns.compactMap(\.efficiencyFactor)
-                    ef = validEfs.isEmpty ? nil : (validEfs.reduce(0, +) / Double(validEfs.count))
-                }
-            }
-
-            guard value > 0 else { continue }
-            let latestDateOnDay = dayRuns.map(\.date).max() ?? day
-
-            dailyPoints.append(ChartRunPoint(
-                id: "\(type)-\(day.timeIntervalSince1970)",
-                date: latestDateOnDay,
-                runType: type,
-                value: value,
-                pace: pace,
-                efficiencyFactor: ef
-            ))
-        }
-
-        dailyPoints.sort { $0.date < $1.date }
-
-        // Segment across time gaps (> 45 days) to avoid sagging spline artifacts across inactive months
-        var allSegments: [ChartSegment] = []
-        var currentPoints: [ChartRunPoint] = []
-        var segmentIdx = 0
-
-        for point in dailyPoints {
-            if let lastPoint = currentPoints.last {
-                let daysApart = Calendar.current.dateComponents([.day], from: lastPoint.date, to: point.date).day ?? 0
-                if daysApart > 45 {
-                    if !currentPoints.isEmpty {
-                        allSegments.append(ChartSegment(
-                            id: "\(type)-seg-\(segmentIdx)",
-                            runType: type,
-                            points: currentPoints
-                        ))
-                        segmentIdx += 1
-                        currentPoints = []
-                    }
-                }
-            }
-            currentPoints.append(point)
-        }
-
-        if !currentPoints.isEmpty {
-            allSegments.append(ChartSegment(
-                id: "\(type)-seg-\(segmentIdx)",
-                runType: type,
-                points: currentPoints
-            ))
-        }
-
-        return allSegments
+        return ProgressionChartCore.evaluateSegments(
+            runs: chartInputs,
+            selectedType: type,
+            metric: selectedMetric.coreMetric,
+            horizonDays: selectedHorizon.days,
+            now: Date()
+        )
     }
 
-    /// Dynamically scales the Y-axis to frame the single active run type with comfortable breathing room
-    private var yDomain: ClosedRange<Double> {
-        let allPoints = activeSegments.flatMap(\.points)
-        if selectedMetric == .efficiencyFactor {
-            let values = allPoints.map(\.value)
-            guard let minVal = values.min(), let maxVal = values.max() else {
-                return 0.70...1.20
-            }
-            let spread = maxVal - minVal
-            if spread < 0.04 {
-                let center = (minVal + maxVal) / 2.0
-                return max(0.40, center - 0.12)...(center + 0.12)
-            }
-            let padding = max(0.04, spread * 0.18)
-            return max(0.40, minVal - padding)...(maxVal + padding)
-        } else {
-            let values = allPoints.map(\.value)
-            guard let minVal = values.min(), let maxVal = values.max() else {
-                return 300.0...600.0
-            }
-            let spread = maxVal - minVal
-            if spread < 10.0 {
-                let center = (minVal + maxVal) / 2.0
-                return max(180.0, center - 25.0)...(center + 25.0)
-            }
-            let padding = max(10.0, spread * 0.18)
-            return max(180.0, minVal - padding)...(maxVal + padding)
+    /// Generates segmented, daily-aggregated chart points for strictly the single active run type
+    private var activeSegments: [ChartSegment] {
+        coreSegments.map { segment in
+            ChartSegment(
+                id: segment.id,
+                runType: segment.runType,
+                points: segment.points.map { pt in
+                    ChartRunPoint(
+                        id: pt.id,
+                        date: pt.date,
+                        runType: pt.runType,
+                        value: pt.value,
+                        pace: pt.pace,
+                        efficiencyFactor: pt.efficiencyFactor
+                    )
+                }
+            )
         }
+    }
+
+    /// Dynamically scales the Y-axis via pure Core SSOT math
+    private var yDomain: ClosedRange<Double> {
+        let domain = ProgressionChartCore.calculateYDomain(
+            segments: coreSegments,
+            metric: selectedMetric.coreMetric
+        )
+        return domain.lower...domain.upper
     }
 
     /// Closest run to selected scrubber date

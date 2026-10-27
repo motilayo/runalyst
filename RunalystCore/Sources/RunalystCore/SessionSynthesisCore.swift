@@ -318,6 +318,11 @@ public enum SessionSynthesisCore {
         return Int((150.0 / (clamped / 175.0)).rounded())
     }
 
+    public static func heightAdjustedMaxOscillation(heightCm: Double) -> Double {
+        let clamped = max(130.0, min(220.0, heightCm))
+        return 9.5 * (clamped / 175.0)
+    }
+
     public static func isWorkoutDayComplete(runs: [SynthesisRunSample]) -> Bool {
         guard !runs.isEmpty else { return false }
         let hasMain = runs.contains { !$0.isPrimer && $0.durationSeconds >= 1200 }

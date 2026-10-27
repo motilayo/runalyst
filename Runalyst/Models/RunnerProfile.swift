@@ -84,7 +84,7 @@ struct RunnerProfile: Equatable, Sendable {
 
     /// Height-calibrated maximum normal vertical oscillation (e.g. 9.5 cm at 175 cm).
     var heightAdjustedMaxOscillationCM: Double {
-        9.5 * heightScaleFactor
+        SessionSynthesisCore.heightAdjustedMaxOscillation(heightCm: userHeightCm)
     }
 
     /// Deterministically calculates athletic experience level from SwiftData run history via RunalystCore.

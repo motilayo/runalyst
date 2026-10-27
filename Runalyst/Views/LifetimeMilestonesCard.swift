@@ -1,4 +1,5 @@
 import SwiftUI
+import RunalystCore
 
 struct MilestoneBadge: Identifiable {
     let id: String
@@ -14,12 +15,17 @@ struct LifetimeMilestonesCard: View {
     @AppStorage("useMetricSystem") private var useMetricSystem: Bool = Locale.current.measurementSystem == .metric
     @State private var selectedBadge: MilestoneBadge?
 
+    private var recordsSummary: PersonalRecordsSummaryCore {
+        let valid = allRuns.filter { !$0.isDeleted }.map { $0.toMilestoneRunSample() }
+        return LifetimeMilestonesCore.evaluate(samples: valid)
+    }
+
     private var totalDistanceMeters: Double {
-        allRuns.map(\.totalDistanceMeters).reduce(0, +)
+        recordsSummary.totalDistanceMeters
     }
 
     private var totalDurationSeconds: TimeInterval {
-        allRuns.map(\.duration).reduce(0, +)
+        recordsSummary.totalDurationSeconds
     }
 
     private var formattedTotalDistance: String {
@@ -39,110 +45,53 @@ struct LifetimeMilestonesCard: View {
     }
 
     private var longestRunFormatted: String {
-        guard let maxMeters = allRuns.map(\.totalDistanceMeters).max(), maxMeters > 0 else { return "—" }
-        let distance = useMetricSystem ? (maxMeters / 1000.0) : (maxMeters / 1609.344)
+        guard recordsSummary.longestRunMeters > 0 else { return "—" }
+        let distance = useMetricSystem ? (recordsSummary.longestRunMeters / 1000.0) : (recordsSummary.longestRunMeters / 1609.344)
         let unit = useMetricSystem ? "km" : "mi"
         return String(format: "%.1f %@", distance, unit)
     }
 
     private var fastestPaceFormatted: String {
-        let validPaces = allRuns.filter { $0.workingAvgPace > 0 && $0.totalDistanceMeters >= 1000.0 }.map(\.workingAvgPace)
-        guard let minPace = validPaces.min() else { return "—" }
+        guard let minPace = recordsSummary.fastestPaceSecondsPerKm else { return "—" }
         return PaceFormatter.formatPace(secondsPerKilometer: minPace)
     }
 
     private var highestCadenceFormatted: String {
-        guard let maxCadence = allRuns.map(\.workingAvgCadence).filter({ $0 > 0 }).max() else { return "—" }
+        guard let maxCadence = recordsSummary.peakCadenceSPM else { return "—" }
         return "\(Int(maxCadence)) SPM"
     }
 
     private var peakEfficiencyFactorFormatted: String {
-        let efs = allRuns.compactMap(\.efficiencyFactor)
-        guard let maxEF = efs.max() else { return "—" }
+        guard let maxEF = recordsSummary.peakEfficiencyFactor else { return "—" }
         return String(format: "%.2f", maxEF)
     }
 
     private var milestoneBadges: [MilestoneBadge] {
-        let totalKm = totalDistanceMeters / 1000.0
-        let maxRunKm = (allRuns.map(\.totalDistanceMeters).max() ?? 0) / 1000.0
-        let maxCadence = allRuns.map(\.workingAvgCadence).max() ?? 0
-        let maxEF = allRuns.compactMap(\.efficiencyFactor).max() ?? 0
-        let runCount = allRuns.count
-
-        return [
+        recordsSummary.badges.map { spec in
             MilestoneBadge(
-                id: "first_run",
-                title: "First Steps",
-                iconName: "figure.run.circle.fill",
-                description: "Recorded your first run in Runalyst.",
-                isUnlocked: runCount >= 1,
-                accentColor: .blue
-            ),
-            MilestoneBadge(
-                id: "five_k",
-                title: "5K Milestone",
-                iconName: "flame.fill",
-                description: "Logged a single run of at least 5 km.",
-                isUnlocked: maxRunKm >= 5.0,
-                accentColor: .orange
-            ),
-            MilestoneBadge(
-                id: "ten_k",
-                title: "10K Club",
-                iconName: "trophy.fill",
-                description: "Logged a single run of at least 10 km.",
-                isUnlocked: maxRunKm >= 10.0,
-                accentColor: .yellow
-            ),
-            MilestoneBadge(
-                id: "half_marathon",
-                title: "Half Marathon",
-                iconName: "medal.fill",
-                description: "Completed a 21.1 km endurance effort.",
-                isUnlocked: maxRunKm >= 21.1,
-                accentColor: .purple
-            ),
-            MilestoneBadge(
-                id: "century_volume",
-                title: "100K Century",
-                iconName: "sparkles",
-                description: "Accumulated 100 km of total lifetime running volume.",
-                isUnlocked: totalKm >= 100.0,
-                accentColor: .cyan
-            ),
-            MilestoneBadge(
-                id: "five_hundred_k",
-                title: "500K Titan",
-                iconName: "crown.fill",
-                description: "Accumulated 500 km of total lifetime running volume.",
-                isUnlocked: totalKm >= 500.0,
-                accentColor: .indigo
-            ),
-            MilestoneBadge(
-                id: "rhythm_master",
-                title: "Rhythm Master",
-                iconName: "metronome.fill",
-                description: "Maintained optimal turnover of 170+ SPM.",
-                isUnlocked: maxCadence >= 170.0,
-                accentColor: .teal
-            ),
-            MilestoneBadge(
-                id: "aerobic_engine",
-                title: "Aerobic Engine",
-                iconName: "bolt.heart.fill",
-                description: "Achieved an Efficiency Factor exceeding 1.35 m/beat.",
-                isUnlocked: maxEF >= 1.35,
-                accentColor: .pink
-            ),
-            MilestoneBadge(
-                id: "consistency",
-                title: "Consistent Runner",
-                iconName: "calendar.badge.checkmark",
-                description: "Logged 10 or more structured running workouts.",
-                isUnlocked: runCount >= 10,
-                accentColor: .green
+                id: spec.id,
+                title: spec.title,
+                iconName: spec.iconName,
+                description: spec.description,
+                isUnlocked: spec.isUnlocked,
+                accentColor: color(for: spec.accentColorName)
             )
-        ]
+        }
+    }
+
+    private func color(for colorName: String) -> Color {
+        switch colorName {
+        case "blue": return .blue
+        case "orange": return .orange
+        case "yellow": return .yellow
+        case "purple": return .purple
+        case "cyan": return .cyan
+        case "indigo": return .indigo
+        case "teal": return .teal
+        case "pink": return .pink
+        case "green": return .green
+        default: return .blue
+        }
     }
 
     var body: some View {

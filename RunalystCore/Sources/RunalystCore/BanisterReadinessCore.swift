@@ -49,6 +49,24 @@ public enum ACWRZone: String, Sendable, Codable, Equatable, CaseIterable {
     public var isOverloadSpike: Bool {
         self == .spike
     }
+
+    public var displayName: String {
+        switch self {
+        case .low: return "Building Base"
+        case .optimal: return "Optimal"
+        case .elevated: return "Elevated"
+        case .spike: return "Spike Risk"
+        }
+    }
+
+    public var colorName: String {
+        switch self {
+        case .low: return "blue"
+        case .optimal: return "green"
+        case .elevated: return "orange"
+        case .spike: return "red"
+        }
+    }
 }
 
 /// The synthesized readiness, workload, and deterministic safety directive report.
@@ -103,6 +121,16 @@ public enum BanisterReadinessCore {
         } else {
             return .spike
         }
+    }
+
+    /// Canonical, single-source display title, zone, and color token for training load.
+    public static func formatStatus(acwr: Double?) -> (displayText: String, zone: ACWRZone, colorName: String) {
+        guard let ratio = acwr else {
+            return ("Building Base", .low, ACWRZone.low.colorName)
+        }
+        let zone = classifyZone(acwr: ratio)
+        let formatted = String(format: "%.2f", ratio)
+        return ("\(zone.displayName) (\(formatted))", zone, zone.colorName)
     }
 
     /// Evaluates Acute:Chronic Workload Ratio from a sequence of sessions.

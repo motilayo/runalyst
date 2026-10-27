@@ -2,6 +2,7 @@ import SwiftUI
 import UIKit
 import SwiftData
 import WorkoutKit
+import RunalystCore
 
 struct RunDetailView: View {
     @Bindable var runRecord: RunRecord
@@ -169,6 +170,15 @@ struct RunDetailView: View {
         let detail: String
     }
 
+    private var resolvedSessionDrillId: PreRunDrillId? {
+        if let drillId = effectiveScorecardDrillId { return drillId }
+        let isRec = runRecord.detectedTypeRaw == "Recovery Run" || (runRecord.percentZone4 <= 0.02 && runRecord.workingAvgHeartRate > 0 && runRecord.workingAvgHeartRate <= 135 && runRecord.duration >= 600)
+        let isEasyOrSteady = runRecord.detectedTypeRaw == "Easy Run" || runRecord.detectedTypeRaw == "Steady Effort" || runRecord.detectedTypeRaw == "Zone 2" || runRecord.detectedTypeRaw == "Long Run"
+        if isRec { return .aerobicFlush }
+        if isEasyOrSteady { return .zone2Run }
+        return nil
+    }
+
     var deterministicRunAnalysisTakeaways: [RunAnalysisTakeawayItem] {
         guard runRecord.workingAvgCadence > 0 || runRecord.workingAvgHeartRate > 0 else { return [] }
         let isIndoor = runRecord.isIndoor ?? false
@@ -257,14 +267,7 @@ struct RunDetailView: View {
         }
 
         // 3. Modality Execution & Harmonized Status
-        let resolvedDrill: PreRunDrillId? = {
-            if let drillId = effectiveScorecardDrillId { return drillId }
-            let isRec = runRecord.detectedTypeRaw == "Recovery Run" || (runRecord.percentZone4 <= 0.02 && runRecord.workingAvgHeartRate > 0 && runRecord.workingAvgHeartRate <= 135 && runRecord.duration >= 600)
-            let isEasyOrSteady = runRecord.detectedTypeRaw == "Easy Run" || runRecord.detectedTypeRaw == "Steady Effort" || runRecord.detectedTypeRaw == "Zone 2" || runRecord.detectedTypeRaw == "Long Run"
-            if isRec { return .aerobicFlush }
-            if isEasyOrSteady { return .zone2Run }
-            return nil
-        }()
+        let resolvedDrill = resolvedSessionDrillId
 
         if let drill = resolvedDrill {
             let adherence = DrillExecutionScorecard.calculateAdherence(
@@ -689,8 +692,9 @@ struct RunDetailView: View {
                 }
                 return type == "Intervals" || type == "Fartlek" || type == "Pyramids" || type == "Hill Repeats"
             }()
+            let heightFloor = runRecord.signature?.cadenceFloor ?? Double(SessionSynthesisCore.heightAdjustedCadenceFloor(heightCm: UserDefaults.standard.double(forKey: "userHeight") > 0 ? UserDefaults.standard.double(forKey: "userHeight") : 175.0))
             let isRecovery = runRecord.detectedTypeRaw == "Recovery Run" || (runRecord.percentZone4 <= 0.02 && runRecord.workingAvgHeartRate > 0 && runRecord.workingAvgHeartRate <= 135)
-            let effectiveFloor = isRecovery ? min(runRecord.signature?.cadenceFloor ?? 150.0, 142.0) : (runRecord.signature?.cadenceFloor ?? 150.0)
+            let effectiveFloor = isRecovery ? max(138.0, heightFloor - 10.0) : heightFloor
 
             AdaptiveWorkoutTelemetryCard(
                 runRecord: runRecord,
@@ -806,16 +810,8 @@ struct RunDetailView: View {
     @ViewBuilder
     private var performanceAndAnalysisSection: some View {
         let isRecovery = runRecord.detectedTypeRaw == "Recovery Run" || (runRecord.percentZone4 <= 0.02 && runRecord.workingAvgHeartRate > 0 && runRecord.workingAvgHeartRate <= 135 && runRecord.duration >= 600)
-        let isEasyOrSteady = runRecord.detectedTypeRaw == "Easy Run" || runRecord.detectedTypeRaw == "Steady Effort" || runRecord.detectedTypeRaw == "Zone 2" || runRecord.detectedTypeRaw == "Long Run"
 
-        let resolvedDrillId: PreRunDrillId? = {
-            if let drillId = effectiveScorecardDrillId { return drillId }
-            if isRecovery { return .aerobicFlush }
-            if isEasyOrSteady { return .zone2Run }
-            return nil
-        }()
-
-        if let drillId = resolvedDrillId {
+        if let drillId = resolvedSessionDrillId {
             let isLinkedTechniqueDrill = (prescribedDrillName != nil)
 
             let title: String = {

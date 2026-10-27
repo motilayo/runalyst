@@ -1,4 +1,5 @@
 import SwiftUI
+import RunalystCore
 
 /// A biomechanical summary card representing either Good Stride or Overstriding.
 struct BiomechanicalCardView: View {
@@ -119,7 +120,18 @@ private struct KinematicPointRow: View {
 
 /// Telemetry Bridge card linking lab biomechanics to wrist-based Apple Watch metrics with actionable cards
 struct AppleWatchBiomechanicsBridgeView: View {
+    @AppStorage("userHeight") private var userHeight: Double = 175.0
+    var cadenceFloor: Int?
+    var maxOscillationCm: Double?
     @State private var activeExplainerInfo: MetricExplainerInfo?
+
+    private var effectiveCadenceFloor: Int {
+        cadenceFloor ?? SessionSynthesisCore.heightAdjustedCadenceFloor(heightCm: userHeight)
+    }
+
+    private var effectiveMaxOscillation: Double {
+        maxOscillationCm ?? SessionSynthesisCore.heightAdjustedMaxOscillation(heightCm: userHeight)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -156,9 +168,9 @@ struct AppleWatchBiomechanicsBridgeView: View {
                     title: "Vertical Bounce",
                     icon: "arrow.up.and.down",
                     accentColor: .teal,
-                    targetRange: "6.0–9.0 cm",
+                    targetRange: String(format: "6.0–%.1f cm", effectiveMaxOscillation),
                     targetStatus: "Optimal",
-                    alertThreshold: "> 10.0 cm High",
+                    alertThreshold: String(format: "> %.1f cm High", effectiveMaxOscillation + 1.0),
                     actionCue: "Drive force forward, not upward"
                 ))
 
@@ -178,9 +190,9 @@ struct AppleWatchBiomechanicsBridgeView: View {
                     title: "Cadence Floor",
                     icon: "metronome.fill",
                     accentColor: Color(red: 0.18, green: 0.82, blue: 0.35),
-                    targetRange: "≥ 150 SPM",
+                    targetRange: "≥ \(effectiveCadenceFloor) SPM",
                     targetStatus: "Target",
-                    alertThreshold: "< 150 SPM Overstride",
+                    alertThreshold: "< \(effectiveCadenceFloor) SPM Overstride",
                     actionCue: "Rhythm keeps foot strike under hips"
                 ))
 

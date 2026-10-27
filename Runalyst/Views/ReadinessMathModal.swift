@@ -1,4 +1,5 @@
 import SwiftUI
+import RunalystCore
 
 /// Modal sheet explicitly exposing the mathematical formulas and ACWR calculation behind adaptive targets, rendering with unified GlassBox architecture.
 struct ReadinessMathModal: View {
@@ -61,11 +62,10 @@ struct TrainingLoadStatusBar: View {
     }
 
     init(runRecords: [RunRecord]) {
-        let profile = MacroProfile.load()
         let readiness = ReadinessEvaluator.assess(runRecords: runRecords)
-        self.acwr = profile?.acwr ?? readiness.acwr
-        self.acuteLoad = profile?.acuteLoad ?? readiness.acuteLoad
-        self.chronicWeeklyLoad = profile?.chronicWeeklyLoad ?? readiness.chronicWeeklyLoad
+        self.acwr = readiness.acwr
+        self.acuteLoad = readiness.acuteLoad
+        self.chronicWeeklyLoad = readiness.chronicWeeklyLoad
     }
 
     var body: some View {
@@ -112,13 +112,15 @@ struct TrainingLoadStatusBar: View {
     }
 
     static func status(for ratio: Double?) -> (displayText: String, color: Color) {
-        guard let ratio = ratio else {
-            return ("Building Base", .blue)
+        let (displayText, _, colorName) = BanisterReadinessCore.formatStatus(acwr: ratio)
+        let color: Color
+        switch colorName {
+        case "red": color = .red
+        case "orange": color = .orange
+        case "green": color = .green
+        default: color = .blue
         }
-        if ratio > 1.50 { return ("Spike Risk (\(String(format: "%.2f", ratio)))", .red) }
-        if ratio > 1.30 { return ("Elevated (\(String(format: "%.2f", ratio)))", .orange) }
-        if ratio >= 0.80 { return ("Optimal (\(String(format: "%.2f", ratio)))", .green) }
-        return ("Building Base (\(String(format: "%.2f", ratio)))", .blue)
+        return (displayText, color)
     }
 }
 
@@ -183,13 +185,12 @@ struct DrillPrescriptionPanel: View {
         targetExplainerTitle: String? = nil,
         runRecords: [RunRecord]
     ) {
-        let profile = MacroProfile.load()
         let readiness = ReadinessEvaluator.assess(runRecords: runRecords)
         self.targetText = targetText
         self.targetExplainerTitle = targetExplainerTitle
-        self.acwr = profile?.acwr ?? readiness.acwr
-        self.acuteLoad = profile?.acuteLoad ?? readiness.acuteLoad
-        self.chronicWeeklyLoad = profile?.chronicWeeklyLoad ?? readiness.chronicWeeklyLoad
+        self.acwr = readiness.acwr
+        self.acuteLoad = readiness.acuteLoad
+        self.chronicWeeklyLoad = readiness.chronicWeeklyLoad
     }
 
     var body: some View {

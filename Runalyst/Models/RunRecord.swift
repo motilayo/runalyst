@@ -528,4 +528,30 @@ extension RunRecord {
             classification: detectedTypeRaw.isEmpty ? normalizedClassification : detectedTypeRaw
         )
     }
+
+    /// Converts this SwiftData RunRecord into a pure RunalystCore MilestoneRunSample.
+    func toMilestoneRunSample() -> MilestoneRunSample {
+        MilestoneRunSample(
+            id: id,
+            date: date,
+            totalDistanceMeters: totalDistanceMeters,
+            durationSeconds: duration,
+            workingAvgPace: workingAvgPace,
+            workingAvgCadence: workingAvgCadence,
+            efficiencyFactor: efficiencyFactor
+        )
+    }
+
+    /// Converts this SwiftData RunRecord into a pure RunalystCore ChartRunInputCore.
+    func toChartRunInputCore() -> ChartRunInputCore {
+        ChartRunInputCore(
+            id: id.uuidString,
+            date: date,
+            durationSeconds: duration,
+            workingAvgPace: workingAvgPace,
+            workingAvgHeartRate: Int(workingAvgHeartRate.rounded()),
+            efficiencyFactor: efficiencyFactor,
+            classification: detectedTypeRaw.isEmpty ? normalizedClassification : detectedTypeRaw
+        )
+    }
 }
