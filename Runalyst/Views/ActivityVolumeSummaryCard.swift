@@ -1,26 +1,48 @@
 import SwiftUI
+import RunalystCore
 
 /// Displays aggregate running volume, moving time, and visual workout distribution
 /// for the selected time range (7 Days or 30 Days).
+/// Acts as a hollow adapter over `MacroVolumeCore.evaluateVolumeSummary`.
 struct ActivityVolumeSummaryCard: View {
     let runs: [RunRecord]
     let timeRange: String
     let useMetricSystem: Bool
     var activeGoal: String = "Base Building"
+    var now: Date = Date()
 
-    private var calendar: Calendar {
+    private static var defaultCalendar: Calendar {
         var cal = Calendar(identifier: .gregorian)
         cal.locale = Locale(identifier: "en_US_POSIX")
         cal.firstWeekday = 1
         return cal
     }
 
+    static func evaluateSummary(
+        from runs: [RunRecord],
+        timeRange: String,
+        now: Date = Date(),
+        calendar: Calendar? = nil
+    ) -> MacroVolumeSummary {
+        let activeRuns = runs.filter { !$0.isDeleted }
+        return MacroVolumeCore.evaluateVolumeSummary(
+            allRuns: activeRuns.map { $0.toVolumeRunSample() },
+            timeRange: timeRange,
+            now: now,
+            calendar: calendar ?? defaultCalendar
+        )
+    }
+
+    private var summary: MacroVolumeSummary {
+        Self.evaluateSummary(from: runs, timeRange: timeRange, now: now)
+    }
+
     private var totalDistanceMeters: Double {
-        runs.map(\.totalDistanceMeters).reduce(0, +)
+        summary.totalDistanceMeters
     }
 
     private var totalDurationSeconds: TimeInterval {
-        runs.map(\.duration).reduce(0, +)
+        summary.totalDurationSeconds
     }
 
     private var formattedTotalDistance: (value: String, unit: String) {
@@ -41,94 +63,20 @@ struct ActivityVolumeSummaryCard: View {
     }
 
     private var activeDaysCount: Int {
-        Set(runs.map { calendar.startOfDay(for: $0.date) }).count
+        summary.activeDaysCount
     }
 
-    // MARK: - 7-Day Day-by-Day Volume
-    private struct DayVolume: Identifiable {
-        let id = UUID()
-        let date: Date
-        let dayLetter: String
-        let dayNumber: String
-        let distanceMeters: Double
-        let isToday: Bool
-        let hasRun: Bool
+    private var trailing7Days: [DayVolumeBucket] {
+        summary.trailing7Days
     }
 
-    private var trailing7Days: [DayVolume] {
-        let today = calendar.startOfDay(for: Date())
-        let letterFormatter = DateFormatter()
-        letterFormatter.dateFormat = "EEEEE"
-        letterFormatter.locale = Locale(identifier: "en_US_POSIX")
-
-        let numberFormatter = DateFormatter()
-        numberFormatter.dateFormat = "d"
-        numberFormatter.locale = Locale(identifier: "en_US_POSIX")
-
-        let dayOffsets: [Int] = [6, 5, 4, 3, 2, 1, 0]
-        return dayOffsets.map { daysAgo in
-            guard let dayDate = calendar.date(byAdding: .day, value: -daysAgo, to: today) else {
-                return DayVolume(date: today, dayLetter: "", dayNumber: "", distanceMeters: 0, isToday: false, hasRun: false)
-            }
-            let dayRuns = runs.filter { calendar.isDate($0.date, inSameDayAs: dayDate) }
-            let dayDistance = dayRuns.map(\.totalDistanceMeters).reduce(0, +)
-
-            return DayVolume(
-                date: dayDate,
-                dayLetter: letterFormatter.string(from: dayDate),
-                dayNumber: numberFormatter.string(from: dayDate),
-                distanceMeters: dayDistance,
-                isToday: daysAgo == 0,
-                hasRun: !dayRuns.isEmpty
-            )
-        }
-    }
-
-    // MARK: - 30-Day 4-Week Volume
-    private struct WeekVolume: Identifiable {
-        let id = UUID()
-        let label: String
-        let distanceMeters: Double
-        let runCount: Int
-    }
-
-    private var trailing4Weeks: [WeekVolume] {
-        let tc = TrainingCalendar(calendar: calendar, now: Date())
-        let currentWeek = tc.weekInterval(containing: Date())
-        let currentSunday = currentWeek.start
-
-        let weekOffsets: [(label: String, weeksAgo: Int)] = [
-            ("3W Ago", 3),
-            ("2W Ago", 2),
-            ("Last Wk", 1),
-            ("This Wk", 0)
-        ]
-
-        return weekOffsets.map { item in
-            guard let startDate = calendar.date(byAdding: .day, value: -(item.weeksAgo * 7), to: currentSunday),
-                  let nextSunday = calendar.date(byAdding: .day, value: 7, to: startDate) else {
-                return WeekVolume(label: item.label, distanceMeters: 0, runCount: 0)
-            }
-            let weekRuns = runs.filter { $0.date >= startDate && $0.date < nextSunday }
-            let dist = weekRuns.map(\.totalDistanceMeters).reduce(0, +)
-            return WeekVolume(
-                label: item.label,
-                distanceMeters: dist,
-                runCount: weekRuns.count
-            )
-        }
+    private var trailing4Weeks: [WeekVolumeBucket] {
+        summary.trailing4Weeks
     }
 
     private var classificationMix: [(name: String, count: Int, color: Color)] {
-        var counts: [String: Int] = [:]
-        for run in runs {
-            let name = run.detectedTypeRaw.isEmpty ? run.normalizedClassification : run.detectedTypeRaw
-            counts[name, default: 0] += 1
-        }
-        let order = ["Easy Run", "Steady Effort", "Tempo Run", "Intervals", "Progression Run", "Long Run"]
-        return order.compactMap { key in
-            guard let count = counts[key], count > 0 else { return nil }
-            return (name: key, count: count, color: colorForClassification(key))
+        summary.classificationMix.map { item in
+            (name: item.name, count: item.count, color: colorForClassification(item.name))
         }
     }
 
@@ -163,7 +111,7 @@ struct ActivityVolumeSummaryCard: View {
                     Circle()
                         .fill(Color.green)
                         .frame(width: 6, height: 6)
-                    Text("\(runs.count) \(runs.count == 1 ? "run" : "runs")")
+                    Text("\(summary.runCount) \(summary.runCount == 1 ? "run" : "runs")")
                         .font(.caption2.bold())
                         .foregroundColor(.secondary)
                 }

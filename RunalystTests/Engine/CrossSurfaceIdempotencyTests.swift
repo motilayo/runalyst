@@ -439,26 +439,29 @@ final class CrossSurfaceIdempotencyTests: XCTestCase {
             XCTAssertTrue(chatTelemetry.contains("Biological Readiness: Recovering from Recent Effort"), "Chat telemetry must explain readiness in human coaching English")
         }
 
-        // 2. Dashboard Surface Verification
+        // 2. Dashboard Trajectory Synthesis Surface Verification (SSOT)
         let assessment = SessionSynthesisEngine.evaluate30DayTrajectory(from: runs, now: now)
-        let benchmark = profile.goalBenchmark
-        let volumeStatus = benchmark.weeklyVolumeStatus
+        let synthesis = MacroVolumeCore.evaluateDashboardTrajectory(
+            assessment: assessment,
+            benchmark: profile.goalBenchmark,
+            trainingGoal: goal,
+            paceContext: "6:00 /km"
+        )
 
-        let directiveContext: String
-        if assessment.verdict == .easeUp {
-            directiveContext = "TRAJECTORY_EASE_UP"
-        } else if volumeStatus == .building {
-            directiveContext = "TRAJECTORY_BUILDING_BASE"
-        } else if volumeStatus == .exceeding {
-            directiveContext = "TRAJECTORY_EXCEEDING"
-        } else {
-            directiveContext = "TRAJECTORY_ON_TRACK"
-        }
+        XCTAssertEqual(synthesis.directiveCode, "TRAJECTORY_BUILDING_BASE", "Dashboard 30-day directive must evaluate to TRAJECTORY_BUILDING_BASE")
+        XCTAssertEqual(synthesis.badgeLabel, "Building Base", "Dashboard 30-day badge must match Goal Readiness Card status")
+        XCTAssertEqual(synthesis.reconcileHeadline("On Track For Goal"), "Building Aerobic Base", "Stale On Track headline must deterministically reconcile to Building Aerobic Base")
 
-        XCTAssertEqual(directiveContext, "TRAJECTORY_BUILDING_BASE", "Dashboard 30-day directive must evaluate to TRAJECTORY_BUILDING_BASE")
-        XCTAssertNotEqual(directiveContext, "TRAJECTORY_ON_TRACK", "Dashboard 30-day directive must NEVER evaluate to TRAJECTORY_ON_TRACK when volume is below target band")
+        // 3. Dashboard Volume Summary Card Surface Verification (SSOT: 4-week sum == 30-day total)
+        let volumeSummary30d = ActivityVolumeSummaryCard.evaluateSummary(from: runs, timeRange: "30 Days", now: now, calendar: cal)
+        let volumeSummary7d = ActivityVolumeSummaryCard.evaluateSummary(from: runs, timeRange: "7 Days", now: now, calendar: cal)
+        let fourWeekSumMeters = volumeSummary30d.trailing4Weeks.map(\.distanceMeters).reduce(0.0, +)
 
-        // 3. Goal Readiness Card Surface Verification (SSOT)
+        XCTAssertEqual(fourWeekSumMeters, volumeSummary30d.totalDistanceMeters, accuracy: 0.01, "4-Week Mileage Progression bars must sum strictly to 30-day total distance without dropping days")
+        XCTAssertEqual(volumeSummary30d.trailing4Weeks.last?.distanceMeters ?? 0.0, volumeSummary7d.totalDistanceMeters, accuracy: 0.01, "This Wk bar in 30-Day mode must strictly match 7-Day total distance")
+        XCTAssertEqual(volumeSummary30d.weeklyAverageKm, profile.weeklyAverageKm, accuracy: 0.01, "Volume summary weekly average must strictly match RunnerProfile weeklyAverageKm")
+
+        // 4. Goal Readiness Card Surface Verification (SSOT)
         let goalSpec = GoalReadinessCard.evaluateGoalSpec(
             allRuns: runs,
             trainingGoal: goal,
@@ -467,6 +470,7 @@ final class CrossSurfaceIdempotencyTests: XCTestCase {
         )
         XCTAssertEqual(goalSpec.statusLabel, "Building Base", "Goal readiness card must evaluate to Building Base when weekly volume is below target")
         XCTAssertNotEqual(goalSpec.statusLabel, "Race Ready", "Goal readiness card must NEVER declare Race Ready when weekly volume is in building phase")
+        XCTAssertEqual(goalSpec.weeklyVolumeTitle, "30-DAY WEEKLY AVG", "Weekly volume tile title must clearly indicate 30-day weekly average")
         XCTAssertTrue(goalSpec.coachingRationale.contains("toward 25 km/wk"), "Rationale must explain that volume is building toward the target foundation")
     }
 }

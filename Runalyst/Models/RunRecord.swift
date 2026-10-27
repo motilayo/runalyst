@@ -514,4 +514,18 @@ extension RunRecord {
             verticalRatio: verticalRatio
         )
     }
+
+    /// Converts this SwiftData RunRecord into a pure RunalystCore VolumeRunSample.
+    func toVolumeRunSample() -> VolumeRunSample {
+        VolumeRunSample(
+            id: id,
+            date: date,
+            totalDistanceMeters: totalDistanceMeters,
+            durationSeconds: duration,
+            workingAvgPace: workingAvgPace,
+            workingAvgHeartRate: Int(workingAvgHeartRate.rounded()),
+            workingAvgCadence: workingAvgCadence,
+            classification: detectedTypeRaw.isEmpty ? normalizedClassification : detectedTypeRaw
+        )
+    }
 }

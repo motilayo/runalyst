@@ -132,4 +132,95 @@ struct SessionSynthesisCoreTests {
         )
         #expect(specThu.intensityZone == .zone5Interval)
     }
+
+    @Test("MacroVolumeCore 30-Day 4-week buckets sum strictly to 30-day total and match 7-Day total")
+    func testMacroVolumeCoreExactPartitioning() {
+        var cal = Calendar(identifier: .gregorian)
+        cal.locale = Locale(identifier: "en_US_POSIX")
+        let now = Date(timeIntervalSince1970: 1_793_050_000)
+
+        // Include runs across the entire 30-day window (including days 24..29 ago which old Sunday-to-Sunday weeks dropped!)
+        let dayOffsets: [(daysAgo: Int, meters: Double)] = [
+            (29, 9500),
+            (26, 9500),
+            (20, 12700),
+            (18, 12700),
+            (13, 6650),
+            (10, 6650),
+            (8, 23000),
+            (2, 6400)
+        ]
+
+        let samples = dayOffsets.enumerated().map { idx, item in
+            let date = cal.date(byAdding: .day, value: -item.daysAgo, to: now) ?? now
+            return VolumeRunSample(
+                id: UUID(),
+                date: date,
+                totalDistanceMeters: item.meters,
+                durationSeconds: item.meters * 0.36,
+                workingAvgPace: 360,
+                workingAvgHeartRate: 148,
+                workingAvgCadence: 158,
+                classification: idx % 2 == 0 ? "Easy Run" : "Steady Effort"
+            )
+        }
+
+        let summary30d = MacroVolumeCore.evaluateVolumeSummary(
+            allRuns: samples,
+            timeRange: "30 Days",
+            now: now,
+            calendar: cal
+        )
+        let summary7d = MacroVolumeCore.evaluateVolumeSummary(
+            allRuns: samples,
+            timeRange: "7 Days",
+            now: now,
+            calendar: cal
+        )
+
+        #expect(abs(summary30d.totalDistanceMeters - 87_100.0) < 0.01)
+
+        let sum4Weeks = summary30d.trailing4Weeks.map(\.distanceMeters).reduce(0.0, +)
+        #expect(abs(sum4Weeks - summary30d.totalDistanceMeters) < 0.01)
+
+        let thisWeekMeters = summary30d.trailing4Weeks.last?.distanceMeters ?? 0.0
+        #expect(abs(thisWeekMeters - summary7d.totalDistanceMeters) < 0.01)
+
+        let sum7Days = summary7d.trailing7Days.map(\.distanceMeters).reduce(0.0, +)
+        #expect(abs(sum7Days - summary7d.totalDistanceMeters) < 0.01)
+    }
+
+    @Test("DashboardTrajectorySynthesis reconciles stale On Track headline when Building Base")
+    func testDashboardTrajectoryReconcileHeadline() {
+        let assessment = TrajectoryAssessment(
+            verdict: .onTrack,
+            efDelta: 0.05,
+            hrDelta: -2.0,
+            oscDelta: -0.2,
+            vrDelta: -0.1,
+            avgRecentEF: 1.15,
+            avgRecentOsc: 8.8,
+            avgRecentVR: 8.2
+        )
+        let benchmark = GoalBenchmarkCore.evaluate(
+            goal: "10K Race",
+            currentWeeklyKm: 20.3,
+            longestRunKm: 10.6,
+            userHeightCm: 175.0,
+            experienceLevel: "Intermediate / Enthusiast"
+        )
+        let synthesis = MacroVolumeCore.evaluateDashboardTrajectory(
+            assessment: assessment,
+            benchmark: benchmark,
+            trainingGoal: "10K Race",
+            paceContext: "6:00 /km"
+        )
+
+        #expect(synthesis.directiveCode == "TRAJECTORY_BUILDING_BASE")
+        #expect(synthesis.badgeLabel == "Building Base")
+        #expect(synthesis.canonicalHeadline == "Building Aerobic Base")
+        #expect(synthesis.reconcileHeadline("On Track For Goal") == "Building Aerobic Base")
+        #expect(synthesis.reconcileHeadline("") == "Building Aerobic Base")
+        #expect(synthesis.reconcileHeadline("Steady Base Momentum") == "Steady Base Momentum")
+    }
 }

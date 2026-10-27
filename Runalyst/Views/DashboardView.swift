@@ -3,6 +3,7 @@ import UIKit
 import SwiftData
 import HealthKit
 import WorkoutKit
+import RunalystCore
 
 struct DashboardView: View {
     @Environment(\.modelContext) private var modelContext
@@ -40,9 +41,9 @@ struct DashboardView: View {
         let now = Date()
         let activeRuns = runRecords.filter { !$0.isDeleted && $0.modelContext != nil }
         if timeRange == "7 Days", let limit = Calendar.current.date(byAdding: .day, value: -7, to: now) {
-            return activeRuns.filter { $0.date >= limit }
+            return activeRuns.filter { $0.date >= limit && $0.date <= now }
         } else if timeRange == "30 Days", let limit = Calendar.current.date(byAdding: .day, value: -30, to: now) {
-            return activeRuns.filter { $0.date >= limit }
+            return activeRuns.filter { $0.date >= limit && $0.date <= now }
         }
         return activeRuns
     }
@@ -57,90 +58,6 @@ struct DashboardView: View {
         return filtered
     }
 
-    var baselineCadence: Int? {
-        let runs = timeRangeRuns.filter { $0.workingAvgCadence > 0 }
-        guard !runs.isEmpty else { return nil }
-        let totalDuration = runs.map(\.duration).reduce(0, +)
-        guard totalDuration > 0 else {
-            return Int(runs.map(\.workingAvgCadence).reduce(0, +)) / runs.count
-        }
-        return Int(runs.map { $0.workingAvgCadence * $0.duration }.reduce(0, +) / totalDuration)
-    }
-
-    var baselinePace: Double? {
-        let runs = timeRangeRuns.filter { $0.workingAvgPace > 0 }
-        guard !runs.isEmpty else { return nil }
-        let totalDuration = runs.map(\.duration).reduce(0, +)
-        guard totalDuration > 0 else {
-            return runs.map(\.workingAvgPace).reduce(0, +) / Double(runs.count)
-        }
-        return runs.map { $0.workingAvgPace * $0.duration }.reduce(0, +) / totalDuration
-    }
-
-    var canonicalAthleteBaselineCadence: Int? {
-        SessionSynthesisEngine.computeWeightedBaselineStats(from: runRecords, priorTo: Date()).map { Int($0.avgCadence.rounded()) }
-    }
-
-    var baselineHeartRate: Int? {
-        let runs = timeRangeRuns.filter { $0.workingAvgHeartRate > 0 }
-        guard !runs.isEmpty else { return nil }
-        let totalDuration = runs.map(\.duration).reduce(0, +)
-        guard totalDuration > 0 else {
-            return Int(runs.map(\.workingAvgHeartRate).reduce(0, +)) / runs.count
-        }
-        return Int(runs.map { Double($0.workingAvgHeartRate) * $0.duration }.reduce(0, +) / totalDuration)
-    }
-
-    var canonicalAthleteBaselinePace: Double? {
-        SessionSynthesisEngine.computeWeightedBaselineStats(from: runRecords, priorTo: Date())?.avgPace
-    }
-
-    private var previousBaselineCadence: Int? {
-        let calendar = Calendar.current
-        let now = Date()
-        let previousRuns: [RunRecord]
-        if timeRange == "7 Days" {
-            guard let start = calendar.date(byAdding: .day, value: -14, to: now),
-                  let end = calendar.date(byAdding: .day, value: -7, to: now) else { return nil }
-            previousRuns = runRecords.filter { $0.date >= start && $0.date < end && $0.workingAvgCadence > 0 }
-        } else if timeRange == "30 Days" {
-            guard let start = calendar.date(byAdding: .day, value: -60, to: now),
-                  let end = calendar.date(byAdding: .day, value: -30, to: now) else { return nil }
-            previousRuns = runRecords.filter { $0.date >= start && $0.date < end && $0.workingAvgCadence > 0 }
-        } else {
-            return nil
-        }
-        guard !previousRuns.isEmpty else { return nil }
-        let totalDuration = previousRuns.map(\.duration).reduce(0, +)
-        guard totalDuration > 0 else {
-            return Int(previousRuns.map(\.workingAvgCadence).reduce(0, +)) / previousRuns.count
-        }
-        return Int(previousRuns.map { $0.workingAvgCadence * $0.duration }.reduce(0, +) / totalDuration)
-    }
-
-    private var previousBaselinePace: Double? {
-        let calendar = Calendar.current
-        let now = Date()
-        let previousRuns: [RunRecord]
-        if timeRange == "7 Days" {
-            guard let start = calendar.date(byAdding: .day, value: -14, to: now),
-                  let end = calendar.date(byAdding: .day, value: -7, to: now) else { return nil }
-            previousRuns = runRecords.filter { $0.date >= start && $0.date < end && $0.workingAvgPace > 0 }
-        } else if timeRange == "30 Days" {
-            guard let start = calendar.date(byAdding: .day, value: -60, to: now),
-                  let end = calendar.date(byAdding: .day, value: -30, to: now) else { return nil }
-            previousRuns = runRecords.filter { $0.date >= start && $0.date < end && $0.workingAvgPace > 0 }
-        } else {
-            return nil
-        }
-        guard !previousRuns.isEmpty else { return nil }
-        let totalDuration = previousRuns.map(\.duration).reduce(0, +)
-        guard totalDuration > 0 else {
-            return previousRuns.map(\.workingAvgPace).reduce(0, +) / Double(previousRuns.count)
-        }
-        return previousRuns.map { $0.workingAvgPace * $0.duration }.reduce(0, +) / totalDuration
-    }
-
     private var trajectoryAssessment: SessionSynthesisEngine.TrajectoryAssessment {
         SessionSynthesisEngine.evaluate30DayTrajectory(from: timeRangeRuns, now: Date())
     }
@@ -149,25 +66,59 @@ struct DashboardView: View {
         timeRange == "30 Days" && trajectoryAssessment.verdict == .easeUp
     }
 
+    private var volumeSummary: MacroVolumeSummary {
+        let activeRuns = runRecords.filter { !$0.isDeleted && $0.modelContext != nil }
+        return MacroVolumeCore.evaluateVolumeSummary(
+            allRuns: activeRuns.map { $0.toVolumeRunSample() },
+            timeRange: timeRange,
+            isTrajectoryEaseUp: isTrajectoryEaseUp,
+            now: Date(),
+            calendar: Calendar.current
+        )
+    }
+
+    var baselineCadence: Int? {
+        volumeSummary.baselineCadence
+    }
+
+    var baselinePace: Double? {
+        volumeSummary.baselinePace
+    }
+
+    var canonicalAthleteBaselineCadence: Int? {
+        SessionSynthesisEngine.computeWeightedBaselineStats(from: runRecords, priorTo: Date()).map { Int($0.avgCadence.rounded()) }
+    }
+
+    var baselineHeartRate: Int? {
+        volumeSummary.baselineHeartRate
+    }
+
+    var canonicalAthleteBaselinePace: Double? {
+        SessionSynthesisEngine.computeWeightedBaselineStats(from: runRecords, priorTo: Date())?.avgPace
+    }
+
+    private var previousBaselineCadence: Int? {
+        volumeSummary.previousBaselineCadence
+    }
+
+    private var previousBaselinePace: Double? {
+        volumeSummary.previousBaselinePace
+    }
+
     private var workoutDensityTier: String {
-        let uniqueDays = Set(timeRangeRuns.map { Calendar.current.startOfDay(for: $0.date) })
-        let count = uniqueDays.count
-        if count == 0 { return "—" }
-        switch timeRange {
-        case "7 Days":
-            if count <= 2 { return "Low" }
-            if count <= 3 { return "Moderate" }
-            if count <= 5 { return "Optimal" }
-            return "High"
-        default: // 30 Days
-            if isTrajectoryEaseUp && count >= 14 {
-                return "High"
-            }
-            if count <= 6 { return "Low" }
-            if count <= 12 { return "Moderate" }
-            if count <= 18 { return "Optimal" }
-            return "High"
-        }
+        volumeSummary.workoutDensityTier
+    }
+
+    private var dashboardTrajectorySynthesis: DashboardTrajectorySynthesis {
+        let profile = dashboardRunnerProfile
+        let avgPace = timeRangeRuns.isEmpty ? 0.0 : timeRangeRuns.map(\.workingAvgPace).reduce(0, +) / Double(timeRangeRuns.count)
+        let paceContext = PaceFormatter.formatPace(secondsPerKilometer: avgPace)
+        return MacroVolumeCore.evaluateDashboardTrajectory(
+            assessment: trajectoryAssessment,
+            benchmark: profile.goalBenchmark,
+            trainingGoal: trainingGoal,
+            paceContext: paceContext
+        )
     }
 
     // Extract unique classifications and drill names for filter chips
@@ -424,7 +375,8 @@ struct DashboardView: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.top, 2)
                 } else {
-                    let displayHeadline = headline.isEmpty ? "Aerobic Base Stabilizing" : headline
+                    let synthesis = dashboardTrajectorySynthesis
+                    let displayHeadline = synthesis.reconcileHeadline(headline)
                     Text(displayHeadline)
                         .font(.title3.bold())
                         .foregroundColor(.primary)
@@ -438,44 +390,17 @@ struct DashboardView: View {
                             .foregroundColor(.orange)
                             .clipShape(Capsule())
 
-                        let benchmark = dashboardRunnerProfile.goalBenchmark
-                        if isTrajectoryEaseUp {
-                            Text("Cumulative Strain")
-                                .font(.caption.bold())
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(Color.red.opacity(0.12))
-                                .foregroundColor(.red)
-                                .clipShape(Capsule())
-                        } else if benchmark.weeklyVolumeStatus == .building {
-                            Text("Building Base")
-                                .font(.caption.bold())
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(Color.blue.opacity(0.12))
-                                .foregroundColor(.blue)
-                                .clipShape(Capsule())
-                        } else if benchmark.weeklyVolumeStatus == .exceeding {
-                            Text("Exceeding Target")
-                                .font(.caption.bold())
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(Color.purple.opacity(0.12))
-                                .foregroundColor(.purple)
-                                .clipShape(Capsule())
-                        } else {
-                            Text("Aerobic Base Expanding")
-                                .font(.caption.bold())
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(Color.green.opacity(0.12))
-                                .foregroundColor(.green)
-                                .clipShape(Capsule())
-                        }
+                        let badgeColor = mapToneToColor(synthesis.badgeTone)
+                        Text(synthesis.badgeLabel)
+                            .font(.caption.bold())
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(badgeColor.opacity(0.12))
+                            .foregroundColor(badgeColor)
+                            .clipShape(Capsule())
                     }
 
-                    let defaultPlaceholder = "Complete more runs over the next 30 days to measure structural aerobic adaptation."
-                    Text(bodyText.isEmpty ? defaultPlaceholder : bodyText)
+                    Text(bodyText.isEmpty ? synthesis.fallbackBody : bodyText)
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                         .lineSpacing(2)
@@ -494,10 +419,10 @@ struct DashboardView: View {
                 title: is7Day ? "Today's Training Directive" : "30-Day Aerobic Profile",
                 categoryBadge: is7Day ? "Acute Readiness" : "Longitudinal Adaptation",
                 whatSummary: headline.isEmpty
-                    ? (is7Day ? "Daily training directive calculated from acute fatigue and recovery balance." : "Your rolling 30-day baseline captures aerobic base stabilization.")
+                    ? (is7Day ? "Daily training directive calculated from acute fatigue and recovery balance." : dashboardTrajectorySynthesis.canonicalHeadline)
                     : headline,
                 whyItMatters: bodyText.isEmpty
-                    ? "Consistent volume at conversational heart rates establishes capillary density and neuromuscular economy while protecting joint health."
+                    ? (is7Day ? "Consistent volume at conversational heart rates establishes capillary density and neuromuscular economy while protecting joint health." : dashboardTrajectorySynthesis.fallbackBody)
                     : bodyText,
                 howItWorks: is7Day
                     ? "Evaluates your last 48-hour volume against your 28-day chronic workload using Banister impulse-response modeling to lock in today's safe duration and pace bands."
@@ -532,6 +457,17 @@ struct DashboardView: View {
         }
     }
 
+    private func mapToneToColor(_ tone: String) -> Color {
+        switch tone {
+        case "red": return .red
+        case "blue": return .blue
+        case "purple": return .purple
+        case "green": return .green
+        case "orange": return .orange
+        default: return .secondary
+        }
+    }
+
     private func sanitizeCoachingText(_ text: String) -> String {
         var cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
         while cleaned.hasSuffix("}") || cleaned.hasSuffix("{") || cleaned.hasSuffix("\"") {
@@ -548,7 +484,11 @@ struct DashboardView: View {
         case "All Time": raw = cachedHeadlineAllTime
         default: raw = ""
         }
-        return sanitizeCoachingText(raw)
+        let cleaned = sanitizeCoachingText(raw)
+        if timeRange == "30 Days", !cleaned.isEmpty {
+            return dashboardTrajectorySynthesis.reconcileHeadline(cleaned)
+        }
+        return cleaned
     }
 
     private func currentBody() -> String {
@@ -567,7 +507,7 @@ struct DashboardView: View {
             isFetchingInsight = false
             return
         }
-        let currentFingerprint = "\(timeRange)_\(trainingGoal)_\(DailyTrainingStateStore.computeFingerprint(runs: runRecords))"
+        let currentFingerprint = "\(trainingGoal)_\(dashboardTrajectorySynthesis.directiveCode)_\(DailyTrainingStateStore.computeFingerprint(runs: runRecords))"
         if currentFingerprint != lastInsightFingerprint {
             // Invalidate cache
             cachedHeadline7Day = ""
@@ -628,33 +568,11 @@ struct DashboardView: View {
             efficiencyContext = ""
             verticalOscillationContext = ""
         } else {
-            // 30-DAY VIEW: Goal Readiness & Trajectory Analyst (Unified SSOT with RunnerProfile.goalBenchmark)
-            let assessment = SessionSynthesisEngine.evaluate30DayTrajectory(from: timeRangeRuns, now: Date())
-            let benchmark = dashboardRunnerProfile.goalBenchmark
-            let volumeStatus = benchmark.weeklyVolumeStatus
-            let weeklyAvgKm = dashboardRunnerProfile.weeklyAverageKm
-
-            if assessment.verdict == .easeUp {
-                directiveContext = "TRAJECTORY_EASE_UP: Over the past 30 days, training data indicates cumulative overworking and declining efficiency (aerobic cost is climbing). For their stated goal of \(trainingGoal), tell the runner clearly that they are overworking and need to ease up on volume or intensity so their body can absorb the training and avoid declining instead of improving."
-                efficiencyContext = "Efficiency Factor declined over the past month. Cardiac drift and physiological strain accumulating."
-            } else if volumeStatus == .building {
-                let efNote = assessment.efDelta > 0 ? "Aerobic efficiency is improving (+`\(String(format: "%.2f", assessment.efDelta))` m/beat), but weekly volume is still below the foundation band." : "Aerobic base is in the building phase."
-                directiveContext = "TRAJECTORY_BUILDING_BASE: The runner is actively building their aerobic foundation for the \(trainingGoal) goal. Currently averaging \(String(format: "%.1f", weeklyAvgKm)) km/wk, which is \(String(format: "%.1f", benchmark.volumeGapKm)) km below the \(Int(benchmark.targetWeeklyKmMin)) km/wk target minimum. Tell the runner clearly that they are in the 'Building Base' phase: their consistency is building momentum, and steady easy miles will help close the volume gap."
-                efficiencyContext = "\(efNote) Volume gap: \(String(format: "%.1f", benchmark.volumeGapKm)) km."
-            } else if volumeStatus == .exceeding {
-                directiveContext = "TRAJECTORY_EXCEEDING: The runner is averaging \(String(format: "%.1f", weeklyAvgKm)) km/wk, exceeding the target maximum (\(Int(benchmark.targetWeeklyKmMax)) km/wk) for their \(trainingGoal) goal. Commend their high capacity and advise smart recovery to avoid overtraining."
-                efficiencyContext = "Weekly volume is high (\(String(format: "%.1f", weeklyAvgKm)) km/wk)."
-            } else {
-                let hrDeltaText = assessment.hrDelta < 0 ? "\(Int(abs(assessment.hrDelta))) BPM lower" : "stable"
-                let vrDeltaText = assessment.avgRecentVR > 0 ? ", Vertical Ratio: \(String(format: "%.1f", assessment.avgRecentVR))%" : ""
-                directiveContext = "TRAJECTORY_ON_TRACK: Over the past 30 days, aerobic efficiency, cardiac response, and running economy have clearly improved (Efficiency Factor increased by \(String(format: "%.2f", assessment.efDelta)), heart rate at \(paceContext) is \(hrDeltaText)\(vrDeltaText)) and weekly volume is on track for their \(trainingGoal) goal. Tell the runner clearly that they are solidly on track for their \(trainingGoal) goal and their consistency is paying off."
-                efficiencyContext = "Efficiency Factor rose by +\(String(format: "%.2f", assessment.efDelta)) m/beat. Aerobic capacity expanding."
-            }
-            if assessment.avgRecentVR > 0 {
-                verticalOscillationContext = "Vertical Oscillation: \(String(format: "%.1f", assessment.avgRecentOsc)) cm (VR: \(String(format: "%.1f", assessment.avgRecentVR))%)"
-            } else {
-                verticalOscillationContext = assessment.avgRecentOsc > 0 ? "Vertical Oscillation: \(String(format: "%.1f", assessment.avgRecentOsc)) cm" : "Vertical form steady"
-            }
+            // 30-DAY VIEW: Goal Readiness & Trajectory Analyst (Single Source of Truth: MacroVolumeCore.evaluateDashboardTrajectory)
+            let synthesis = dashboardTrajectorySynthesis
+            directiveContext = synthesis.directiveContext
+            efficiencyContext = synthesis.efficiencyContext
+            verticalOscillationContext = synthesis.verticalOscillationContext
             fatigueContext = ""
         }
 
@@ -682,7 +600,7 @@ struct DashboardView: View {
                             self.cachedHeadline7Day = insight.headline
                             self.cachedBody7Day = insight.body
                         case "30 Days":
-                            self.cachedHeadline30Day = insight.headline
+                            self.cachedHeadline30Day = self.dashboardTrajectorySynthesis.reconcileHeadline(insight.headline)
                             self.cachedBody30Day = insight.body
                         default: break
                         }
