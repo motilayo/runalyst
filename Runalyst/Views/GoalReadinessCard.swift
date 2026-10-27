@@ -180,14 +180,28 @@ struct GoalReadinessCard: View {
     // MARK: - Deterministic Mathematical Evaluation
 
     private func computeGoalSpec() -> GoalSpecData {
-        let now = Date()
+        Self.evaluateGoalSpec(
+            allRuns: allRuns,
+            trainingGoal: trainingGoal,
+            useMetricSystem: useMetricSystem,
+            now: Date()
+        )
+    }
+
+    static func evaluateGoalSpec(
+        allRuns: [RunRecord],
+        trainingGoal: String,
+        useMetricSystem: Bool,
+        now: Date = Date()
+    ) -> GoalSpecData {
         let fourWeeksAgo = Calendar.current.date(byAdding: .day, value: -28, to: now) ?? now
         let recentRuns = allRuns.filter { $0.date >= fourWeeksAgo && !$0.isDeleted }
         let profile = RunnerProfile.compute(from: allRuns, trainingGoal: trainingGoal, now: now)
         let weeklyAvgKm = profile.weeklyAverageKm
-        let weeklyAvgDistanceFormatted = formatDistance(km: weeklyAvgKm) + "/wk"
+        let weeklyAvgDistanceFormatted = formatDistance(km: weeklyAvgKm, useMetricSystem: useMetricSystem) + "/wk"
         let longestRecentRunKm = profile.longestRunKm
         let runsPerWeek = profile.runsPerWeek
+        let benchmark = profile.goalBenchmark
 
         guard !allRuns.isEmpty else {
             return GoalSpecData(
@@ -195,7 +209,7 @@ struct GoalReadinessCard: View {
                 statusColor: .secondary,
                 progressRatio: 0.0,
                 progressTitle: "Initial Evaluation",
-                progressValueFormatted: formatDistance(km: 0.0),
+                progressValueFormatted: formatDistance(km: 0.0, useMetricSystem: useMetricSystem),
                 percentageFormatted: "0%",
                 weeklyVolumeFormatted: "0.0 " + (useMetricSystem ? "km" : "mi") + "/wk",
                 secondaryIcon: "figure.run",
@@ -211,21 +225,37 @@ struct GoalReadinessCard: View {
             let targetKm = 5.0
             let ratio = min(1.0, longestRecentRunKm / targetKm)
             let percentInt = Int((ratio * 100).rounded())
-            let status = ratio >= 0.90 ? ("Race Ready", Color.green) : (ratio >= 0.60 ? ("On Track", Color.green) : ("Building Base", Color.blue))
-            let note = ratio >= 0.90
-                ? "Your longest run covers the 5K distance. Focus on cadence pyramids and tempo surges to sharpen your race pace."
-                : "Aerobic stamina is developing. Progress your weekly longest run toward 5 km with comfortable, conversational pacing."
+            let status: (String, Color)
+            let note: String
+
+            if benchmark.weeklyVolumeStatus == .building {
+                status = ("Building Base", Color.blue)
+                if ratio >= 0.90 {
+                    note = "Your longest prep run (\(formatDistance(km: longestRecentRunKm, useMetricSystem: useMetricSystem))) covers the 5K distance, but weekly volume (\(weeklyAvgDistanceFormatted)) is still building toward the \(Int(benchmark.targetWeeklyKmMin)) km/wk foundation to consolidate race stamina."
+                } else {
+                    note = "Aerobic stamina is developing. Progress your weekly volume toward \(Int(benchmark.targetWeeklyKmMin)) km/wk with comfortable, conversational pacing."
+                }
+            } else if ratio >= 0.90 {
+                status = ("Race Ready", Color.green)
+                note = "Your longest run covers the 5K distance and weekly volume is solid. Focus on cadence pyramids and tempo surges to sharpen your race pace."
+            } else if ratio >= 0.60 {
+                status = ("On Track", Color.green)
+                note = "Aerobic progression is on track. Build your longest run toward 5 km with comfortable, conversational pacing."
+            } else {
+                status = ("Building Base", Color.blue)
+                note = "Aerobic stamina is developing. Progress your weekly longest run toward 5 km with comfortable, conversational pacing."
+            }
             return GoalSpecData(
                 statusLabel: status.0,
                 statusColor: status.1,
                 progressRatio: ratio,
                 progressTitle: "Longest Prep Run",
-                progressValueFormatted: "\(formatDistance(km: longestRecentRunKm)) / \(formatDistance(km: targetKm))",
+                progressValueFormatted: "\(formatDistance(km: longestRecentRunKm, useMetricSystem: useMetricSystem)) / \(formatDistance(km: targetKm, useMetricSystem: useMetricSystem))",
                 percentageFormatted: "\(percentInt)%",
                 weeklyVolumeFormatted: weeklyAvgDistanceFormatted,
                 secondaryIcon: "stopwatch.fill",
                 secondaryTitle: "LONGEST RUN",
-                secondaryValueFormatted: formatDistance(km: longestRecentRunKm),
+                secondaryValueFormatted: formatDistance(km: longestRecentRunKm, useMetricSystem: useMetricSystem),
                 secondaryColor: .purple,
                 coachingRationale: note
             )
@@ -234,21 +264,37 @@ struct GoalReadinessCard: View {
             let targetKm = 10.0
             let ratio = min(1.0, longestRecentRunKm / targetKm)
             let percentInt = Int((ratio * 100).rounded())
-            let status = ratio >= 0.90 ? ("Race Ready", Color.green) : (ratio >= 0.60 ? ("On Track", Color.green) : ("Building Base", Color.blue))
-            let note = ratio >= 0.90
-                ? "You have established strong 10K endurance. Maintain smooth turnover rhythm and consolidate threshold efficiency."
-                : "Building endurance capability. Gradually increase your long run toward 10 km while keeping heart rate strictly controlled."
+            let status: (String, Color)
+            let note: String
+
+            if benchmark.weeklyVolumeStatus == .building {
+                status = ("Building Base", Color.blue)
+                if ratio >= 0.90 {
+                    note = "Strong single-run endurance (\(formatDistance(km: longestRecentRunKm, useMetricSystem: useMetricSystem))), but weekly volume (\(weeklyAvgDistanceFormatted)) is still building toward the \(Int(benchmark.targetWeeklyKmMin)) km/wk foundation to sustain 10K race stamina."
+                } else {
+                    note = "Building endurance capability. Gradually increase your weekly volume toward \(Int(benchmark.targetWeeklyKmMin)) km/wk while keeping heart rate strictly controlled."
+                }
+            } else if ratio >= 0.90 {
+                status = ("Race Ready", Color.green)
+                note = "You have established strong 10K endurance and consistent volume. Maintain smooth turnover rhythm and consolidate threshold efficiency."
+            } else if ratio >= 0.60 {
+                status = ("On Track", Color.green)
+                note = "Endurance progression is on track. Gradually increase your long run toward 10 km while keeping heart rate strictly controlled."
+            } else {
+                status = ("Building Base", Color.blue)
+                note = "Building endurance capability. Gradually increase your long run toward 10 km while keeping heart rate strictly controlled."
+            }
             return GoalSpecData(
                 statusLabel: status.0,
                 statusColor: status.1,
                 progressRatio: ratio,
                 progressTitle: "Longest Prep Run",
-                progressValueFormatted: "\(formatDistance(km: longestRecentRunKm)) / \(formatDistance(km: targetKm))",
+                progressValueFormatted: "\(formatDistance(km: longestRecentRunKm, useMetricSystem: useMetricSystem)) / \(formatDistance(km: targetKm, useMetricSystem: useMetricSystem))",
                 percentageFormatted: "\(percentInt)%",
                 weeklyVolumeFormatted: weeklyAvgDistanceFormatted,
                 secondaryIcon: "stopwatch.fill",
                 secondaryTitle: "LONGEST RUN",
-                secondaryValueFormatted: formatDistance(km: longestRecentRunKm),
+                secondaryValueFormatted: formatDistance(km: longestRecentRunKm, useMetricSystem: useMetricSystem),
                 secondaryColor: .purple,
                 coachingRationale: note
             )
@@ -258,21 +304,37 @@ struct GoalReadinessCard: View {
             let simulationTargetKm = 18.0
             let ratio = min(1.0, longestRecentRunKm / simulationTargetKm)
             let percentInt = Int((min(1.0, longestRecentRunKm / targetKm) * 100).rounded())
-            let status = longestRecentRunKm >= 16.0 ? ("Race Ready", Color.green) : (longestRecentRunKm >= 10.0 ? ("On Track", Color.green) : ("Building Base", Color.blue))
-            let note = longestRecentRunKm >= 16.0
-                ? "Long-distance foundation is primed for 21.1 km. Prioritize active recovery flushes and maintain a stable cadence floor."
-                : "Solid aerobic progression. Build your long prep run progressively toward 16–18 km to lock in half-marathon readiness."
+            let status: (String, Color)
+            let note: String
+
+            if benchmark.weeklyVolumeStatus == .building {
+                status = ("Building Base", Color.blue)
+                if longestRecentRunKm >= 16.0 {
+                    note = "Strong long run prep (\(formatDistance(km: longestRecentRunKm, useMetricSystem: useMetricSystem))), but weekly volume (\(weeklyAvgDistanceFormatted)) is below the \(Int(benchmark.targetWeeklyKmMin)) km/wk foundation needed to absorb half-marathon race fatigue safely."
+                } else {
+                    note = "Solid aerobic progression. Build weekly volume toward \(Int(benchmark.targetWeeklyKmMin)) km/wk and your long prep run toward 16–18 km."
+                }
+            } else if longestRecentRunKm >= 16.0 {
+                status = ("Race Ready", Color.green)
+                note = "Long-distance foundation is primed for 21.1 km. Prioritize active recovery flushes and maintain a stable cadence floor."
+            } else if longestRecentRunKm >= 10.0 {
+                status = ("On Track", Color.green)
+                note = "Solid aerobic progression. Build your long prep run progressively toward 16–18 km to lock in half-marathon readiness."
+            } else {
+                status = ("Building Base", Color.blue)
+                note = "Solid aerobic progression. Build your long prep run progressively toward 16–18 km to lock in half-marathon readiness."
+            }
             return GoalSpecData(
                 statusLabel: status.0,
                 statusColor: status.1,
                 progressRatio: ratio,
                 progressTitle: "Longest Prep Run",
-                progressValueFormatted: "\(formatDistance(km: longestRecentRunKm)) / \(formatDistance(km: targetKm))",
+                progressValueFormatted: "\(formatDistance(km: longestRecentRunKm, useMetricSystem: useMetricSystem)) / \(formatDistance(km: targetKm, useMetricSystem: useMetricSystem))",
                 percentageFormatted: "\(percentInt)%",
                 weeklyVolumeFormatted: weeklyAvgDistanceFormatted,
                 secondaryIcon: "figure.run",
                 secondaryTitle: "LONGEST RUN",
-                secondaryValueFormatted: formatDistance(km: longestRecentRunKm),
+                secondaryValueFormatted: formatDistance(km: longestRecentRunKm, useMetricSystem: useMetricSystem),
                 secondaryColor: .purple,
                 coachingRationale: note
             )
@@ -282,21 +344,37 @@ struct GoalReadinessCard: View {
             let simulationPeakKm = 32.0
             let ratio = min(1.0, longestRecentRunKm / simulationPeakKm)
             let percentInt = Int((min(1.0, longestRecentRunKm / targetKm) * 100).rounded())
-            let status = longestRecentRunKm >= 28.0 ? ("Race Ready", Color.green) : (longestRecentRunKm >= 18.0 ? ("On Track", Color.green) : ("Building Base", Color.blue))
-            let note = longestRecentRunKm >= 28.0
-                ? "Excellent peak endurance capacity. Emphasize low-impact aerobic recovery and protect joint health leading into the race."
-                : "Progressive marathon preparation underway. Continue extending weekly volume and long aerobic runs with conversational pacing."
+            let status: (String, Color)
+            let note: String
+
+            if benchmark.weeklyVolumeStatus == .building {
+                status = ("Building Base", Color.blue)
+                if longestRecentRunKm >= 28.0 {
+                    note = "High single-run peak (\(formatDistance(km: longestRecentRunKm, useMetricSystem: useMetricSystem))), but total weekly volume (\(weeklyAvgDistanceFormatted)) is below the \(Int(benchmark.targetWeeklyKmMin)) km/wk foundation needed to endure 42.2 km safely."
+                } else {
+                    note = "Progressive marathon preparation underway. Continue extending weekly volume toward \(Int(benchmark.targetWeeklyKmMin)) km/wk with conversational pacing."
+                }
+            } else if longestRecentRunKm >= 28.0 {
+                status = ("Race Ready", Color.green)
+                note = "Excellent peak endurance capacity. Emphasize low-impact aerobic recovery and protect joint health leading into the race."
+            } else if longestRecentRunKm >= 18.0 {
+                status = ("On Track", Color.green)
+                note = "Progressive marathon preparation underway. Continue extending weekly volume and long aerobic runs with conversational pacing."
+            } else {
+                status = ("Building Base", Color.blue)
+                note = "Progressive marathon preparation underway. Continue extending weekly volume and long aerobic runs with conversational pacing."
+            }
             return GoalSpecData(
                 statusLabel: status.0,
                 statusColor: status.1,
                 progressRatio: ratio,
                 progressTitle: "Longest Prep Run",
-                progressValueFormatted: "\(formatDistance(km: longestRecentRunKm)) / \(formatDistance(km: targetKm))",
+                progressValueFormatted: "\(formatDistance(km: longestRecentRunKm, useMetricSystem: useMetricSystem)) / \(formatDistance(km: targetKm, useMetricSystem: useMetricSystem))",
                 percentageFormatted: "\(percentInt)%",
                 weeklyVolumeFormatted: weeklyAvgDistanceFormatted,
                 secondaryIcon: "figure.run",
                 secondaryTitle: "LONGEST RUN",
-                secondaryValueFormatted: formatDistance(km: longestRecentRunKm),
+                secondaryValueFormatted: formatDistance(km: longestRecentRunKm, useMetricSystem: useMetricSystem),
                 secondaryColor: .purple,
                 coachingRationale: note
             )
@@ -348,31 +426,41 @@ struct GoalReadinessCard: View {
             )
 
         default: // "Base Building"
-            let targetWeeklyKm = 30.0
+            let targetWeeklyKm = benchmark.targetWeeklyKmMax
             let ratio = min(1.0, weeklyAvgKm / targetWeeklyKm)
             let percentInt = Int((ratio * 100).rounded())
-            let status = ratio >= 0.85 ? ("Solid Base", Color.green) : (ratio >= 0.50 ? ("On Track", Color.green) : ("Building", Color.blue))
-            let note = ratio >= 0.85
-                ? "Aerobic engine is solidly established. You have built a durable foundation for structured quality workouts or race blocks."
-                : "Steadily expanding weekly volume. Keep runs primarily in Zone 2 to stimulate mitochondrial density without fatigue."
+            let status: (String, Color)
+            let note: String
+
+            switch benchmark.weeklyVolumeStatus {
+            case .exceeding:
+                status = ("Exceeding Target", Color.purple)
+                note = "Weekly aerobic volume (\(weeklyAvgDistanceFormatted)) exceeds the baseline band. High endurance capacity established."
+            case .onTrack:
+                status = ("Solid Base", Color.green)
+                note = "Aerobic engine is solidly established. You have built a durable foundation for structured quality workouts or race blocks."
+            case .building:
+                status = ("Building Base", Color.blue)
+                note = "Steadily expanding weekly volume toward \(Int(benchmark.targetWeeklyKmMin)) km/wk. Keep runs primarily in Zone 2 to stimulate mitochondrial density without fatigue."
+            }
             return GoalSpecData(
                 statusLabel: status.0,
                 statusColor: status.1,
                 progressRatio: ratio,
                 progressTitle: "Weekly Aerobic Base",
-                progressValueFormatted: "\(formatDistance(km: weeklyAvgKm)) / \(formatDistance(km: targetWeeklyKm))",
+                progressValueFormatted: "\(formatDistance(km: weeklyAvgKm, useMetricSystem: useMetricSystem)) / \(formatDistance(km: targetWeeklyKm, useMetricSystem: useMetricSystem))",
                 percentageFormatted: "\(percentInt)%",
                 weeklyVolumeFormatted: weeklyAvgDistanceFormatted,
                 secondaryIcon: "figure.run",
                 secondaryTitle: "LONGEST RUN",
-                secondaryValueFormatted: formatDistance(km: longestRecentRunKm),
+                secondaryValueFormatted: formatDistance(km: longestRecentRunKm, useMetricSystem: useMetricSystem),
                 secondaryColor: .purple,
                 coachingRationale: note
             )
         }
     }
 
-    private func formatDistance(km: Double) -> String {
+    private static func formatDistance(km: Double, useMetricSystem: Bool) -> String {
         if useMetricSystem {
             return String(format: "%.1f km", km)
         } else {
@@ -384,7 +472,7 @@ struct GoalReadinessCard: View {
 
 // MARK: - Goal Spec Presentation Model
 
-private struct GoalSpecData {
+struct GoalSpecData {
     let statusLabel: String
     let statusColor: Color
     let progressRatio: Double

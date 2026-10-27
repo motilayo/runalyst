@@ -457,5 +457,16 @@ final class CrossSurfaceIdempotencyTests: XCTestCase {
 
         XCTAssertEqual(directiveContext, "TRAJECTORY_BUILDING_BASE", "Dashboard 30-day directive must evaluate to TRAJECTORY_BUILDING_BASE")
         XCTAssertNotEqual(directiveContext, "TRAJECTORY_ON_TRACK", "Dashboard 30-day directive must NEVER evaluate to TRAJECTORY_ON_TRACK when volume is below target band")
+
+        // 3. Goal Readiness Card Surface Verification (SSOT)
+        let goalSpec = GoalReadinessCard.evaluateGoalSpec(
+            allRuns: runs,
+            trainingGoal: goal,
+            useMetricSystem: true,
+            now: now
+        )
+        XCTAssertEqual(goalSpec.statusLabel, "Building Base", "Goal readiness card must evaluate to Building Base when weekly volume is below target")
+        XCTAssertNotEqual(goalSpec.statusLabel, "Race Ready", "Goal readiness card must NEVER declare Race Ready when weekly volume is in building phase")
+        XCTAssertTrue(goalSpec.coachingRationale.contains("toward 25 km/wk"), "Rationale must explain that volume is building toward the target foundation")
     }
 }
