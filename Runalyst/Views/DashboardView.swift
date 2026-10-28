@@ -111,7 +111,8 @@ struct DashboardView: View {
 
     private var dashboardTrajectorySynthesis: DashboardTrajectorySynthesis {
         let profile = dashboardRunnerProfile
-        let avgPace = timeRangeRuns.isEmpty ? 0.0 : timeRangeRuns.map(\.workingAvgPace).reduce(0, +) / Double(timeRangeRuns.count)
+        let snapshot = WorkoutSnapshotEngine.shared.resolveSnapshot(runs: runRecords)
+        let avgPace = (timeRange == "7 Days" ? snapshot.trailing7Days.dimensionalPaceSecPerKm : snapshot.trailing30Days.dimensionalPaceSecPerKm) ?? 0.0
         let paceContext = PaceFormatter.formatPace(secondsPerKilometer: avgPace)
         return MacroVolumeCore.evaluateDashboardTrajectory(
             assessment: trajectoryAssessment,
@@ -530,11 +531,11 @@ struct DashboardView: View {
         guard !timeRangeRuns.isEmpty else { return }
         isFetchingInsight = true
 
-        let avgPace = timeRangeRuns.map(\.workingAvgPace).reduce(0, +) / Double(timeRangeRuns.count)
-        let validHRRuns = timeRangeRuns.filter { $0.workingAvgHeartRate > 0 }
-        let avgHR = validHRRuns.isEmpty ? 0 : validHRRuns.map(\.workingAvgHeartRate).reduce(0, +) / Double(validHRRuns.count)
-        let validCadenceRuns = timeRangeRuns.filter { $0.workingAvgCadence > 0 }
-        let avgCadence = validCadenceRuns.isEmpty ? 0 : validCadenceRuns.map(\.workingAvgCadence).reduce(0, +) / Double(validCadenceRuns.count)
+        let snapshot = WorkoutSnapshotEngine.shared.resolveSnapshot(runs: runRecords)
+        let slice = timeRange == "7 Days" ? snapshot.trailing7Days : snapshot.trailing30Days
+        let avgPace = slice.dimensionalPaceSecPerKm ?? 0.0
+        let avgHR = slice.durationWeightedHeartRate ?? 0.0
+        let avgCadence = slice.durationWeightedCadence ?? 0.0
         let avgCV = timeRangeRuns.map(\.paceCV).reduce(0, +) / Double(timeRangeRuns.count)
         let avgSlope = timeRangeRuns.map(\.paceSlope).reduce(0, +) / Double(timeRangeRuns.count)
         let zone4Sum = timeRangeRuns.map(\.percentZone4).reduce(0, +) / Double(timeRangeRuns.count)
@@ -690,7 +691,7 @@ struct DashboardView: View {
     @ViewBuilder
     private var activityVolumeSummaryCard: some View {
         ActivityVolumeSummaryCard(
-            runs: timeRangeRuns,
+            summary: volumeSummary,
             timeRange: timeRange,
             useMetricSystem: useMetricSystem,
             activeGoal: trainingGoal
@@ -782,7 +783,7 @@ struct DashboardView: View {
                         if horizontalSizeClass == .regular && !timeRangeRuns.isEmpty {
                             HStack(alignment: .top, spacing: 16) {
                                 ActivityVolumeSummaryCard(
-                                    runs: timeRangeRuns,
+                                    summary: volumeSummary,
                                     timeRange: timeRange,
                                     useMetricSystem: useMetricSystem,
                                     activeGoal: trainingGoal

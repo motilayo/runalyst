@@ -180,11 +180,9 @@ struct SessionSynthesisCoreTests {
 
         #expect(abs(summary30d.totalDistanceMeters - 87_100.0) < 0.01)
 
-        let sum4Weeks = summary30d.trailing4Weeks.map(\.distanceMeters).reduce(0.0, +)
-        #expect(abs(sum4Weeks - summary30d.totalDistanceMeters) < 0.01)
-
+        let snapshot = TemporalSnapshotCore.evaluateSnapshot(runs: samples, now: now, calendar: cal)
         let thisWeekMeters = summary30d.trailing4Weeks.last?.distanceMeters ?? 0.0
-        #expect(abs(thisWeekMeters - summary7d.totalDistanceMeters) < 0.01)
+        #expect(abs(thisWeekMeters - snapshot.thisWeek.totalDistanceMeters) < 0.01)
 
         let sum7Days = summary7d.trailing7Days.map(\.distanceMeters).reduce(0.0, +)
         #expect(abs(sum7Days - summary7d.totalDistanceMeters) < 0.01)

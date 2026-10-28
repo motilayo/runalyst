@@ -267,22 +267,34 @@ public enum MacroVolumeCore {
             )
         }
 
-        // 30-Day 4-Week Progression Buckets (strictly partitions runs30d so sum(weeks) == runs30d total, and This Wk == runs7d total)
-        let weekSlices: [(id: String, label: String, runs: [VolumeRunSample])] = [
-            ("w3", "3W Ago", runs30d.filter { $0.date >= thirtyDaysAgo && $0.date < twentyOneDaysAgo }),
-            ("w2", "2W Ago", runs30d.filter { $0.date >= twentyOneDaysAgo && $0.date < fourteenDaysAgo }),
-            ("w1", "Last Wk", runs30d.filter { $0.date >= fourteenDaysAgo && $0.date < sevenDaysAgo }),
-            ("w0", "This Wk", runs7d)
-        ]
-        let trailing4Weeks: [WeekVolumeBucket] = weekSlices.map { slice in
-            let dist = slice.runs.reduce(0.0) { $0 + $1.totalDistanceMeters }
-            return WeekVolumeBucket(
-                id: slice.id,
-                label: slice.label,
-                distanceMeters: dist,
-                runCount: slice.runs.count
+        // 30-Day 4-Week Progression Buckets (discrete calendar weeks from TemporalSnapshotCore)
+        let snapshot = TemporalSnapshotCore.evaluateSnapshot(runs: allRuns, now: now, calendar: calendar)
+        let trailing4Weeks: [WeekVolumeBucket] = [
+            WeekVolumeBucket(
+                id: "w3",
+                label: "3W Ago",
+                distanceMeters: snapshot.threeWeeksAgo.totalDistanceMeters,
+                runCount: snapshot.threeWeeksAgo.workoutCount
+            ),
+            WeekVolumeBucket(
+                id: "w2",
+                label: "2W Ago",
+                distanceMeters: snapshot.twoWeeksAgo.totalDistanceMeters,
+                runCount: snapshot.twoWeeksAgo.workoutCount
+            ),
+            WeekVolumeBucket(
+                id: "w1",
+                label: "Last Wk",
+                distanceMeters: snapshot.lastWeek.totalDistanceMeters,
+                runCount: snapshot.lastWeek.workoutCount
+            ),
+            WeekVolumeBucket(
+                id: "w0",
+                label: "This Wk",
+                distanceMeters: snapshot.thisWeek.totalDistanceMeters,
+                runCount: snapshot.thisWeek.workoutCount
             )
-        }
+        ]
 
         // Classification Mix
         var counts: [String: Int] = [:]

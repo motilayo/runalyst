@@ -5,11 +5,35 @@ import RunalystCore
 /// for the selected time range (7 Days or 30 Days).
 /// Acts as a hollow adapter over `MacroVolumeCore.evaluateVolumeSummary`.
 struct ActivityVolumeSummaryCard: View {
-    let runs: [RunRecord]
+    let summary: MacroVolumeSummary
     let timeRange: String
     let useMetricSystem: Bool
     var activeGoal: String = "Base Building"
-    var now: Date = Date()
+
+    init(
+        summary: MacroVolumeSummary,
+        timeRange: String,
+        useMetricSystem: Bool,
+        activeGoal: String = "Base Building"
+    ) {
+        self.summary = summary
+        self.timeRange = timeRange
+        self.useMetricSystem = useMetricSystem
+        self.activeGoal = activeGoal
+    }
+
+    init(
+        runs: [RunRecord],
+        timeRange: String,
+        useMetricSystem: Bool,
+        activeGoal: String = "Base Building",
+        now: Date = Date()
+    ) {
+        self.summary = Self.evaluateSummary(from: runs, timeRange: timeRange, now: now)
+        self.timeRange = timeRange
+        self.useMetricSystem = useMetricSystem
+        self.activeGoal = activeGoal
+    }
 
     private static var defaultCalendar: Calendar {
         var cal = Calendar(identifier: .gregorian)
@@ -31,10 +55,6 @@ struct ActivityVolumeSummaryCard: View {
             now: now,
             calendar: calendar ?? defaultCalendar
         )
-    }
-
-    private var summary: MacroVolumeSummary {
-        Self.evaluateSummary(from: runs, timeRange: timeRange, now: now)
     }
 
     private var totalDistanceMeters: Double {

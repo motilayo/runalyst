@@ -452,13 +452,13 @@ final class CrossSurfaceIdempotencyTests: XCTestCase {
         XCTAssertEqual(synthesis.badgeLabel, "Building Base", "Dashboard 30-day badge must match Goal Readiness Card status")
         XCTAssertEqual(synthesis.reconcileHeadline("On Track For Goal"), "Building Aerobic Base", "Stale On Track headline must deterministically reconcile to Building Aerobic Base")
 
-        // 3. Dashboard Volume Summary Card Surface Verification (SSOT: 4-week sum == 30-day total)
+        // 3. Dashboard Volume Summary Card Surface Verification (SSOT)
         let volumeSummary30d = ActivityVolumeSummaryCard.evaluateSummary(from: runs, timeRange: "30 Days", now: now, calendar: cal)
         let volumeSummary7d = ActivityVolumeSummaryCard.evaluateSummary(from: runs, timeRange: "7 Days", now: now, calendar: cal)
-        let fourWeekSumMeters = volumeSummary30d.trailing4Weeks.map(\.distanceMeters).reduce(0.0, +)
+        let snapshot = WorkoutSnapshotEngine.shared.resolveSnapshot(runs: runs, now: now, calendar: cal)
 
-        XCTAssertEqual(fourWeekSumMeters, volumeSummary30d.totalDistanceMeters, accuracy: 0.01, "4-Week Mileage Progression bars must sum strictly to 30-day total distance without dropping days")
-        XCTAssertEqual(volumeSummary30d.trailing4Weeks.last?.distanceMeters ?? 0.0, volumeSummary7d.totalDistanceMeters, accuracy: 0.01, "This Wk bar in 30-Day mode must strictly match 7-Day total distance")
+        XCTAssertEqual(volumeSummary30d.trailing4Weeks.last?.distanceMeters ?? 0.0, snapshot.thisWeek.totalDistanceMeters, accuracy: 0.01, "This Wk bar in 30-Day mode must strictly match the discrete calendar week snapshot")
+        XCTAssertEqual(volumeSummary7d.totalDistanceMeters, snapshot.trailing7Days.totalDistanceMeters, accuracy: 0.01, "7-Day volume must strictly match trailing 7 days rolling window")
         XCTAssertEqual(volumeSummary30d.weeklyAverageKm, profile.weeklyAverageKm, accuracy: 0.01, "Volume summary weekly average must strictly match RunnerProfile weeklyAverageKm")
 
         // 4. Goal Readiness Card Surface Verification (SSOT)
