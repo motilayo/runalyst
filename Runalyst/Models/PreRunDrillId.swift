@@ -6,6 +6,7 @@ public enum DrillDuration: Int, CaseIterable, Sendable, Codable {
     case fiveMinutes = 5
     case tenMinutes = 10
     case fifteenMinutes = 15
+    case twentyMinutes = 20
     case thirtyMinutes = 30
     case thirtyFiveMinutes = 35
     case fortyMinutes = 40
@@ -195,7 +196,7 @@ enum PreRunDrillId: String, CaseIterable, Codable, Sendable {
     /// Continuous aerobic runs support 15, 30, 40, or 50 min.
     public var supportedDurations: [DrillDuration] {
         if isHeartRateTargeted {
-            return [.fifteenMinutes, .thirtyMinutes, .fortyMinutes, .fiftyMinutes]
+            return [.fifteenMinutes, .twentyMinutes, .thirtyMinutes, .fortyMinutes, .fiftyMinutes]
         } else {
             return [.fiveMinutes, .tenMinutes, .fifteenMinutes]
         }

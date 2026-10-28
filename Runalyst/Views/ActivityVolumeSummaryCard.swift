@@ -221,17 +221,20 @@ struct ActivityVolumeSummaryCard: View {
                 ForEach(trailing7Days) { day in
                     VStack(spacing: 6) {
                         // Distance readout above bar
-                        if day.distanceMeters > 0 {
-                            let converted = useMetricSystem ? (day.distanceMeters / 1000.0) : (day.distanceMeters / 1609.344)
-                            Text(String(format: "%.1f", converted))
-                                .font(.system(size: 10, weight: .semibold, design: .rounded))
-                                .monospacedDigit()
-                                .foregroundColor(.primary)
-                        } else {
-                            Text("—")
-                                .font(.system(size: 10, weight: .regular))
-                                .foregroundColor(.secondary.opacity(0.5))
+                        Group {
+                            if day.distanceMeters > 0 {
+                                let converted = useMetricSystem ? (day.distanceMeters / 1000.0) : (day.distanceMeters / 1609.344)
+                                Text(String(format: "%.1f", converted))
+                                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                                    .monospacedDigit()
+                                    .foregroundColor(.primary)
+                            } else {
+                                Text("—")
+                                    .font(.system(size: 10, weight: .regular))
+                                    .foregroundColor(.secondary.opacity(0.5))
+                            }
                         }
+                        .frame(height: 14)
 
                         // Bar Capsule
                         ZStack(alignment: .bottom) {
@@ -254,20 +257,19 @@ struct ActivityVolumeSummaryCard: View {
                         }
 
                         // Day Letter & Number
-                        VStack(spacing: 1) {
+                        VStack(spacing: 2) {
                             Text(day.dayLetter)
-                                .font(.caption.bold())
+                                .font(.caption2.bold())
                                 .foregroundColor(day.isToday ? .blue : .primary)
 
                             Text(day.dayNumber)
-                                .font(.system(size: 10, weight: .regular))
+                                .font(.system(size: 10, weight: day.isToday ? .bold : .regular))
                                 .monospacedDigit()
                                 .foregroundColor(day.isToday ? .blue : .secondary)
                         }
-                        .padding(.vertical, 2)
-                        .padding(.horizontal, 4)
+                        .frame(width: 28, height: 32)
                         .background(day.isToday ? Color.blue.opacity(0.12) : Color.clear)
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                     }
                     .frame(maxWidth: .infinity)
                 }

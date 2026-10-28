@@ -316,6 +316,7 @@ struct PrescribedSessionCardView: View {
                 categoryLabel: effectiveIsToday ? "MAIN RUN" : "\(headerDayText.uppercased()) MAIN RUN",
                 canChangeDuration: false,
                 lockedDuration: mainDuration,
+                lockedDurationMinutes: session.mainRunDurationMinutes,
                 customMetrics: [
                     DrillCardMetric(icon: "stopwatch.fill", title: "Duration", value: cleanMainRunDurationFormatted(session: session), color: .secondary),
                     DrillCardMetric(icon: paceIcon, title: paceTitle, value: session.paceBand, color: RunalystColor.pace),

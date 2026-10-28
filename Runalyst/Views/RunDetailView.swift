@@ -552,9 +552,10 @@ struct RunDetailView: View {
         let distanceUnit = useMetricSystem ? "km" : "mi"
 
         let activeDuration = runRecord.effectiveWorkingDurationSeconds > 0 ? runRecord.effectiveWorkingDurationSeconds : runRecord.duration
-        let minutes = Int(activeDuration) / 60
+        let hours = Int(activeDuration) / 3600
+        let minutes = (Int(activeDuration) % 3600) / 60
         let seconds = Int(activeDuration) % 60
-        let timeString = String(format: "%d:%02d", minutes, seconds)
+        let timeString = hours > 0 ? String(format: "%d:%02d:%02d", hours, minutes, seconds) : String(format: "%d:%02d", minutes, seconds)
 
         let workingKm = activeDistanceMeters / 1000.0
         let currentPace = (workingKm > 0 && activeDuration > 0) ? (activeDuration / workingKm) : runRecord.workingAvgPace
@@ -587,15 +588,10 @@ struct RunDetailView: View {
                     Text("MOVING TIME")
                         .font(.system(size: 10, weight: .bold, design: .rounded))
                         .foregroundColor(.secondary)
-                    HStack(alignment: .firstTextBaseline, spacing: 2) {
-                        Text(timeString)
-                            .font(.system(size: 26, weight: .bold, design: .rounded))
-                            .monospacedDigit()
-                            .foregroundColor(.primary)
-                        Text("min")
-                            .font(.system(size: 12, weight: .semibold, design: .rounded))
-                            .foregroundColor(.secondary)
-                    }
+                    Text(timeString)
+                        .font(.system(size: 26, weight: .bold, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundColor(.primary)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 

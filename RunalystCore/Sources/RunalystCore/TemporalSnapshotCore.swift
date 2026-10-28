@@ -197,7 +197,7 @@ public enum TemporalSnapshotCore {
 
         // 1. Calculate the start of the current calendar week (Monday 00:00:00 default)
         // firstWeekday: 1 = Sunday, 2 = Monday
-        let targetWeekday = calendar.firstWeekday
+        let targetWeekday = 2 // Strict Monday anchor (ISO 8601 athletic training standard per Constitution Rule 4.A)
         let currentWeekday = calendar.component(.weekday, from: todayStart)
         let daysToSubtract = (currentWeekday - targetWeekday + 7) % 7
         let thisWeekStart = calendar.date(byAdding: .day, value: -daysToSubtract, to: todayStart) ?? todayStart

@@ -426,7 +426,7 @@ struct ProgressionChartView: View {
                     }
                 }
                 .chartXAxis {
-                    AxisMarks(values: selectedHorizon == .thirtyDays ? .automatic(desiredCount: 3) : .automatic(desiredCount: 4)) { value in
+                    AxisMarks(values: .automatic(desiredCount: 4)) { value in
                         AxisGridLine()
                         AxisTick()
                         AxisValueLabel(anchor: .top) {

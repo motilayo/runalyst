@@ -54,6 +54,14 @@ struct FitnessBaselineCard: View {
                 Text("—")
                     .font(.system(size: 26, weight: .bold, design: .rounded))
                     .foregroundColor(.secondary)
+
+                Text("Awaiting Data")
+                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 2.5)
+                    .background(Color(UIColor.tertiarySystemFill))
+                    .clipShape(Capsule())
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

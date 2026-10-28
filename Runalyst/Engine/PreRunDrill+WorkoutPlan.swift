@@ -73,6 +73,10 @@ extension PreRunDrill {
                 iterations = 4
                 workGoal = .time(1, .minutes)
                 recoveryGoal = .time(90, .seconds)
+            case .twentyMinutes:
+                iterations = 4
+                workGoal = .time(90, .seconds)
+                recoveryGoal = .time(90, .seconds)
             case .thirtyMinutes, .thirtyFiveMinutes, .fortyMinutes, .fiftyMinutes:
                 iterations = 6
                 workGoal = .time(90, .seconds)
@@ -90,6 +94,10 @@ extension PreRunDrill {
                 recoveryGoal = .time(45, .seconds)
             case .fifteenMinutes:
                 iterations = 5
+                workGoal = .time(45, .seconds)
+                recoveryGoal = .time(75, .seconds)
+            case .twentyMinutes:
+                iterations = 6
                 workGoal = .time(45, .seconds)
                 recoveryGoal = .time(75, .seconds)
             case .thirtyMinutes, .thirtyFiveMinutes, .fortyMinutes, .fiftyMinutes:
@@ -111,6 +119,10 @@ extension PreRunDrill {
                 iterations = 3
                 workGoal = .time(2, .minutes)
                 recoveryGoal = .time(2, .minutes)
+            case .twentyMinutes:
+                iterations = 4
+                workGoal = .time(90, .seconds)
+                recoveryGoal = .time(2, .minutes)
             case .thirtyMinutes, .thirtyFiveMinutes, .fortyMinutes, .fiftyMinutes:
                 iterations = 4
                 workGoal = .time(3, .minutes)
@@ -130,7 +142,7 @@ extension PreRunDrill {
                 iterations = 6
                 workGoal = .time(20, .seconds)
                 recoveryGoal = .time(60, .seconds)
-            case .thirtyMinutes, .thirtyFiveMinutes, .fortyMinutes, .fiftyMinutes:
+            case .twentyMinutes, .thirtyMinutes, .thirtyFiveMinutes, .fortyMinutes, .fiftyMinutes:
                 iterations = 8
                 workGoal = .time(30, .seconds)
                 recoveryGoal = .time(90, .seconds)
@@ -149,7 +161,7 @@ extension PreRunDrill {
                 iterations = 5
                 workGoal = .time(30, .seconds)
                 recoveryGoal = .time(60, .seconds)
-            case .thirtyMinutes, .thirtyFiveMinutes, .fortyMinutes, .fiftyMinutes:
+            case .twentyMinutes, .thirtyMinutes, .thirtyFiveMinutes, .fortyMinutes, .fiftyMinutes:
                 iterations = 6
                 workGoal = .time(45, .seconds)
                 recoveryGoal = .time(90, .seconds)
@@ -172,6 +184,10 @@ extension PreRunDrill {
                 iterations = 5
                 workGoal = .time(1, .minutes)
                 recoveryGoal = .time(1, .minutes)
+            case .twentyMinutes:
+                iterations = 6
+                workGoal = .time(1, .minutes)
+                recoveryGoal = .time(1, .minutes)
             case .thirtyMinutes, .thirtyFiveMinutes, .fortyMinutes, .fiftyMinutes:
                 iterations = 6
                 workGoal = .time(2, .minutes)
@@ -191,7 +207,7 @@ extension PreRunDrill {
                 iterations = 5
                 workGoal = .time(30, .seconds)
                 recoveryGoal = .time(60, .seconds)
-            case .thirtyMinutes, .thirtyFiveMinutes, .fortyMinutes, .fiftyMinutes:
+            case .twentyMinutes, .thirtyMinutes, .thirtyFiveMinutes, .fortyMinutes, .fiftyMinutes:
                 iterations = 6
                 workGoal = .time(45, .seconds)
                 recoveryGoal = .time(90, .seconds)
