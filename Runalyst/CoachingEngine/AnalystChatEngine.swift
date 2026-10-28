@@ -345,7 +345,24 @@ class AnalystChatEngine: ObservableObject {
             let currentWeek = calendar.weekInterval(containing: today)
             let weekRange = "Week: \(calendar.formatISO(currentWeek.start))..\(calendar.formatISO(currentWeek.end))"
             let runnerLine = "Athlete: \(profile.name)"
-            contextBlock = "\(runnerLine)\nToday: \(todayDateStr) | \(weekRange)"
+            let dailyState = DailyTrainingStateStore.shared.resolveState(
+                runRecords: allRuns,
+                activeGoal: activeGoal,
+                experienceLevel: profile.experienceLevel,
+                useMetric: useMetric,
+                userHeightCm: profile.userHeightCm,
+                now: Date()
+            )
+            let todayPlan: String = {
+                if let session = dailyState.todaySession {
+                    if session.isRestDay {
+                        return "Rest Day"
+                    }
+                    return "\(session.sessionTitle) (\(session.totalDurationMinutes) min)"
+                }
+                return "Active Training"
+            }()
+            contextBlock = "\(runnerLine)\nToday: \(todayDateStr) (Plan: \(todayPlan)) | \(weekRange)"
         } else if let runRecord {
             let daysDiff = max(0, Calendar.current.dateComponents([.day], from: runRecord.date, to: Date()).day ?? 0)
             let runDateStr = df.string(from: runRecord.date)

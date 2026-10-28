@@ -1224,9 +1224,6 @@ struct RunDetailView: View {
             }
             UINotificationFeedbackGenerator().notificationOccurred(.success)
         }
-        .safeAreaInset(edge: .bottom) {
-            Color.clear.frame(height: 80)
-        }
         .background(Color(UIColor.systemGroupedBackground).ignoresSafeArea())
         .navigationTitle("Run Details")
         .navigationBarTitleDisplayMode(.inline)

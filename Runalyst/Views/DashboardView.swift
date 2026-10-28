@@ -903,9 +903,6 @@ struct DashboardView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical)
             }
-            .safeAreaInset(edge: .bottom) {
-                Color.clear.frame(height: 80)
-            }
             .navigationDestination(for: RunRecord.self) { runRecord in
                 RunDetailView(runRecord: runRecord)
             }
