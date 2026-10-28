@@ -31,7 +31,7 @@ struct AnalysisDashboardView: View {
                 .frame(maxWidth: horizontalSizeClass == .regular ? 880 : .infinity)
                 .frame(maxWidth: .infinity)
                 .padding(.top, 16)
-                .padding(.bottom, 100)
+                .padding(.bottom, 24)
             }
             .background(Color(UIColor.systemGroupedBackground).ignoresSafeArea())
             .navigationTitle("Analysis")

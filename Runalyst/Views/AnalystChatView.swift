@@ -652,9 +652,10 @@ struct AnalystChatView: View {
             rec.drillTitle.localizedCaseInsensitiveContains(drillId.title)
         }
         let template = DrillTemplate.template(for: drillId)
-        let fallbackCadence = runRecords.first.map { Int($0.workingAvgCadence) } ?? 155
-        let baseline = matchingRec?.previousCadence ?? ((runRecord.map { Int($0.workingAvgCadence) } ?? fallbackCadence) > 0 ? (runRecord.map { Int($0.workingAvgCadence) } ?? fallbackCadence) : 155)
-        let target = matchingRec?.targetCadence?.replacingOccurrences(of: " SPM", with: "") ?? template.calculateTargetCadence(baseline)
+        let state = DailyTrainingStateStore.shared.resolveState(runRecords: runRecords)
+        let baseline = matchingRec?.previousCadence ?? state.activeSession.athleteBaselineCadence ?? 160
+        let target = matchingRec?.targetCadence?.replacingOccurrences(of: " SPM", with: "")
+            ?? (drillId == state.activeSession.primerDrillId ? state.activeSession.primerTargetCadence : SessionSynthesisEngine.targetCadenceBand(for: drillId, state: state.activeSession.resolvedReadinessState, baseCadence: baseline))
         let cue = matchingRec?.drillCues ?? template.generateInstructionalCue(target)
 
         let resolvedTitle = drillId == .aerobicFlush ? "Zone 1 Recovery Flush" : (matchingRec?.formattedTitle ?? drillId.title)
@@ -665,12 +666,11 @@ struct AnalystChatView: View {
             purpose: matchingRec?.drillPurpose ?? template.defaultPurpose,
             targetCadence: target,
             previousCadence: baseline > 0 ? baseline : nil,
-            durationMinutes: drillId.defaultDuration.rawValue
+            durationMinutes: drillId.defaultDuration.rawValue,
+            readinessState: state.activeSession.resolvedReadinessState == .productive ? nil : state.activeSession.resolvedReadinessState.rawValue
         )
-        let readiness = ReadinessEvaluator.assess(runRecords: runRecords)
-        activeSheet = .readout(ActiveDrillReadoutItem.adaptive(
+        activeSheet = .readout(ActiveDrillReadoutItem.fromPrescription(
             dto: dto,
-            readiness: readiness,
             customCoachingTip: cue.isEmpty ? nil : cue
         ))
     }
@@ -687,7 +687,7 @@ struct AnalystChatView: View {
             preRunDrillId: session.primerDrillId.rawValue,
             purpose: session.groundedRationale,
             targetCadence: session.primerTargetCadence,
-            previousCadence: session.cadenceFloor,
+            previousCadence: session.athleteBaselineCadence ?? session.cadenceFloor,
             durationMinutes: session.primerDurationMinutes,
             hapticMode: "On",
             readinessState: state == .productive ? nil : state.rawValue,
@@ -707,7 +707,7 @@ struct AnalystChatView: View {
             preRunDrillId: mainDrillId.rawValue,
             purpose: session.groundedRationale,
             targetCadence: mainDrillId.isHeartRateTargeted ? nil : "\(session.cadenceFloor)-\(session.cadenceFloor + 6)",
-            previousCadence: session.cadenceFloor,
+            previousCadence: session.athleteBaselineCadence ?? session.cadenceFloor,
             durationMinutes: session.mainRunDurationMinutes,
             hapticMode: "On",
             readinessState: state == .productive ? nil : state.rawValue,
@@ -747,15 +747,25 @@ struct InlineChatDrillCard: View {
         if let working = effectiveRun?.workingAvgCadence, working > 0 {
             return Int(working)
         }
-        return 155
+        if let baseline = SessionSynthesisEngine.computeWeightedBaselineStats(from: runRecords, priorTo: Date())?.avgCadence, baseline > 0 {
+            return Int(baseline.rounded())
+        }
+        return 160
     }
 
     private var targetCadenceDisplay: String {
-        let template = DrillTemplate.template(for: drillId)
-        let rawTarget = matchingDrillRec?.targetCadence?.replacingOccurrences(of: " SPM", with: "") ?? template.calculateTargetCadence(baselineCadence)
-        let readiness = ReadinessEvaluator.assess(runRecords: runRecords)
-        let adapted = ReadinessModifier.adaptTarget(rawTarget, baselineCadence: baselineCadence, drillId: drillId, state: readiness.state)
-        return adapted.targetCadence ?? rawTarget
+        if let recTarget = matchingDrillRec?.targetCadence, !recTarget.isEmpty {
+            return recTarget.replacingOccurrences(of: " SPM", with: "")
+        }
+        let state = DailyTrainingStateStore.shared.resolveState(runRecords: runRecords)
+        if drillId == state.activeSession.primerDrillId {
+            return state.activeSession.primerTargetCadence.replacingOccurrences(of: " SPM", with: "")
+        }
+        return SessionSynthesisEngine.targetCadenceBand(
+            for: drillId,
+            state: state.activeSession.resolvedReadinessState,
+            baseCadence: baselineCadence
+        )
     }
 
     private var displayTitle: String {

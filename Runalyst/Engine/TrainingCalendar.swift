@@ -179,8 +179,10 @@ extension TrainingCalendar {
                 let hr = run.workingAvgHeartRate > 0 ? Int(run.workingAvgHeartRate) : (run.rawAvgHeartRate > 0 ? Int(run.rawAvgHeartRate) : nil)
                 let cad = run.workingAvgCadence > 0 ? Int(run.workingAvgCadence) : (run.rawAvgCadence > 0 ? Int(run.rawAvgCadence) : nil)
 
+                let workoutType = isPrimer ? (run.prescribedDrillName.map { "\($0) (Primer)" } ?? "\(run.normalizedClassification) (Primer)") : run.normalizedClassification
+
                 return CompletedWorkoutSummary(
-                    type: run.normalizedClassification,
+                    type: workoutType,
                     minutes: durMins,
                     distance: distFinal,
                     unit: unit,

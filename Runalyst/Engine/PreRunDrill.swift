@@ -118,6 +118,7 @@ struct PreRunDrill: Sendable {
             case .fiveMinutes: return IntervalSpec(iterations: 3, workSeconds: 20, recoverySeconds: 30, isWalk: true)
             case .tenMinutes: return IntervalSpec(iterations: 4, workSeconds: 30, recoverySeconds: 45, isWalk: true)
             case .fifteenMinutes: return IntervalSpec(iterations: 4, workSeconds: 60, recoverySeconds: 90, isWalk: true)
+            case .twentyMinutes: return IntervalSpec(iterations: 4, workSeconds: 90, recoverySeconds: 90, isWalk: true)
             case .thirtyMinutes, .thirtyFiveMinutes, .fortyMinutes, .fiftyMinutes: return IntervalSpec(iterations: 6, workSeconds: 90, recoverySeconds: 120, isWalk: true)
             }
         case .rhythmIntervals:
@@ -125,6 +126,7 @@ struct PreRunDrill: Sendable {
             case .fiveMinutes: return IntervalSpec(iterations: 3, workSeconds: 20, recoverySeconds: 30, isWalk: false)
             case .tenMinutes: return IntervalSpec(iterations: 4, workSeconds: 30, recoverySeconds: 45, isWalk: false)
             case .fifteenMinutes: return IntervalSpec(iterations: 5, workSeconds: 45, recoverySeconds: 75, isWalk: false)
+            case .twentyMinutes: return IntervalSpec(iterations: 6, workSeconds: 45, recoverySeconds: 75, isWalk: false)
             case .thirtyMinutes, .thirtyFiveMinutes, .fortyMinutes, .fiftyMinutes: return IntervalSpec(iterations: 6, workSeconds: 90, recoverySeconds: 120, isWalk: false)
             }
         case .tempoSurges:
@@ -132,6 +134,7 @@ struct PreRunDrill: Sendable {
             case .fiveMinutes: return IntervalSpec(iterations: 3, workSeconds: 30, recoverySeconds: 45, isWalk: true)
             case .tenMinutes: return IntervalSpec(iterations: 5, workSeconds: 30, recoverySeconds: 60, isWalk: true)
             case .fifteenMinutes: return IntervalSpec(iterations: 3, workSeconds: 120, recoverySeconds: 120, isWalk: true)
+            case .twentyMinutes: return IntervalSpec(iterations: 4, workSeconds: 90, recoverySeconds: 120, isWalk: true)
             case .thirtyMinutes, .thirtyFiveMinutes, .fortyMinutes, .fiftyMinutes: return IntervalSpec(iterations: 4, workSeconds: 180, recoverySeconds: 180, isWalk: true)
             }
         case .strides:
@@ -139,20 +142,21 @@ struct PreRunDrill: Sendable {
             case .fiveMinutes: return IntervalSpec(iterations: 4, workSeconds: 15, recoverySeconds: 45, isWalk: true)
             case .tenMinutes: return IntervalSpec(iterations: 4, workSeconds: 15, recoverySeconds: 45, isWalk: true)
             case .fifteenMinutes: return IntervalSpec(iterations: 6, workSeconds: 20, recoverySeconds: 60, isWalk: true)
-            case .thirtyMinutes, .thirtyFiveMinutes, .fortyMinutes, .fiftyMinutes: return IntervalSpec(iterations: 8, workSeconds: 30, recoverySeconds: 90, isWalk: true)
+            case .twentyMinutes, .thirtyMinutes, .thirtyFiveMinutes, .fortyMinutes, .fiftyMinutes: return IntervalSpec(iterations: 8, workSeconds: 30, recoverySeconds: 90, isWalk: true)
             }
         case .neuromuscularPrimer:
             switch duration {
             case .fiveMinutes: return IntervalSpec(iterations: 3, workSeconds: 15, recoverySeconds: 30, isWalk: true)
             case .tenMinutes: return IntervalSpec(iterations: 4, workSeconds: 20, recoverySeconds: 40, isWalk: true)
             case .fifteenMinutes: return IntervalSpec(iterations: 5, workSeconds: 30, recoverySeconds: 60, isWalk: true)
-            case .thirtyMinutes, .thirtyFiveMinutes, .fortyMinutes, .fiftyMinutes: return IntervalSpec(iterations: 6, workSeconds: 45, recoverySeconds: 90, isWalk: true)
+            case .twentyMinutes, .thirtyMinutes, .thirtyFiveMinutes, .fortyMinutes, .fiftyMinutes: return IntervalSpec(iterations: 6, workSeconds: 45, recoverySeconds: 90, isWalk: true)
             }
         case .fartlekPrimer:
             switch duration {
             case .fiveMinutes: return IntervalSpec(iterations: 3, workSeconds: 30, recoverySeconds: 30, isWalk: false)
             case .tenMinutes: return IntervalSpec(iterations: 4, workSeconds: 45, recoverySeconds: 45, isWalk: false)
             case .fifteenMinutes: return IntervalSpec(iterations: 5, workSeconds: 60, recoverySeconds: 60, isWalk: false)
+            case .twentyMinutes: return IntervalSpec(iterations: 6, workSeconds: 60, recoverySeconds: 60, isWalk: false)
             case .thirtyMinutes, .thirtyFiveMinutes, .fortyMinutes, .fiftyMinutes: return IntervalSpec(iterations: 6, workSeconds: 120, recoverySeconds: 120, isWalk: false)
             }
         case .hillBounds:
@@ -160,7 +164,7 @@ struct PreRunDrill: Sendable {
             case .fiveMinutes: return IntervalSpec(iterations: 3, workSeconds: 15, recoverySeconds: 30, isWalk: true)
             case .tenMinutes: return IntervalSpec(iterations: 4, workSeconds: 20, recoverySeconds: 40, isWalk: true)
             case .fifteenMinutes: return IntervalSpec(iterations: 5, workSeconds: 30, recoverySeconds: 60, isWalk: true)
-            case .thirtyMinutes, .thirtyFiveMinutes, .fortyMinutes, .fiftyMinutes: return IntervalSpec(iterations: 6, workSeconds: 45, recoverySeconds: 90, isWalk: true)
+            case .twentyMinutes, .thirtyMinutes, .thirtyFiveMinutes, .fortyMinutes, .fiftyMinutes: return IntervalSpec(iterations: 6, workSeconds: 45, recoverySeconds: 90, isWalk: true)
             }
         case .aerobicFlush, .recoveryJog:
             return IntervalSpec(iterations: 1, workSeconds: duration.rawValue * 60, recoverySeconds: nil, isWalk: false)

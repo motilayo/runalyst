@@ -84,62 +84,36 @@ struct RunnerProfile: Equatable, Sendable {
 
     /// Height-calibrated maximum normal vertical oscillation (e.g. 9.5 cm at 175 cm).
     var heightAdjustedMaxOscillationCM: Double {
-        9.5 * heightScaleFactor
+        SessionSynthesisCore.heightAdjustedMaxOscillation(heightCm: userHeightCm)
     }
 
-    /// Deterministically calculates athletic experience level from SwiftData run history.
-    /// Evaluates empirical 30-day volume, run frequency, lifetime workout counts, and endurance distance.
+    /// Deterministically calculates athletic experience level from SwiftData run history via RunalystCore.
     static func calculateExperienceLevel(from runRecords: [RunRecord], now: Date = Date()) -> String {
-        guard !runRecords.isEmpty else {
+        let activeRuns = runRecords.filter { !$0.isDeleted }
+        guard !activeRuns.isEmpty else {
             return "Novice / Beginner"
         }
 
-        let cal = Calendar.current
-        let thirtyDaysAgo = cal.date(byAdding: .day, value: -30, to: now) ?? now.addingTimeInterval(-30 * 24 * 3600)
-        let recentRuns = runRecords.filter { $0.date >= thirtyDaysAgo && $0.date <= now }
-
-        let totalRunsCount = runRecords.count
-        let totalDistanceMeters = recentRuns.reduce(0.0) { $0 + $1.totalDistanceMeters }
-        let totalDistanceKm = totalDistanceMeters / 1000.0
-        let weeks = 30.0 / 7.0
-        let weeklyAvgKm = totalDistanceKm / weeks
-
-        let uniqueDays = Set(recentRuns.map { cal.startOfDay(for: $0.date) })
-        let runsPerWeek = Double(uniqueDays.count) / weeks
-
-        let maxDistanceMeters = runRecords.map(\.totalDistanceMeters).max() ?? 0.0
-        let longestRunKm = maxDistanceMeters / 1000.0
-
-        let validPaces = runRecords.filter { $0.workingAvgPace > 0 && $0.totalDistanceMeters >= 1000.0 }.map(\.workingAvgPace)
+        let summary = MacroVolumeCore.evaluateVolumeSummary(
+            allRuns: activeRuns.map { $0.toVolumeRunSample() },
+            timeRange: "30 Days",
+            now: now,
+            calendar: Calendar.current
+        )
+        let longestRunKm = (activeRuns.map(\.totalDistanceMeters).max() ?? 0.0) / 1000.0
+        let validPaces = activeRuns.filter { $0.workingAvgPace > 0 && $0.totalDistanceMeters >= 1000.0 }.map(\.workingAvgPace)
         let fastestPaceSec = validPaces.min() ?? 360.0
 
-        // 1. Competitive / Elite
-        // High weekly volume (>= 60 km/wk with high frequency) OR strong volume (>= 45 km/wk) with elite speed (< 4:10/km / 250s) and long-distance base
-        if (weeklyAvgKm >= 60.0 && runsPerWeek >= 4.5 && longestRunKm >= 18.0) ||
-           (weeklyAvgKm >= 45.0 && fastestPaceSec <= 250.0 && longestRunKm >= 20.0) {
-            return "Competitive / Elite"
-        }
-
-        // 2. Advanced / Veteran
-        // Solid weekly volume (>= 32 km/wk / ~20 mi/wk) with >= 3.2 runs/wk, established history (>= 12 runs), and double-digit distance capacity (>= 12 km)
-        if (weeklyAvgKm >= 32.0 && runsPerWeek >= 3.2 && totalRunsCount >= 12 && longestRunKm >= 12.0) ||
-           (weeklyAvgKm >= 28.0 && longestRunKm >= 16.0 && totalRunsCount >= 15) {
-            return "Advanced / Veteran"
-        }
-
-        // 3. Intermediate / Enthusiast
-        // Habitual runner: at least 5 lifetime runs, weekly volume >= 10 km/wk, OR runs 2+ times/week with 5K+ endurance capacity
-        if (totalRunsCount >= 5 && longestRunKm >= 4.5 && (weeklyAvgKm >= 10.0 || runsPerWeek >= 1.8)) ||
-           (totalRunsCount >= 8 && longestRunKm >= 5.0) {
-            return "Intermediate / Enthusiast"
-        }
-
-        // 4. Novice / Beginner
-        // Cold start, low lifetime runs, sporadic frequency, or has not yet completed a 5K continuous run
-        return "Novice / Beginner"
+        return GoalBenchmarkCore.calculateExperienceLevel(
+            totalRunsCount: activeRuns.count,
+            weeklyAvgKm: summary.weeklyAverageKm,
+            runsPerWeek: summary.runsPerWeek,
+            longestRunKm: longestRunKm,
+            fastestPaceSec: fastestPaceSec
+        )
     }
 
-    /// Factory method computing 30-day volume, load metrics, and auto-adjusted experience level.
+    /// Factory method computing 30-day volume, load metrics, and auto-adjusted experience level via RunalystCore.
     static func compute(
         from runRecords: [RunRecord],
         trainingGoal: String? = nil,
@@ -163,24 +137,30 @@ struct RunnerProfile: Equatable, Sendable {
         let storedHeight = defaults.double(forKey: "userHeightCm")
         let height = userHeightCm ?? (storedHeight > 0 ? storedHeight : 175.0)
 
-        let cal = Calendar.current
-        let thirtyDaysAgo = cal.date(byAdding: .day, value: -30, to: now) ?? now.addingTimeInterval(-30 * 24 * 3600)
-        let recentRuns = runRecords.filter { $0.date >= thirtyDaysAgo && $0.date <= now }
+        let activeRuns = runRecords.filter { !$0.isDeleted }
+        let summary = MacroVolumeCore.evaluateVolumeSummary(
+            allRuns: activeRuns.map { $0.toVolumeRunSample() },
+            timeRange: "30 Days",
+            now: now,
+            calendar: Calendar.current
+        )
+        let totalDistanceKm = summary.totalDistanceMeters / 1000.0
+        let weeklyAvgKm = summary.weeklyAverageKm
+        let runsPerWeek = summary.runsPerWeek
 
-        let totalDistanceMeters = recentRuns.reduce(0.0) { $0 + $1.totalDistanceMeters }
-        let totalDistanceKm = totalDistanceMeters / 1000.0
-        let weeks = 30.0 / 7.0
-        let weeklyAvgKm = totalDistanceKm / weeks
-        let uniqueDays = Set(recentRuns.map { cal.startOfDay(for: $0.date) })
-        let runsPerWeek = Double(uniqueDays.count) / weeks
-
-        let maxDistanceMeters = runRecords.map(\.totalDistanceMeters).max() ?? 0.0
+        let maxDistanceMeters = activeRuns.map(\.totalDistanceMeters).max() ?? 0.0
         let longestRunKm = maxDistanceMeters / 1000.0
 
-        let validPaces = runRecords.filter { $0.workingAvgPace > 0 && $0.totalDistanceMeters >= 1000.0 }.map(\.workingAvgPace)
+        let validPaces = activeRuns.filter { $0.workingAvgPace > 0 && $0.totalDistanceMeters >= 1000.0 }.map(\.workingAvgPace)
         let fastestPaceSec = validPaces.min() ?? 360.0
 
-        let calculatedLevel = calculateExperienceLevel(from: runRecords, now: now)
+        let calculatedLevel = GoalBenchmarkCore.calculateExperienceLevel(
+            totalRunsCount: activeRuns.count,
+            weeklyAvgKm: weeklyAvgKm,
+            runsPerWeek: runsPerWeek,
+            longestRunKm: longestRunKm,
+            fastestPaceSec: fastestPaceSec
+        )
 
         let resolvedLevel: String
         let isAuto: Bool

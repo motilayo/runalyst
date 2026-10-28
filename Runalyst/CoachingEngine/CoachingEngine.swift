@@ -116,7 +116,7 @@ struct AggregateRunDataForAI: Sendable {
 @available(iOS 26.0, *)
 @Generable
 struct DashboardFatigueInsight {
-    @Guide(description: "Constrain strictly to a 2–4 word title capturing the primary coaching takeaway (e.g. 'Ready For Speed', 'Active Recovery Needed', 'On Track For Goal', 'Time To Step Up').")
+    @Guide(description: "Constrain strictly to a 2–4 word title capturing the primary coaching takeaway (e.g. 'Building Aerobic Base', 'Ready For Speed', 'Active Recovery Needed', 'On Track For Goal', 'Time To Step Up').")
     var headline: String
 
     @Guide(description: "Write 1 to 4 flowing, natural sentences in plain English like an experienced personal running coach speaking directly to the runner. Follow the directive and connect to their stated goal. Zero numbers.")
@@ -332,7 +332,7 @@ class CoachingEngine {
             - You are an experienced, trusted personal running coach speaking directly to the runner ("you").
             - Write in natural, flowing, plain English. Avoid robotic phrasing, dramatic metaphors, or philosophical lecturing.
             - Purpose: Gauge how close the runner is to their stated goal or how ready they are to chase it based on 30-day performance.
-            - Clearly tell the runner whether they are on track for their goal, need to step it up because they have more to give, or need to ease up because they are overworking and declining.
+            - Strictly align both the headline and body with the DIRECTIVE: if DIRECTIVE starts with TRAJECTORY_BUILDING_BASE, use a headline like 'Building Aerobic Base' and tell the runner they are in the base-building phase (never claim they are already on track for race volume); if TRAJECTORY_EASE_UP, tell them to ease up; if TRAJECTORY_EXCEEDING, commend their high capacity; if TRAJECTORY_ON_TRACK, tell them they are solidly on track.
             - Connect their 30-day consistency and efficiency directly to their stated goal.
             - strictly_follow_the_DIRECTIVE_for_tone_and_drill_selection.
             - Strict Length: exactly 1 to 4 flowing sentences.
@@ -382,13 +382,42 @@ class CoachingEngine {
             return insightContent
         } catch {
             logger.error("FoundationModels Generation Error: \(error.localizedDescription)")
-            let fallbackHeadline = (timeFrame == "7 Days") ? String(localized: "Ready for Next Run") : String(localized: "On Track for Goal")
-            let fallbackBody = (timeFrame == "7 Days")
-                ? String(localized: "Your recent runs show solid consistency. For your next run, focus on keeping your effort controlled and your turnover light.")
-                : String(localized: "Your 30-day training shows steady progression toward your goal. Keep building on this foundation with consistent weekly volume.")
+            return Self.fallbackDashboardInsight(for: timeFrame, directiveContext: runData.directiveContext)
+        }
+    }
+
+    static func fallbackDashboardInsight(for timeFrame: String, directiveContext: String) -> DashboardFatigueInsight {
+        if timeFrame == "7 Days" {
             return DashboardFatigueInsight(
-                headline: fallbackHeadline,
-                body: fallbackBody
+                headline: String(localized: "Ready for Next Run"),
+                body: String(localized: "Your recent runs show solid consistency. For your next run, focus on keeping your effort controlled and your turnover light.")
+            )
+        } else if timeFrame == "30 Days" {
+            if directiveContext.contains("TRAJECTORY_BUILDING_BASE") {
+                return DashboardFatigueInsight(
+                    headline: String(localized: "Building Aerobic Base"),
+                    body: String(localized: "Your aerobic efficiency is developing steadily, and you are in the base-building phase for your goal. Keep adding comfortable, conversational volume each week to close the mileage gap safely.")
+                )
+            } else if directiveContext.contains("TRAJECTORY_EASE_UP") {
+                return DashboardFatigueInsight(
+                    headline: String(localized: "Active Recovery Needed"),
+                    body: String(localized: "Your 30-day workload shows accumulating strain. Dial back intensity and prioritize easy recovery runs so your body can absorb your training.")
+                )
+            } else if directiveContext.contains("TRAJECTORY_EXCEEDING") {
+                return DashboardFatigueInsight(
+                    headline: String(localized: "High Volume Capacity"),
+                    body: String(localized: "Your 30-day volume exceeds the target band for your goal. Balance your high capacity with restorative recovery days.")
+                )
+            } else {
+                return DashboardFatigueInsight(
+                    headline: String(localized: "On Track for Goal"),
+                    body: String(localized: "Your 30-day training shows steady progression toward your goal. Keep building on this foundation with consistent weekly volume.")
+                )
+            }
+        } else {
+            return DashboardFatigueInsight(
+                headline: String(localized: "Lifetime Milestones"),
+                body: String(localized: "Review your lifetime volume, personal records, and progression trends below.")
             )
         }
     }
@@ -495,6 +524,22 @@ class CoachingEngine {
                 body: String(localized: "Your recent runs show solid consistency. For your next run, focus on keeping your effort controlled and your turnover light.")
             )
         } else if timeFrame == "30 Days" {
+            if runData.directiveContext.contains("TRAJECTORY_BUILDING_BASE") {
+                return DashboardFatigueInsight(
+                    headline: String(localized: "Building Aerobic Base"),
+                    body: String(localized: "Your aerobic efficiency is developing steadily, and you are in the base-building phase for your goal. Keep adding comfortable, conversational volume each week to close the mileage gap safely.")
+                )
+            } else if runData.directiveContext.contains("TRAJECTORY_EASE_UP") {
+                return DashboardFatigueInsight(
+                    headline: String(localized: "Active Recovery Needed"),
+                    body: String(localized: "Your 30-day workload shows accumulating strain. Dial back intensity and prioritize easy recovery runs so your body can absorb your training.")
+                )
+            } else if runData.directiveContext.contains("TRAJECTORY_EXCEEDING") {
+                return DashboardFatigueInsight(
+                    headline: String(localized: "High Volume Capacity"),
+                    body: String(localized: "Your 30-day volume exceeds the target band for your goal. Balance your high capacity with restorative recovery days.")
+                )
+            }
             return DashboardFatigueInsight(
                 headline: String(localized: "On Track for Goal"),
                 body: String(localized: "Your 30-day training shows steady progression toward your goal. Keep building on this foundation with consistent weekly volume.")

@@ -259,7 +259,8 @@ final class SessionSynthesisEngineTests: XCTestCase {
 
     @MainActor
     func testMicrocycleHorizon_BaseBuildingGoal_SynthesizesAerobicConsistencySchedule() {
-        let now = Date()
+        // Anchor to Sunday so the 5-day horizon spans Mon..Fri (including Tuesday's Easy Aerobic Base and Friday's Aerobic Consistency)
+        let now = Date(timeIntervalSince1970: 1_792_929_600)
         let microcycle = SessionSynthesisEngine.generateMicrocycle(
             activeGoal: "Base Building",
             now: now,

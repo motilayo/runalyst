@@ -720,4 +720,74 @@ final class AnalystChatEngineTests: XCTestCase {
         XCTAssertNil(analystMsg.attachedSession, "Asking about weekly mileage must never attach a session card")
         XCTAssertNil(analystMsg.attachedDrillId, "Asking about weekly mileage must never attach a drill card")
     }
+
+    func testPrimerWorkoutPreservesSpecificDrillNameInScheduleAndMatcher() {
+        let date = Date()
+        let primerRun = makeRunRecord(date: date, duration: 420, distanceMeters: 680, cadence: 165, heartRate: 140, type: "Intervals")
+        primerRun.framboiseTags = ["drill:Cadence Pyramids", "prescribedDrill"]
+
+        XCTAssertTrue(primerRun.isPrimerWorkout)
+        XCTAssertEqual(primerRun.prescribedDrillName, "Cadence Pyramids")
+
+        let telemetry = HistoricalRunMatcher.extractTelemetry(from: primerRun)
+        XCTAssertEqual(telemetry.classification, "Cadence Pyramids (Primer)", "HistoricalRunMatcher must export specific drill name with (Primer) suffix")
+
+        let cal = TrainingCalendar(calendar: Calendar.current, now: date)
+        let schedule = cal.evaluateSchedule(
+            from: cal.startOfDay(for: date),
+            to: cal.startOfDay(for: date),
+            context: ScheduleEvaluationContext(
+                runRecords: [primerRun],
+                activeGoal: "Base Building",
+                profile: RunnerProfile.compute(from: [primerRun]),
+                useMetric: true
+            )
+        )
+        guard let todaySchedule = schedule.first else {
+            XCTFail("Schedule missing today")
+            return
+        }
+        XCTAssertEqual(todaySchedule.completed.first?.type, "Cadence Pyramids (Primer)")
+    }
+
+    func testPrescribeDrillAttachesCardEvenWhenRunCompletedToday() async {
+        let date = Date()
+        let todayRun = makeRunRecord(date: date, duration: 2400, distanceMeters: 6000, type: "Easy Run")
+        let engine = AnalystChatEngine(runRecord: todayRun, mode: .macroCoach)
+
+        if #available(iOS 26.0, *) {
+            let result = await engine.executeCoachAction(query: ExecuteCoachActionQuery(action: .prescribeDrill, payload: "cadence_pyramids"))
+            XCTAssertTrue(result.contains("drill_prescribed"), "Prescribing a drill in chat must not be blocked when run is completed today")
+            XCTAssertEqual(engine.drillRecommendedThisTurn, .cadencePyramids, "Drill card must attach cleanly")
+        }
+    }
+
+    func testExecuteReadinessAndWorkloadQueryForModelOmitsUnderloadAndDailyVolumeSatisfied() {
+        let date = Date()
+        let todayRun = makeRunRecord(date: date, duration: 2400, distanceMeters: 6000, type: "Easy Run")
+        let engine = AnalystChatEngine(runRecord: todayRun, mode: .macroCoach)
+
+        if #available(iOS 26.0, *) {
+            let output = engine.executeReadinessAndWorkloadQueryForModel()
+            XCTAssertTrue(output.contains("ATHLETE PROFILE & PHYSIOLOGY:"), "Model tool telemetry must provide athlete profile facts")
+            XCTAssertTrue(output.contains("Height:"), "Model tool telemetry must provide height")
+            XCTAssertTrue(output.contains("Cadence Floor:"), "Model tool telemetry must provide height-adjusted cadence floor")
+            XCTAssertTrue(output.contains("READINESS & WORKLOAD TELEMETRY:"))
+            XCTAssertFalse(output.contains("underload"), "Model tool telemetry must never leak raw 'underload' token")
+            XCTAssertFalse(output.contains("daily_volume_satisfied"), "Model tool telemetry must never label completed run as limiting factor")
+        }
+    }
+
+    func testMacroInstructionsOmitStaticWorkoutStatusLine() {
+        if #available(iOS 26.0, *) {
+            let engine = AnalystChatEngine(modelContext: nil, runRecord: nil, mode: .macroCoach)
+            let instructions = engine.buildLeanSystemInstructions()
+
+            XCTAssertTrue(instructions.contains("Athlete:"), "Prompt must identify athlete name cleanly")
+            XCTAssertTrue(instructions.contains("Today:"), "Prompt must provide calendar date grounding")
+            XCTAssertFalse(instructions.contains("Status:"), "Prompt must omit static workout status to avoid broken record repetition")
+            XCTAssertFalse(instructions.contains("Talk effort, breath, recovery"), "Prompt must not force per-message effort/breath keywords")
+            XCTAssertTrue(instructions.count < 1200, "System instructions must stay under 1,200 chars")
+        }
+    }
 }

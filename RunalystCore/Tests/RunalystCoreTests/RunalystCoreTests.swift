@@ -154,3 +154,38 @@ struct TrainingZoneCoreTests {
         #expect(TrainingZoneCore.defaultPaceForExperience("Novice") == 400.0)
     }
 }
+
+@Suite("GoalBenchmarkCore Tests")
+struct GoalBenchmarkCoreTests {
+
+    @Test("Accurately evaluates volume status without premature onTrack classification")
+    func goalBenchmarkVolumeStatus() throws {
+        // 10K target is 25.0 to 42.0 km/wk
+        let underBenchmark = GoalBenchmarkCore.evaluate(
+            goal: "10K Race",
+            currentWeeklyKm: 20.3,
+            longestRunKm: 8.0,
+            userHeightCm: 175.0
+        )
+        #expect(underBenchmark.weeklyVolumeStatus == .building)
+        #expect(abs(underBenchmark.volumeGapKm - 4.7) < 0.001)
+
+        let onTrackBenchmark = GoalBenchmarkCore.evaluate(
+            goal: "10K Race",
+            currentWeeklyKm: 30.0,
+            longestRunKm: 12.0,
+            userHeightCm: 175.0
+        )
+        #expect(onTrackBenchmark.weeklyVolumeStatus == .onTrack)
+        #expect(onTrackBenchmark.volumeGapKm == 0.0)
+
+        let exceedingBenchmark = GoalBenchmarkCore.evaluate(
+            goal: "10K Race",
+            currentWeeklyKm: 45.0,
+            longestRunKm: 16.0,
+            userHeightCm: 175.0
+        )
+        #expect(exceedingBenchmark.weeklyVolumeStatus == .exceeding)
+        #expect(exceedingBenchmark.volumeGapKm == 0.0)
+    }
+}

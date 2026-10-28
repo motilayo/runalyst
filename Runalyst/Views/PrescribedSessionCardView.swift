@@ -295,7 +295,7 @@ struct PrescribedSessionCardView: View {
                 lockedDurationMinutes: session.primerDurationMinutes,
                 readinessState: session.resolvedReadinessState
             ),
-            baselineCadence: session.cadenceFloor,
+            baselineCadence: session.athleteBaselineCadence ?? session.cadenceFloor,
             onPreview: onPreviewPrimer
         )
     }
@@ -316,6 +316,7 @@ struct PrescribedSessionCardView: View {
                 categoryLabel: effectiveIsToday ? "MAIN RUN" : "\(headerDayText.uppercased()) MAIN RUN",
                 canChangeDuration: false,
                 lockedDuration: mainDuration,
+                lockedDurationMinutes: session.mainRunDurationMinutes,
                 customMetrics: [
                     DrillCardMetric(icon: "stopwatch.fill", title: "Duration", value: cleanMainRunDurationFormatted(session: session), color: .secondary),
                     DrillCardMetric(icon: paceIcon, title: paceTitle, value: session.paceBand, color: RunalystColor.pace),
@@ -323,7 +324,7 @@ struct PrescribedSessionCardView: View {
                     DrillCardMetric(icon: RunalystIcon.cadence, title: "Cadence", value: "≥ \(session.cadenceFloor) SPM", color: RunalystColor.cadence)
                 ]
             ),
-            baselineCadence: session.cadenceFloor,
+            baselineCadence: session.athleteBaselineCadence ?? session.cadenceFloor,
             onPreview: onPreviewMainRun
         )
     }

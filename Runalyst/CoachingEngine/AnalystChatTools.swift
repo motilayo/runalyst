@@ -673,6 +673,7 @@ public struct ReadinessFacts: Codable, Sendable, Equatable {
     public let athlete_age: Int?
     public let athlete_vo2max: Double?
     public let weekly_volume_km: Double?
+    public let this_week_km: Double?
     public let goal_target_weekly_km: String?
     public let goal_volume_status: String?
     public let goal_primary_stimulus: String?
@@ -701,6 +702,7 @@ public struct ReadinessFacts: Codable, Sendable, Equatable {
         athlete_age: Int? = nil,
         athlete_vo2max: Double? = nil,
         weekly_volume_km: Double? = nil,
+        this_week_km: Double? = nil,
         goal_target_weekly_km: String? = nil,
         goal_volume_status: String? = nil,
         goal_primary_stimulus: String? = nil
@@ -728,6 +730,7 @@ public struct ReadinessFacts: Codable, Sendable, Equatable {
         self.athlete_age = athlete_age
         self.athlete_vo2max = athlete_vo2max
         self.weekly_volume_km = weekly_volume_km
+        self.this_week_km = this_week_km
         self.goal_target_weekly_km = goal_target_weekly_km
         self.goal_volume_status = goal_volume_status
         self.goal_primary_stimulus = goal_primary_stimulus
@@ -780,7 +783,7 @@ public struct GetTrainingScheduleQuery: Sendable {
     @Guide(description: "Start of schedule window in ISO format 'yyyy-MM-dd' (e.g. '2026-10-20').")
     public var from: String
 
-    @Guide(description: "Optional end of schedule window in ISO format 'yyyy-MM-dd'. If omitted, defaults to 6 days after 'from' (a full 7-day microcycle).")
+    @Guide(description: "Optional end of schedule window in ISO format 'yyyy-MM-dd' (e.g. for 'rest of the week', use this week's Saturday end date from CONTEXT). If omitted, defaults to 6 days after 'from'.")
     public var to: String?
 
     public init(from: String, to: String? = nil) {
@@ -872,7 +875,7 @@ public struct GetReadinessAndWorkloadTool: Tool {
     public typealias Output = String
 
     public let name = "getReadinessAndWorkload"
-    public let description = "Queries current recovery, training load balance, and whether additional running is safe today."
+    public let description = "Queries athlete profile & physiology (height, experience, training goal, cadence floor), recovery readiness, training load balance, and today's training status."
 
     let provider: @MainActor @Sendable (GetReadinessAndWorkloadQuery) async -> String
 
