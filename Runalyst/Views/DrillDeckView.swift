@@ -104,26 +104,14 @@ struct DrillCardView: View {
 
     private var targetCadenceString: String {
         let template = DrillTemplate.template(for: resolvedPreRunId)
-        return drill.targetCadence?.replacingOccurrences(of: " SPM", with: "") ?? template.calculateTargetCadence(drill.previousCadence ?? 155)
-    }
-
-    private var readinessAssessment: ReadinessAssessment {
-        ReadinessEvaluator.assess(runRecords: runRecords)
+        return drill.targetCadence?.replacingOccurrences(of: " SPM", with: "") ?? template.calculateTargetCadence(drill.previousCadence ?? 160)
     }
 
     private var effectivePreRunDrill: PreRunDrill {
-        let readiness = readinessAssessment
-        let adapted = ReadinessModifier.adaptTarget(
-            targetCadenceString,
-            baselineCadence: drill.previousCadence,
-            drillId: resolvedPreRunId,
-            state: readiness.state
-        )
-        return PreRunDrill(
+        PreRunDrill(
             id: resolvedPreRunId,
             previousCadence: drill.previousCadence,
-            targetCadence: adapted.targetCadence,
-            readinessState: readiness.state
+            targetCadence: targetCadenceString
         )
     }
 
@@ -373,10 +361,8 @@ struct DrillCardView: View {
             previousCadence: drill.previousCadence,
             durationMinutes: currentDrill.duration.rawValue
         )
-        let readiness = ReadinessEvaluator.assess(runRecords: runRecords)
-        activeReadoutItem = ActiveDrillReadoutItem.adaptive(
+        activeReadoutItem = ActiveDrillReadoutItem.fromPrescription(
             dto: dto,
-            readiness: readiness,
             customCoachingTip: coachingCue
         )
     }

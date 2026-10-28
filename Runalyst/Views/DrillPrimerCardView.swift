@@ -124,7 +124,6 @@ struct DrillPrimerCardView: View {
         let template = DrillTemplate.template(for: drillId)
         let displayTitle = config.customTitle ?? template.title
         let purpose = config.customPurpose ?? template.defaultPurpose
-        let rawTarget: String? = baselineCadence.map { template.calculateTargetCadence($0) }
         let effectiveTargetCadence: String? = {
             if let customTarget = config.customTarget {
                 let clean = customTarget
@@ -133,12 +132,12 @@ struct DrillPrimerCardView: View {
                     .trimmingCharacters(in: .whitespaces)
                 return clean.isEmpty ? nil : clean
             }
-            guard let raw = rawTarget else { return nil }
-            if config.readinessState != .productive {
-                let adapted = ReadinessModifier.adaptTarget(raw, baselineCadence: baselineCadence, drillId: drillId, state: config.readinessState)
-                return adapted.targetCadence ?? raw
-            }
-            return raw
+            guard let baseline = baselineCadence else { return nil }
+            return SessionSynthesisEngine.targetCadenceBand(
+                for: drillId,
+                state: config.readinessState,
+                baseCadence: baseline
+            )
         }()
         let icon = drillId.iconName
         let iconColor = drillId.iconColor

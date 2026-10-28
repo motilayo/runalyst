@@ -204,14 +204,6 @@ struct DashboardView: View {
         RunnerProfile.compute(from: runRecords, trainingGoal: trainingGoal, now: Date())
     }
 
-    private var dashboardRecoveryTimeline: RecoveryTimeline {
-        let cutoff = Date().addingTimeInterval(-7 * 24 * 3600)
-        let recent = runRecords.filter { $0.date >= cutoff }
-        let snapshots = recent.map(ReadinessRunSnapshot.init(run:))
-        let readiness = ReadinessEvaluator.assess(runRecords: runRecords)
-        return RecoveryTimeline.build(runs: snapshots, readiness: readiness, now: Date())
-    }
-
     private var isTodayCompleted: Bool {
         let cal = Calendar.current
         let todayRuns = runRecords.filter { cal.isDateInToday($0.date) && !$0.isDeleted }

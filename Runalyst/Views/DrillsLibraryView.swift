@@ -14,6 +14,7 @@ struct DrillsLibraryView: View {
     @AppStorage("lastWatchExportTimestamp") private var lastWatchExportTimestamp: Double = 0
     @AppStorage("lastExportedDrillId") private var lastExportedDrillId: String = ""
     @AppStorage("preferredWorkoutIsIndoor") private var preferredWorkoutIsIndoor: Bool = false
+    @AppStorage("trainingGoal") private var trainingGoal: String = "Base Building"
 
     @State private var activeReadoutItem: ActiveDrillReadoutItem?
     @State private var isAutoSyncing: Bool = false
@@ -33,12 +34,19 @@ struct DrillsLibraryView: View {
         return filtered
     }
 
-    private var baselineCadence: Int? {
-        SessionSynthesisEngine.computeWeightedBaselineStats(from: runRecords, priorTo: Date()).map { Int($0.avgCadence.rounded()) }
+    private var dailyState: DailyTrainingState {
+        let profile = RunnerProfile.compute(from: runRecords, trainingGoal: trainingGoal)
+        return DailyTrainingStateStore.shared.resolveState(
+            runRecords: runRecords,
+            activeGoal: trainingGoal,
+            experienceLevel: profile.experienceLevel,
+            useMetric: useMetricSystem,
+            userHeightCm: profile.userHeightCm
+        )
     }
 
-    private var readinessAssessment: ReadinessAssessment {
-        ReadinessEvaluator.assess(runRecords: runRecords)
+    private var baselineCadence: Int? {
+        dailyState.activeSession.athleteBaselineCadence
     }
 
     @ViewBuilder
@@ -47,7 +55,7 @@ struct DrillsLibraryView: View {
             drillId: drillId,
             customTitle: title,
             customTarget: target,
-            readinessState: readinessAssessment.state,
+            readinessState: dailyState.activeSession.resolvedReadinessState,
             baselineCadence: baselineCadence,
             onStart: handleStartDrill
         )
