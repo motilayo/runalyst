@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		C3BB09AAFCF8C74A278194FC /* GoldenTemporalFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4CCF9393E14DB4E4B931D0C /* GoldenTemporalFixtures.swift */; };
+		A16E3E307FD4144851A65AB8 /* GoldenTemporalHarnessIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B281B3BC7FCFF84C1EBB336A /* GoldenTemporalHarnessIntegrationTests.swift */; };
 		E11100100D4E5F60718293B1 /* Runalyst/Views/ActivityVolumeSummaryCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11100100D4E5F60718293B1 /* Runalyst/Views/ActivityVolumeSummaryCard.swift */; };
 		D4E5F60718293A0100000003 /* RunalystCore in Frameworks */ = {isa = PBXBuildFile; productRef = D4E5F60718293A0100000002 /* RunalystCore */; };
 		D4E5F60718293A0100000004 /* RunalystCore in Frameworks */ = {isa = PBXBuildFile; productRef = D4E5F60718293A0100000002 /* RunalystCore */; };
@@ -158,6 +160,8 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		D4CCF9393E14DB4E4B931D0C /* GoldenTemporalFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoldenTemporalFixtures.swift; sourceTree = "<group>"; };
+		B281B3BC7FCFF84C1EBB336A /* GoldenTemporalHarnessIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoldenTemporalHarnessIntegrationTests.swift; sourceTree = "<group>"; };
 		F11100100D4E5F60718293B1 /* Runalyst/Views/ActivityVolumeSummaryCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/ActivityVolumeSummaryCard.swift; sourceTree = SOURCE_ROOT; };
 		00D99981A310B02F2B8044D6 /* PaceFormatterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaceFormatterTests.swift; sourceTree = "<group>"; };
 		0FC0868FA1D2D6FB2E59A10C /* DrillRecommendation.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DrillRecommendation.swift; path = Runalyst/Models/DrillRecommendation.swift; sourceTree = "<group>"; };
@@ -349,6 +353,8 @@
 				9294B637FD5B743BF44A3DA5 /* PrescribedDrillRecognitionTests.swift */,
 				5319F7CFFB69E39F2B52D9D0 /* DrillPatternRecognitionTests.swift */,
 				76A1B2C3D4E5F60718293A46 /* ProgressionAndTemporalScopingTests.swift */,
+				D4CCF9393E14DB4E4B931D0C /* GoldenTemporalFixtures.swift */,
+				B281B3BC7FCFF84C1EBB336A /* GoldenTemporalHarnessIntegrationTests.swift */,
 				82A1B2C3D4E5F60718293A72 /* WorkoutTelemetryFixture.swift */,
 				84A1B2C3D4E5F60718293A74 /* GoldenTelemetryFixtures.swift */,
 				86A1B2C3D4E5F60718293A76 /* TelemetryNoiseInjector.swift */,
@@ -794,6 +800,8 @@
 				E46F03B7BDFFEF9966F9EE5F /* LiveCoachDTOCodableTests.swift in Sources */,
 				0B18257CB15134E50E06CFC5 /* PaceFormatterTests.swift in Sources */,
 				75A1B2C3D4E5F60718293A45 /* ProgressionAndTemporalScopingTests.swift in Sources */,
+				C3BB09AAFCF8C74A278194FC /* GoldenTemporalFixtures.swift in Sources */,
+				A16E3E307FD4144851A65AB8 /* GoldenTemporalHarnessIntegrationTests.swift in Sources */,
 				81A1B2C3D4E5F60718293A71 /* WorkoutTelemetryFixture.swift in Sources */,
 				83A1B2C3D4E5F60718293A73 /* GoldenTelemetryFixtures.swift in Sources */,
 				85A1B2C3D4E5F60718293A75 /* TelemetryNoiseInjector.swift in Sources */,
