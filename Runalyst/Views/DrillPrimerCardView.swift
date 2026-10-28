@@ -84,6 +84,7 @@ struct DrillPrimerCardView: View {
         drillId: PreRunDrillId,
         customTitle: String? = nil,
         customTarget: String? = nil,
+        readinessState: ReadinessState = .productive,
         baselineCadence: Int? = nil,
         onStart: ((WorkoutPlan, DrillPrescriptionDTO) -> Void)? = nil
     ) {
@@ -91,7 +92,8 @@ struct DrillPrimerCardView: View {
         self.config = DrillCardConfig(
             customTitle: customTitle,
             customTarget: customTarget,
-            canChangeDuration: true
+            canChangeDuration: true,
+            readinessState: readinessState
         )
         self.baselineCadence = baselineCadence
         self.onPreview = nil
@@ -122,7 +124,22 @@ struct DrillPrimerCardView: View {
         let template = DrillTemplate.template(for: drillId)
         let displayTitle = config.customTitle ?? template.title
         let purpose = config.customPurpose ?? template.defaultPurpose
-        let targetCadence: String? = baselineCadence.map { template.calculateTargetCadence($0) }
+        let rawTarget: String? = baselineCadence.map { template.calculateTargetCadence($0) }
+        let effectiveTargetCadence: String? = {
+            if let customTarget = config.customTarget {
+                let clean = customTarget
+                    .replacingOccurrences(of: " SPM", with: "")
+                    .replacingOccurrences(of: " (Adapted)", with: "")
+                    .trimmingCharacters(in: .whitespaces)
+                return clean.isEmpty ? nil : clean
+            }
+            guard let raw = rawTarget else { return nil }
+            if config.readinessState != .productive {
+                let adapted = ReadinessModifier.adaptTarget(raw, baselineCadence: baselineCadence, drillId: drillId, state: config.readinessState)
+                return adapted.targetCadence ?? raw
+            }
+            return raw
+        }()
         let icon = drillId.iconName
         let iconColor = drillId.iconColor
 
@@ -135,8 +152,8 @@ struct DrillPrimerCardView: View {
             if isZone1 { return "Zone 1 HR" }
             if isZone2 { return "Zone 2 HR" }
             if hasCadenceTarget {
-                if let target = targetCadence {
-                    return "\(target) SPM"
+                if let target = effectiveTargetCadence {
+                    return target.contains("SPM") ? target : "\(target) SPM"
                 } else {
                     return "Dynamic"
                 }
@@ -147,7 +164,7 @@ struct DrillPrimerCardView: View {
         let previewDrill = PreRunDrill(
             id: drillId,
             previousCadence: baselineCadence,
-            targetCadence: targetCadence,
+            targetCadence: effectiveTargetCadence,
             duration: effectiveDuration,
             hapticMode: selectedHapticMode,
             readinessState: config.readinessState,
@@ -194,7 +211,7 @@ struct DrillPrimerCardView: View {
                     if let onPreview {
                         onPreview()
                     } else {
-                        startDrill(title: displayTitle, purpose: purpose, targetCadence: targetCadence)
+                        startDrill(title: displayTitle, purpose: purpose, targetCadence: effectiveTargetCadence)
                     }
                 } label: {
                     HStack(spacing: 4) {
@@ -280,7 +297,7 @@ struct DrillPrimerCardView: View {
                         drillMetricCell(
                             icon: RunalystIcon.cadence,
                             title: "Cadence",
-                            value: drillId == .zone2Run ? (targetCadence.map { "\($0) SPM" } ?? "≥ 156 SPM") : "Relaxed",
+                            value: drillId == .zone2Run ? (effectiveTargetCadence.map { "\($0) SPM" } ?? "≥ 156 SPM") : "Relaxed",
                             color: drillId == .zone2Run ? RunalystColor.cadence : Color.secondary
                         )
                     } else {
@@ -356,12 +373,14 @@ struct DrillPrimerCardView: View {
     }
 
     private func startDrill(title: String, purpose: String, targetCadence: String?) {
+        let state = config.readinessState
         let drill = PreRunDrill(
             id: drillId,
             previousCadence: baselineCadence,
             targetCadence: targetCadence,
             duration: effectiveDuration,
             hapticMode: selectedHapticMode,
+            readinessState: state,
             isIndoor: preferredWorkoutIsIndoor
         )
         let plan = drill.buildWorkoutPlan()
@@ -373,6 +392,7 @@ struct DrillPrimerCardView: View {
             previousCadence: baselineCadence,
             durationMinutes: effectiveDuration.rawValue,
             hapticMode: selectedHapticMode.rawValue,
+            readinessState: state == .productive ? nil : state.rawValue,
             isIndoor: preferredWorkoutIsIndoor
         )
         onStart?(plan, dto)

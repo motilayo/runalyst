@@ -295,7 +295,7 @@ struct PrescribedSessionCardView: View {
                 lockedDurationMinutes: session.primerDurationMinutes,
                 readinessState: session.resolvedReadinessState
             ),
-            baselineCadence: session.cadenceFloor,
+            baselineCadence: session.athleteBaselineCadence ?? session.cadenceFloor,
             onPreview: onPreviewPrimer
         )
     }
@@ -324,7 +324,7 @@ struct PrescribedSessionCardView: View {
                     DrillCardMetric(icon: RunalystIcon.cadence, title: "Cadence", value: "≥ \(session.cadenceFloor) SPM", color: RunalystColor.cadence)
                 ]
             ),
-            baselineCadence: session.cadenceFloor,
+            baselineCadence: session.athleteBaselineCadence ?? session.cadenceFloor,
             onPreview: onPreviewMainRun
         )
     }

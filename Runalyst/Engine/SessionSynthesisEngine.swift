@@ -88,6 +88,7 @@ struct PrescribedDailySession: Sendable, Equatable {
     var dayLabel: String?
     var isToday: Bool = false
     var readinessState: ReadinessState = .productive
+    var athleteBaselineCadence: Int?
 
     /// Total planned duration for the entire workout (Primer + Main Run).
     var totalDurationMinutes: Int {
@@ -127,7 +128,8 @@ struct PrescribedDailySession: Sendable, Equatable {
         isRestDay: Bool? = nil,
         dayLabel: String? = nil,
         isToday: Bool = false,
-        readinessState: ReadinessState = .productive
+        readinessState: ReadinessState = .productive,
+        athleteBaselineCadence: Int? = nil
     ) {
         self.targetGoal = targetGoal
         self.sessionTitle = sessionTitle
@@ -179,6 +181,7 @@ struct PrescribedDailySession: Sendable, Equatable {
         self.dayLabel = dayLabel
         self.isToday = isToday
         self.readinessState = readinessState
+        self.athleteBaselineCadence = athleteBaselineCadence
     }
 
     /// Resolves the canonical readiness state deterministically from explicit state or status text.
@@ -534,7 +537,8 @@ enum SessionSynthesisEngine {
                 intent: .fullRest,
                 dayLabel: "Today",
                 isToday: true,
-                readinessState: .acuteFatigue
+                readinessState: .acuteFatigue,
+                athleteBaselineCadence: baseCadence
             )
         }
 
@@ -778,7 +782,8 @@ enum SessionSynthesisEngine {
             intent: todayIntent,
             dayLabel: "Today",
             isToday: true,
-            readinessState: resolvedTodayReadiness
+            readinessState: resolvedTodayReadiness,
+            athleteBaselineCadence: baseCadence
         )
     }
 
@@ -885,7 +890,8 @@ enum SessionSynthesisEngine {
                 intent: .fullRest,
                 dayLabel: tomorrowWeekday,
                 isToday: false,
-                readinessState: .acuteFatigue
+                readinessState: .acuteFatigue,
+                athleteBaselineCadence: baseCadence
             )
         }
 
@@ -1004,7 +1010,8 @@ enum SessionSynthesisEngine {
             intent: tomorrowIntent,
             dayLabel: tomorrowWeekday,
             isToday: false,
-            readinessState: wasHardSession ? .acuteFatigue : .productive
+            readinessState: wasHardSession ? .acuteFatigue : .productive,
+            athleteBaselineCadence: baseCadence
         )
     }
 

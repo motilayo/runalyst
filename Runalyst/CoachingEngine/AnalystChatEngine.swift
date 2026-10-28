@@ -938,26 +938,33 @@ class AnalystChatEngine: ObservableObject {
             let resolved = PreRunDrillId.resolve(from: query.payload ?? "") ?? .strides
             self.drillRecommendedThisTurn = resolved
             harmonizeAttachments()
-            return "{\"drill_id\":\"\(resolved.rawValue)\",\"drill_name\":\"\(resolved.title)\",\"timing\":\"Pre-Run Neuromuscular Primer (perform before your main run or standalone while legs are fresh)\",\"status\":\"drill_prescribed\",\"message\":\"The \(resolved.title) technique primer is attached to your recommendation.\"}"
+            let template = DrillTemplate.template(for: resolved)
+            let baselineCadence = SessionSynthesisEngine.computeWeightedBaselineStats(from: allRuns, priorTo: Date()).map { Int($0.avgCadence.rounded()) }
+            let baseCadence = Int(self.runRecord?.workingAvgCadence ?? 0) > 0 ? Int(self.runRecord?.workingAvgCadence ?? 0) : (baselineCadence ?? 160)
+            let readiness = ReadinessEvaluator.assess(runRecords: allRuns)
+            let targetBand = SessionSynthesisEngine.targetCadenceBand(for: resolved, state: readiness.state, baseCadence: baseCadence)
+            return "{\"drill_id\":\"\(resolved.rawValue)\",\"drill_name\":\"\(resolved.title)\",\"target_cadence\":\"\(targetBand) SPM\",\"baseline_cadence\":\"\(baseCadence) SPM\",\"purpose\":\"\(template.defaultPurpose)\",\"duration\":\"\(resolved.defaultDuration.title)\",\"status\":\"drill_prescribed\"}"
 
         case .exportToWatch:
             let resolved = PreRunDrillId.resolve(from: query.payload ?? "") ?? .strides
             let template = DrillTemplate.template(for: resolved)
             let baselineCadence = SessionSynthesisEngine.computeWeightedBaselineStats(from: allRuns, priorTo: Date()).map { Int($0.avgCadence.rounded()) }
-            let baseCadence = Int(self.runRecord?.workingAvgCadence ?? 0) > 0 ? Int(self.runRecord?.workingAvgCadence ?? 0) : (baselineCadence ?? 155)
-            let target = template.calculateTargetCadence(baseCadence)
+            let baseCadence = Int(self.runRecord?.workingAvgCadence ?? 0) > 0 ? Int(self.runRecord?.workingAvgCadence ?? 0) : (baselineCadence ?? 160)
+            let readiness = ReadinessEvaluator.assess(runRecords: allRuns)
+            let target = SessionSynthesisEngine.targetCadenceBand(for: resolved, state: readiness.state, baseCadence: baseCadence)
             let dto = DrillPrescriptionDTO(
                 title: template.title,
                 preRunDrillId: resolved.rawValue,
                 purpose: template.defaultPurpose,
                 targetCadence: target,
-                previousCadence: baseCadence
+                previousCadence: baseCadence,
+                readinessState: readiness.state == .productive ? nil : readiness.state.rawValue
             )
             Task {
                 let bridge = WorkoutBridge()
                 try? await bridge.scheduleDrill(dto: dto)
             }
-            return "{\"drill_id\":\"\(resolved.rawValue)\",\"status\":\"exported_to_watch\"}"
+            return "{\"drill_id\":\"\(resolved.rawValue)\",\"target_cadence\":\"\(target) SPM\",\"status\":\"exported_to_watch\"}"
 
         case .updateGoal:
             let newGoal: String
@@ -992,7 +999,20 @@ class AnalystChatEngine: ObservableObject {
             let asset = CoachingAssetLibrary.resolve(key: rawKey) ?? CoachingAssetLibrary.defaultAsset(for: rawKey)
             self.explainerRecommendedThisTurn = asset.key
             harmonizeAttachments()
-            return "{\"explainer_key\":\"\(asset.key)\",\"title\":\"\(asset.title)\",\"status\":\"metric_explained\",\"message\":\"The \(asset.title) diagnostic explainer is attached.\"}"
+            var fields = [
+                "\"explainer_key\":\"\(asset.key)\"",
+                "\"title\":\"\(asset.title)\"",
+                "\"definition\":\"\(asset.compactSummary)\"",
+                "\"overview\":\"\(asset.overview)\"",
+                "\"status\":\"metric_explained\""
+            ]
+            if let why = asset.whyItMatters {
+                fields.append("\"why_it_matters\":\"\(why)\"")
+            }
+            if let target = asset.targetRange {
+                fields.append("\"target_range\":\"\(target)\"")
+            }
+            return "{\(fields.joined(separator: ","))}"
 
         case .recordFeedback:
             let feedback = query.payload ?? ""

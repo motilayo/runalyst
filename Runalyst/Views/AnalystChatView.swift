@@ -652,8 +652,8 @@ struct AnalystChatView: View {
             rec.drillTitle.localizedCaseInsensitiveContains(drillId.title)
         }
         let template = DrillTemplate.template(for: drillId)
-        let fallbackCadence = runRecords.first.map { Int($0.workingAvgCadence) } ?? 155
-        let baseline = matchingRec?.previousCadence ?? ((runRecord.map { Int($0.workingAvgCadence) } ?? fallbackCadence) > 0 ? (runRecord.map { Int($0.workingAvgCadence) } ?? fallbackCadence) : 155)
+        let canonicalBaseline = SessionSynthesisEngine.computeWeightedBaselineStats(from: runRecords, priorTo: Date()).map { Int($0.avgCadence.rounded()) } ?? 160
+        let baseline = matchingRec?.previousCadence ?? ((runRecord.map { Int($0.workingAvgCadence) } ?? canonicalBaseline) > 0 ? (runRecord.map { Int($0.workingAvgCadence) } ?? canonicalBaseline) : canonicalBaseline)
         let target = matchingRec?.targetCadence?.replacingOccurrences(of: " SPM", with: "") ?? template.calculateTargetCadence(baseline)
         let cue = matchingRec?.drillCues ?? template.generateInstructionalCue(target)
 
@@ -687,7 +687,7 @@ struct AnalystChatView: View {
             preRunDrillId: session.primerDrillId.rawValue,
             purpose: session.groundedRationale,
             targetCadence: session.primerTargetCadence,
-            previousCadence: session.cadenceFloor,
+            previousCadence: session.athleteBaselineCadence ?? session.cadenceFloor,
             durationMinutes: session.primerDurationMinutes,
             hapticMode: "On",
             readinessState: state == .productive ? nil : state.rawValue,
@@ -707,7 +707,7 @@ struct AnalystChatView: View {
             preRunDrillId: mainDrillId.rawValue,
             purpose: session.groundedRationale,
             targetCadence: mainDrillId.isHeartRateTargeted ? nil : "\(session.cadenceFloor)-\(session.cadenceFloor + 6)",
-            previousCadence: session.cadenceFloor,
+            previousCadence: session.athleteBaselineCadence ?? session.cadenceFloor,
             durationMinutes: session.mainRunDurationMinutes,
             hapticMode: "On",
             readinessState: state == .productive ? nil : state.rawValue,
@@ -747,7 +747,10 @@ struct InlineChatDrillCard: View {
         if let working = effectiveRun?.workingAvgCadence, working > 0 {
             return Int(working)
         }
-        return 155
+        if let baseline = SessionSynthesisEngine.computeWeightedBaselineStats(from: runRecords, priorTo: Date())?.avgCadence, baseline > 0 {
+            return Int(baseline.rounded())
+        }
+        return 160
     }
 
     private var targetCadenceDisplay: String {
