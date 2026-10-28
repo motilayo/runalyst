@@ -388,7 +388,7 @@ class AnalystChatEngine: ObservableObject {
         let toolsBlock = toolLines.joined(separator: "\n")
 
         return """
-        Runalyst running coach. Converse naturally with the runner in 1–3 sentences—we do the calculations, you do the presentation.
+        Runalyst running coach. Converse directly in 1–3 sentences.
 
         CONTEXT:
         \(contextBlock)\(recentContextBlock)
@@ -397,9 +397,10 @@ class AnalystChatEngine: ObservableObject {
         \(toolsBlock)
 
         RULES:
-        • Role: Runalyst running coach talking with athlete. Answer questions directly in 1–3 sentences.
+        • Directness: Answer in 1–3 sentences. Never end with canned follow-up questions.
         • Workload: Trust 'workload_zone' and load balance. Light load means fresh legs; do not diagnose overload.
-        • Medical Safety: Urge rest on pain or fatigue. No unasked 2nd runs today; do not contradict tomorrow's planned run.
+        • Volume: 'this_week_km' is this week's km; 'weekly_volume_km' is 30d avg. If streak is 0, omit streak.
+        • Medical Safety: Urge rest on pain or fatigue. No unasked 2nd runs today.
         • Outside Running: Units: SPM, min/km (no LaTeX). Sidestep non-running topics.
         • Silent Tools: Never write command names. Stop cleanly.
 
@@ -747,6 +748,9 @@ class AnalystChatEngine: ObservableObject {
         }
 
         let benchmark = profile.goalBenchmark
+        let snapshot = WorkoutSnapshotEngine.shared.resolveSnapshot(runs: allRuns)
+        let thisWeekKm = (snapshot.thisWeek.totalDistanceKm * 10.0).rounded() / 10.0
+
         let facts = ReadinessFacts(
             readiness_state: self.currentReadiness.state.rawValue,
             acwr: acwrVal,
@@ -771,6 +775,7 @@ class AnalystChatEngine: ObservableObject {
             athlete_age: profile.age,
             athlete_vo2max: profile.vo2Max,
             weekly_volume_km: profile.weeklyAverageKm,
+            this_week_km: thisWeekKm,
             goal_target_weekly_km: "\(Int(benchmark.targetWeeklyKmMin))–\(Int(benchmark.targetWeeklyKmMax)) km",
             goal_volume_status: benchmark.weeklyVolumeStatus.displayText,
             goal_primary_stimulus: benchmark.primaryStimulus
@@ -877,9 +882,12 @@ class AnalystChatEngine: ObservableObject {
         }
 
         let streakDesc = streakSummary.consecutiveRunDays == 0
-            ? "0-day streak (well-rested, legs ready)"
+            ? "No active streak (well-rested, legs ready)"
             : "\(streakSummary.consecutiveRunDays) consecutive running \(streakSummary.consecutiveRunDays == 1 ? "day" : "days")"
         let loadDesc = "Recent 48-Hour Work: \(Int(round(streakSummary.last48hDurationMinutes))) min logged (\(streakDesc))"
+
+        let snapshot = WorkoutSnapshotEngine.shared.resolveSnapshot(runs: allRuns)
+        let thisWeekKm = (snapshot.thisWeek.totalDistanceKm * 10.0).rounded() / 10.0
 
         lines.append("")
         lines.append("READINESS & WORKLOAD TELEMETRY:")
@@ -887,7 +895,8 @@ class AnalystChatEngine: ObservableObject {
         lines.append("• 28-Day Load Balance: \(loadBalanceDescription)")
         lines.append("• Today's Work: \(todayStatusDesc)")
         lines.append("• \(loadDesc)")
-        lines.append("• Weekly Mileage: \(String(format: "%.1f", profile.weeklyAverageKm)) km/wk (Target: \(Int(benchmark.targetWeeklyKmMin))–\(Int(benchmark.targetWeeklyKmMax)) km/wk, Status: \(volumeStatusDesc))")
+        lines.append("• This Week's Mileage: \(String(format: "%.1f", thisWeekKm)) km")
+        lines.append("• 30-Day Average Volume: \(String(format: "%.1f", profile.weeklyAverageKm)) km/wk (Target: \(Int(benchmark.targetWeeklyKmMin))–\(Int(benchmark.targetWeeklyKmMax)) km/wk, Status: \(volumeStatusDesc))")
         lines.append("• Primary Stimulus: \(benchmark.primaryStimulus)")
 
         if streakSummary.shouldRecommendRestDay || streakSummary.consecutiveRunDays >= streakSummary.maxConsecutiveDays {
