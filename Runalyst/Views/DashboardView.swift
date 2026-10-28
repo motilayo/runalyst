@@ -156,7 +156,7 @@ struct DashboardView: View {
     private var filterControlsSection: some View {
         HStack(spacing: 10) {
             Picker("Time Range", selection: $timeRange) {
-                Text("7 Days").tag("7 Days")
+                Text("This Week").tag("7 Days")
                 Text("30 Days").tag("30 Days")
             }
             .pickerStyle(.segmented)

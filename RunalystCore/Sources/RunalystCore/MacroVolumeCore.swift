@@ -197,21 +197,28 @@ public enum MacroVolumeCore {
         now: Date,
         calendar: Calendar
     ) -> MacroVolumeSummary {
-        let sevenDaysAgo = calendar.date(byAdding: .day, value: -7, to: now) ?? now.addingTimeInterval(-7 * 86400)
-        let fourteenDaysAgo = calendar.date(byAdding: .day, value: -14, to: now) ?? now.addingTimeInterval(-14 * 86400)
-        let twentyOneDaysAgo = calendar.date(byAdding: .day, value: -21, to: now) ?? now.addingTimeInterval(-21 * 86400)
         let thirtyDaysAgo = calendar.date(byAdding: .day, value: -30, to: now) ?? now.addingTimeInterval(-30 * 86400)
         let sixtyDaysAgo = calendar.date(byAdding: .day, value: -60, to: now) ?? now.addingTimeInterval(-60 * 86400)
 
+        // 30-Day 4-Week Progression Buckets (discrete calendar weeks from TemporalSnapshotCore)
+        let snapshot = TemporalSnapshotCore.evaluateSnapshot(runs: allRuns, now: now, calendar: calendar)
+
+        let thisWeekRuns = allRuns.filter {
+            let epoch = $0.date.timeIntervalSince1970
+            return epoch >= snapshot.thisWeek.startEpoch && epoch < snapshot.thisWeek.endEpoch && $0.date <= now
+        }
+        let lastWeekRuns = allRuns.filter {
+            let epoch = $0.date.timeIntervalSince1970
+            return epoch >= snapshot.lastWeek.startEpoch && epoch < snapshot.lastWeek.endEpoch
+        }
         let runs30d = allRuns.filter { $0.date >= thirtyDaysAgo && $0.date <= now }
-        let runs7d = allRuns.filter { $0.date >= sevenDaysAgo && $0.date <= now }
 
         let activeWindowRuns: [VolumeRunSample]
         let previousWindowRuns: [VolumeRunSample]
         switch timeRange {
         case "7 Days":
-            activeWindowRuns = runs7d
-            previousWindowRuns = allRuns.filter { $0.date >= fourteenDaysAgo && $0.date < sevenDaysAgo }
+            activeWindowRuns = thisWeekRuns
+            previousWindowRuns = lastWeekRuns
         case "30 Days":
             activeWindowRuns = runs30d
             previousWindowRuns = allRuns.filter { $0.date >= sixtyDaysAgo && $0.date < thirtyDaysAgo }
@@ -231,8 +238,8 @@ public enum MacroVolumeCore {
         let unique30dDays = Set(runs30d.map { calendar.startOfDay(for: $0.date) })
         let runsPerWeek = Double(unique30dDays.count) / weeksIn30d
 
-        // 7-Day Daily Rhythm Buckets (strictly partitions runs7d so sum(days) == runs7d total)
-        let todayStart = calendar.startOfDay(for: now)
+        // 7-Day Daily Rhythm Buckets (discrete calendar week from thisWeek.startEpoch to keep sum(days) == thisWeek total)
+        let thisWeekStartDate = Date(timeIntervalSince1970: snapshot.thisWeek.startEpoch)
         let letterFormatter = DateFormatter()
         letterFormatter.calendar = calendar
         letterFormatter.dateFormat = "EEEEE"
@@ -243,32 +250,24 @@ public enum MacroVolumeCore {
         numberFormatter.dateFormat = "d"
         numberFormatter.locale = Locale(identifier: "en_US_POSIX")
 
-        let dayOffsets = [6, 5, 4, 3, 2, 1, 0]
-        let trailing7Days: [DayVolumeBucket] = dayOffsets.map { daysAgo in
-            let dayDate = calendar.date(byAdding: .day, value: -daysAgo, to: todayStart) ?? todayStart
+        let dayOffsets = [0, 1, 2, 3, 4, 5, 6]
+        let trailing7Days: [DayVolumeBucket] = dayOffsets.map { dayIndex in
+            let dayDate = calendar.date(byAdding: .day, value: dayIndex, to: thisWeekStartDate) ?? thisWeekStartDate
             let nextDayStart = calendar.date(byAdding: .day, value: 1, to: dayDate) ?? dayDate.addingTimeInterval(86400)
-            let dayRuns: [VolumeRunSample]
-            if daysAgo == 6 {
-                dayRuns = runs7d.filter { $0.date < nextDayStart }
-            } else if daysAgo == 0 {
-                dayRuns = runs7d.filter { $0.date >= dayDate }
-            } else {
-                dayRuns = runs7d.filter { $0.date >= dayDate && $0.date < nextDayStart }
-            }
+            let dayRuns = thisWeekRuns.filter { $0.date >= dayDate && $0.date < nextDayStart }
             let dist = dayRuns.reduce(0.0) { $0 + $1.totalDistanceMeters }
+            let isToday = calendar.isDate(dayDate, inSameDayAs: now)
             return DayVolumeBucket(
-                id: "day-\(daysAgo)",
+                id: "day-\(dayIndex)",
                 date: dayDate,
                 dayLetter: letterFormatter.string(from: dayDate),
                 dayNumber: numberFormatter.string(from: dayDate),
                 distanceMeters: dist,
-                isToday: daysAgo == 0,
+                isToday: isToday,
                 hasRun: !dayRuns.isEmpty
             )
         }
 
-        // 30-Day 4-Week Progression Buckets (discrete calendar weeks from TemporalSnapshotCore)
-        let snapshot = TemporalSnapshotCore.evaluateSnapshot(runs: allRuns, now: now, calendar: calendar)
         let trailing4Weeks: [WeekVolumeBucket] = [
             WeekVolumeBucket(
                 id: "w3",

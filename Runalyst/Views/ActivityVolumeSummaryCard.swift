@@ -120,7 +120,7 @@ struct ActivityVolumeSummaryCard: View {
                     Image(systemName: "figure.run")
                         .foregroundColor(.blue)
                         .font(.subheadline.bold())
-                    Text("TRAINING VOLUME • \(timeRange.uppercased())")
+                    Text(timeRange == "7 Days" ? "TRAINING VOLUME • THIS WEEK" : "TRAINING VOLUME • 30 DAYS")
                         .font(.caption.bold())
                         .foregroundColor(.blue)
                 }
@@ -142,7 +142,7 @@ struct ActivityVolumeSummaryCard: View {
             }
 
             // Primary Big Stat Row: Total Distance & Duration & Active Days
-            HStack(alignment: .firstTextBaseline, spacing: 18) {
+            HStack(alignment: .center, spacing: 18) {
                 // Distance Block
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
                     Text(formattedTotalDistance.value)

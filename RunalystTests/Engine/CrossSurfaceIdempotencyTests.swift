@@ -458,7 +458,7 @@ final class CrossSurfaceIdempotencyTests: XCTestCase {
         let snapshot = WorkoutSnapshotEngine.shared.resolveSnapshot(runs: runs, now: now, calendar: cal)
 
         XCTAssertEqual(volumeSummary30d.trailing4Weeks.last?.distanceMeters ?? 0.0, snapshot.thisWeek.totalDistanceMeters, accuracy: 0.01, "This Wk bar in 30-Day mode must strictly match the discrete calendar week snapshot")
-        XCTAssertEqual(volumeSummary7d.totalDistanceMeters, snapshot.trailing7Days.totalDistanceMeters, accuracy: 0.01, "7-Day volume must strictly match trailing 7 days rolling window")
+        XCTAssertEqual(volumeSummary7d.totalDistanceMeters, snapshot.thisWeek.totalDistanceMeters, accuracy: 0.01, "Weekly volume must strictly match thisWeek calendar snapshot")
         XCTAssertEqual(volumeSummary30d.weeklyAverageKm, profile.weeklyAverageKm, accuracy: 0.01, "Volume summary weekly average must strictly match RunnerProfile weeklyAverageKm")
 
         // 4. Goal Readiness Card Surface Verification (SSOT)

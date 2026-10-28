@@ -17,6 +17,7 @@ public struct CalendarWeekSlice: Sendable, Codable, Equatable, Identifiable {
     public let totalDistanceMeters: Double
     public let totalDurationSeconds: Double
     public let workoutCount: Int
+    public let activeDaysCount: Int
     public let dimensionalPaceSecPerKm: Double?
     public let durationWeightedCadence: Double?
     public let durationWeightedHeartRate: Double?
@@ -34,6 +35,7 @@ public struct CalendarWeekSlice: Sendable, Codable, Equatable, Identifiable {
         totalDistanceMeters: Double,
         totalDurationSeconds: Double,
         workoutCount: Int,
+        activeDaysCount: Int = 0,
         dimensionalPaceSecPerKm: Double?,
         durationWeightedCadence: Double?,
         durationWeightedHeartRate: Double?,
@@ -46,6 +48,7 @@ public struct CalendarWeekSlice: Sendable, Codable, Equatable, Identifiable {
         self.totalDistanceMeters = totalDistanceMeters
         self.totalDurationSeconds = totalDurationSeconds
         self.workoutCount = workoutCount
+        self.activeDaysCount = activeDaysCount
         self.dimensionalPaceSecPerKm = dimensionalPaceSecPerKm
         self.durationWeightedCadence = durationWeightedCadence
         self.durationWeightedHeartRate = durationWeightedHeartRate
@@ -61,6 +64,7 @@ public struct CalendarWeekSlice: Sendable, Codable, Equatable, Identifiable {
             totalDistanceMeters: 0,
             totalDurationSeconds: 0,
             workoutCount: 0,
+            activeDaysCount: 0,
             dimensionalPaceSecPerKm: nil,
             durationWeightedCadence: nil,
             durationWeightedHeartRate: nil,
@@ -210,28 +214,32 @@ public enum TemporalSnapshotCore {
             label: "This Wk",
             runs: runs,
             start: thisWeekStart,
-            end: nextWeekStart
+            end: nextWeekStart,
+            calendar: calendar
         )
         let w1Slice = buildWeekSlice(
             id: "w1",
             label: "Last Wk",
             runs: runs,
             start: lastWeekStart,
-            end: thisWeekStart
+            end: thisWeekStart,
+            calendar: calendar
         )
         let w2Slice = buildWeekSlice(
             id: "w2",
             label: "2W Ago",
             runs: runs,
             start: twoWeeksAgoStart,
-            end: lastWeekStart
+            end: lastWeekStart,
+            calendar: calendar
         )
         let w3Slice = buildWeekSlice(
             id: "w3",
             label: "3W Ago",
             runs: runs,
             start: threeWeeksAgoStart,
-            end: twoWeeksAgoStart
+            end: twoWeeksAgoStart,
+            calendar: calendar
         )
         let calendarWeeks = [w0Slice, w1Slice, w2Slice, w3Slice]
 
@@ -281,11 +289,14 @@ public enum TemporalSnapshotCore {
         label: String,
         runs: [VolumeRunSample],
         start: Date,
-        end: Date
+        end: Date,
+        calendar: Calendar
     ) -> CalendarWeekSlice {
         let matching = runs.filter { $0.date >= start && $0.date < end }
         let totalDist = matching.reduce(0.0) { $0 + $1.totalDistanceMeters }
         let totalDuration = matching.reduce(0.0) { $0 + $1.durationSeconds }
+        let uniqueDays = Set(matching.map { calendar.startOfDay(for: $0.date) })
+        let activeDays = uniqueDays.count
 
         // Dimensional Average Pace: Duration / Distance
         let pace: Double? = (totalDist > 0 && totalDuration > 0)
@@ -315,6 +326,7 @@ public enum TemporalSnapshotCore {
             totalDistanceMeters: totalDist,
             totalDurationSeconds: totalDuration,
             workoutCount: matching.count,
+            activeDaysCount: activeDays,
             dimensionalPaceSecPerKm: pace,
             durationWeightedCadence: weightedCadence,
             durationWeightedHeartRate: weightedHR,
