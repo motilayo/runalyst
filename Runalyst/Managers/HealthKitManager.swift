@@ -1077,6 +1077,10 @@ class HealthKitManager: ObservableObject {
         record.framboiseTags = mergedTags
 
         try context.save()
+        await MainActor.run {
+            WorkoutSnapshotEngine.shared.invalidate()
+            DailyTrainingStateStore.shared.invalidate()
+        }
     }
 
     private func fetchAverage(for workout: HKWorkout, type: HKQuantityType, unit: HKUnit) async throws -> Double {
