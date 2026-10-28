@@ -142,50 +142,64 @@ struct ActivityVolumeSummaryCard: View {
             }
 
             // Primary Big Stat Row: Total Distance & Duration & Active Days
-            HStack(alignment: .center, spacing: 18) {
+            HStack(alignment: .top, spacing: 0) {
                 // Distance Block
-                HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    Text(formattedTotalDistance.value)
-                        .font(.system(size: 32, weight: .bold, design: .rounded))
-                        .monospacedDigit()
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.75)
-                        .foregroundColor(.primary)
-                    Text(formattedTotalDistance.unit)
-                        .font(.subheadline.bold())
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("DISTANCE")
+                        .font(.caption2.bold())
                         .foregroundColor(.secondary)
+                    HStack(alignment: .firstTextBaseline, spacing: 3) {
+                        Text(formattedTotalDistance.value)
+                            .font(.system(size: 24, weight: .bold, design: .rounded))
+                            .monospacedDigit()
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
+                            .foregroundColor(.primary)
+                        Text(formattedTotalDistance.unit)
+                            .font(.subheadline.bold())
+                            .foregroundColor(.secondary)
+                    }
                 }
-                .fixedSize(horizontal: true, vertical: false)
+                .frame(maxWidth: .infinity, alignment: .leading)
 
                 Divider()
-                    .frame(height: 28)
+                    .frame(height: 32)
+                    .padding(.horizontal, 8)
 
                 // Time Block
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text("TIME")
                         .font(.caption2.bold())
                         .foregroundColor(.secondary)
                     Text(formattedTotalDuration)
-                        .font(.system(size: 16, weight: .bold, design: .rounded))
+                        .font(.system(size: 24, weight: .bold, design: .rounded))
                         .monospacedDigit()
                         .foregroundColor(.primary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
 
                 Divider()
-                    .frame(height: 28)
+                    .frame(height: 32)
+                    .padding(.horizontal, 8)
 
                 // Active Days Block
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text("ACTIVE")
                         .font(.caption2.bold())
                         .foregroundColor(.secondary)
-                    Text("\(activeDaysCount) \(activeDaysCount == 1 ? "day" : "days")")
-                        .font(.system(size: 16, weight: .bold, design: .rounded))
-                        .monospacedDigit()
-                        .foregroundColor(.primary)
+                    HStack(alignment: .firstTextBaseline, spacing: 3) {
+                        Text("\(activeDaysCount)")
+                            .font(.system(size: 24, weight: .bold, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundColor(.primary)
+                        Text(activeDaysCount == 1 ? "day" : "days")
+                            .font(.subheadline.bold())
+                            .foregroundColor(.secondary)
+                    }
                 }
-
-                Spacer()
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             Divider()
