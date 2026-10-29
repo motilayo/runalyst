@@ -6,8 +6,10 @@ import shutil
 RAW_IPHONE = "/tmp/raw_iphone_tour.mp4"
 RAW_IPAD = "/tmp/raw_ipad_tour.mp4"
 
-PREVIEWS_DIR = "/Users/motilayo/workspace/runalyzer/Media/AppStorePreviews"
-WEBSITE_VIDEO = "/Users/motilayo/workspace/runalyzer/website/assets/videos/app_tour_web.mp4"
+REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
+
+PREVIEWS_DIR = os.path.join(REPO_ROOT, "Media/AppStorePreviews")
+WEBSITE_VIDEO = os.path.join(REPO_ROOT, "website/assets/videos/app_tour_web.mp4")
 
 IPHONE_START = "00:00:03.900"
 IPAD_START = "00:00:03.800"

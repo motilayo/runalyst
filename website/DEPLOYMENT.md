@@ -31,7 +31,7 @@ Add the following DNS records at your domain registrar:
 
 ### Dashboard Setup
 1. In Cloudflare Dashboard, go to **Workers & Pages** &rarr; **Create application** &rarr; **Pages** &rarr; **Connect to Git**.
-2. Select the `runalyzer` repository.
+2. Select the `runalyst` repository.
 3. Configure build settings:
    - **Framework preset**: None
    - **Build command**: *(leave blank)*

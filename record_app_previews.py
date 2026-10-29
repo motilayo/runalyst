@@ -6,7 +6,8 @@ import signal
 IPHONE_ID = "A59BB117-5AD3-4BEF-959A-95B526E29F06"
 IPAD_ID = "F37FD237-165F-4849-8A85-2E4817486EC5"
 BUNDLE_ID = "com.runalyzer.Runalyzer"
-PREVIEWS_DIR = "/Users/motilayo/workspace/runalyzer/Media/AppStorePreviews"
+REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
+PREVIEWS_DIR = os.path.join(REPO_ROOT, "Media/AppStorePreviews")
 os.makedirs(PREVIEWS_DIR, exist_ok=True)
 
 RAW_IPHONE = "/tmp/raw_iphone_tour.mp4"

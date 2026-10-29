@@ -1,10 +1,12 @@
 import os
 from PIL import Image, ImageDraw, ImageFont
 
-OUTPUT_DIR_2048 = "/Users/motilayo/workspace/runalyzer/Media/Screenshots/iPad_2048x2732"
-OUTPUT_DIR_2064 = "/Users/motilayo/workspace/runalyzer/Media/Screenshots/iPad_2064x2752"
-OUTPUT_DIR_2732 = "/Users/motilayo/workspace/runalyzer/Media/Screenshots/iPad_2732x2048"
-OUTPUT_DIR_2752 = "/Users/motilayo/workspace/runalyzer/Media/Screenshots/iPad_2752x2064"
+REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
+
+OUTPUT_DIR_2048 = os.path.join(REPO_ROOT, "Media/Screenshots/iPad_2048x2732")
+OUTPUT_DIR_2064 = os.path.join(REPO_ROOT, "Media/Screenshots/iPad_2064x2752")
+OUTPUT_DIR_2732 = os.path.join(REPO_ROOT, "Media/Screenshots/iPad_2732x2048")
+OUTPUT_DIR_2752 = os.path.join(REPO_ROOT, "Media/Screenshots/iPad_2752x2064")
 
 os.makedirs(OUTPUT_DIR_2048, exist_ok=True)
 os.makedirs(OUTPUT_DIR_2064, exist_ok=True)

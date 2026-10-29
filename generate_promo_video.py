@@ -1,7 +1,8 @@
 import os, math, subprocess, shutil
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
-OUTPUT_DIR = "/Users/motilayo/workspace/runalyzer/Media/PromoVideo"
+REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
+OUTPUT_DIR = os.path.join(REPO_ROOT, "Media/PromoVideo")
 TEMP_FRAMES_DIR = os.path.join(OUTPUT_DIR, "temp_frames")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 if os.path.exists(TEMP_FRAMES_DIR):
@@ -27,10 +28,10 @@ def get_font(size, bold=True):
 
 # Preload rendered cards
 card_files = [
-    "/Users/motilayo/workspace/runalyzer/Media/Screenshots/AppStore/01_Intelligent_Biometrics.png",
-    "/Users/motilayo/workspace/runalyzer/Media/Screenshots/AppStore/02_AI_Coaching.png",
-    "/Users/motilayo/workspace/runalyzer/Media/Screenshots/AppStore/03_Targeted_Drills.png",
-    "/Users/motilayo/workspace/runalyzer/Media/Screenshots/AppStore/06_Longitudinal_Progression.png",
+    os.path.join(REPO_ROOT, "Media/Screenshots/AppStore/01_Intelligent_Biometrics.png"),
+    os.path.join(REPO_ROOT, "Media/Screenshots/AppStore/02_AI_Coaching.png"),
+    os.path.join(REPO_ROOT, "Media/Screenshots/AppStore/03_Targeted_Drills.png"),
+    os.path.join(REPO_ROOT, "Media/Screenshots/AppStore/06_Longitudinal_Progression.png"),
 ]
 loaded_cards = [Image.open(f).convert("RGBA") for f in card_files]
 
@@ -252,7 +253,8 @@ subprocess.run(cmd_horiz, check=True)
 print(f"Created landscape promo video: {video_landscape}")
 
 shutil.rmtree(TEMP_FRAMES_DIR)
-web_landscape = "/Users/motilayo/workspace/runalyzer/website/assets/videos/promo_landscape.mp4"
+web_landscape = os.path.join(REPO_ROOT, "website/assets/videos/promo_landscape.mp4")
+os.makedirs(os.path.dirname(web_landscape), exist_ok=True)
 shutil.copyfile(video_landscape, web_landscape)
 print(f"Copied landscape promo video to {web_landscape}")
 print("Complete!")

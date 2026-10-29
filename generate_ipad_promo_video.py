@@ -1,7 +1,8 @@
 import os, math, subprocess, shutil
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
-OUTPUT_DIR = "/Users/motilayo/workspace/runalyzer/Media/PromoVideo"
+REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
+OUTPUT_DIR = os.path.join(REPO_ROOT, "Media/PromoVideo")
 TEMP_FRAMES_DIR = os.path.join(OUTPUT_DIR, "temp_ipad_frames")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 if os.path.exists(TEMP_FRAMES_DIR):
@@ -24,11 +25,11 @@ def get_font(size, bold=True):
         return ImageFont.load_default()
 
 card_files = [
-    "/Users/motilayo/workspace/runalyzer/Media/Screenshots/iPad_2048x2732/01_Intelligent_Biometrics.png",
-    "/Users/motilayo/workspace/runalyzer/Media/Screenshots/iPad_2048x2732/02_AI_Coaching.png",
-    "/Users/motilayo/workspace/runalyzer/Media/Screenshots/iPad_2048x2732/03_Targeted_Drills.png",
-    "/Users/motilayo/workspace/runalyzer/Media/Screenshots/iPad_2048x2732/04_Biomechanical_Analysis.png",
-    "/Users/motilayo/workspace/runalyzer/Media/Screenshots/iPad_2048x2732/06_Longitudinal_Progression.png",
+    os.path.join(REPO_ROOT, "Media/Screenshots/iPad_2048x2732/01_Intelligent_Biometrics.png"),
+    os.path.join(REPO_ROOT, "Media/Screenshots/iPad_2048x2732/02_AI_Coaching.png"),
+    os.path.join(REPO_ROOT, "Media/Screenshots/iPad_2048x2732/03_Targeted_Drills.png"),
+    os.path.join(REPO_ROOT, "Media/Screenshots/iPad_2048x2732/04_Biomechanical_Analysis.png"),
+    os.path.join(REPO_ROOT, "Media/Screenshots/iPad_2048x2732/06_Longitudinal_Progression.png"),
 ]
 loaded_cards = [Image.open(f).convert("RGBA") for f in card_files]
 
