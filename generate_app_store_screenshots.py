@@ -1,15 +1,17 @@
 import os
 from PIL import Image, ImageDraw, ImageFont
 
-OUTPUT_DIR_PORTRAIT_2778 = "/Users/motilayo/workspace/runalyzer/Media/Screenshots/AppStore"
-OUTPUT_DIR_PORTRAIT_2688 = "/Users/motilayo/workspace/runalyzer/Media/Screenshots/AppStore_1242x2688"
-OUTPUT_DIR_LANDSCAPE_2778 = "/Users/motilayo/workspace/runalyzer/Media/Screenshots/AppStore_2778x1284"
-OUTPUT_DIR_LANDSCAPE_2688 = "/Users/motilayo/workspace/runalyzer/Media/Screenshots/AppStore_2688x1242"
-OUTPUT_DIR_DUO_OUTER_PORTRAIT = "/Users/motilayo/workspace/runalyzer/Media/Screenshots/iPhoneDuo_Outer_1398x2034"
-OUTPUT_DIR_DUO_OUTER_LANDSCAPE = "/Users/motilayo/workspace/runalyzer/Media/Screenshots/iPhoneDuo_Outer_2034x1398"
-OUTPUT_DIR_DUO_INNER_PORTRAIT = "/Users/motilayo/workspace/runalyzer/Media/Screenshots/iPhoneDuo_Inner_2007x2853"
-OUTPUT_DIR_DUO_INNER_LANDSCAPE = "/Users/motilayo/workspace/runalyzer/Media/Screenshots/iPhoneDuo_Inner_2853x2007"
-WEB_DIR = "/Users/motilayo/workspace/runalyzer/website/assets/images"
+REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
+
+OUTPUT_DIR_PORTRAIT_2778 = os.path.join(REPO_ROOT, "Media/Screenshots/AppStore")
+OUTPUT_DIR_PORTRAIT_2688 = os.path.join(REPO_ROOT, "Media/Screenshots/AppStore_1242x2688")
+OUTPUT_DIR_LANDSCAPE_2778 = os.path.join(REPO_ROOT, "Media/Screenshots/AppStore_2778x1284")
+OUTPUT_DIR_LANDSCAPE_2688 = os.path.join(REPO_ROOT, "Media/Screenshots/AppStore_2688x1242")
+OUTPUT_DIR_DUO_OUTER_PORTRAIT = os.path.join(REPO_ROOT, "Media/Screenshots/iPhoneDuo_Outer_1398x2034")
+OUTPUT_DIR_DUO_OUTER_LANDSCAPE = os.path.join(REPO_ROOT, "Media/Screenshots/iPhoneDuo_Outer_2034x1398")
+OUTPUT_DIR_DUO_INNER_PORTRAIT = os.path.join(REPO_ROOT, "Media/Screenshots/iPhoneDuo_Inner_2007x2853")
+OUTPUT_DIR_DUO_INNER_LANDSCAPE = os.path.join(REPO_ROOT, "Media/Screenshots/iPhoneDuo_Inner_2853x2007")
+WEB_DIR = os.path.join(REPO_ROOT, "website/assets/images")
 
 os.makedirs(OUTPUT_DIR_PORTRAIT_2778, exist_ok=True)
 os.makedirs(OUTPUT_DIR_PORTRAIT_2688, exist_ok=True)
@@ -189,43 +191,43 @@ cards = [
     {
         "title": "Intelligent Running Biometrics",
         "subtitle": "Live cadence deltas & 30-day relative baselines",
-        "screenshot": "/Users/motilayo/workspace/runalyzer/Media/Screenshots/iPhone_Raw/screen_dashboard.png",
+        "screenshot": os.path.join(REPO_ROOT, "Media/Screenshots/iPhone_Raw/screen_dashboard.png"),
         "output": "01_Intelligent_Biometrics.png",
     },
     {
         "title": "On-Device AI Coaching",
         "subtitle": "Apple FoundationModels guidance tailored to fatigue",
-        "screenshot": "/Users/motilayo/workspace/runalyzer/Media/Screenshots/iPhone_Raw/screen_run_detail.png",
+        "screenshot": os.path.join(REPO_ROOT, "Media/Screenshots/iPhone_Raw/screen_run_detail.png"),
         "output": "02_AI_Coaching.png",
     },
     {
         "title": "Targeted Form Drills",
         "subtitle": "Structured phase breakdown & Apple Watch export",
-        "screenshot": "/Users/motilayo/workspace/runalyzer/Media/Screenshots/iPhone_Raw/screen_drill_readout.png",
+        "screenshot": os.path.join(REPO_ROOT, "Media/Screenshots/iPhone_Raw/screen_drill_readout.png"),
         "output": "03_Targeted_Drills.png",
     },
     {
         "title": "Biomechanical Form Analysis",
         "subtitle": "Vertical bounce, ground contact time & overstride alerts",
-        "screenshot": "/Users/motilayo/workspace/runalyzer/Media/Screenshots/iPhone_Raw/screen_biomechanics.png",
+        "screenshot": os.path.join(REPO_ROOT, "Media/Screenshots/iPhone_Raw/screen_biomechanics.png"),
         "output": "04_Biomechanical_Analysis.png",
     },
     {
         "title": "Structured Runs & Primers",
         "subtitle": "Daily workout prescriptions & pre-run primers for Watch",
-        "screenshot": "/Users/motilayo/workspace/runalyzer/Media/Screenshots/iPhone_Raw/screen_drills.png",
+        "screenshot": os.path.join(REPO_ROOT, "Media/Screenshots/iPhone_Raw/screen_drills.png"),
         "output": "05_PreRun_Library.png",
     },
     {
         "title": "Longitudinal Progression",
         "subtitle": "Track efficiency factor gains and cadence over time",
-        "screenshot": "/Users/motilayo/workspace/runalyzer/Media/Screenshots/iPhone_Raw/screen_progression.png",
+        "screenshot": os.path.join(REPO_ROOT, "Media/Screenshots/iPhone_Raw/screen_progression.png"),
         "output": "06_Longitudinal_Progression.png",
     },
     {
         "title": "100% Private & HealthKit-Native",
         "subtitle": "Zero cloud tracking. Seamless Apple Watch sync.",
-        "screenshot": "/Users/motilayo/workspace/runalyzer/Media/Screenshots/iPhone_Raw/screen_settings.png",
+        "screenshot": os.path.join(REPO_ROOT, "Media/Screenshots/iPhone_Raw/screen_settings.png"),
         "output": "07_HealthKit_Privacy.png",
     }
 ]

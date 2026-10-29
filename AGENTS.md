@@ -3,7 +3,7 @@
 This `AGENTS.md` file acts as the primary repository of architectural context, technical rules, and best practices for developing and maintaining the Runalyst iOS application. It is primarily intended for AI assistants, but serves as useful documentation for human developers.
 
 > [!IMPORTANT]
-> **The Runalyst Product & Architecture Blueprint**: All feature development and UI/UX design must adhere to the product manifesto enshrined in [docs/BLUEPRINT.md](file:///Users/motilayo/workspace/runalyzer/docs/BLUEPRINT.md), synthesizing Aarron Walter's Hierarchy of Needs, the "Thick Client, Thin AI" architectural doctrine, and Apple-centric "Sweaty Hands" User-Centered Design.
+> **The Runalyst Product & Architecture Blueprint**: All feature development and UI/UX design must adhere to the product manifesto enshrined in [docs/BLUEPRINT.md](file:///Users/motilayo/workspace/runalyst/docs/BLUEPRINT.md), synthesizing Aarron Walter's Hierarchy of Needs, the "Thick Client, Thin AI" architectural doctrine, and Apple-centric "Sweaty Hands" User-Centered Design.
 
 ## Critical Workflow, Tooling & Formatting Rules (Read First)
 
