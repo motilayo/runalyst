@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Unified canonical prescribed session card shared across WorkoutsView and AnalystChatView.
+/// Unified canonical prescribed session card shared across WorkoutsView and detail surfaces.
 /// Renders Pre-Run Primer + Main Run, or Rest & Structural Recovery with optional override.
 struct PrescribedSessionCardView: View {
     let session: PrescribedDailySession

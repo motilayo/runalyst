@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Reusable upcoming weekly training schedule card shared across WorkoutsView and AnalystChatView.
+/// Reusable upcoming weekly training schedule card shared across WorkoutsView and detail surfaces.
 /// Provides high-scannability color-coded workout categories, distinct SF symbols, and clean telemetry badges.
 struct UpcomingScheduleCardView: View {
     let microcycle: [MicrocycleDay]

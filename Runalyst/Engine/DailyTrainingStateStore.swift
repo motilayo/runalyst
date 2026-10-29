@@ -3,7 +3,7 @@ import SwiftData
 import RunalystCore
 
 /// Thread-safe snapshot container holding the immutable `DailyTrainingState` for the active day.
-/// Prevents cross-surface calculation drift between `DashboardView`, `WorkoutsView`, and `AnalystChatTools`.
+/// Prevents cross-surface calculation drift between `DashboardView` and `WorkoutsView`.
 @MainActor
 final class DailyTrainingStateStore {
     static let shared = DailyTrainingStateStore()
