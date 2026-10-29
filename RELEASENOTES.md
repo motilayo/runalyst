@@ -1,46 +1,44 @@
-# Runalyst v2.6.0 — Adaptive Periodization, Biomechanical Synthesis & Training UI Polish 🏃‍♂️🎯
+# Runalyst v2.7.0 — Assay-Driven Core Architecture, Apple HIG Polish & Telemetry Veracity 🏃‍♂️💎
 
-Runalyst 2.6.0 delivers a major architectural upgrade to the daily session prescription and training composability engine (`SessionSynthesisEngine`), implementing periodized 80/20 polarized guardrails, physical pendulum cadence normalization, experience-scaled duration bands, closed-loop biomechanical primers, and Apple-grade "Sweaty Hands" UI refinements.
+Runalyst 2.7.0 delivers a foundational transformation of the biomechanical engine and app experience: extracting the sports science logic into the strictly air-gapped `RunalystCore` package via the Assay-Driven Architecture, achieving complete Apple Human Interface Guidelines (HIG) compliance with the Liquid Glass design system, hardening workout telemetry veracity across indoor and outdoor modalities, and introducing date-addressable training horizons with synchronized watchOS workout durations.
 
 ---
 
-### 🌟 What's New in v2.6.0
+### 🌟 What's New in v2.7.0
 
-#### 1. ⚙️ Dynamic Rolling Baselines & Biomechanical Cadence Normalization
-- **Duration & Classification Weighting**: `computeWeightedBaseline` applies 1.5x weight to steady-state workouts and filters out short sprints (< 10 min), preventing brief outliers from skewing aerobic pace bands.
-- **Physical Pendulum Cadence Floor**: Dynamically calibrates the cadence floor (`calibratedCadenceFloor`) against the runner's stored height (`userHeightCm`) using leg-length pendulum physics (~150 SPM floor for 190 cm tall runners up to ~162 SPM for 155 cm runners).
+#### 1. ⚖️ The Assay-Driven Architecture & RunalystCore Package
+- **Strict Air-Gap & Purity**: Sports science calculations completely extracted into a standalone Swift package (`RunalystCore`) free of iOS frameworks (`SwiftUI`, `HealthKit`, `SwiftData`, `CoreML`), using explicit `DateInterval` boundaries rather than system clocks.
+- **24 Pure Domain Ingots (< 500 LOC)**: Decomposed complex kinematics, interval segmentation, Banister impulse-response modeling, and session synthesis into 24 focused domain modules, each strictly capped under 500 lines of code.
+- **5-Gate Verification Gate (`assay.sh`)**: Automated compliance pipeline validating framework purity, determinism, strict SwiftLint standards, code mass, and crucible unit tests.
+- **Continuous Mill Assay**: Multi-fixture differential fuzzing and noise injection validating biomechanical determinism against real-world sensor jitter and adversarial edge cases.
 
-#### 2. 🛡️ 80/20 Polarized Guardrails & Goal-Specific Quality Sessions
-- **Rolling 7-Day Stimulus Capping**: Strictly enforces that hard/quality workouts are permitted only when fewer than 2 hard stimuli have occurred in the trailing 7 days (`hardSessionsLast7d < 2`). Quality requests automatically revert to Zone 2 Aerobic Base if fatigue is banked.
-- **Target Goal Specialization**: Quality workouts specialize by race goal: 5K prioritizes Rhythm Intervals, 10K targets Threshold Surges, and Half/Full Marathon targets Lactate Threshold Steady workouts.
+#### 2. 🎨 Apple Human Interface Guidelines (HIG) & Liquid Glass Design System
+- **Accessible Touch Targets**: Every card, action, and filter upgraded to exceed Apple's 44x44pt minimum hit target with nuanced haptic feedback for one-handed operation.
+- **Liquid Glass Container System**: Translucent, elevated card surfaces with synchronized workout phase color palettes (Warmup, Work, Recovery, Cooldown).
+- **Glass-Box Explainer Modals**: Interactive bottom sheets revealing the exact Swift math and physiological rationale behind every calculated recommendation.
+- **Zero Horizontal Jitter**: Standardized `.monospacedDigit()` and `SF Pro Rounded` typography across all telemetry cards, trend badges, and timers.
+- **Streamlined View Hierarchies**: Redesigned layouts across `RunDetailView`, `WorkoutsView`, `AnalysisDashboardView`, and `DashboardView`, featuring an expanded Personal Records (PR) grid and goal readiness progress tracking.
 
-#### 3. 🎯 Closed-Loop Biomechanical Primers & Clean Coaching Language
-- **Biomechanical Deficit Targeting**: Automatically prescribes Cadence Pyramids when elevated vertical bounce (> 10 cm or > 9.0% oscillation ratio) is detected, and Rhythm Intervals when late-run cadence fading (> 5 SPM drop) occurs.
-- **Clean Safety & Taper Strings**: In `.acuteFatigue` and `.deload` recovery states, primers display strictly `7m 30s` with clean target bands (e.g., `155–161 SPM`) and zero apologetic suffixes (eliminating `(Adapted)` and `(Trimmed from ...)`).
+#### 3. 🫀 Biomechanical Telemetry & Cardiovascular Veracity
+- **Native Interval Metric Extraction**: Extracts authentic workout interval metrics directly from HealthKit workouts, preventing sensor lag from misattributing work and recovery segments.
+- **Indoor Treadmill Surge Preservation**: Intelligent handling of treadmill accelerations and cadence drops, alerting runners when indoor incline reviews are warranted.
+- **Cardiovascular Calibration**: Eliminated phantom trajectory spikes, synchronized biometric rounding, and refined Zone 2 aerobic adherence scoring.
 
-#### 4. ⏱️ Experience-Aware Duration Bands & WorkoutKit Parity
-- **Tiered Aerobic Base Bands**: Zone 2 Aerobic Base sessions scale deterministically by runner experience level across UI cards, phase breakdown bars, and watchOS WorkoutKit plans:
-  - **Novice**: `25–35 Min` (30 min -> 5m warm-up / 20m steady / 5m cool-down)
-  - **Intermediate**: `35–45 Min` (40 min -> 5m warm-up / 30m steady / 5m cool-down)
-  - **Advanced / Competitive / Elite**: `45–60 Min` (50 min -> 5m warm-up / 40m steady / 5m cool-down)
-- **Extended WorkoutKit Intervals**: Added `.fortyMinutes` (40 min) and `.fiftyMinutes` (50 min) structured interval generation to `DrillDuration`.
+#### 4. ⏱️ Workout Duration Synchronization & WorkoutKit Parity
+- **Bijective Duration Guarantees**: Perfect synchronization of duration bands across upcoming schedule cards, session detail modals, and exported Apple Watch WorkoutKit custom workout plans.
+- **Primer Drill Harmonization**: Seamlessly connects pre-run primer drills with target cadence bands, ensuring safe progression before main aerobic sessions.
 
-#### 5. 📱 Sweaty Hands UX & Completed Session Geometric Polish
-- **Full-Row Touch Targets**: Converted completed session rows into full-width interactive buttons conforming to Apple's 44pt minimum hit target with light haptic feedback.
-- **Fixed Status Pill Proportions**: Replaced stretched vertical status bars with fixed-size horizontal capsules (`✓ Target Met` and `Grade A`) and Apple-standard disclosure chevrons.
-- **Clean Title Scaling**: Added `.minimumScaleFactor(0.85)` with single-line tail truncation to prevent text overflow on narrower displays.
-
-#### 6. 🏃‍♂️ Indoor/Outdoor Flexibility & Profile Onboarding Integration
-- **Environment Quick Toggle**: Smoothly switch scheduled runs between Indoor Treadmill and Outdoor with automatic watchOS alert validation.
-- **Profile Walkthrough**: Interactive profile configuration seamlessly embedded into the onboarding walkthrough.
+#### 5. 🤖 Pure Native Tool Calling & Orthogonal Tool Contracts
+- **Single-Responsibility Tool Endpoints**: Re-architected on-device Apple Intelligence tools into orthogonal domain primitives (`inspectWorkout`, `getTrainingSchedule`, `getReadinessAndWorkload`, `queryWorkoutHistory`, `executeCoachAction`) with zero response sniffing or dialogue scripting.
+- **Date-Addressable Horizons**: Clean parameterized time ranges for training schedules and continuous ACWR (Acute:Chronic Workload Ratio) readiness calculations.
 
 ---
 
 ### 🛠️ Technical Improvements & Architecture
-- **241 Passing Unit & Integration Tests**: 0 failures, 0 regressions across the entire test suite.
-- **Strict SwiftLint Gate**: 0 violations across all 110 Swift source files (`--strict`).
-- **Decoupled Taxonomy**: Renamed `mainRunDrillId` to `mainSessionTemplateId` (with backward-compatible alias) to decouple main aerobic sessions from drill copy pickers.
+- **368 Passing Tests**: 298 passing unit and integration tests in `RunalystTests` plus 70 passing crucible tests across 17 suites in `RunalystCore` with 0 failures and 0 regressions.
+- **Strict SwiftLint Gate**: 0 violations across all 131 Swift source files (`swiftlint --strict`).
+- **Version Bump**: CFBundleShortVersionString `2.7.0` (Build 10) and updated website deployment metadata.
 
 ---
 
-**Full Changelog**: https://github.com/motilayo/runalyzer/compare/v2.5.1...v2.6.0
+**Full Changelog**: https://github.com/motilayo/runalyst/compare/v2.6.0...v2.7.0
