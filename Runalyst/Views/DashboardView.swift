@@ -34,7 +34,6 @@ struct DashboardView: View {
     @AppStorage("lastInsightFingerprint") private var lastInsightFingerprint: String = ""
 
     @State private var isFetchingInsight = false
-    @State private var showingAnalystChat = false
     @State private var showingTrendsExplainer = false
 
     private var timeRangeRuns: [RunRecord] {
@@ -954,19 +953,9 @@ struct DashboardView: View {
                 fetchInsight()
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
             }
-            .sheet(isPresented: $showingAnalystChat) {
-                AnalystChatView(mode: .macroCoach, modelContext: modelContext)
-            }
             .background(Color(UIColor.systemGroupedBackground).ignoresSafeArea())
             .navigationTitle("Dashboard")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    CoachPillButton {
-                        showingAnalystChat = true
-                    }
-                }
-            }
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarBackground(.regularMaterial, for: .navigationBar)
             }

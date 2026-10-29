@@ -17,7 +17,6 @@ struct RunDetailView: View {
     @State private var showingClassificationExplainer = false
     @State private var showingDrillExplainer = false
     @State private var isGeneratingInsight = false
-    @State private var showingAnalystChat = false
     @State private var showingEnvironmentInfo = false
 
     private var environmentInfoMessage: String {
@@ -400,28 +399,6 @@ struct RunDetailView: View {
 
             if hasBiometrics {
                 AIDisclaimerFooter()
-
-                Button {
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    showingAnalystChat = true
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "sparkles")
-                            .font(.subheadline.bold())
-                        Text("Ask AI Coach about this run")
-                            .font(.subheadline.bold())
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.caption2.bold())
-                    }
-                    .foregroundColor(.purple)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 12)
-                    .frame(minHeight: 44)
-                    .background(Color.purple.opacity(0.12))
-                    .cornerRadius(12)
-                    .contentShape(Rectangle())
-                }
             }
         }
         .frame(minHeight: 1)
@@ -1230,13 +1207,6 @@ struct RunDetailView: View {
         .toolbarBackground(.regularMaterial, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbar(.hidden, for: .tabBar)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                CoachPillButton {
-                    showingAnalystChat = true
-                }
-            }
-        }
         .sheet(isPresented: $showingBiomechanicsExplainer) {
             GlassBoxExplainerSheet(
                 title: "Stride & Running Economy",
@@ -1247,9 +1217,6 @@ struct RunDetailView: View {
                 formula: "Efficiency Factor = Speed (m/min) / HR (BPM) • Vertical Ratio = Bounce (cm) / Stride (m)",
                 targetRange: "Bounce: 6.0–9.0 cm • Stride: 1.0–1.4 m • Ratio: < 8.0%"
             )
-        }
-        .sheet(isPresented: $showingAnalystChat) {
-            AnalystChatView(runRecord: runRecord)
         }
         .sheet(isPresented: $showingClassificationExplainer) {
             GlassBoxExplainerSheet(

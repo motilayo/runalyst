@@ -7,7 +7,6 @@ struct AnalysisDashboardView: View {
     @Query(sort: \RunRecord.date, order: .reverse) private var existingRuns: [RunRecord]
     @AppStorage("useMetricSystem") private var useMetricSystem: Bool = Locale.current.measurementSystem == .metric
     @State private var showingUserProfile = false
-    @State private var showingAnalystChat = false
 
     var body: some View {
         NavigationStack {
@@ -36,18 +35,8 @@ struct AnalysisDashboardView: View {
             .background(Color(UIColor.systemGroupedBackground).ignoresSafeArea())
             .navigationTitle("Analysis")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    CoachPillButton {
-                        showingAnalystChat = true
-                    }
-                }
-            }
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarBackground(.regularMaterial, for: .navigationBar)
-            .sheet(isPresented: $showingAnalystChat) {
-                AnalystChatView(mode: .macroCoach)
-            }
             .sheet(isPresented: $showingUserProfile) {
                 UserProfileView()
             }

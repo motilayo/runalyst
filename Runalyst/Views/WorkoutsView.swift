@@ -13,7 +13,6 @@ struct WorkoutsView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     @State private var showingUserProfile = false
-    @State private var showingAnalystChat = false
     @State private var showingDrillsLibrary = false
     @State private var isDrillCompleted = false
     @State private var selectedRunForDetail: RunRecord?
@@ -73,18 +72,8 @@ struct WorkoutsView: View {
             .background(Color(UIColor.systemGroupedBackground).ignoresSafeArea())
             .navigationTitle("Workouts")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    CoachPillButton {
-                        showingAnalystChat = true
-                    }
-                }
-            }
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarBackground(.regularMaterial, for: .navigationBar)
-            .sheet(isPresented: $showingAnalystChat) {
-                AnalystChatView(mode: .macroCoach)
-            }
             .sheet(isPresented: $showingUserProfile) {
                 UserProfileView()
             }

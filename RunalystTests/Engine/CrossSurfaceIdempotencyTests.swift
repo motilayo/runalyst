@@ -280,44 +280,6 @@ final class CrossSurfaceIdempotencyTests: XCTestCase {
     }
 
     @MainActor
-    func testReadinessAndWorkloadFacts_TargetMinutesMatchesLockedDailyState() {
-        guard #available(iOS 26.0, *) else { return }
-        let calendar = Calendar.current
-        let now = Date()
-        guard let yesterday = calendar.date(byAdding: .day, value: -1, to: now) else {
-            XCTFail("Failed to construct date")
-            return
-        }
-        let run1 = makeRun(date: yesterday, duration: 2400, distanceMeters: 6000, detectedTypeRaw: "Easy Run")
-        let runs = [run1]
-
-        UserDefaults.standard.set("Base Building", forKey: "trainingGoal")
-        UserDefaults.standard.set(true, forKey: "useMetricSystem")
-        let profile = RunnerProfile.compute(from: runs, trainingGoal: "Base Building", now: now)
-        UserDefaults.standard.set(profile.experienceLevel, forKey: "experienceLevel")
-
-        DailyTrainingStateStore.shared.invalidate()
-        let state = DailyTrainingStateStore.shared.resolveState(
-            runRecords: runs,
-            activeGoal: "Base Building",
-            experienceLevel: profile.experienceLevel,
-            useMetric: true,
-            now: now
-        )
-
-        let engine = AnalystChatEngine(runRecord: run1)
-        let json = engine.executeReadinessAndWorkloadQuery()
-        guard let data = json.data(using: .utf8),
-              let facts = try? JSONDecoder().decode(ReadinessFacts.self, from: data) else {
-            XCTFail("Failed to decode ReadinessFacts JSON")
-            return
-        }
-
-        XCTAssertEqual(facts.today_target_minutes, state.todaySession?.totalDurationMinutes ?? 0, "Chat tool facts must report identical today_target_minutes as locked state")
-        XCTAssertNil(facts.status_guidance, "Tool must not generate scripted dialogue strings")
-    }
-
-    @MainActor
     func testCompletedToday_MicrocycleMatchesTrainingCalendarScheduleOneForOne() {
         var cal = Calendar(identifier: .gregorian)
         cal.locale = Locale(identifier: "en_US_POSIX")
@@ -427,19 +389,7 @@ final class CrossSurfaceIdempotencyTests: XCTestCase {
         XCTAssertEqual(profile.goalBenchmark.weeklyVolumeStatus, .building, "20.3 km/wk against 25-42 km target must evaluate to .building")
         XCTAssertEqual(profile.goalBenchmark.volumeGapKm, 4.7, accuracy: 0.1, "Volume gap must be 4.7 km")
 
-        // 1. Chat Surface Verification
-        if #available(iOS 26.0, *) {
-            let chatEngine = AnalystChatEngine(modelContext: context, runRecord: runs.first, mode: .macroCoach)
-            let chatTelemetry = chatEngine.executeReadinessAndWorkloadQueryForModel()
-
-            XCTAssertTrue(chatTelemetry.contains("Building Base"), "Chat telemetry must state Building Base")
-            XCTAssertTrue(chatTelemetry.contains("4.7 km below"), "Chat telemetry must specify volume gap")
-            XCTAssertFalse(chatTelemetry.contains("Status: On Track"), "Chat telemetry must NEVER say On Track when building base")
-            XCTAssertFalse(chatTelemetry.contains("Acutefatigue"), "Chat telemetry must NEVER leak raw camelCase code token Acutefatigue")
-            XCTAssertTrue(chatTelemetry.contains("Biological Readiness: Recovering from Recent Effort"), "Chat telemetry must explain readiness in human coaching English")
-        }
-
-        // 2. Dashboard Trajectory Synthesis Surface Verification (SSOT)
+        // 1. Dashboard Trajectory Synthesis Surface Verification (SSOT)
         let assessment = SessionSynthesisEngine.evaluate30DayTrajectory(from: runs, now: now)
         let synthesis = MacroVolumeCore.evaluateDashboardTrajectory(
             assessment: assessment,

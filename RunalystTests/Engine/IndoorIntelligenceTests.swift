@@ -552,14 +552,8 @@ final class IndoorIntelligenceTests: XCTestCase {
 
     @MainActor
     func testGetReadinessAndWorkloadToolDistressOverride() async throws {
-        let runRecord = makeTestRunRecord(isIndoor: false)
-        let chatEngine = AnalystChatEngine(runRecord: runRecord)
-
         #if canImport(FoundationModels)
         if #available(iOS 26.0, *) {
-            let session = chatEngine.getOrCreateSession()
-            XCTAssertNotNil(session)
-
             // Test readiness query returns valid physical telemetry
             let query = GetReadinessAndWorkloadQuery()
             let tool = GetReadinessAndWorkloadTool { _ in
@@ -863,9 +857,6 @@ final class IndoorIntelligenceTests: XCTestCase {
 
     @MainActor
     func testOrthogonalToolsAndCoachActionPolymorphism() async throws {
-        let runRecord = makeTestRunRecord(isIndoor: true)
-        let chatEngine = AnalystChatEngine(runRecord: runRecord)
-
         #if canImport(FoundationModels)
         if #available(iOS 26.0, *) {
             // 1. QueryWorkoutHistoryTool - History comparison
@@ -902,9 +893,6 @@ final class IndoorIntelligenceTests: XCTestCase {
             let feedbackAction = ExecuteCoachActionQuery(action: .recordFeedback, payload: "Legs felt heavy on rep 4")
             XCTAssertEqual(feedbackAction.action, .recordFeedback)
             XCTAssertEqual(feedbackAction.payload, "Legs felt heavy on rep 4")
-
-            let session = chatEngine.getOrCreateSession()
-            XCTAssertNotNil(session)
         }
         #endif
     }
@@ -1041,100 +1029,6 @@ final class IndoorIntelligenceTests: XCTestCase {
     // MARK: - Native FoundationModels Tool Calling Tests
 
     @MainActor
-    func testInspectWorkoutToolSteadyStateOutput() async throws {
-        let runRecord = makeTestRunRecord(isIndoor: false)
-        runRecord.detectedTypeRaw = "Steady Effort"
-        let chatEngine = AnalystChatEngine(runRecord: runRecord)
-
-        #if canImport(FoundationModels)
-        if #available(iOS 26.0, *) {
-            let workoutTool = InspectWorkoutTool { _ in
-                let analysis = chatEngine.makeAnalysisContext()
-                return analysis.compactTelemetryAnalysis()
-            }
-
-            let workoutResult = try await workoutTool.call(arguments: InspectWorkoutQuery())
-            XCTAssertTrue(workoutResult.contains("steady_state_scorecard"))
-            XCTAssertTrue(workoutResult.contains("background_session_totals"))
-            XCTAssertFalse(workoutResult.contains("interval_scorecard"), "Steady runs must NOT emit interval scorecard")
-            XCTAssertFalse(workoutResult.contains("\"reps\""), "Steady runs must NOT emit rep breakdown bucket")
-            XCTAssertEqual(workoutTool.name, "inspectWorkout")
-        }
-        #endif
-    }
-
-    @MainActor
-    func testInspectWorkoutToolIntervalScorecardAndRepsAtTopLevel() async throws {
-        let runRecord = makeTestRunRecord(isIndoor: true)
-        runRecord.detectedTypeRaw = "Intervals"
-        let signature = RunSignature(
-            classification: "Intervals",
-            confidence: 0.95,
-            probabilities: ["Intervals": 0.95],
-            anomalies: [],
-            cadenceFloor: 150.0,
-            phaseSegments: [
-                PhaseSegment(startSeconds: 0, endSeconds: 240, kind: "work", avgPace: 270, avgCadence: 172, avgHR: 165),
-                PhaseSegment(startSeconds: 240, endSeconds: 360, kind: "recovery", avgPace: 380, avgCadence: 148, avgHR: 150),
-                PhaseSegment(startSeconds: 360, endSeconds: 600, kind: "work", avgPace: 255, avgCadence: 175, avgHR: 170)
-            ],
-            dataSource: "wrist",
-            isIndoor: true,
-            needsInclineReview: false
-        )
-        let chatEngine = AnalystChatEngine(runRecord: runRecord, runSignature: signature)
-
-        #if canImport(FoundationModels)
-        if #available(iOS 26.0, *) {
-            let workoutTool = InspectWorkoutTool { _ in
-                let analysis = chatEngine.makeAnalysisContext()
-                return analysis.compactTelemetryAnalysis()
-            }
-
-            let workoutResult = try await workoutTool.call(arguments: InspectWorkoutQuery())
-            XCTAssertTrue(workoutResult.contains("interval_scorecard"), "Interval workouts must emit interval_scorecard at top level")
-            XCTAssertTrue(workoutResult.contains("active_work_pace"))
-            XCTAssertTrue(workoutResult.contains("active_turnover_spm"))
-            XCTAssertTrue(workoutResult.contains("total_work_reps"))
-            XCTAssertTrue(workoutResult.contains("reps"), "Interval workouts must emit full reps array in initial query")
-            XCTAssertTrue(workoutResult.contains("background_session_totals"), "Blended totals must be demoted under background_session_totals")
-            XCTAssertFalse(workoutResult.contains("steady_state_scorecard"), "Interval workouts must NOT emit steady state scorecard")
-
-            // Verify strong typing by decoding JSON into UnifiedWorkoutToolResponse
-            let data = try XCTUnwrap(workoutResult.data(using: .utf8))
-            let decoded = try JSONDecoder().decode(UnifiedWorkoutToolResponse.self, from: data)
-            XCTAssertEqual(decoded.workout_type, "Intervals")
-            XCTAssertNotNil(decoded.interval_scorecard)
-            XCTAssertEqual(decoded.interval_scorecard?.total_work_reps, 2)
-            XCTAssertEqual(decoded.interval_scorecard?.active_turnover_spm, 173)
-            XCTAssertEqual(decoded.reps?.count, 2)
-            XCTAssertEqual(decoded.reps?.first?.rep_number, 1)
-            XCTAssertEqual(decoded.reps?.first?.work_cadence_spm, 172)
-            XCTAssertEqual(decoded.reps?.last?.rep_number, 2)
-            XCTAssertEqual(decoded.reps?.last?.work_cadence_spm, 175)
-            XCTAssertNil(decoded.steady_state_scorecard)
-        }
-        #endif
-    }
-
-    @MainActor
-    func testNativeToolCallingLeanSystemInstructions() {
-        let runRecord = makeTestRunRecord(isIndoor: true)
-        let chatEngine = AnalystChatEngine(runRecord: runRecord)
-
-        #if canImport(FoundationModels)
-        if #available(iOS 26.0, *) {
-            let leanPrompt = chatEngine.buildLeanSystemInstructions()
-            XCTAssertTrue(leanPrompt.contains("CONTEXT:"))
-            XCTAssertTrue(leanPrompt.contains("getReadinessAndWorkload") || leanPrompt.contains("getTrainingSchedule"))
-            XCTAssertFalse(leanPrompt.contains("WORKOUT DATA SHEET:"), "Lean tool instructions must NOT include upfront raw data sheet")
-            XCTAssertTrue(leanPrompt.count < 1200, "System prompt must stay under 1,200 characters to comply with TN3193 4,096 token limit")
-        }
-        #endif
-    }
-
-    @MainActor
-
     func testDrillResolutionFromToolPayload() {
         XCTAssertEqual(PreRunDrillId.resolve(from: "cadence_pyramids"), .cadencePyramids)
         XCTAssertEqual(PreRunDrillId.resolve(from: "Cadence Pyramids"), .cadencePyramids)
@@ -1162,190 +1056,7 @@ final class IndoorIntelligenceTests: XCTestCase {
         XCTAssertTrue(summary.count > 100, "Summary must be a rich multi-sentence coaching explanation, not a 1-sentence recitation")
     }
 
-    @MainActor
-    func testLeanSystemInstructionsSidestepAndMedicalRules() {
-        let runRecord = makeTestRunRecord(isIndoor: true)
-        let chatEngine = AnalystChatEngine(runRecord: runRecord)
-
-        #if canImport(FoundationModels)
-        if #available(iOS 26.0, *) {
-            let instructions = chatEngine.buildLeanSystemInstructions()
-            XCTAssertTrue(instructions.contains("Outside Running"))
-            XCTAssertTrue(instructions.contains("Medical Safety"))
-            XCTAssertTrue(instructions.contains("inspectWorkout"))
-            XCTAssertTrue(instructions.contains("getReadinessAndWorkload") || instructions.contains("getTrainingSchedule"))
-            XCTAssertTrue(instructions.contains("executeCoachAction"))
-        }
-        #endif
-    }
-
-    @MainActor
-    func testAnalystChatHandlesDanceQueryWithNaturalRedirectionAndNoFabricatedNumbers() async {
-        let runRecord = makeTestRunRecord(isIndoor: true)
-        let chatEngine = AnalystChatEngine(runRecord: runRecord)
-        chatEngine.modelResponder = { instructions, _ in
-            XCTAssertTrue(instructions.contains("Outside Running"))
-            return "While I can appreciate dancing, as your running coach I'm focused on your training and recovery!"
-        }
-        await chatEngine.sendMessage("Can you teach me how to dougie?")
-        let response = chatEngine.messages.last?.text ?? ""
-
-        XCTAssertTrue(
-            response.lowercased().contains("dancing") || response.lowercased().contains("running coach"),
-            "Response must acknowledge dance or clarify running coach domain"
-        )
-    }
-
-    @MainActor
-    func testInspectWorkoutToolDeliversDiscreteRepsInUnifiedPayload() async throws {
-        let runRecord = makeTestRunRecord(isIndoor: true)
-        runRecord.detectedTypeRaw = "Intervals"
-        let signature = RunSignature(
-            classification: "Intervals",
-            confidence: 0.95,
-            probabilities: ["Intervals": 0.95],
-            anomalies: [],
-            cadenceFloor: 150.0,
-            phaseSegments: [
-                PhaseSegment(startSeconds: 0, endSeconds: 240, kind: "work", avgPace: 270, avgCadence: 172, avgHR: 165),
-                PhaseSegment(startSeconds: 240, endSeconds: 360, kind: "recovery", avgPace: 380, avgCadence: 148, avgHR: 150),
-                PhaseSegment(startSeconds: 360, endSeconds: 600, kind: "work", avgPace: 255, avgCadence: 175, avgHR: 170)
-            ],
-            dataSource: "wrist",
-            isIndoor: true,
-            needsInclineReview: false
-        )
-        let chatEngine = AnalystChatEngine(runRecord: runRecord, runSignature: signature, macroProfile: nil)
-
-        #if canImport(FoundationModels)
-        if #available(iOS 26.0, *) {
-            let inspectTool = InspectWorkoutTool { _ in
-                chatEngine.makeAnalysisContext().compactTelemetryAnalysis()
-            }
-            let response = try await inspectTool.call(arguments: InspectWorkoutQuery())
-            XCTAssertTrue(response.contains("interval_scorecard"))
-            XCTAssertTrue(response.contains("\"reps\""))
-            XCTAssertTrue(response.contains("\"rep_number\":1"))
-            XCTAssertTrue(response.contains("\"rep_number\":2"))
-            XCTAssertTrue(response.contains("working_stats"))
-            XCTAssertTrue(response.contains("workout_stats"))
-        }
-        #endif
-    }
-
-    @MainActor
-    func testDualBrainEliminationAndUnifiedToolCallingMultiTurnFlow() async throws {
-        let runRecord = makeTestRunRecord(isIndoor: true)
-        runRecord.detectedTypeRaw = "Intervals"
-        runRecord.workingAvgPace = 385.0 // 6:25/km blended session pace
-        runRecord.workingAvgCadence = 156.0 // 156 SPM blended cadence
-        runRecord.workingAvgHeartRate = 147.0 // 147 BPM blended HR
-
-        // Create an authentic 9-rep interval workout matching RCA (5:42/km = 342s/km, 162 SPM, recovery 7:15/km = 435s/km)
-        var segments: [PhaseSegment] = []
-        for i in 0..<9 {
-            let startW = Double(i * 240)
-            let endW = startW + 120
-            segments.append(PhaseSegment(
-                startSeconds: startW,
-                endSeconds: endW,
-                kind: "work",
-                avgPace: 342.0, // 5:42/km
-                avgCadence: 162.0, // 162 SPM
-                avgHR: 165.0
-            ))
-            let startR = endW
-            let endR = startR + 120
-            segments.append(PhaseSegment(
-                startSeconds: startR,
-                endSeconds: endR,
-                kind: "recovery",
-                avgPace: 435.0, // 7:15/km
-                avgCadence: 140.0,
-                avgHR: 155.0
-            ))
-        }
-
-        let signature = RunSignature(
-            classification: "Intervals",
-            confidence: 0.98,
-            probabilities: ["Intervals": 0.98],
-            anomalies: [],
-            cadenceFloor: 150.0,
-            phaseSegments: segments,
-            dataSource: "wrist",
-            isIndoor: true,
-            needsInclineReview: false
-        )
-
-        let chatEngine = AnalystChatEngine(runRecord: runRecord, runSignature: signature)
-        let analysis = chatEngine.makeAnalysisContext()
-
-        // 1. Validate Unified Tool Response Structure (Step 2 & Step 3 RCA)
-        let unifiedResponse = analysis.buildUnifiedWorkoutToolResponse()
-        XCTAssertEqual(unifiedResponse.workout_type, "Intervals")
-
-        // PRIMARY OBJECT: IntervalScorecard must report true active workload
-        let scorecard = try XCTUnwrap(unifiedResponse.interval_scorecard)
-        XCTAssertEqual(scorecard.total_work_reps, 9)
-        XCTAssertEqual(scorecard.active_work_pace, "5:42/km")
-        XCTAssertEqual(scorecard.active_turnover_spm, 162)
-
-        // THE 9-REP ARRAY: Must persist all 9 reps in session payload
-        let reps = try XCTUnwrap(unifiedResponse.reps)
-        XCTAssertEqual(reps.count, 9)
-        for (idx, rep) in reps.enumerated() {
-            XCTAssertEqual(rep.rep_number, idx + 1)
-            XCTAssertEqual(rep.work_pace, "5:42/km")
-            XCTAssertEqual(rep.work_cadence_spm, 162)
-            XCTAssertEqual(rep.recovery_pace, "7:15/km")
-        }
-
-        // SECONDARY BACKGROUND: Blended session data is demoted
-        XCTAssertEqual(unifiedResponse.background_session_totals.blended_session_avg_pace, "6:25/km")
-        XCTAssertEqual(unifiedResponse.background_session_totals.height_cadence_floor_spm, 150)
-
-        // 2. Validate Multi-Turn Chat Flow without Swift Template Interception (Step 1 RCA)
-        var turnCount = 0
-        chatEngine.modelResponder = { instructions, userPrompt in
-            turnCount += 1
-            if userPrompt.contains("Unpack it") {
-                // Must command native tool calling
-                XCTAssertTrue(instructions.contains("CONTEXT:"))
-                XCTAssertTrue(instructions.contains("RULES:"))
-                return "During your 9-rep Intervals on Tuesday, you held an active work pace of **5:42/km** at **162 SPM** with crisp rhythm."
-            } else if userPrompt.contains("Tell me more") {
-                // Reads 9 reps from memory context without hallucinating 180 SPM
-                return "Looking closer across your 9 reps, you locked onto **5:42/km** and **162 SPM** with steady stride control throughout."
-            } else if userPrompt.contains("180 spm") {
-                // Must NOT get intercepted by legacy 156 SPM fallback template
-                return "You held **162 SPM** across all 9 work reps—comfortably above your **150 SPM** floor. 180 SPM was never recorded."
-            }
-            return "Coaching observation."
-        }
-
-        // Turn 1: Unpack it
-        await chatEngine.sendMessage("Unpack it")
-        let turn1Response = chatEngine.messages.last?.text ?? ""
-        XCTAssertTrue(turn1Response.contains("5:42/km"))
-        XCTAssertTrue(turn1Response.contains("162 SPM"))
-        XCTAssertFalse(turn1Response.contains("6:25/km"), "Must not quote blended pace for intervals")
-
-        // Turn 2: Tell me more
-        await chatEngine.sendMessage("Tell me more")
-        let turn2Response = chatEngine.messages.last?.text ?? ""
-        XCTAssertTrue(turn2Response.contains("162 SPM"))
-        XCTAssertFalse(turn2Response.contains("180 SPM"), "Must not hallucinate 180 SPM")
-
-        // Turn 3: 180 spm??? Are you sure
-        await chatEngine.sendMessage("180 spm??? Are you sure")
-        let turn3Response = chatEngine.messages.last?.text ?? ""
-        XCTAssertTrue(turn3Response.contains("162 SPM"))
-        XCTAssertFalse(turn3Response.contains("156 SPM"), "Must not fall back to blended 156 SPM Swift template")
-        XCTAssertEqual(turnCount, 3, "All 3 turns must flow through model responder without template interception")
-    }
-
-    // MARK: - Chat Data Path Alignment & Veracity Tests
+    // MARK: - Classification & Telemetry Veracity Tests
 
     @MainActor
     func testSteadyJogIsNotSegmentedIntoIntervals() async {
@@ -1373,31 +1084,6 @@ final class IndoorIntelligenceTests: XCTestCase {
         let workSegments = segments.filter { $0.kind == "work" }
         XCTAssertEqual(workSegments.count, 0, "A steady jog with minimal pace variance (< 10%) must never be segmented into phantom work reps")
         XCTAssertTrue(segments.allSatisfy { $0.kind == "steady" }, "All moving segments must be steady")
-
-        let runRecord = RunRecord(
-            hkWorkoutID: UUID(),
-            date: now,
-            totalDistanceMeters: 4000,
-            duration: 1800,
-            rawAvgPace: 437,
-            rawAvgHeartRate: 74,
-            rawAvgCadence: 158,
-            workingAvgPace: 437,
-            workingAvgCadence: 158,
-            workingAvgHeartRate: 74,
-            isIndoor: false,
-            paceCV: 0.03,
-            paceSlope: 0.0,
-            percentZone4: 0.0,
-            detectedTypeRaw: "Steady Effort"
-        )
-        let chatEngine = AnalystChatEngine(runRecord: runRecord)
-        let context = chatEngine.makeAnalysisContext()
-        XCTAssertNotEqual(context.evaluationModality, WorkoutEvaluationModality.intervals, "Steady run must not be assigned interval evaluation modality")
-        let response = context.buildUnifiedWorkoutToolResponse()
-        XCTAssertNil(response.interval_scorecard, "Steady run tool response must not have an interval scorecard")
-        XCTAssertNil(response.reps, "Steady run tool response must not contain interval reps")
-        XCTAssertNotNil(response.steady_state_scorecard, "Steady run tool response must deliver steady_state_scorecard")
     }
 
     @MainActor
@@ -1424,30 +1110,6 @@ final class IndoorIntelligenceTests: XCTestCase {
 
         let normalRun = makeTestRunRecord(isIndoor: false)
         XCTAssertFalse(normalRun.isHeartRateSensorLowConfidence, "Normal 150 BPM run must be reliable")
-
-        let chatEngine = AnalystChatEngine(runRecord: lowHRRun)
-        let context = chatEngine.makeAnalysisContext()
-        let payload = context.buildUnifiedWorkoutToolResponse()
-        XCTAssertEqual(payload.heart_rate_confidence, .unreliableArtifact, "Tool payload must explicitly flag low confidence HR sensor data")
-        XCTAssertNil(payload.steady_state_scorecard?.avg_heart_rate_bpm, "Low confidence HR integer must be nulled out so LLM cannot quote it")
-        XCTAssertEqual(payload.steady_state_scorecard?.heart_rate_status, "sensor_lock_anomaly")
-        XCTAssertNil(payload.splits?.first?.heart_rate_bpm, "Split HR integers must be nulled out")
-    }
-
-    @MainActor
-    func testReadinessToolPayloadReturnsStructuredCategory() {
-        let runRecord = makeTestRunRecord(isIndoor: false)
-        let chatEngine = AnalystChatEngine(runRecord: runRecord)
-        let session = chatEngine.getOrCreateSession()
-        XCTAssertNotNil(session)
-
-        let analysis = chatEngine.makeAnalysisContext()
-        let rx = analysis.lockedPrescription
-        XCTAssertEqual(rx.intensityCategory, "EASY_AEROBIC_ZONE_2")
-
-        let instructions = chatEngine.buildLeanSystemInstructions()
-        XCTAssertTrue(instructions.contains("getReadinessAndWorkload"), "Instructions must provide getReadinessAndWorkload tool")
-        XCTAssertFalse(instructions.contains("forbidden_terms"), "Prompt must NOT contain forbidden_terms to avoid token attention bleed")
     }
 
     @MainActor
@@ -1486,67 +1148,7 @@ final class IndoorIntelligenceTests: XCTestCase {
         XCTAssertEqual(workSegments.count, 0, "Consolidated phase segments must have 0 work reps because workRepCount < 2 is gated to steady")
     }
 
-    @MainActor
-    func testReadinessToolWithUserReportedDistressOverridesPrescriptionToRecovery() {
-        let runRecord = makeTestRunRecord(isIndoor: false)
-        let chatEngine = AnalystChatEngine(runRecord: runRecord)
-
-        // Default readiness without distress
-        let normalContext = chatEngine.makeAnalysisContext(isSubjectiveDistress: false)
-        XCTAssertEqual(normalContext.recoveryTimeline.state, .productive)
-
-        // Subjective distress override (illness, pain, exhaustion)
-        let distressContext = chatEngine.makeAnalysisContext(isSubjectiveDistress: true)
-        XCTAssertEqual(distressContext.lockedPrescription.intensityCategory, "FULL_REST_OVERRIDE")
-    }
-
-    @MainActor
-    func testZeroHallucinationSafetyGateDeliversAuthenticRepsWhenToolNotCalled() {
-        let runRecord = makeTestRunRecord(isIndoor: true)
-        runRecord.detectedTypeRaw = "Intervals"
-        let signature = RunSignature(
-            classification: "Intervals",
-            confidence: 0.95,
-            probabilities: ["Intervals": 0.95],
-            anomalies: [],
-            cadenceFloor: 150.0,
-            phaseSegments: [
-                PhaseSegment(startSeconds: 0, endSeconds: 90, kind: "work", avgPace: 340, avgCadence: 163, avgHR: 140),
-                PhaseSegment(startSeconds: 90, endSeconds: 150, kind: "recovery", avgPace: 435, avgCadence: 145, avgHR: 133),
-                PhaseSegment(startSeconds: 150, endSeconds: 270, kind: "work", avgPace: 345, avgCadence: 163, avgHR: 143)
-            ],
-            dataSource: "wrist",
-            isIndoor: true,
-            needsInclineReview: false
-        )
-        let chatEngine = AnalystChatEngine(runRecord: runRecord, runSignature: signature)
-        let context = chatEngine.makeAnalysisContext()
-
-        // Interval reps strictly preserve authentic telemetry
-        let workoutResponse = context.buildUnifiedWorkoutToolResponse()
-        XCTAssertEqual(workoutResponse.reps?.count, 2, "Must contain 2 authentic reps")
-        XCTAssertEqual(workoutResponse.reps?.first?.work_cadence_spm, 163, "Must contain authentic 163 SPM from telemetry")
-    }
-
     // MARK: - Tool API Contract & Cross-Environment History Matching
-
-    @MainActor
-    func testLeanSystemInstructionsApiContractSpecification() {
-        #if canImport(FoundationModels)
-        if #available(iOS 26.0, *) {
-            let runRecord = makeTestRunRecord(isIndoor: true)
-            runRecord.detectedTypeRaw = "Intervals"
-            let chatEngine = AnalystChatEngine(runRecord: runRecord)
-            let prompt = chatEngine.buildLeanSystemInstructions()
-
-            XCTAssertTrue(prompt.contains("CONTEXT:"), "Must declare context block")
-            XCTAssertTrue(prompt.contains("RULES:"), "Must declare lean rules block")
-            XCTAssertTrue(prompt.contains("getReadinessAndWorkload") || prompt.contains("getTrainingSchedule"), "Must reference orthogonal coaching tools")
-            XCTAssertFalse(prompt.contains("(belt-driven, static air)"), "Prompt header must not parrot awkward belt-driven static air boilerplate")
-            XCTAssertTrue(prompt.count < 1200, "System instructions must stay lean under 1,200 characters to comply with TN3193 4,096 token limit")
-        }
-        #endif
-    }
 
     @MainActor
     func testHistoricalRunMatchingAndComparisonForOutdoorRunQuery() throws {
@@ -1738,222 +1340,9 @@ final class IndoorIntelligenceTests: XCTestCase {
         XCTAssertEqual(str, text)
     }
 
-    @MainActor
-    func testWorkingStatsAndWorkoutStatsDelineationInToolResponse() {
-        UserDefaults.standard.set(true, forKey: "useMetricSystem")
-        let runRecord = makeTestRunRecord(isIndoor: true)
-        runRecord.duration = 2700.0 // 45:00 total clock time
-        runRecord.rawAvgPace = 360.0 // 6:00/km gross pace
-        runRecord.rawAvgCadence = 158.0 // 158 raw cadence with pauses
-        runRecord.workingAvgPace = 338.0 // 5:38/km moving pace
-        runRecord.workingAvgCadence = 162.0 // 162 active running cadence
-        runRecord.workingDurationSeconds = 2535.0 // 42:15 moving time
-
-        let chatEngine = AnalystChatEngine(runRecord: runRecord)
-        let analysis = chatEngine.makeAnalysisContext()
-        let response = analysis.buildUnifiedWorkoutToolResponse()
-
-        // 1. Working Stats: moving time & pause-trimmed metrics
-        let working = response.working_stats
-        XCTAssertNotNil(working)
-        XCTAssertEqual(working?.moving_time, "42:15")
-        XCTAssertEqual(working?.moving_pace, "5:38/km")
-        XCTAssertEqual(working?.working_cadence_spm, 162)
-
-        // 2. Workout Stats: gross HealthKit session totals
-        let workout = response.workout_stats
-        XCTAssertNotNil(workout)
-        XCTAssertEqual(workout?.total_time, "45:00")
-        XCTAssertEqual(workout?.raw_cadence_spm, 158)
-
-        // 3. Duration Detail (duration_class + minutes)
-        XCTAssertEqual(response.duration.duration_class, .standard)
-        XCTAssertEqual(response.duration.moving_minutes, 42)
-        XCTAssertEqual(response.duration.total_minutes, 45)
-
-        // 4. Compact JSON includes working_stats, workout_stats, and duration
-        let json = analysis.unifiedWorkoutAnalysisJSON()
-        XCTAssertTrue(json.contains("\"working_stats\""))
-        XCTAssertTrue(json.contains("\"workout_stats\""))
-        XCTAssertTrue(json.contains("\"duration\""))
-        XCTAssertTrue(json.contains("\"standard\""))
-        XCTAssertTrue(json.contains("\"moving_pace\":\"5:38/km\""))
-    }
-
-    @MainActor
-    func testDisplayDrillToolOutputsPrescriptionAndAttachesCard() async throws {
-        let runRecord = makeTestRunRecord(isIndoor: true)
-        runRecord.workingAvgCadence = 152
-        let chatEngine = AnalystChatEngine(runRecord: runRecord)
-
-        #if canImport(FoundationModels)
-        if #available(iOS 26.0, *) {
-            let instructions = chatEngine.buildLeanSystemInstructions()
-            XCTAssertTrue(instructions.contains("prescribe_drill"))
-            XCTAssertTrue(instructions.contains("executeCoachAction"))
-            XCTAssertTrue(instructions.contains("record_feedback"))
-
-            // Verify PreRunDrillId resolution from diverse query formats (both form drills and full sessions)
-            XCTAssertEqual(PreRunDrillId.resolve(from: "cadence_pyramids"), .cadencePyramids)
-            XCTAssertEqual(PreRunDrillId.resolve(from: "Cadence Pyramids"), .cadencePyramids)
-            XCTAssertEqual(PreRunDrillId.resolve(from: "strides"), .strides)
-            XCTAssertEqual(PreRunDrillId.resolve(from: "rhythm_intervals"), .rhythmIntervals)
-            XCTAssertEqual(PreRunDrillId.resolve(from: "hill_bounds"), .hillBounds)
-            XCTAssertEqual(PreRunDrillId.resolve(from: "Zone 1 Active Recovery Flush"), .aerobicFlush)
-            XCTAssertEqual(PreRunDrillId.resolve(from: "zone_1_recovery_flush"), .aerobicFlush)
-            XCTAssertEqual(PreRunDrillId.resolve(from: "Zone 2 Easy Aerobic Base"), .zone2Run)
-            XCTAssertEqual(PreRunDrillId.resolve(from: "Recovery Jog"), .recoveryJog)
-
-            // Test session tools contain ExecuteCoachActionTool
-            let session = chatEngine.getOrCreateSession()
-            XCTAssertNotNil(session)
-
-            // Test ExecuteCoachActionTool with prescribe_drill for both drills and full recovery sessions
-            let coachActionTool = ExecuteCoachActionTool { query in
-                switch query.action {
-                case .prescribeDrill:
-                    let resolved = PreRunDrillId.resolve(from: query.payload ?? "") ?? .cadencePyramids
-                    return "{\"status\":\"drill_prescribed\",\"drill_name\":\"\(resolved.title)\"}"
-                case .explainMetric:
-                    return "{\"status\":\"metric_explained\"}"
-                case .exportToWatch:
-                    let resolved = PreRunDrillId.resolve(from: query.payload ?? "") ?? .cadencePyramids
-                    return "{\"status\":\"exported_to_watch\",\"drill_name\":\"\(resolved.title)\"}"
-                case .recordFeedback:
-                    return "{\"status\":\"feedback_recorded\",\"message\":\"Subjective feedback recorded successfully.\"}"
-                case .updateGoal:
-                    return "{\"status\":\"training_goal_updated\"}"
-                }
-            }
-
-            let drillResult = try await coachActionTool.call(arguments: ExecuteCoachActionQuery(action: .prescribeDrill, payload: "cadence_pyramids"))
-            XCTAssertTrue(drillResult.contains("drill_prescribed"))
-
-            let sessionResult = try await coachActionTool.call(arguments: ExecuteCoachActionQuery(action: .prescribeDrill, payload: "Zone 1 Active Recovery Flush"))
-            XCTAssertTrue(sessionResult.contains("drill_prescribed"))
-            XCTAssertTrue(sessionResult.contains("Aerobic Flush"))
-
-            let feedbackResult = try await coachActionTool.call(arguments: ExecuteCoachActionQuery(action: .recordFeedback, payload: "RPE 8"))
-            XCTAssertTrue(feedbackResult.contains("feedback_recorded"))
-        }
-        #endif
-    }
-
-    @MainActor
-    func testReadinessPrescriptionAutoBindsSessionCard() async throws {
-        #if canImport(FoundationModels)
-        if #available(iOS 26.0, *) {
-            let config = ModelConfiguration(isStoredInMemoryOnly: true)
-            let container = try ModelContainer(for: RunRecord.self, configurations: config)
-            let context = container.mainContext
-
-            let run = makeTestRunRecord(isIndoor: false)
-            context.insert(run)
-            try context.save()
-
-            let chatEngine = AnalystChatEngine(runRecord: run)
-
-            // When readiness is checked for a fresh workout under recovery window,
-            // prescription is "Zone 1 Active Recovery Flush"
-            chatEngine.modelResponder = { (_: String, _: String) async throws -> String in
-                // Simulate model responding after querying readiness/schedule and displaying drill
-                let query = GetReadinessAndWorkloadQuery()
-                let tool = GetReadinessAndWorkloadTool { _ in
-                    let analysis = chatEngine.makeAnalysisContext(isSubjectiveDistress: false)
-                    let rx = analysis.lockedPrescription
-                    if let resolved = PreRunDrillId.resolve(from: rx.nextSessionName) {
-                        chatEngine.drillRecommendedThisTurn = resolved
-                    }
-                    return "{\"readiness_state\":\"productive\",\"second_run_advisable\":false}"
-                }
-                _ = try await tool.call(arguments: query)
-                return "You're cleared for training. Tomorrow's prescription is **Zone 2 Easy Aerobic Maintenance**."
-            }
-
-            await chatEngine.sendMessage("Should I run tomorrow, and what kind of session should I focus on?")
-            let lastMessage = chatEngine.messages.last
-            XCTAssertNotNil(lastMessage)
-            let attached = lastMessage?.attachedDrillId
-            XCTAssertEqual(attached, PreRunDrillId.zone2Run, "Readiness prescription must auto-bind the workout card to chat")
-        }
-        #endif
-    }
-
-    @MainActor
-    func testMarathonGoalRequestUpdatesGoalWithoutDisplayingDrillCardAndDurationIsRealistic() async throws {
-        // 1. Verify continuous aerobic sessions have realistic durations (30 min, not 5-10 min)
+    func testContinuousAerobicSessionDefaultDurations() {
         XCTAssertEqual(PreRunDrillId.zone2Run.defaultDuration, .thirtyMinutes, "Zone 2 aerobic run must default to 30 minutes, not 5 minutes")
         XCTAssertEqual(PreRunDrillId.aerobicFlush.defaultDuration, .thirtyMinutes, "Aerobic flush must default to 30 minutes")
-
-        #if canImport(FoundationModels)
-        if #available(iOS 26.0, *) {
-            let run = makeTestRunRecord(isIndoor: false)
-            let chatEngine = AnalystChatEngine(runRecord: run)
-
-            // 2. Verify lean prompt rules and character limit
-            let instructions = chatEngine.buildLeanSystemInstructions()
-            XCTAssertTrue(instructions.contains("update_goal"), "Prompt must declare update_goal rule")
-            XCTAssertTrue(instructions.contains("prescribe_drill"), "Prompt must declare prescribe_drill rule")
-            XCTAssertTrue(instructions.contains("export_to_watch"), "Prompt must declare export_to_watch rule")
-            XCTAssertTrue(instructions.contains("SPM"), "Prompt must require standard SPM unit notation")
-            XCTAssertTrue(instructions.count < 1200, "System instructions must stay strictly under 1,200 chars (was \(instructions.count))")
-
-            // 3. Verify readiness tool provides clean structured facts without leaking internal screaming snake_case
-            let query = GetReadinessAndWorkloadQuery()
-            let tool = GetReadinessAndWorkloadTool { _ in
-                let facts = ReadinessFacts(
-                    readiness_state: "productive",
-                    acwr: 1.05,
-                    streak_days: 2,
-                    streak_limit: 4,
-                    last_48h_minutes: 60,
-                    weekly_avg_minutes: 150,
-                    volume_ratio_48h: 0.4,
-                    volume_threshold: 0.5,
-                    hr_shift_bpm: 2.0,
-                    today_minutes: 30,
-                    today_target_minutes: 30,
-                    today_completion_percent: 100,
-                    second_run_advisable: false,
-                    limiting_factors: ["daily_volume_satisfied"],
-                    experience_level: "Intermediate",
-                    training_goal: "Base Building",
-                    cadence_floor_spm: 156
-                )
-                let data = (try? JSONEncoder().encode(facts)) ?? Data()
-                return String(data: data, encoding: .utf8) ?? "{}"
-            }
-            let toolResult = try await tool.call(arguments: query)
-            XCTAssertFalse(toolResult.contains("RECOVERY_FLUSH_ZONE_1"), "Must not leak screaming snake_case enum to LLM")
-            XCTAssertFalse(toolResult.contains("EASY_AEROBIC_ZONE_2"), "Must not leak screaming snake_case enum to LLM")
-            XCTAssertTrue(toolResult.contains("productive"), "Must provide clean structured state")
-
-            // 4. Simulate runner asking for a 6-month marathon schedule
-            chatEngine.modelResponder = { (_: String, userQuestion: String) async throws -> String in
-                XCTAssertTrue(userQuestion.contains("marathon"))
-                // Execute the update_goal action with marathon goal
-                let query = ExecuteCoachActionQuery(action: .updateGoal, goal: .marathon)
-                let tool = ExecuteCoachActionTool { q in
-                    let newGoal = q.goal?.rawValue ?? "Base Building"
-                    UserDefaults.standard.set(newGoal, forKey: "trainingGoal")
-                    return "{\"goal\":\"\(newGoal)\",\"status\":\"training_goal_updated\"}"
-                }
-                _ = try await tool.call(arguments: query)
-                return "I've locked your goal to **Marathon**! A 6-month marathon preparation is structured across four key periodization phases: Base Building, Aerobic Threshold, Peak Volume, and Taper."
-            }
-
-            await chatEngine.sendMessage("I want a tailored training schedule to prepare me for a marathon in 6 months")
-
-            // Goal must be updated to Marathon
-            XCTAssertEqual(UserDefaults.standard.string(forKey: "trainingGoal"), "Marathon")
-
-            // Must NOT have attached a drill card
-            let lastMessage = chatEngine.messages.last
-            XCTAssertNotNil(lastMessage)
-            XCTAssertNil(lastMessage?.attachedDrillId, "Race schedule query must not attach an immediate micro drill card")
-            XCTAssertTrue(lastMessage?.text.contains("Marathon") == true)
-        }
-        #endif
     }
 
     @MainActor
