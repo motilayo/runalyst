@@ -290,6 +290,59 @@ struct PreRunDrill: Sendable {
         generatePhases().reduce(0) { $0 + $1.durationSeconds }
     }
 
+    /// Formatted total duration based strictly on generated phases (e.g. "4m 10s" or "5 min").
+    var formattedPhasesDuration: String {
+        let total = totalPhasesDurationSeconds
+        let mins = total / 60
+        let secs = total % 60
+        if secs == 0 {
+            return "\(mins) min"
+        } else {
+            return "\(mins)m \(secs)s"
+        }
+    }
+
+    private func formatPhaseMinutes(_ seconds: Int) -> String {
+        let mins = seconds / 60
+        let rem = seconds % 60
+        if rem == 0 {
+            return "\(mins)m"
+        } else if rem == 30 {
+            return "\(mins).5m"
+        } else {
+            return "\(mins)m \(rem)s"
+        }
+    }
+
+    /// Structured plain-English phase summary line with exact minute/sub-minute formatting
+    /// (e.g. "1m in • 2x (20s / 30s) • 1.5m out").
+    var preciseStructureSummary: String {
+        let phases = generatePhases()
+        let warmup = phases.first(where: { $0.kind == .warmup })?.durationSeconds ?? 0
+        let cooldown = phases.first(where: { $0.kind == .cooldown })?.durationSeconds ?? 0
+        let workReps = phases.filter { $0.kind == .work }
+        let repCount = workReps.count
+        let repWorkDuration = workReps.first?.durationSeconds ?? 0
+        let repRecDuration = phases.first(where: {
+            if case .recovery = $0.kind { return true } else { return false }
+        })?.durationSeconds ?? 0
+
+        var parts: [String] = []
+        if warmup > 0 { parts.append("\(formatPhaseMinutes(warmup)) in") }
+        if repCount > 0 {
+            if repRecDuration > 0 {
+                parts.append("\(repCount)x (\(repWorkDuration)s / \(repRecDuration)s)")
+            } else {
+                parts.append("\(repCount)x \(repWorkDuration)s")
+            }
+        } else if let steadyPhase = phases.first(where: { $0.kind == .steady }) {
+            let steadyMinutes = formatPhaseMinutes(steadyPhase.durationSeconds)
+            parts.append("\(steadyMinutes) steady")
+        }
+        if cooldown > 0 { parts.append("\(formatPhaseMinutes(cooldown)) out") }
+        return parts.joined(separator: " • ")
+    }
+
     /// Formatted duration string for card headers (e.g. "7m 30s drill (Trimmed from 10 min)" or "10 min drill").
     var dynamicDurationTitle: String {
         let totalSec = totalPhasesDurationSeconds

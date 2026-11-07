@@ -1,0 +1,38 @@
+schema: spec-driven
+
+context: |
+  Project: Runalyst (iOS 26+ & watchOS running biomechanics and coaching application)
+  Tech Stack: Swift 6, SwiftUI, SwiftData, HealthKit, WorkoutKit, Apple FoundationModels (on-device LLM)
+  Architecture: Assay-Driven Engineering Workspace with strict Directory Air-Gap
+    - RunalystCore/ (The Reference Core): Pure functional Swift package. ZERO Apple frameworks (no HealthKit, SwiftData, CoreML, SwiftUI, OSLog). ZERO wall-clock time (Date(), Calendar.current). Every file <= 500 LOC.
+    - Runalyst/ (The Foundry): iOS app adapters, SwiftData persistence, HealthKit ingestion, FoundationModels tool calling, and Hollow SwiftUI Views (<= 500 LOC, zero inline math or shadow nil-coalescing fallbacks).
+  Verification Gatekeeper: ./assay.sh (runs Air-Gap checks, <= 500 LOC mass cap check, SwiftLint --strict, Grounded Voice lexicon audit, and Swift test suite).
+  Formatting Rule: Strict GitHub Markdown and Unicode only. NEVER use LaTeX math formatting in specs, docs, comments, or responses.
+
+  Engineering Organization & Subagent Delegation Hierarchy (Token Efficiency Mandate):
+    - Tier 1: Staff / Principal Architect (Parent Agent - Argon / Opus / Sonnet / Pro):
+      Owns OpenSpec proposals, specs, system design, task decomposition, subagent orchestration, and final review. Never reads > 3 files for exploratory recon or writes > 30 LOC of implementation/test code directly in the parent context window.
+    - Tier 2: Senior / Lead Engineer (Subagent `senior-engineer` -> Model: `pro` or `inherit`, EnableWriteTools: true):
+      Handles complex RunalystCore biomechanical math, Swift 6 concurrency (@ModelActor / Sendable boundaries), and multi-file architectural refactors.
+    - Tier 3: Mid-Level / Junior Engineer (Subagent `mid-jnr-engineer` -> Model: `flash`, EnableWriteTools: true):
+      High-throughput code execution for well-specified tasks: SwiftUI Hollow Views, Foundry adapters, unit tests, fixture wiring, boilerplate, and SwiftLint fixes.
+    - Tier 4: Scout / Research Intern (Subagent `research` -> Model: `flash_lite` or `flash`, read-only):
+      Fast codebase reconnaissance, symbol tracing, LOC checks, and test/spec verification audits.
+
+rules:
+  proposal:
+    - "Clearly state which architectural boundary is touched: RunalystCore (Sans-I/O Core), Runalyst Foundry (Adapters/Models/CoachingEngine), or Hollow Views."
+    - "Delegate codebase reconnaissance to a Tier 4 Scout subagent (research with flash_lite or flash) before drafting the proposal so raw file dumps do not bloat the Staff Architect context window."
+    - "Include an Impact & Air-Gap Assessment section verifying compliance with CONSTITUTION.md and the 500-LOC file ceiling."
+  specs:
+    - "Express all mathematical formulas, units, and ranges in clean Unicode and plain text (e.g., 165 SPM, >= 1.40, [T_Monday_Start, T_Next_Monday_Start)). Never use LaTeX."
+    - "Define deterministic boundary conditions, edge cases, and negative constraints (what the system MUST NOT do, such as shadow fallbacks or banned cheerleading lexicon)."
+  design:
+    - "Specify exact Swift types, method signatures, and data flow between RunalystCore value structs and Runalyst Foundry adapters/views."
+    - "Verify that every new or modified file stays below the 500-LOC ceiling by placing new helpers in clean companion <Module>+Extension.swift files when a file is near 450-500 LOC. NEVER golf code, delete existing edge-case logic, or make risky structural cuts just to squeeze under 500 LOC."
+    - "Identify which components require Senior-tier reasoning (RunalystCore math, @ModelActor concurrency) vs Mid/Junior-tier implementation (flash code generation for views, adapters, and tests)."
+  tasks:
+    - "Tag EVERY task checkbox item with an explicit Engineering Org assignee tier and model badge: [Scout | flash_lite], [Mid/Jnr | flash], [Senior | pro], or [Staff/Lead | parent]."
+    - "Make every [Mid/Jnr | flash] and [Senior | pro] task self-contained by listing the exact target file path(s), the spec/design section to follow, and the verification command (./assay.sh or swift test)."
+    - "Group independent tasks so the Staff/Lead orchestrator can dispatch multiple subagents in parallel (using Workspace: share or non-overlapping file scopes) during /opsx:apply."
+    - "Always include a final verification task that runs ./assay.sh and swiftlint --strict with zero violations."

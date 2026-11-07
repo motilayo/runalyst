@@ -140,4 +140,98 @@ struct FramboiseCoreTests {
         // Pace within +/- 3.0 s/km
         #expect(abs(noisyStats.workingAvgPaceSecondsPerKm - idealStats.workingAvgPaceSecondsPerKm) < 3.0)
     }
+
+    @Test("10K Threshold Surges 35-minute workout preserves walk recovery, classifies as Intervals, and matches Tempo Surges")
+    func thresholdSurgesPreservationAndClassification() {
+        let baseDate = Date(timeIntervalSince1970: 1_700_000_000)
+        var buckets: [TelemetryBucket] = []
+        var t: Double = 0
+
+        // 4m warmup @ 118 SPM, 420 s/km (571.4m total)
+        for _ in 0..<16 {
+            buckets.append(TelemetryBucket(
+                timestamp: baseDate.addingTimeInterval(t),
+                durationSeconds: 15.0,
+                distanceMeters: (15.0 / 420.0) * 1000.0,
+                paceSecondsPerKm: 420.0,
+                cadenceSPM: 118.0,
+                heartRateBPM: 128.0
+            ))
+            t += 15.0
+        }
+
+        // 4 x (3m work @ 5:25/km, 159 SPM, HR 165 / 3m walk @ 10:30/km, 120 SPM, HR 132)
+        for _ in 0..<4 {
+            // 3m work: 12 buckets @ 15s = 180s, 325 s/km (553.85m)
+            for _ in 0..<12 {
+                buckets.append(TelemetryBucket(
+                    timestamp: baseDate.addingTimeInterval(t),
+                    durationSeconds: 15.0,
+                    distanceMeters: (15.0 / 325.0) * 1000.0,
+                    paceSecondsPerKm: 325.0,
+                    cadenceSPM: 159.0,
+                    heartRateBPM: 165.0
+                ))
+                t += 15.0
+            }
+            // 3m walk: 12 buckets @ 15s = 180s, 630 s/km (285.71m)
+            for _ in 0..<12 {
+                buckets.append(TelemetryBucket(
+                    timestamp: baseDate.addingTimeInterval(t),
+                    durationSeconds: 15.0,
+                    distanceMeters: (15.0 / 630.0) * 1000.0,
+                    paceSecondsPerKm: 630.0,
+                    cadenceSPM: 120.0,
+                    heartRateBPM: 132.0
+                ))
+                t += 15.0
+            }
+        }
+
+        // 7m cooldown @ 151 SPM, 420s (620.4m total -> 1.477 m/s, pace 677 s/km)
+        for _ in 0..<28 {
+            buckets.append(TelemetryBucket(
+                timestamp: baseDate.addingTimeInterval(t),
+                durationSeconds: 15.0,
+                distanceMeters: (620.4 / 28.0),
+                paceSecondsPerKm: 677.0,
+                cadenceSPM: 151.0,
+                heartRateBPM: 138.0
+            ))
+            t += 15.0
+        }
+
+        #expect(buckets.count == 140)
+        #expect(t == 2100.0)
+
+        // 1. FramboiseCore.filterRunningSamples preserves full 35:00 working duration and ~4.55 km working distance
+        let filtered = FramboiseCore.filterRunningSamples(buckets: buckets)
+        #expect(filtered.count == buckets.count)
+
+        let stats = FramboiseCore.computeWorkingStats(buckets: buckets)
+        #expect(stats.workingDurationSeconds == 2100.0)
+        #expect(abs(stats.workingDistanceMeters - 4550.0) < 20.0)
+
+        // 2. Classifies as "Intervals"
+        let cv = FramboiseCore.calculatePaceCV(bucketPaces: buckets.map(\.paceSecondsPerKm))
+        let slope = FramboiseCore.calculatePaceSlope(bucketPaces: buckets.map(\.paceSecondsPerKm))
+        let z4 = FramboiseCore.calculatePercentZone4(bucketHRs: buckets.map(\.heartRateBPM), maxHR: 190.0)
+        let classification = RunClassifierCore.classifyRun(
+            buckets: buckets,
+            cv: cv,
+            slope: slope,
+            zone4: z4,
+            durationMinutes: 35.0
+        )
+        #expect(classification == "Intervals")
+
+        // 3. Matches "tempo_surges" in DrillPatternCore
+        let drillMatch = DrillPatternCore.recognizeDrill(
+            buckets: buckets,
+            baselineCadence: 155,
+            workoutDuration: 2100.0
+        )
+        #expect(drillMatch?.drillIdentifier == "tempo_surges")
+        #expect(drillMatch?.detectedIntervalCount == 4)
+    }
 }

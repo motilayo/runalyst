@@ -17,6 +17,7 @@ struct HeartRateTrajectoryMapView: View {
     var splits: [RunSplit] = []
     var rawAvgHeartRate: Double = 0.0
     var selectedModality: Binding<WorkoutTelemetryModality>?
+    var buckets: [BucketData] = []
 
     @State private var selectedMinute: Double?
 
@@ -76,10 +77,107 @@ struct HeartRateTrajectoryMapView: View {
 
     private var chartPoints: [HRPlotPoint] {
         var points: [HRPlotPoint] = []
+        let validBuckets = buckets.filter { $0.meanHR >= 40.0 && $0.durationSeconds > 0 }
+        let validSegments = normalizedSegments.filter { $0.avgHR >= 40.0 && $0.durationSeconds > 0 }
+        let hasIntervalSegments = validSegments.contains { $0.kind == "work" || $0.kind == "recovery" }
         let validSplits = splits.filter { $0.avgHeartRate >= 40.0 && $0.durationSeconds > 0 }
 
-        // Strategy A: Authentic Splits Progression (Warmup, Splits, Drift)
-        if validSplits.count >= 2 {
+        if validBuckets.count >= 2 {
+            // Strategy 1: Authentic Bucketed Telemetry (Preserves interval oscillations and peak HR)
+            let totalBucketSec = validBuckets.map(\.durationSeconds).reduce(0, +)
+            let targetSec = workoutDuration ?? totalBucketSec
+            let timeScale = (targetSec > totalBucketSec && totalBucketSec > 0 && abs(targetSec - totalBucketSec) > 60.0)
+                ? (targetSec / totalBucketSec)
+                : 1.0
+
+            var elapsedSec = 0.0
+            let firstHR = validBuckets[0].meanHR
+            points.append(
+                HRPlotPoint(
+                    id: "bucket-warmup",
+                    minute: 0.0,
+                    heartRate: firstHR,
+                    kind: "steady",
+                    isAnchor: false
+                )
+            )
+
+            for (idx, bucket) in validBuckets.enumerated() {
+                let startSec = elapsedSec
+                elapsedSec += bucket.durationSeconds
+                let midMin = ((startSec + elapsedSec) / 2.0 * timeScale) / 60.0
+
+                let isLocalPeak = (idx > 0 && idx < validBuckets.count - 1) &&
+                    (bucket.meanHR >= validBuckets[idx - 1].meanHR && bucket.meanHR >= validBuckets[idx + 1].meanHR) &&
+                    bucket.meanHR > effectiveThreshold
+                let isLocalTrough = (idx > 0 && idx < validBuckets.count - 1) &&
+                    (bucket.meanHR <= validBuckets[idx - 1].meanHR && bucket.meanHR <= validBuckets[idx + 1].meanHR)
+                let isExtremum = isLocalPeak || isLocalTrough
+
+                points.append(
+                    HRPlotPoint(
+                        id: "bucket-\(idx)",
+                        minute: midMin,
+                        heartRate: bucket.meanHR,
+                        kind: isLocalPeak ? "work" : (isLocalTrough ? "recovery" : "steady"),
+                        isAnchor: isExtremum
+                    )
+                )
+            }
+
+            let finalHR = validBuckets.last?.meanHR ?? effectiveWorkingHR
+            points.append(
+                HRPlotPoint(
+                    id: "bucket-finish",
+                    minute: maxMinutes,
+                    heartRate: finalHR,
+                    kind: "steady",
+                    isAnchor: false
+                )
+            )
+        } else if hasIntervalSegments || (validSegments.count >= 3 && validSplits.count < 2) {
+            // Strategy 2: Multi-Segment Phase Structure (Intervals, Fartleks, Mixed Phases)
+            let firstSegHR = validSegments[0].avgHR > 0 ? validSegments[0].avgHR : effectiveWorkingHR
+            if let firstStart = validSegments.first?.startSeconds, firstStart > 30.0 {
+                points.append(
+                    HRPlotPoint(
+                        id: "seg-start",
+                        minute: 0.0,
+                        heartRate: firstSegHR * 0.9,
+                        kind: "steady",
+                        isAnchor: false
+                    )
+                )
+            }
+
+            for (idx, seg) in validSegments.enumerated() {
+                let hr = seg.avgHR > 0 ? seg.avgHR : effectiveWorkingHR
+                let startMin = seg.startSeconds / 60.0
+                let endMin = seg.endSeconds / 60.0
+                let midMin = (seg.startSeconds + seg.endSeconds) / 120.0
+                let durationMin = (seg.endSeconds - seg.startSeconds) / 60.0
+
+                if durationMin > 4.0 {
+                    points.append(HRPlotPoint(id: "\(idx)-s", minute: startMin + 0.5, heartRate: hr, kind: seg.kind, isAnchor: false))
+                    points.append(HRPlotPoint(id: "\(idx)-m", minute: midMin, heartRate: hr, kind: seg.kind, isAnchor: true))
+                    points.append(HRPlotPoint(id: "\(idx)-e", minute: endMin - 0.5, heartRate: hr, kind: seg.kind, isAnchor: false))
+                } else {
+                    points.append(HRPlotPoint(id: "\(idx)-m", minute: midMin, heartRate: hr, kind: seg.kind, isAnchor: true))
+                }
+            }
+
+            let lastSegHR = validSegments.last?.avgHR ?? effectiveWorkingHR
+            points.append(
+                HRPlotPoint(
+                    id: "seg-finish",
+                    minute: maxMinutes,
+                    heartRate: lastSegHR,
+                    kind: "steady",
+                    isAnchor: false
+                )
+            )
+        } else if validSplits.count >= 2 {
+            // Strategy 3: Authentic Splits Progression (Warmup, Splits, Drift)
             let totalSplitSec = validSplits.map(\.durationSeconds).reduce(0, +)
             let targetSec = workoutDuration ?? totalSplitSec
             let timeScale = (targetSec > totalSplitSec && totalSplitSec > 0 && abs(targetSec - totalSplitSec) > 60.0)
@@ -125,24 +223,8 @@ struct HeartRateTrajectoryMapView: View {
                     isAnchor: false
                 )
             )
-        } else if normalizedSegments.filter({ $0.avgHR >= 40.0 }).count >= 3 {
-            // Strategy B: Multi-Segment Structure (Intervals, Fartleks, Mixed Phases)
-            for (idx, seg) in normalizedSegments.enumerated() {
-                let hr = seg.avgHR > 0 ? seg.avgHR : effectiveWorkingHR
-                let startMin = seg.startSeconds / 60.0
-                let endMin = seg.endSeconds / 60.0
-                let midMin = (seg.startSeconds + seg.endSeconds) / 120.0
-
-                if (endMin - startMin) > 2.0 {
-                    points.append(HRPlotPoint(id: "\(idx)-s", minute: startMin, heartRate: hr, kind: seg.kind, isAnchor: false))
-                    points.append(HRPlotPoint(id: "\(idx)-m", minute: midMin, heartRate: hr, kind: seg.kind, isAnchor: true))
-                    points.append(HRPlotPoint(id: "\(idx)-e", minute: endMin, heartRate: hr, kind: seg.kind, isAnchor: false))
-                } else {
-                    points.append(HRPlotPoint(id: "\(idx)-m", minute: midMin, heartRate: hr, kind: seg.kind, isAnchor: true))
-                }
-            }
         } else {
-            // Strategy C: Continuous Steady Physiological Curve anchored to effectiveWorkingHR
+            // Strategy 4: Continuous Steady Physiological Curve anchored to effectiveWorkingHR
             // Warmup rise (0-8m) -> Steady aerobic cruising -> Gentle late drift
             let targetHR = effectiveWorkingHR
             let mMax = maxMinutes
@@ -200,12 +282,18 @@ struct HeartRateTrajectoryMapView: View {
         chartPoints.max(by: { $0.heartRate < $1.heartRate })
     }
 
+    private var isZone4Strain: Bool {
+        percentZone4 > 0.15 || workingAvgHeartRate > (zone2Ceiling + 12.0)
+    }
+
     private var isElevatedStrain: Bool {
         workingAvgHeartRate > (effectiveThreshold + 3.0)
     }
 
     private var cardiacStabilityText: String {
-        if isElevatedStrain {
+        if isZone4Strain {
+            return "Zone 4 Threshold Strain"
+        } else if isElevatedStrain {
             return "Elevated Strain (Zone 3)"
         } else if percentZone4 <= 0.04 && (hrCV ?? 0.05) <= 0.08 {
             return "Cardiac Stability: High"
@@ -217,7 +305,9 @@ struct HeartRateTrajectoryMapView: View {
     }
 
     private var cardiacStabilityColor: Color {
-        if isElevatedStrain {
+        if isZone4Strain {
+            return percentZone4 >= 0.30 ? Color.red : Color.orange
+        } else if isElevatedStrain {
             return Color.orange
         } else if percentZone4 <= 0.04 && (hrCV ?? 0.05) <= 0.08 {
             return Color.green
@@ -412,17 +502,25 @@ struct HeartRateTrajectoryMapView: View {
                         let isNearRight = peak.minute >= (maxMinutes - 4.0)
                         let isNearLeft = peak.minute <= 4.0
                         let peakAlignment: Alignment = isNearRight ? .trailing : (isNearLeft ? .leading : .center)
+                        let peakColor: Color = {
+                            if peak.heartRate > (zone2Ceiling + 12.0) || isZone4Strain {
+                                return Color.red
+                            } else if peak.heartRate > effectiveThreshold {
+                                return Color.orange
+                            }
+                            return Self.neonPink
+                        }()
 
                         PointMark(
                             x: .value("Time", peak.minute),
                             y: .value("Heart Rate", peak.heartRate)
                         )
-                        .foregroundStyle(peak.heartRate > effectiveThreshold ? Color.orange : Self.neonPink)
+                        .foregroundStyle(peakColor)
                         .symbolSize(40)
                         .annotation(position: .top, alignment: peakAlignment) {
                             Text("\(Int(round(peak.heartRate))) Peak")
                                 .font(.system(size: 10, weight: .bold).monospacedDigit())
-                                .foregroundColor(peak.heartRate > effectiveThreshold ? .orange : Self.neonPink)
+                                .foregroundColor(peakColor)
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
                                 .background(Color(UIColor.secondarySystemGroupedBackground))

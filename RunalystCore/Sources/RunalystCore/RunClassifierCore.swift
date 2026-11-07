@@ -108,6 +108,80 @@ public enum RunClassifierCore {
         return climbEpisodes >= 3
     }
 
+    /// Detects if the bucket sequence contains a structured interval pattern:
+    /// >= 3 distinct running surges of >= 45s (speed >= 2.2 m/s or cadence >= 145 SPM)
+    /// separated by active recovery/walk windows (speed >= 0.8 m/s or cadence >= 95 SPM).
+    public static func hasStructuredIntervalPattern(buckets: [TelemetryBucket]) -> Bool {
+        guard buckets.count >= 6 else { return false }
+
+        struct RawSurge {
+            var startIndex: Int
+            var endIndex: Int
+            var duration: Double
+        }
+
+        var rawSurges: [RawSurge] = []
+        var inSurge = false
+        var startIdx = 0
+        var dur = 0.0
+
+        for (i, b) in buckets.enumerated() {
+            let isSurge = b.cadenceSPM >= 145.0 || b.speedMetersPerSecond >= 2.2
+            if isSurge {
+                if !inSurge {
+                    inSurge = true
+                    startIdx = i
+                    dur = b.durationSeconds
+                } else {
+                    dur += b.durationSeconds
+                }
+            } else if inSurge {
+                inSurge = false
+                rawSurges.append(RawSurge(startIndex: startIdx, endIndex: i, duration: dur))
+                dur = 0.0
+            }
+        }
+        if inSurge {
+            rawSurges.append(RawSurge(startIndex: startIdx, endIndex: buckets.count, duration: dur))
+        }
+
+        // Sub-20s phase debouncing: bridge momentary gaps (< 20s) between surges
+        var debouncedSurges: [RawSurge] = []
+        for surge in rawSurges {
+            if let last = debouncedSurges.last {
+                let gapBuckets = buckets[last.endIndex..<surge.startIndex]
+                let gapDur = gapBuckets.map(\.durationSeconds).reduce(0, +)
+                if gapDur < 20.0 {
+                    debouncedSurges[debouncedSurges.count - 1].endIndex = surge.endIndex
+                    debouncedSurges[debouncedSurges.count - 1].duration += (gapDur + surge.duration)
+                } else {
+                    debouncedSurges.append(surge)
+                }
+            } else {
+                debouncedSurges.append(surge)
+            }
+        }
+
+        let qualifiedSurges = debouncedSurges.filter { $0.duration >= 45.0 }
+        guard qualifiedSurges.count >= 3 else { return false }
+
+        var validSeparatedCount = 1
+        for i in 0..<(qualifiedSurges.count - 1) {
+            let recStart = qualifiedSurges[i].endIndex
+            let recEnd = qualifiedSurges[i + 1].startIndex
+            guard recEnd > recStart else { continue }
+            let recBuckets = buckets[recStart..<recEnd]
+            let recDuration = recBuckets.map(\.durationSeconds).reduce(0, +)
+            guard recDuration >= 20.0 else { continue }
+            let activeCount = recBuckets.filter { $0.cadenceSPM >= 95.0 || $0.speedMetersPerSecond >= 0.8 }.count
+            if Double(activeCount) / Double(recBuckets.count) >= 0.50 {
+                validSeparatedCount += 1
+            }
+        }
+
+        return validSeparatedCount >= 3
+    }
+
     /// Multi-delta weighted classification engine enforcing turnover stability,
     /// topological oscillation signatures, cardiac strain guardrails, and pacing trends.
     public static func classifyRun(
@@ -141,7 +215,14 @@ public enum RunClassifierCore {
         // LAYER 2: Structural Gate (Intermittent vs. Continuous)
         let validatedCycles = cycles ?? IntervalSegmenterCore.extractOscillationCycles(buckets: buckets)
         let avgCycleContrast = validatedCycles.isEmpty ? 0.0 : (validatedCycles.map { $0.recoveryPaceSecondsPerKm - $0.workPaceSecondsPerKm }.reduce(0, +) / Double(validatedCycles.count))
+        let structuredIntervals = hasStructuredIntervalPattern(buckets: buckets)
+        let hasWorkWalkCycles = validatedCycles.count >= 3 && validatedCycles.allSatisfy {
+            ($0.recoveryPaceSecondsPerKm - $0.workPaceSecondsPerKm >= 45.0) && $0.workCadenceSPM >= 145.0 && ($0.recoveryCadenceSPM <= 125.0 || $0.recoveryPaceSecondsPerKm >= 540.0)
+        }
         let isIntermittent: Bool = {
+            if structuredIntervals || hasWorkWalkCycles {
+                return true
+            }
             guard avgCycleContrast >= 25.0 else { return false }
             if validatedCycles.count >= 3 {
                 return true
@@ -154,7 +235,7 @@ public enum RunClassifierCore {
         let regularityScore = isIntermittent ? IntervalSegmenterCore.calculateCycleRegularity(cycles: validatedCycles) : 0.0
 
         // If traffic was chaotic and it's not a structured threshold interval workout, classify as Urban Traffic
-        if !isIndoor && !isUniformSteady && isChaoticTraffic && (zone4 < 0.35 || regularityScore < 0.65) {
+        if !isIndoor && !isUniformSteady && isChaoticTraffic && !structuredIntervals && !hasWorkWalkCycles && (zone4 < 0.35 || regularityScore < 0.65) {
             return "Urban Traffic"
         }
 
@@ -171,7 +252,7 @@ public enum RunClassifierCore {
             }
 
             let recoveryFloor = calculateRecoveryCadenceFloor(buckets: buckets, cycles: validatedCycles)
-            return (recoveryFloor < 120.0 || regularityScore >= 0.65) ? "Intervals" : "Fartlek"
+            return (recoveryFloor <= 125.0 || regularityScore >= 0.65 || hasWorkWalkCycles) ? "Intervals" : "Fartlek"
         }
 
         // LAYER 4: Continuous Structural Archetypes (Volume & Fatigue)

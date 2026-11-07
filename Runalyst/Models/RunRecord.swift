@@ -320,6 +320,10 @@ extension RunRecord {
                 return nil
             }
             if isUnlinkedLongRun {
+                // Structured 30-40 min (<= 2400s) Tempo Surges sessions are permitted when not manually unlinked
+                if resolved == .tempoSurges && duration <= 2400 {
+                    return resolved.title
+                }
                 return nil
             }
             return resolved.title
@@ -344,6 +348,20 @@ extension RunRecord {
         // 4. If detectedTypeRaw is itself a specific drill title (e.g. "Rhythm Intervals")
         if let canonical = PreRunDrillId.canonicalDrillTitle(for: detectedTypeRaw) {
             return validatedDrillTitle(canonical)
+        }
+        // 5. Structured 30-40 min (<= 2400s) 4x3m interval sessions matching Tempo Surges
+        if duration >= 1500 && duration <= 2400 {
+            if let phases = signature?.phaseSegments, !phases.isEmpty {
+                let workPhases = phases.filter { $0.kind.lowercased() == "work" && $0.durationSeconds >= 45.0 }
+                let recPhases = phases.filter { ($0.kind.lowercased() == "recovery" || $0.kind.lowercased() == "walking") && $0.durationSeconds >= 20.0 }
+                if workPhases.count >= 3 && recPhases.count >= 2 {
+                    let avgWorkDur = workPhases.map(\.durationSeconds).reduce(0, +) / Double(workPhases.count)
+                    let avgRecDur = recPhases.map(\.durationSeconds).reduce(0, +) / Double(recPhases.count)
+                    if abs(avgWorkDur - 180.0) <= 60.0 && avgRecDur >= 45.0 && avgRecDur <= 270.0 {
+                        return PreRunDrillId.tempoSurges.title
+                    }
+                }
+            }
         }
         return nil
     }
@@ -528,6 +546,12 @@ extension RunRecord {
             classification: detectedTypeRaw.isEmpty ? normalizedClassification : detectedTypeRaw
         )
     }
+
+    /// Canonical run type alias matching detectedTypeRaw.
+    var runType: String { detectedTypeRaw }
+
+    /// Canonical tags alias matching framboiseTags.
+    var tags: [String] { framboiseTags }
 
     /// Converts this SwiftData RunRecord into a pure RunalystCore MilestoneRunSample.
     func toMilestoneRunSample() -> MilestoneRunSample {

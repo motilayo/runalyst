@@ -1202,4 +1202,204 @@ final class SessionSynthesisEngineTests: XCTestCase {
         XCTAssertFalse(tzRx.isColdStart)
         XCTAssertFalse(tzRx.isSubjectiveOverride)
     }
+
+    @MainActor
+    func testPreRunState_AfterThresholdSurgesYesterdayWithoutFatigue_PrescribesAerobicBaseNotRepeatedIntervalsOrFlush() {
+        let calendar = Calendar.current
+        let now = Date()
+        guard let yesterday = calendar.date(byAdding: .day, value: -1, to: now) else {
+            XCTFail("Failed to construct date")
+            return
+        }
+
+        // 10K Threshold Surges workout completed yesterday (24h ago) without fatigue tags
+        let yesterdaySurges = makeRun(
+            date: yesterday,
+            duration: 2100.0,
+            distanceMeters: 6000.0,
+            workingAvgCadence: 166.0,
+            workingAvgHeartRate: 158.0,
+            detectedTypeRaw: "Intervals",
+            framboiseTags: ["drill:Tempo Surges"],
+            percentZone4: 0.35
+        )
+
+        let state = SessionSynthesisEngine.evaluateDailyState(
+            runRecords: [yesterdaySurges],
+            activeGoal: "10K Race",
+            experienceLevel: "Intermediate",
+            useMetric: true,
+            now: now
+        )
+
+        switch state {
+        case .preRun(let session):
+            // 1. Must NOT repeat 10K Threshold Surges back-to-back within 48h
+            XCTAssertFalse(
+                session.sessionTitle.contains("Threshold Surges") || session.sessionTitle.contains("Intervals"),
+                "Must not prescribe back-to-back quality intervals within 48h: \(session.sessionTitle)"
+            )
+            // 2. Must NOT force Zone 1 Active Recovery Flush since there are no fatigue tags
+            XCTAssertFalse(
+                session.sessionTitle.contains("Recovery Flush"),
+                "Must not force Zone 1 Active Recovery Flush without fatigue tags: \(session.sessionTitle)"
+            )
+            // 3. Must transition to aerobic base or progression run
+            XCTAssertTrue(
+                session.sessionTitle.contains("Easy Aerobic Base") || session.sessionTitle.contains("Aerobic") || session.sessionTitle.contains("Long"),
+                "Prescription must transition to aerobic consolidation: \(session.sessionTitle)"
+            )
+            XCTAssertFalse(session.isTrimmed, "Drill should not be trimmed without fatigue tags")
+            XCTAssertTrue(
+                session.groundedRationale.localizedCaseInsensitiveContains("Quality stimulus already banked")
+                    || session.groundedRationale.localizedCaseInsensitiveContains("polarized"),
+                "Rationale should cite banked quality or polarized consolidation: \(session.groundedRationale)"
+            )
+        case .completedToday:
+            XCTFail("Expected .preRun state when no run has been logged today")
+        }
+    }
+
+    @MainActor
+    func testPreRunState_WithNormalAerobicWarmupLag_DoesNotTriggerCardiacDriftOrRecoveryFlush() {
+        let calendar = Calendar.current
+        let now = Date()
+        guard let yesterday = calendar.date(byAdding: .day, value: -1, to: now) else {
+            XCTFail("Failed to construct date")
+            return
+        }
+
+        // Continuous aerobic run yesterday where HR rises by only 6 BPM (normal warmup lag)
+        let yesterdayRun = makeRun(
+            date: yesterday,
+            duration: 1800.0,
+            distanceMeters: 5000.0,
+            workingAvgCadence: 160.0,
+            workingAvgHeartRate: 142.0,
+            detectedTypeRaw: "Easy Run",
+            framboiseTags: []
+        )
+        let splits = [
+            RunSplit(index: 1, distanceMeters: 1000, durationSeconds: 360, paceSecondsPerKm: 360, avgHeartRate: 136, avgCadence: 160, elevationGainMeters: 0),
+            RunSplit(index: 2, distanceMeters: 1000, durationSeconds: 360, paceSecondsPerKm: 360, avgHeartRate: 140, avgCadence: 160, elevationGainMeters: 0),
+            RunSplit(index: 3, distanceMeters: 1000, durationSeconds: 360, paceSecondsPerKm: 360, avgHeartRate: 146, avgCadence: 160, elevationGainMeters: 0)
+        ]
+        yesterdayRun.signature = RunSignature(
+            classification: "Easy Run",
+            confidence: 0.95,
+            probabilities: [:],
+            anomalies: [],
+            cadenceFloor: 150,
+            phaseSegments: [],
+            dataSource: "wrist",
+            isIndoor: false,
+            needsInclineReview: false,
+            splits: splits
+        )
+
+        let state = SessionSynthesisEngine.evaluateDailyState(
+            runRecords: [yesterdayRun],
+            activeGoal: "10K Race",
+            experienceLevel: "Intermediate",
+            useMetric: true,
+            now: now
+        )
+
+        switch state {
+        case .preRun(let session):
+            // Minor 6 BPM rise should not trigger cardiac drift recovery lockout
+            XCTAssertFalse(
+                session.sessionTitle.contains("Recovery Flush"),
+                "Minor warmup lag should not trigger recovery flush: \(session.sessionTitle)"
+            )
+            XCTAssertFalse(
+                session.groundedRationale.localizedCaseInsensitiveContains("cardiac drift"),
+                "Rationale should not report false cardiac drift: \(session.groundedRationale)"
+            )
+            XCTAssertFalse(session.isTrimmed)
+        case .completedToday:
+            XCTFail("Expected .preRun state")
+        }
+    }
+
+    @MainActor
+    func testPlannedSessionOnTargetDate_ResolvesExactCalendarDateWhenCompletedTodayActive() {
+        let calendar = Calendar.current
+        let now = calendar.date(bySettingHour: 10, minute: 0, second: 0, of: Date()) ?? Date()
+        let todayRun = makeRun(
+            date: now.addingTimeInterval(-3600),
+            duration: 1800.0,
+            distanceMeters: 5000.0,
+            detectedTypeRaw: "Steady Effort"
+        )
+
+        let state = SessionSynthesisEngine.evaluateDailyState(
+            runRecords: [todayRun],
+            activeGoal: "5K",
+            experienceLevel: "Intermediate",
+            useMetric: true,
+            now: now
+        )
+
+        guard case .completedToday(let completedRun, let tomorrowSession) = state else {
+            XCTFail("Expected .completedToday state")
+            return
+        }
+
+        // 1. Query today: returns today's completed run
+        let todayPlanned = SessionSynthesisEngine.plannedSession(
+            on: now,
+            state: state,
+            runRecords: [todayRun],
+            activeGoal: "5K",
+            useMetric: true,
+            now: now,
+            calendar: calendar
+        )
+        XCTAssertEqual(todayPlanned.title, completedRun.workoutType)
+        XCTAssertEqual(todayPlanned.kind, .run)
+        XCTAssertEqual(todayPlanned.adjustmentTriggers, ["completed_today"])
+
+        // 2. Query tomorrow: returns tomorrowSession's exact title and intent
+        guard let tomorrowDate = calendar.date(byAdding: .day, value: 1, to: now) else {
+            XCTFail("Failed to compute tomorrow")
+            return
+        }
+        let tomorrowPlanned = SessionSynthesisEngine.plannedSession(
+            on: tomorrowDate,
+            state: state,
+            runRecords: [todayRun],
+            activeGoal: "5K",
+            useMetric: true,
+            now: now,
+            calendar: calendar
+        )
+        XCTAssertEqual(tomorrowPlanned.title, tomorrowSession.sessionTitle)
+        XCTAssertEqual(tomorrowPlanned.intent, tomorrowSession.intent)
+
+        // 3. Query 2 days from now (startsAfterTomorrow microcycle index 0): matches exact calendar date
+        guard let twoDaysLater = calendar.date(byAdding: .day, value: 2, to: now) else {
+            XCTFail("Failed to compute day+2")
+            return
+        }
+        let twoDaysLaterPlanned = SessionSynthesisEngine.plannedSession(
+            on: twoDaysLater,
+            state: state,
+            runRecords: [todayRun],
+            activeGoal: "5K",
+            useMetric: true,
+            now: now,
+            calendar: calendar
+        )
+        let expectedMicroDay = tomorrowSession.microcycle.first { day in
+            guard let d = day.date else { return false }
+            return calendar.isDate(d, inSameDayAs: twoDaysLater)
+        }
+        XCTAssertNotNil(expectedMicroDay)
+        if let expected = expectedMicroDay?.plannedSession {
+            XCTAssertEqual(twoDaysLaterPlanned.title, expected.title)
+            XCTAssertEqual(twoDaysLaterPlanned.minutesLow, expected.minutesLow)
+            XCTAssertEqual(twoDaysLaterPlanned.minutesHigh, expected.minutesHigh)
+        }
+    }
 }

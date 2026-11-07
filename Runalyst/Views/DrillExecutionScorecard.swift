@@ -304,15 +304,24 @@ struct DrillExecutionScorecard: View {
                     }
                 }()
                 let hrCeiling = drillId.targetHeartRateZone == 2 ? 144 : 135
+                let isZone4Spike = runRecord.percentZone4 > 0.15 || actualHR > (hrCeiling + 12)
                 let hrSubtitle: String = {
                     if drillId.targetHeartRateZone == 2 {
-                        return actualHR <= 144 ? "Ceiling ≤ 144 held" : "Elevated strain (Zone 3)"
+                        if isZone4Spike {
+                            return "Zone 4 threshold strain"
+                        } else {
+                            return actualHR <= 144 ? "Ceiling ≤ 144 held" : "Elevated strain (Zone 3)"
+                        }
                     } else {
-                        return actualHR <= 135 ? "Ceiling ≤ 135 held" : "Elevated strain"
+                        if isZone4Spike {
+                            return "Zone 4 threshold strain"
+                        } else {
+                            return actualHR <= 135 ? "Ceiling ≤ 135 held" : "Elevated strain"
+                        }
                     }
                 }()
-                let ceilingValue = actualHR <= hrCeiling ? "Preserved" : "Exceeded"
-                let ceilingColor: Color = actualHR <= hrCeiling ? Color(red: 0.0, green: 0.75, blue: 0.65) : .orange
+                let ceilingValue = (actualHR <= hrCeiling && !isZone4Spike) ? "Preserved" : "Exceeded"
+                let ceilingColor: Color = ceilingValue == "Preserved" ? Color(red: 0.0, green: 0.75, blue: 0.65) : (isZone4Spike ? .red : .orange)
 
                 HStack(spacing: 8) {
                     metricTile(

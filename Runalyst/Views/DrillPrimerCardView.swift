@@ -113,7 +113,40 @@ struct DrillPrimerCardView: View {
         return config.lockedDuration ?? drillId.defaultDuration
     }
 
+    private var effectiveTargetCadence: String? {
+        if let customTarget = config.customTarget {
+            let clean = customTarget
+                .replacingOccurrences(of: " SPM", with: "")
+                .replacingOccurrences(of: " (Adapted)", with: "")
+                .trimmingCharacters(in: .whitespaces)
+            return clean.isEmpty ? nil : clean
+        }
+        guard let baseline = baselineCadence else { return nil }
+        return SessionSynthesisEngine.targetCadenceBand(
+            for: drillId,
+            state: config.readinessState,
+            baseCadence: baseline
+        )
+    }
+
+    private var previewDrill: PreRunDrill {
+        PreRunDrill(
+            id: drillId,
+            previousCadence: baselineCadence,
+            targetCadence: effectiveTargetCadence,
+            duration: effectiveDuration,
+            hapticMode: selectedHapticMode,
+            readinessState: config.readinessState,
+            isIndoor: preferredWorkoutIsIndoor
+        )
+    }
+
     private var effectiveDurationTitle: String {
+        let drill = previewDrill
+        let totalSec = drill.totalPhasesDurationSeconds
+        if totalSec > 0 && totalSec != effectiveDuration.rawValue * 60 {
+            return drill.formattedPhasesDuration
+        }
         if !config.canChangeDuration, let mins = config.lockedDurationMinutes {
             return "\(mins) min"
         }
@@ -124,21 +157,7 @@ struct DrillPrimerCardView: View {
         let template = DrillTemplate.template(for: drillId)
         let displayTitle = config.customTitle ?? template.title
         let purpose = config.customPurpose ?? template.defaultPurpose
-        let effectiveTargetCadence: String? = {
-            if let customTarget = config.customTarget {
-                let clean = customTarget
-                    .replacingOccurrences(of: " SPM", with: "")
-                    .replacingOccurrences(of: " (Adapted)", with: "")
-                    .trimmingCharacters(in: .whitespaces)
-                return clean.isEmpty ? nil : clean
-            }
-            guard let baseline = baselineCadence else { return nil }
-            return SessionSynthesisEngine.targetCadenceBand(
-                for: drillId,
-                state: config.readinessState,
-                baseCadence: baseline
-            )
-        }()
+        let effectiveTargetCadence = self.effectiveTargetCadence
         let icon = drillId.iconName
         let iconColor = drillId.iconColor
 
@@ -160,15 +179,7 @@ struct DrillPrimerCardView: View {
             return nil
         }()
 
-        let previewDrill = PreRunDrill(
-            id: drillId,
-            previousCadence: baselineCadence,
-            targetCadence: effectiveTargetCadence,
-            duration: effectiveDuration,
-            hapticMode: selectedHapticMode,
-            readinessState: config.readinessState,
-            isIndoor: preferredWorkoutIsIndoor
-        )
+        let previewDrill = self.previewDrill
         let phases = previewDrill.generatePhases()
         let totalDuration = max(1, phases.reduce(0) { $0 + $1.durationSeconds })
         let categoryTitle = config.categoryLabel ?? (drillId.isHeartRateTargeted ? "AEROBIC RUN" : "TECHNIQUE DRILL")
@@ -349,7 +360,7 @@ struct DrillPrimerCardView: View {
                 }
                 .frame(height: 4)
 
-                Text(previewDrill.structureSummary)
+                Text(previewDrill.preciseStructureSummary)
                     .font(.system(size: 10, weight: .medium))
                     .monospacedDigit()
                     .foregroundColor(.secondary)

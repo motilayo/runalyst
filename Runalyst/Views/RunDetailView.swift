@@ -230,10 +230,13 @@ struct RunDetailView: View {
             let cadDetail: String
             if isRecovery {
                 cadDetail = "Turnover averaged \(cad) SPM with relaxed, low-impact stride mechanics, ideal for active recovery and flushing muscular fatigue."
-            } else if cad >= effectiveFloor {
+            } else if cad > effectiveFloor {
                 cadDetail = "Turnover averaged \(cad) SPM, safely above your \(floor) SPM mechanical floor. This cadence helps keep foot strikes underneath your hips and cushions joint landing\(isIndoor ? " on the treadmill belt" : "")."
+            } else if cad == effectiveFloor {
+                cadDetail = "Turnover averaged \(cad) SPM, matching your \(floor) SPM mechanical floor. This cadence helps keep foot strikes underneath your hips and cushions joint landing\(isIndoor ? " on the treadmill belt" : "")."
             } else {
-                cadDetail = "Turnover averaged \(cad) SPM, dipping below your \(floor) SPM mechanical floor. Increasing step rate will shorten your stride and cushion joint landing\(isIndoor ? " on the moving belt" : "")."
+                let diff = effectiveFloor - cad
+                cadDetail = "Turnover averaged \(cad) SPM, \(diff) SPM below your \(floor) SPM mechanical floor. Increasing step rate will shorten your stride and cushion joint landing\(isIndoor ? " on the moving belt" : "")."
             }
             items.append(RunAnalysisTakeawayItem(
                 icon: "figure.run",
@@ -247,7 +250,24 @@ struct RunDetailView: View {
         if context.workingHR > 0 {
             let hrDetail: String
             let hrColor: Color
-            if isIndoor {
+            let hrCeiling: Int = {
+                if let drill = resolvedSessionDrillId {
+                    return drill.targetHeartRateZone == 2 ? 144 : 135
+                }
+                return isRecovery ? 135 : 144
+            }()
+            let hrExceededCeiling = context.workingHR > hrCeiling || runRecord.percentZone4 > 0.15
+
+            if hrExceededCeiling {
+                if isIndoor {
+                    hrDetail = "Running indoors without convective airflow accelerates thermal buildup; your \(context.workingHR) BPM average drifted above your \(hrCeiling) BPM target ceiling under indoor thermal load."
+                } else if context.hasCardiacDrift {
+                    hrDetail = "Heart rate climbed +\(context.cardiacDriftMagnitudeBPM) BPM over the duration, exceeding your \(hrCeiling) BPM target ceiling as internal fatigue accumulated."
+                } else {
+                    hrDetail = "Heart rate averaged \(context.workingHR) BPM, drifting above your \(hrCeiling) BPM target ceiling under cardiovascular strain."
+                }
+                hrColor = Color.orange
+            } else if isIndoor {
                 hrDetail = "Running indoors without convective airflow accelerates thermal buildup; your \(context.workingHR) BPM average reflects steady aerobic conditioning under indoor heat accumulation."
                 hrColor = Color(red: 1.0, green: 0.18, blue: 0.55)
             } else if context.hasCardiacDrift {
@@ -276,11 +296,25 @@ struct RunDetailView: View {
                 baselineOscillation: baselineOscillation
             )
             let statusText = adherence.tier.badgeText(for: drill)
+            let hrCeiling = drill.targetHeartRateZone == 2 ? 144 : 135
+            let isHRFailure = (drill.isHeartRateTargeted && adherence.actualHR > hrCeiling) || runRecord.percentZone4 > 0.15 || context.hasCardiacDrift
+            let isCadenceFailure = cad > 0 && cad < effectiveFloor
+
             let execDetail: String
             if adherence.tier == .exceeded || adherence.tier == .met {
                 execDetail = "Execution Status: \(statusText) — aerobic target and cadence stability were maintained throughout the session."
             } else {
-                execDetail = "Execution Status: \(statusText) — telemetry showed cardiac drift or cadence drop beyond target boundaries."
+                let failureReason: String
+                if isHRFailure && isCadenceFailure {
+                    failureReason = "cardiac drift above target zone ceiling and cadence drop below target floor"
+                } else if isHRFailure {
+                    failureReason = "cardiac drift above target zone ceiling"
+                } else if isCadenceFailure {
+                    failureReason = "cadence drop below target floor"
+                } else {
+                    failureReason = "cardiac drift above target zone ceiling"
+                }
+                execDetail = "Execution Status: \(statusText) — telemetry showed \(failureReason)."
             }
             items.append(RunAnalysisTakeawayItem(
                 icon: "checkmark.seal.fill",
@@ -339,6 +373,48 @@ struct RunDetailView: View {
             } else {
                 VStack(alignment: .leading, spacing: 10) {
                     let analysisHeadline: String = {
+                        let isRec = runRecord.detectedTypeRaw == "Recovery Run" || (runRecord.percentZone4 <= 0.02 && runRecord.workingAvgHeartRate > 0 && runRecord.workingAvgHeartRate <= 135)
+                        let heightFlr = runRecord.signature?.cadenceFloor ?? Double(SessionSynthesisCore.heightAdjustedCadenceFloor(heightCm: UserDefaults.standard.double(forKey: "userHeight") > 0 ? UserDefaults.standard.double(forKey: "userHeight") : 175.0))
+                        let effFloor = Int(isRec ? max(138.0, heightFlr - 10.0) : heightFlr)
+                        let workingCad = Int(round(runRecord.workingAvgCadence))
+                        let workingHR = Int(round(runRecord.workingAvgHeartRate))
+                        let hrCeil = isRec ? 135 : 144
+
+                        if let drill = resolvedSessionDrillId {
+                            let adherence = DrillExecutionScorecard.calculateAdherence(
+                                runRecord: runRecord,
+                                drillId: drill,
+                                baselineCadence: baselineCadence,
+                                baselineOscillation: baselineOscillation
+                            )
+                            if adherence.tier == .notMet {
+                                let drillCeiling = drill.targetHeartRateZone == 2 ? 144 : 135
+                                let isHRFail = (drill.isHeartRateTargeted && adherence.actualHR > drillCeiling) || runRecord.percentZone4 > 0.15
+                                let isCadFail = adherence.actualCadence > 0 && adherence.actualCadence < adherence.effectiveCadenceFloor
+                                if isHRFail && isCadFail {
+                                    return "Target Ceiling & Floor Missed"
+                                } else if isHRFail {
+                                    return "Target Ceiling Exceeded"
+                                } else if isCadFail {
+                                    return "Mechanical Floor Missed"
+                                } else {
+                                    return "Target Boundaries Exceeded"
+                                }
+                            }
+                        } else {
+                            let isHRFail = workingHR > hrCeil || runRecord.percentZone4 > 0.15
+                            let isCadFail = workingCad > 0 && workingCad < effFloor
+                            if isHRFail || isCadFail {
+                                if isHRFail && isCadFail {
+                                    return "Target Ceiling & Floor Missed"
+                                } else if isHRFail {
+                                    return "Target Ceiling Exceeded"
+                                } else {
+                                    return "Mechanical Floor Missed"
+                                }
+                            }
+                        }
+
                         if let drillName = prescribedDrillName {
                             return "\(drillName) Technique Analysis"
                         }

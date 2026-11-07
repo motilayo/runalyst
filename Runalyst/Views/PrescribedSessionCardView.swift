@@ -165,12 +165,12 @@ struct PrescribedSessionCardView: View {
                 .accessibilityLabel("Learn more about today's prescribed workout")
             }
 
-            if session.intent != .fullRest && session.totalDurationMinutes > 0 {
+            if session.intent != .fullRest && (session.totalDurationMinutes > 0 || !session.durationBand.isEmpty) {
                 HStack(spacing: 6) {
                     HStack(spacing: 4) {
                         Image(systemName: "stopwatch.fill")
                             .font(.system(size: 10, weight: .bold))
-                        Text("Total: \(session.totalDurationMinutes) Min")
+                        Text(totalDurationPillText)
                             .font(.system(size: 11, weight: .bold))
                     }
                     .foregroundColor(.purple)
@@ -179,8 +179,8 @@ struct PrescribedSessionCardView: View {
                     .background(Color.purple.opacity(0.12))
                     .clipShape(Capsule())
 
-                    if session.primerDurationMinutes > 0 {
-                        Text("\(session.primerDurationMinutes)m Primer + \(session.mainRunDurationMinutes)m Main Run")
+                    if session.primerDurationMinutes > 0 || !session.primerPhasesDuration.isEmpty {
+                        Text(breakdownPillText)
                             .font(.system(size: 11, weight: .medium))
                             .foregroundColor(.secondary)
                     }
@@ -283,6 +283,16 @@ struct PrescribedSessionCardView: View {
 
     @ViewBuilder
     private var primerCard: some View {
+        let primerDuration: DrillDuration = {
+            if session.isTrimmed {
+                return session.primerDrillId.defaultDuration
+            }
+            if session.primerDurationMinutes >= 7 && session.primerDurationMinutes <= 8 {
+                return .tenMinutes
+            }
+            return DrillDuration.nearest(toMinutes: session.primerDurationMinutes)
+        }()
+
         DrillPrimerCardView(
             drillId: session.primerDrillId,
             config: DrillCardConfig(
@@ -291,7 +301,7 @@ struct PrescribedSessionCardView: View {
                 customTarget: cleanPrimerTarget(session: session),
                 categoryLabel: effectiveIsToday ? "PRE-RUN PRIMER" : "\(headerDayText.uppercased()) PRIMER",
                 canChangeDuration: false,
-                lockedDuration: DrillDuration.nearest(toMinutes: session.primerDurationMinutes),
+                lockedDuration: primerDuration,
                 lockedDurationMinutes: session.primerDurationMinutes,
                 readinessState: session.resolvedReadinessState
             ),
@@ -306,12 +316,19 @@ struct PrescribedSessionCardView: View {
         let paceTitle = preferredWorkoutIsIndoor ? "Belt Pace" : "Pace"
         let paceIcon = preferredWorkoutIsIndoor ? RunalystIcon.indoor : RunalystIcon.pace
         let maxHrValue = session.hrCap.replacingOccurrences(of: "HR: ", with: "")
+        let cadenceValue: String = {
+            if session.mainSessionTemplateId.isHeartRateTargeted {
+                return "≥ \(session.cadenceFloor) SPM"
+            } else {
+                return "\(session.cadenceFloor)–\(session.cadenceFloor + 6) SPM"
+            }
+        }()
 
         DrillPrimerCardView(
             drillId: session.mainSessionTemplateId,
             config: DrillCardConfig(
                 customTitle: session.sessionTitle,
-                customPurpose: session.isTrimmed ? "Low-strain movement & tissue repair" : "Aerobic consistency & conversational pacing",
+                customPurpose: dynamicMainRunSubtitle(session: session),
                 customTarget: session.mainSessionTemplateId.isHeartRateTargeted ? nil : "\(session.cadenceFloor)–\(session.cadenceFloor + 6) SPM",
                 categoryLabel: effectiveIsToday ? "MAIN RUN" : "\(headerDayText.uppercased()) MAIN RUN",
                 canChangeDuration: false,
@@ -321,7 +338,7 @@ struct PrescribedSessionCardView: View {
                     DrillCardMetric(icon: "stopwatch.fill", title: "Duration", value: cleanMainRunDurationFormatted(session: session), color: .secondary),
                     DrillCardMetric(icon: paceIcon, title: paceTitle, value: session.paceBand, color: RunalystColor.pace),
                     DrillCardMetric(icon: RunalystIcon.heartRate, title: "Max HR", value: maxHrValue, color: RunalystColor.heartRate),
-                    DrillCardMetric(icon: RunalystIcon.cadence, title: "Cadence", value: "≥ \(session.cadenceFloor) SPM", color: RunalystColor.cadence)
+                    DrillCardMetric(icon: RunalystIcon.cadence, title: "Cadence", value: cadenceValue, color: RunalystColor.cadence)
                 ]
             ),
             baselineCadence: session.athleteBaselineCadence ?? session.cadenceFloor,
@@ -345,6 +362,45 @@ struct PrescribedSessionCardView: View {
     }
 
     // MARK: - Helpers
+
+    private var totalDurationPillText: String {
+        if !session.durationBand.isEmpty && (session.durationBand.contains("m") || session.durationBand.contains("Min")) {
+            return "Total: \(session.durationBand)"
+        }
+        return "Total: \(session.totalDurationMinutes) Min"
+    }
+
+    private var breakdownPillText: String {
+        let primerText = cleanPrimerDurationLabel(session: session)
+        return "\(primerText) Primer + \(session.mainRunDurationMinutes)m Main Run"
+    }
+
+    private func cleanPrimerDurationLabel(session: PrescribedDailySession) -> String {
+        let raw = session.primerPhasesDuration
+            .replacingOccurrences(of: " drill", with: "")
+            .trimmingCharacters(in: .whitespaces)
+        if !raw.isEmpty {
+            if raw.contains("m") || raw.contains("s") {
+                return raw
+            } else if let mins = Int(raw) {
+                return "\(mins)m"
+            }
+        }
+        return "\(session.primerDurationMinutes)m"
+    }
+
+    private func dynamicMainRunSubtitle(session: PrescribedDailySession) -> String {
+        let title = session.sessionTitle
+        if title.contains("Surges") || title.contains("Threshold") || session.mainSessionTemplateId == .tempoSurges {
+            return "Lactate threshold surges & mechanical turnover"
+        } else if title.contains("Recovery") || title.contains("Flush") || session.isTrimmed {
+            return "Low-strain movement & tissue repair"
+        } else if title.contains("Intervals") || session.mainSessionTemplateId == .rhythmIntervals {
+            return "Speed endurance & crisp aerobic turnover"
+        } else {
+            return "Aerobic consistency & conversational pacing"
+        }
+    }
 
     private func cleanPrimerTarget(session: PrescribedDailySession) -> String {
         let target = session.primerTargetCadence

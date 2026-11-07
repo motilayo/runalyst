@@ -8,6 +8,11 @@ actor FramboiseEngine {
 
     // MARK: - Dead Stop & Walking Filter
 
+    /// Detects if the bucket sequence contains a structured interval pattern.
+    func hasStructuredIntervalPattern(buckets: [BucketData]) -> Bool {
+        FramboiseCore.hasStructuredIntervalPattern(buckets: buckets.map { $0.toTelemetryBucket() })
+    }
+
     /// Filters out stationary time, traffic stops, and walking breaks.
     func filterRunningSamples(buckets: [BucketData]) -> [BucketData] {
         let telemetry = buckets.map { $0.toTelemetryBucket() }

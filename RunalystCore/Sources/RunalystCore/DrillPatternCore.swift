@@ -18,12 +18,9 @@ public struct DrillPatternMatchCore: Sendable, Equatable {
         avgRecoveryCadence: Int,
         signatureDescription: String
     ) {
-        self.drillIdentifier = drillIdentifier
-        self.confidence = confidence
-        self.detectedIntervalCount = detectedIntervalCount
-        self.avgWorkCadence = avgWorkCadence
-        self.avgRecoveryCadence = avgRecoveryCadence
-        self.signatureDescription = signatureDescription
+        self.drillIdentifier = drillIdentifier; self.confidence = confidence
+        self.detectedIntervalCount = detectedIntervalCount; self.avgWorkCadence = avgWorkCadence
+        self.avgRecoveryCadence = avgRecoveryCadence; self.signatureDescription = signatureDescription
     }
 }
 
@@ -283,7 +280,8 @@ public enum DrillPatternCore {
 
         for i in 0..<buckets.count {
             let b = buckets[i]
-            let isSurge = b.heartRateBPM >= (zone4Threshold - 2.0) && b.cadenceSPM >= (refBaseline + 5.0)
+            let isSurge = (b.heartRateBPM >= (zone4Threshold - 2.0) && b.cadenceSPM >= (refBaseline + 5.0)) ||
+                          (b.cadenceSPM >= 145.0 && (b.paceSecondsPerKm > 0 && b.paceSecondsPerKm <= 360.0 || b.speedMetersPerSecond >= 2.2) && (b.heartRateBPM >= (zone4Threshold - 8.0) || b.heartRateBPM >= zone2Threshold))
             if isSurge {
                 if surgeStart == nil { surgeStart = i }
             } else {
@@ -331,10 +329,7 @@ public enum DrillPatternCore {
             return nil
         }
 
-        var surgeIndices = Set<Int>()
-        for r in surgeRanges {
-            for idx in r { surgeIndices.insert(idx) }
-        }
+        let surgeIndices = Set(surgeRanges.flatMap { $0 })
         let baseBuckets = (0..<buckets.count).filter { !surgeIndices.contains($0) && buckets[$0].cadenceSPM > 0 }.map { buckets[$0] }
         guard !baseBuckets.isEmpty else { return nil }
 
@@ -346,12 +341,24 @@ public enum DrillPatternCore {
         let surgeCadence = allSurgeBuckets.map(\.cadenceSPM).reduce(0, +) / Double(allSurgeBuckets.count)
         let surgeTime = allSurgeBuckets.map(\.durationSeconds).reduce(0, +)
 
-        guard baseCadence >= (refBaseline - 4.0),
-              baseHR >= (zone2Threshold - 2.0),
-              (surgeCadence - baseCadence) >= 7.0,
-              (surgeTime / workoutDuration) <= 0.35 else {
-            return nil
+        let isThresholdWalkRecovery = workoutDuration <= 2400.0 && avgWorkDuration >= 120.0 && surgeRanges.count >= 3
+        if isThresholdWalkRecovery {
+            guard surgeCadence >= 145.0,
+                  (surgeCadence - baseCadence) >= 15.0 || baseCadence <= 135.0 else {
+                return nil
+            }
+        } else {
+            guard baseCadence >= (refBaseline - 4.0),
+                  baseHR >= (zone2Threshold - 2.0),
+                  (surgeCadence - baseCadence) >= 7.0,
+                  (surgeTime / workoutDuration) <= 0.35 else {
+                return nil
+            }
         }
+
+        let desc = isThresholdWalkRecovery
+            ? "Detected \(surgeRanges.count) threshold surge intervals (\(matchingSchedule.durationMinutes) min, avg \(Int(round(surgeCadence))) SPM in Zone 4)."
+            : "Detected continuous tempo run containing \(surgeRanges.count) threshold surges (\(matchingSchedule.durationMinutes) min, avg \(Int(round(surgeCadence))) SPM in Zone 4)."
 
         return DrillPatternMatchCore(
             drillIdentifier: "tempo_surges",
@@ -359,19 +366,15 @@ public enum DrillPatternCore {
             detectedIntervalCount: surgeRanges.count,
             avgWorkCadence: Int(round(surgeCadence)),
             avgRecoveryCadence: Int(round(baseCadence)),
-            signatureDescription: "Detected continuous tempo run containing \(surgeRanges.count) threshold surges (\(matchingSchedule.durationMinutes) min, avg \(Int(round(surgeCadence))) SPM in Zone 4)."
+            signatureDescription: desc
         )
     }
 
     public struct SegmentStatsCore: Sendable, Equatable {
-        public let avgCadence: Double
-        public let avgHR: Double
-        public let durationSeconds: Double
+        public let avgCadence: Double, avgHR: Double, durationSeconds: Double
 
         public init(avgCadence: Double, avgHR: Double, durationSeconds: Double) {
-            self.avgCadence = avgCadence
-            self.avgHR = avgHR
-            self.durationSeconds = durationSeconds
+            self.avgCadence = avgCadence; self.avgHR = avgHR; self.durationSeconds = durationSeconds
         }
     }
 
@@ -383,10 +386,7 @@ public enum DrillPatternCore {
         guard segments.count >= 4 else { return nil }
 
         guard let minC = segments.map({ $0.avgCadence }).min(),
-              let maxC = segments.map({ $0.avgCadence }).max(),
-              (maxC - minC) >= 10.0 else {
-            return nil
-        }
+              let maxC = segments.map({ $0.avgCadence }).max(), (maxC - minC) >= 10.0 else { return nil }
 
         let threshold = (minC + maxC) / 2.0
         let workActs = segments.filter { $0.avgCadence >= threshold && $0.durationSeconds >= 15.0 }
@@ -472,7 +472,7 @@ public enum DrillPatternCore {
             avgWorkDuration: avgWorkDur,
             avgRecoveryDuration: avgRecDur,
             candidateDrills: ["tempo_surges"]
-        ), wMean >= Double(baselineCadence) + 5.0 {
+        ), wMean >= 145.0 && (wMean >= Double(baselineCadence) + 5.0 || (avgRecC > 0 && wMean - avgRecC >= 15.0)) {
             return DrillPatternMatchCore(
                 drillIdentifier: "tempo_surges",
                 confidence: 0.95,

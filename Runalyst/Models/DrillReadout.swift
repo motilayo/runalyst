@@ -97,15 +97,21 @@ struct DrillReadout: Sendable, Identifiable {
                 breakdownText = "You’ll start with a 3-minute easy warm-up jog. This is followed by 4 sets of brisk surges for 90 seconds, paired with 2 minutes of walk recovery."
             case .thirtyMinutes, .thirtyFiveMinutes, .fortyMinutes, .fiftyMinutes:
                 overviewText = "In this session, you will complete a tempo surge workout to build sustained speed and aerobic power."
-                breakdownText = "You’ll start with a 4-minute easy warm-up jog. This is followed by 4 sets of 3-minute tempo surges, paired with 3 minutes of walk recovery, finishing with a 2-minute cool-down."
+                let cooldownSeconds = phases.first(where: { $0.kind == .cooldown })?.durationSeconds ?? Int(drill.coolDownDurationMinutes * 60)
+                let cooldownMins = cooldownSeconds / 60
+                let cooldownPhrase = cooldownMins > 0 ? ", finishing with a \(cooldownMins)-minute cool-down." : "."
+                breakdownText = "You’ll start with a 4-minute easy warm-up jog. This is followed by 4 sets of 3-minute tempo surges, paired with 3 minutes of walk recovery\(cooldownPhrase)"
             }
 
             let coachingTip = customCoachingTip ?? DrillTemplate.template(for: .tempoSurges).generateInstructionalCue(targetStr)
 
+            let isMainRun = duration.rawValue >= 20 || (customTitle?.contains("Main Run") ?? false) || (customTitle?.contains("Threshold") ?? false)
+            let subtitlePrefix = isMainRun ? "Tempo Main Run" : "Tempo Pre-Run"
+
             return DrillReadout(
                 drillId: .tempoSurges,
                 title: resolvedTitle,
-                subtitle: "Tempo Pre-Run • \(duration.rawValue) min",
+                subtitle: "\(subtitlePrefix) • \(duration.rawValue) min",
                 overview: overviewText,
                 breakdown: breakdownText,
                 coachingTip: coachingTip,
