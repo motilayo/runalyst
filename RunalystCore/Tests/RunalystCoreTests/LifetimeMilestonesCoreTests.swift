@@ -49,8 +49,8 @@ struct LifetimeMilestonesCoreTests {
             #expect(fiveKBadge.qualifyingRunID == run2ID)
             #expect(fiveKBadge.progressFraction == 1.0)
             #expect(fiveKBadge.medallionShape == .splitHorizonDistance)
-            #expect(fiveKBadge.earnedMetricSubtitle(useMetric: true) == "6.4 km")
-            #expect(fiveKBadge.earnedMetricSubtitle(useMetric: false) == "4.0 mi")
+            #expect(fiveKBadge.earnedMetricSubtitle(useMetric: true) == "6.40 km")
+            #expect(fiveKBadge.earnedMetricSubtitle(useMetric: false) == "3.98 mi")
         }
     }
 
@@ -158,8 +158,8 @@ struct LifetimeMilestonesCoreTests {
         // Aerobic Engine (1.42 EF)
         #expect(badgeMap[.aerobicEngine]?.earnedMetricSubtitle(useMetric: true) == "1.42 EF")
         // Half Marathon unlocked
-        #expect(badgeMap[.halfMarathon]?.earnedMetricSubtitle(useMetric: true) == "21.2 km")
-        #expect(badgeMap[.halfMarathon]?.earnedMetricSubtitle(useMetric: false) == "13.2 mi")
+        #expect(badgeMap[.halfMarathon]?.earnedMetricSubtitle(useMetric: true) == "21.20 km")
+        #expect(badgeMap[.halfMarathon]?.earnedMetricSubtitle(useMetric: false) == "13.17 mi")
         // Consistency locked (1 / 10 runs)
         #expect(badgeMap[.consistency]?.earnedMetricSubtitle(useMetric: true) == "1 / 10 Runs")
     }

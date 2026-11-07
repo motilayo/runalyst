@@ -168,6 +168,7 @@ struct MilestoneAwardDetailSheet: View {
     let accentColor: Color
     let qualifyingRun: RunRecord?
     let useMetricSystem: Bool
+    var onSelectWorkout: ((RunRecord) -> Void)?
 
     @Environment(\.dismiss) private var dismiss
     @State private var selectedDetent: PresentationDetent = .large
@@ -266,16 +267,20 @@ struct MilestoneAwardDetailSheet: View {
                                 .foregroundColor(.primary)
 
                             if let run = qualifyingRun {
-                                NavigationLink(value: run) {
-                                    qualifyingWorkoutCardContent(showChevron: true)
-                                }
-                                .buttonStyle(.plain)
-                                .simultaneousGesture(
-                                    TapGesture().onEnded {
+                                if let onSelectWorkout {
+                                    Button {
                                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                        selectedDetent = .large
+                                        onSelectWorkout(run)
+                                    } label: {
+                                        qualifyingWorkoutCardContent(showChevron: true)
                                     }
-                                )
+                                    .buttonStyle(.plain)
+                                } else {
+                                    NavigationLink(value: run) {
+                                        qualifyingWorkoutCardContent(showChevron: true)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
                             } else {
                                 qualifyingWorkoutCardContent(showChevron: false)
                             }

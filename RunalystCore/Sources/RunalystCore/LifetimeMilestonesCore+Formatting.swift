@@ -11,7 +11,7 @@ extension MilestoneBadgeSpec {
                 if let meters = qualifyingDistanceMeters, meters > 0 {
                     let distance = useMetric ? (meters / 1000.0) : (meters / 1609.344)
                     let unit = useMetric ? "km" : "mi"
-                    return String(format: "%.1f %@", distance, unit)
+                    return String(format: "%.2f %@", distance, unit)
                 }
                 return "1st Run"
             }
@@ -22,7 +22,7 @@ extension MilestoneBadgeSpec {
                 let dist = qualifyingDistanceMeters ?? 5000.0
                 let val = useMetric ? (dist / 1000.0) : (dist / 1609.344)
                 let unit = useMetric ? "km" : "mi"
-                return String(format: "%.1f %@", val, unit)
+                return String(format: "%.2f %@", val, unit)
             } else {
                 let current = qualifyingDistanceMeters ?? 0.0
                 if useMetric {
@@ -37,7 +37,7 @@ extension MilestoneBadgeSpec {
                 let dist = qualifyingDistanceMeters ?? 10_000.0
                 let val = useMetric ? (dist / 1000.0) : (dist / 1609.344)
                 let unit = useMetric ? "km" : "mi"
-                return String(format: "%.1f %@", val, unit)
+                return String(format: "%.2f %@", val, unit)
             } else {
                 let current = qualifyingDistanceMeters ?? 0.0
                 if useMetric {
@@ -52,7 +52,7 @@ extension MilestoneBadgeSpec {
                 let dist = qualifyingDistanceMeters ?? 21_097.5
                 let val = useMetric ? (dist / 1000.0) : (dist / 1609.344)
                 let unit = useMetric ? "km" : "mi"
-                return String(format: "%.1f %@", val, unit)
+                return String(format: "%.2f %@", val, unit)
             } else {
                 let current = qualifyingDistanceMeters ?? 0.0
                 if useMetric {

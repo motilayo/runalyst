@@ -16,6 +16,7 @@ struct LifetimeMilestonesCard: View {
     var allRuns: [RunRecord]
     @AppStorage("useMetricSystem") private var useMetricSystem: Bool = Locale.current.measurementSystem == .metric
     @State private var selectedBadge: MilestoneBadge?
+    @State private var navigatedRun: RunRecord?
 
     private var recordsSummary: PersonalRecordsSummaryCore {
         let valid = allRuns.filter { !$0.isDeleted }.map { $0.toMilestoneRunSample() }
@@ -236,8 +237,17 @@ struct LifetimeMilestonesCard: View {
                 spec: badge.spec,
                 accentColor: badge.accentColor,
                 qualifyingRun: qualifyingRun,
-                useMetricSystem: useMetricSystem
+                useMetricSystem: useMetricSystem,
+                onSelectWorkout: { run in
+                    selectedBadge = nil
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.32) {
+                        navigatedRun = run
+                    }
+                }
             )
+        }
+        .navigationDestination(item: $navigatedRun) { run in
+            RunDetailView(runRecord: run)
         }
     }
 
