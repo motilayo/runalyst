@@ -151,6 +151,8 @@
 		D1110094D4E5F60718293A94 /* Runalyst/Views/DrillExecutionScorecard+Subviews.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1110094D4E5F60718293A94 /* Runalyst/Views/DrillExecutionScorecard+Subviews.swift */; };
 		D1110095D4E5F60718293A95 /* Runalyst/Views/RunDetailView+Cards.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1110095D4E5F60718293A95 /* Runalyst/Views/RunDetailView+Cards.swift */; };
 		D1110096D4E5F60718293A96 /* Runalyst/Views/RunDetailView+PillsAndHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1110096D4E5F60718293A96 /* Runalyst/Views/RunDetailView+PillsAndHelpers.swift */; };
+		B1110097D4E5F60718293A97 /* Runalyst/Intents/RunalystShortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110097D4E5F60718293A97 /* Runalyst/Intents/RunalystShortcuts.swift */; };
+		B1110098D4E5F60718293A98 /* Runalyst/Views/Components/ChartAudioGraphDescriptors.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110098D4E5F60718293A98 /* Runalyst/Views/Components/ChartAudioGraphDescriptors.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -308,6 +310,8 @@
 		C1110094D4E5F60718293A94 /* Runalyst/Views/DrillExecutionScorecard+Subviews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Runalyst/Views/DrillExecutionScorecard+Subviews.swift"; sourceTree = SOURCE_ROOT; };
 		C1110095D4E5F60718293A95 /* Runalyst/Views/RunDetailView+Cards.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Runalyst/Views/RunDetailView+Cards.swift"; sourceTree = SOURCE_ROOT; };
 		C1110096D4E5F60718293A96 /* Runalyst/Views/RunDetailView+PillsAndHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Runalyst/Views/RunDetailView+PillsAndHelpers.swift"; sourceTree = SOURCE_ROOT; };
+		A1110097D4E5F60718293A97 /* Runalyst/Intents/RunalystShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Runalyst/Intents/RunalystShortcuts.swift"; sourceTree = SOURCE_ROOT; };
+		A1110098D4E5F60718293A98 /* Runalyst/Views/Components/ChartAudioGraphDescriptors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Runalyst/Views/Components/ChartAudioGraphDescriptors.swift"; sourceTree = SOURCE_ROOT; };
 		Z1X2C3V4B5N6M7L8K9J0H1G2 /* Runalyst/CoachingEngine/CoachingEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/CoachingEngine/CoachingEngine.swift; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
@@ -493,6 +497,8 @@
 				C1110094D4E5F60718293A94 /* Runalyst/Views/DrillExecutionScorecard+Subviews.swift */,
 				C1110095D4E5F60718293A95 /* Runalyst/Views/RunDetailView+Cards.swift */,
 				C1110096D4E5F60718293A96 /* Runalyst/Views/RunDetailView+PillsAndHelpers.swift */,
+				A1110097D4E5F60718293A97 /* Runalyst/Intents/RunalystShortcuts.swift */,
+				A1110098D4E5F60718293A98 /* Runalyst/Views/Components/ChartAudioGraphDescriptors.swift */,
 				A1110022D4E5F60718293A22 /* Runalyst/Views/StatBox.swift */,
 				A1110023D4E5F60718293A23 /* Runalyst/Views/DrillExecutionScorecard.swift */,
 				A1110024D4E5F60718293A24 /* Runalyst/Views/DrillDeckView.swift */,
@@ -701,6 +707,8 @@
 				D1110094D4E5F60718293A94 /* Runalyst/Views/DrillExecutionScorecard+Subviews.swift in Sources */,
 				D1110095D4E5F60718293A95 /* Runalyst/Views/RunDetailView+Cards.swift in Sources */,
 				D1110096D4E5F60718293A96 /* Runalyst/Views/RunDetailView+PillsAndHelpers.swift in Sources */,
+				B1110097D4E5F60718293A97 /* Runalyst/Intents/RunalystShortcuts.swift in Sources */,
+				B1110098D4E5F60718293A98 /* Runalyst/Views/Components/ChartAudioGraphDescriptors.swift in Sources */,
 				554433221100FFEEDDCCBBAA /* Runalyst/Views/AnimatedLoadingView.swift in Sources */,
 				E1A2B3C4D5E6F708192A3B4C /* Runalyst/Views/WorkoutPhaseTimelineView.swift in Sources */,
 				F1A1B1C1D1E1F10111213142 /* Runalyst/Models/DrillReadout.swift in Sources */,

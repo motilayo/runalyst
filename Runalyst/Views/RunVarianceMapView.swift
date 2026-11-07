@@ -131,6 +131,14 @@ struct RunVarianceMapView: View {
         }
     }
 
+    private var audioGraphDescriptor: RunVarianceAudioGraphDescriptor {
+        RunVarianceAudioGraphDescriptor(
+            points: chartPoints.map { ($0.minute, $0.cadence, 0.0) },
+            title: isIntervalOrDrill ? "Workout Rhythm & Intervals" : "Cadence Rhythm",
+            summary: "Cadence rhythm spanning \(Int(maxMinutes)) minutes with average cadence of \(Int(round(averageCadence))) SPM and cadence floor of \(Int(round(cadenceFloor))) SPM."
+        )
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
@@ -248,6 +256,7 @@ struct RunVarianceMapView: View {
                 .chartXVisibleDomain(length: min(maxMinutes + 1.0, 13.5))
                 .chartXScale(domain: 0...(maxMinutes + 1.0))
                 .chartYScale(domain: yMin...yMax)
+                .accessibilityChartDescriptor(audioGraphDescriptor)
                 .chartXAxis {
                     AxisMarks(values: xAxisTicks) { value in
                         AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [3, 3]))
