@@ -1,0 +1,12 @@
+## 1. Core Microcycle, Dynamic HR Ceilings & Steady-State Drift Math (`RunalystCore`)
+
+- [x] 1.1 `[Senior | pro]` Update `RunalystCore/Sources/RunalystCore/SessionHorizonCore.swift` (currently 256/500 LOC, per `design.md` Decision 1 and `specs/microcycle-coherent-session-synthesis/spec.md`) to add `evaluateSteadyStateSplitDrift` (ignoring interval/tempo sessions and requiring `hrRise >= 12 BPM` at steady/slower pace without inflating minor rises to `18 BPM`) and `resolveDynamicMaxHeartRate` (replacing hardcoded `"< 135 BPM"`, `"< 150 BPM"`, `"< 168 BPM"` in `synthesizeHorizon` with dynamic zone ceilings), keeping `SessionHorizonCore.swift <= 500 LOC` and verifying with `./assay.sh`.
+
+## 2. Foundry Session Synthesis Engine Alignment & Horizon Indexing (`Runalyst/Engine/`)
+
+- [x] 2.1 `[Senior | pro]` Update `Runalyst/Engine/SessionSynthesisEngine.swift` (per `design.md` Decision 2 and `specs/microcycle-coherent-session-synthesis/spec.md`) to: (a) delegate untagged split drift detection to `SessionHorizonCore.evaluateSteadyStateSplitDrift` while preserving explicit `"Cardiac Drift"` tag behavior, (b) prevent back-to-back quality interval prescriptions within 48 hours by transitioning to `Easy Aerobic Base` or weekday-appropriate progression/long runs instead of ping-ponging with `Zone 1 Active Recovery Flush`, and (c) match `plannedSession(on:)` by calendar date (`calendar.isDate(day.date, inSameDayAs: targetDay)`) before falling back to `day-\(dayOffset)` to eliminate the `startsAfterTomorrow` off-by-one bug, verifying with `swiftlint --strict`.
+
+## 3. Regression Tests & Verification (`RunalystCoreTests` & `RunalystTests`)
+
+- [x] 3.1 `[Mid/Jnr | flash]` Add unit tests in `RunalystCore/Tests/RunalystCoreTests/` and `RunalystTests/Engine/SessionSynthesisEngineTests.swift` verifying: (a) interval/tempo runs and minor `5-8 BPM` split rises do not trigger false `+18 BPM` cardiac drift recovery lockouts, (b) completing a quality threshold session transitions the next productive day to aerobic base/progression rather than repeating `10K Threshold Surges` or forcing `Zone 1 Active Recovery Flush`, and (c) `plannedSession(on:)` resolves the exact calendar date when `.completedToday` is active.
+- [x] 3.2 `[Scout | flash_lite]` Run `./assay.sh`, `xcodebuild test` on `SessionSynthesisEngineTests`, and `openspec validate overhaul-session-synthesis-microcycle` to confirm 0 regressions and 100% gate compliance.

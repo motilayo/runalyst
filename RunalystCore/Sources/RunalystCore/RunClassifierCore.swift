@@ -108,6 +108,59 @@ public enum RunClassifierCore {
         return climbEpisodes >= 3
     }
 
+    /// Detects if the bucket sequence contains a structured continuous walk-recovery interval pattern:
+    /// - Zero dead stops: every bucket has speed >= 0.8 m/s and cadence >= 95 SPM.
+    /// - >= 3 work surges of >= 120s (cadence >= 145 SPM, speed >= 2.0 m/s) alternating with
+    ///   continuous active walking recoveries of >= 90s (cadence 100...130 SPM, speed 1.1...1.65 m/s).
+    /// - Work pace is >= 90 s/km faster than walk pace and work cadence is >= 25 SPM higher than walk cadence.
+    public static func hasStructuredIntervalPattern(buckets: [TelemetryBucket]) -> Bool {
+        guard buckets.count >= 16 else { return false }
+
+        // A. Any stationary dead stop or traffic pause disqualifies continuous walk intervals
+        if buckets.contains(where: { $0.cadenceSPM < 95.0 || $0.speedMetersPerSecond < 0.8 }) {
+            return false
+        }
+
+        struct SurgeBlock {
+            let isWork: Bool
+            let isWalk: Bool
+            var duration: Double
+            var buckets: [TelemetryBucket]
+        }
+
+        var blocks: [SurgeBlock] = []
+        for b in buckets {
+            let isWork = b.cadenceSPM >= 145.0 && b.speedMetersPerSecond >= 2.0
+            let isWalk = (100.0...130.0).contains(b.cadenceSPM) && (1.1...1.65).contains(b.speedMetersPerSecond)
+
+            if let last = blocks.last, last.isWork == isWork && last.isWalk == isWalk {
+                blocks[blocks.count - 1].duration += b.durationSeconds
+                blocks[blocks.count - 1].buckets.append(b)
+            } else {
+                blocks.append(SurgeBlock(isWork: isWork, isWalk: isWalk, duration: b.durationSeconds, buckets: [b]))
+            }
+        }
+
+        let workSurges = blocks.filter { $0.isWork && $0.duration >= 120.0 }
+        let walkRecoveries = blocks.filter { $0.isWalk && $0.duration >= 90.0 }
+
+        guard workSurges.count >= 3 && walkRecoveries.count >= 2 else { return false }
+
+        let allWork = workSurges.flatMap(\.buckets)
+        let allWalk = walkRecoveries.flatMap(\.buckets)
+        guard !allWork.isEmpty && !allWalk.isEmpty else { return false }
+
+        let avgWorkCadence = allWork.map(\.cadenceSPM).reduce(0, +) / Double(allWork.count)
+        let avgWalkCadence = allWalk.map(\.cadenceSPM).reduce(0, +) / Double(allWalk.count)
+        let avgWorkPace = allWork.map(\.paceSecondsPerKm).reduce(0, +) / Double(allWork.count)
+        let avgWalkPace = allWalk.map(\.paceSecondsPerKm).reduce(0, +) / Double(allWalk.count)
+
+        guard (avgWorkCadence - avgWalkCadence) >= 25.0 else { return false }
+        guard (avgWalkPace - avgWorkPace) >= 90.0 else { return false }
+
+        return true
+    }
+
     /// Multi-delta weighted classification engine enforcing turnover stability,
     /// topological oscillation signatures, cardiac strain guardrails, and pacing trends.
     public static func classifyRun(
@@ -141,7 +194,11 @@ public enum RunClassifierCore {
         // LAYER 2: Structural Gate (Intermittent vs. Continuous)
         let validatedCycles = cycles ?? IntervalSegmenterCore.extractOscillationCycles(buckets: buckets)
         let avgCycleContrast = validatedCycles.isEmpty ? 0.0 : (validatedCycles.map { $0.recoveryPaceSecondsPerKm - $0.workPaceSecondsPerKm }.reduce(0, +) / Double(validatedCycles.count))
+        let structuredIntervals = hasStructuredIntervalPattern(buckets: buckets)
         let isIntermittent: Bool = {
+            if structuredIntervals {
+                return true
+            }
             guard avgCycleContrast >= 25.0 else { return false }
             if validatedCycles.count >= 3 {
                 return true
@@ -154,7 +211,7 @@ public enum RunClassifierCore {
         let regularityScore = isIntermittent ? IntervalSegmenterCore.calculateCycleRegularity(cycles: validatedCycles) : 0.0
 
         // If traffic was chaotic and it's not a structured threshold interval workout, classify as Urban Traffic
-        if !isIndoor && !isUniformSteady && isChaoticTraffic && (zone4 < 0.35 || regularityScore < 0.65) {
+        if !isIndoor && !isUniformSteady && isChaoticTraffic && !structuredIntervals && (zone4 < 0.35 || regularityScore < 0.65) {
             return "Urban Traffic"
         }
 
@@ -171,7 +228,7 @@ public enum RunClassifierCore {
             }
 
             let recoveryFloor = calculateRecoveryCadenceFloor(buckets: buckets, cycles: validatedCycles)
-            return (recoveryFloor < 120.0 || regularityScore >= 0.65) ? "Intervals" : "Fartlek"
+            return (recoveryFloor <= 125.0 || regularityScore >= 0.65 || structuredIntervals) ? "Intervals" : "Fartlek"
         }
 
         // LAYER 4: Continuous Structural Archetypes (Volume & Fatigue)

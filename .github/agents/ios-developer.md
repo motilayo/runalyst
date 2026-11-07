@@ -67,12 +67,13 @@ If the requirement is ambiguous, **ask a clarifying question before implementing
 The Runalyst architecture is a strict, layered pipeline. Each layer has exactly one responsibility. Do not blur these boundaries:
 
 ```
-HealthKit → FramboiseEngine → CoreML → RunAnalyzerActor → FoundationModels → SwiftData → SwiftUI
+HealthKit / WorkoutKit → Runalyst Foundry Adapters (HealthKitManager, RunAnalyzerActor, SessionSynthesisEngine, PreRunDrill) ↔ RunalystCore (27 Sans-I/O Modules <= 500 LOC) → Hollow SwiftUI Views & Modals
 ```
 
-- **FramboiseEngine** does math. It does not talk to FoundationModels.
-- **FoundationModels** generates language. It does not do math.
-- **SwiftUI Views** display. They do not fetch from HealthKit or generate AI insights.
+- **RunalystCore** does all deterministic math, intervals, biomechanics, and classifications. It contains zero framework I/O (`HealthKit`, `SwiftData`, `CoreML`, `SwiftUI`, `FoundationModels`).
+- **Foundry Adapters** handle state hydration, `SwiftData` batching (25 runs), `WorkoutKit` mapping, and concurrency.
+- **FoundationModels** generates natural language insights and performs native tool calling over `OrthogonalToolsCore`. It does not do math.
+- **SwiftUI Views & Display Modals** are strictly hollow read-only renderers over `RunalystCore` structs. They never contain domain thresholds or phase/duration switches.
 
 ### 4.2 Deterministic Math, Not AI Guesswork
 All quantitative decisions (metric deltas, baselines, thresholds) **must be computed in Swift** before reaching the LLM. See `AGENTS.md §2` for the exact rules on injecting directives.
@@ -84,7 +85,7 @@ All quantitative decisions (metric deltas, baselines, thresholds) **must be comp
 The `cv` (pace coefficient of variation) incident is the canonical example of what **not** to do:
 - Deleting a critical feature from the CoreML training set and then re-adding it as a hardcoded `if` statement in Swift is an anti-pattern.
 - If a feature is predictive for classification, it belongs in the **training data and model input**, not as a conditional in `ModelManager.swift`.
-- The correct fix is to add the feature to `generate_seed_runs.py`, regenerate the training CSV, retrain the model in Create ML, and update `RunalystClassifierInput`.
+- The correct fix is to add the feature to `scripts/generate_seed_runs.py`, regenerate the training CSV, retrain the model via `scripts/train_model.py` or Create ML, and update `RunalystClassifierInput`.
 
 ### 4.4 Swift Concurrency Rules
 - `PersistentModel` and `ModelContext` are **not `Sendable`**. Extract all needed properties into a local `Sendable` struct before any `await`.
@@ -163,7 +164,7 @@ The `RunalystClassifier.mlmodel` currently accepts these features:
 
 ### 6.3 The Training Data Pipeline
 
-The training data is produced entirely synthetically by `generate_seed_runs.py`.
+The training data is produced entirely synthetically by `scripts/generate_seed_runs.py`.
 
 **Run classes and their expected real-world distributions:**
 
@@ -177,32 +178,27 @@ The training data is produced entirely synthetically by `generate_seed_runs.py`.
 | `Fartlek` | varies (avg ~6:00) | 140–165 | < 25% | 0.10–0.15 | Unstructured surges |
 | `Intervals` | varies (avg ~5:30) | 160–188 | > 30% | > 0.15 | Hard efforts + recovery |
 
-> **Data Quality Rule**: Tight standard deviations (σ ≤ 15 sec for pace, σ ≤ 5 BPM for HR) in `generate_seed_runs.py` are intentional. They prevent class boundary bleed. **Do not increase the σ values** to "make the data more realistic" — you will cause misclassifications at class boundaries.
+> **Data Quality Rule**: Tight standard deviations (standard deviation <= 15 sec for pace, <= 5 BPM for HR) in `scripts/generate_seed_runs.py` are intentional. They prevent class boundary bleed. **Do not increase variance values** to "make the data more realistic" — you will cause misclassifications at class boundaries.
 
 ### 6.4 Adding a New Feature to the Model (Full 8-Step Process)
 
 Changing the CoreML model's feature set is a **multi-file, multi-step process**. Doing only some steps will break the build or introduce silent misclassifications.
 
 ```
-Step 1: Update generate_seed_runs.py
+Step 1: Update scripts/generate_seed_runs.py
          → Add the new feature column to each archetype block
          → Add realistic per-class distributions (mean, std, clamp bounds)
          → Add to the `runs.append({})` dict
-         → Add to the `fieldnames` list in export_v3_dataset()
+         → Add to the `fieldnames` list in export_v6_dataset()
 
 Step 2: Regenerate training data
-         → Run: python3 generate_seed_runs.py
-         → Verify: head CoreML_Training_Data_v3.csv shows new column
+         → Run: python3 scripts/generate_seed_runs.py
+         → Verify: head CoreML_Training_Data_v6.csv shows new column
 
-Step 3: Retrain in Create ML (HUMAN REQUIRED)
-         → Open Xcode → Open Developer Tool → Create ML
-         → New Tabular Classifier project
-         → Drag CoreML_Training_Data_v3.csv as Training Data
-         → Set Target: targetClass
-         → Verify new feature column appears in Features list
-         → Train → Evaluate → confirm accuracy on Validation set
-         → Output → Export → rename to RunalystClassifier.mlmodel
-         → Replace the existing file in the repo root
+Step 3: Retrain and export
+         → Run: python3 scripts/train_model.py
+         → Alternatively, open Create ML, train Tabular Classifier on CoreML_Training_Data_v6.csv, and export
+         → RunalystClassifier.mlmodel will be updated in the repository root
 
 Step 4: Update the Swift interface in ModelManager.swift
          → Add the new parameter to predictRunType(...)
@@ -217,9 +213,9 @@ Step 6: Build
          → xcodebuild build must exit 0
 
 Step 7: Test
-         → xcodebuild test — all tests must pass
+         → ./assay.sh and xcodebuild test — all tests must pass
 
-Step 8: Validate against real runs (HUMAN REQUIRED)
+Step 8: Validate against real runs
          → Install on device
          → Trigger a resync in Settings
          → Verify ≥ 3 real run types are classified correctly:
@@ -228,7 +224,7 @@ Step 8: Validate against real runs (HUMAN REQUIRED)
            - A tempo/threshold effort (should not classify as Easy)
 
 Step 9: Commit
-         → git add generate_seed_runs.py CoreML_Training_Data_v3.csv
+         → git add scripts/generate_seed_runs.py scripts/train_model.py
                    RunalystClassifier.mlmodel Runalyst/Engine/ModelManager.swift
          → git commit -m "feat(model): add <feature> to CoreML feature vector"
          → Update docs/AI_PIPELINE.md to reflect the new feature
@@ -372,10 +368,13 @@ do {
 Before committing or submitting any change, confirm all of the following:
 
 - [ ] **Build passes** — `xcodebuild build` exits with code 0.
-- [ ] **Tests pass** — `xcodebuild test` with all 37+ tests passing locally. No new failures. You MUST run tests locally and ensure they pass before committing code, and especially before opening a PR.
-- [ ] **No regressions** — Run through critical user flows mentally: Health sync, pull-to-refresh, AI insight generation, settings resync.
-- [ ] **Architecture layer respected** — The change does not violate the layered pipeline in `ARCHITECTURE.md`.
-- [ ] **`AGENTS.md` constraints satisfied** — Each relevant rule has been read and adhered to.
+- [ ] **Assay passes** — `./assay.sh` passes with all 5 gates green (Directory Air-Gap, Determinism, SwiftLint, Mass Ceiling <= 500 LOC, Grounded Voice, and Crucible tests).
+- [ ] **Tests pass** — `xcodebuild test` and `swift test --package-path RunalystCore` with all tests passing locally. You MUST run tests locally and ensure they pass before committing code, and especially before opening a PR.
+- [ ] **No regressions** — Run through critical user flows: Health sync, pull-to-refresh, AI insight generation, settings resync.
+- [ ] **Hollow View Doctrine respected** — Views and display modals (`RunDetailView`, `WorkoutsView`, `DrillReadout`) are strictly read-only renderers over `RunalystCore` structs. Zero inline domain thresholds or phase/duration switches.
+- [ ] **OpenSpec workflow aligned** — Follows `openspec/` proposal/specs/design/tasks protocol and respects the 4-tier engineering hierarchy.
+- [ ] **Architecture layer respected** — The change does not violate the Forward or Reverse Air-Gap.
+- [ ] **`AGENTS.md` and `CONSTITUTION.md` constraints satisfied** — Each relevant rule has been read and adhered to.
 - [ ] **SwiftData safety verified** — No new non-Optional fields without a migration plan.
 - [ ] **Concurrency safety verified** — No `PersistentModel` passed across `await` boundaries.
 - [ ] **Token budget respected** — FoundationModels prompts do not exceed 4,096 tokens.
@@ -390,7 +389,7 @@ A great implementation on this codebase:
 
 1. **Reads before writing** — Checks `git log`, reads the relevant file in full, understands the current intent before touching anything.
 2. **Fixes root causes, not symptoms** — A hardcoded `if cv > 0.15` in front of a CoreML model is a symptom fix. Adding `cv` to the training data is the root-cause fix.
-3. **Respects the ML pipeline end-to-end** — Understands that changing a CoreML feature requires updating `generate_seed_runs.py`, regenerating the CSV, retraining in Create ML, and updating the Swift interface. Never does only one step.
+3. **Respects the ML pipeline end-to-end** — Understands that changing a CoreML feature requires updating `scripts/generate_seed_runs.py`, regenerating the CSV, retraining via `scripts/train_model.py` or Create ML, and updating the Swift interface. Never does only one step.
 4. **Leaves code cleaner than it found it** — Adds doc comments to touched functions, removes dead code, consolidates duplicate logic.
 5. **Is honest about limitations** — If a task requires the developer to retrain a model in Create ML, the agent says so explicitly and prepares everything else so the human only does that one step.
 6. **Writes to future agents** — Code and comments are written with the next developer in mind. Architectural decisions are always documented.

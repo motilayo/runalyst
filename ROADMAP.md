@@ -1,5 +1,40 @@
 # Runalyst Roadmap
 
+## Recently Delivered Capabilities
+
+### 1. Walk-Recovery Interval Preservation (`IntervalSegmenterCore`)
+- **Delivered:** V2.5
+- **Description:** Multi-signal centered rolling baseline interval engine that distinguishes purposeful walking/standing interval recovery troughs from dead-stop GPS dropouts or urban traffic halts.
+- **Key Capabilities:**
+  - Multi-signal cycle corroboration requiring genuine pace surge (>= 5.0 s/km) or dominant pace surges (>= 30–45 s/km).
+  - Preserves walk recoveries during structured interval workouts without corrupting true working averages or misclassifying interval sessions as erratic runs.
+  - Sub-20s phase debouncing prevents phantom interval fragmentation during continuous runs.
+
+### 2. Microcycle-Coherent 14-Day Horizon Synthesis (`SessionHorizonCore`, `SessionSynthesisCore`)
+- **Delivered:** V2.5
+- **Description:** Calendar-anchored 14-day training horizon modeling progression and recovery without Sunday-to-Monday calendar leakage.
+- **Key Capabilities:**
+  - Half-open interval calendar windowing (`[T_Monday_Start, T_Next_Monday_Start)`) strictly preventing Sunday long runs from inflating the subsequent microcycle volume.
+  - 14-day rolling training horizon synthesis tracking acute:chronic workload ratios (ACWR via `BanisterReadinessCore`) and workout density.
+  - Multi-session daily state evaluation (`DailyTrainingState`): handles short pre-run primers (`<= 20 min`) while keeping today's main workout available, transitioning cleanly to `.completedToday` once the primary session finishes.
+
+### 3. Strict Hollow View & Display Modal Consolidation (Reverse Air-Gap)
+- **Delivered:** V2.5
+- **Description:** Complete architectural refactoring enforcing the Hollow View and Display Modal Doctrine across all UI layers.
+- **Key Capabilities:**
+  - Removed all leaked domain math, physiological thresholds (e.g. `percentZone4 > 0.15`), and interval phase arithmetic from SwiftUI views (`DashboardView`, `WorkoutsView`, `RunDetailView`) and modal builders (`DrillReadout.swift`, `PreRunDrill.swift`).
+  - Pure read-only renderers bind directly to immutable `RunalystCore` structs (`DrillScheduleCore`, `PhysiologicalDiagnosisCore`, `SessionSynthesisCore`, `SessionHorizonCore`).
+  - "Sweaty Hands" touch-target standards (44x44pt) and `.monospacedDigit()` jitter-free layout across all metrics cards.
+
+### 4. Spec-Driven Development (`openspec/`) & Automated Assay (`./assay.sh`)
+- **Delivered:** V2.5
+- **Description:** Full institutionalization of OpenSpec change management paired with a 4-tier subagent hierarchy and automated Assay gatekeeper.
+- **Key Capabilities:**
+  - Every non-trivial change progresses through `proposal.md` -> `specs/` -> `design.md` -> `tasks.md` via `/opsx-propose`, `/opsx-apply`, `/opsx-verify`, and `/opsx-archive`.
+  - `./assay.sh` enforces 5 non-negotiable gates: Directory Air-Gap purity, Determinism Air-Gap (zero wall-clock time in Core), SwiftLint strictness, file mass ceilings (`<= 500 LOC`), Grounded Voice lexicon, and Crucible unit testing.
+
+---
+
 ## V3 — Future Features
 
 ### Multi-Turn Coaching Sessions
@@ -9,7 +44,7 @@
 - **Key Challenges:**
   - Session lifetime management (ephemeral per view vs. durable)
   - Apple's 4,096-token ceiling applies to entire conversation window — need truncation strategy after 3–4 turns
-  - Structured (`@Generable`) → unstructured (`String`) transition for follow-up responses
+  - Structured (`@Generable`) -> unstructured (`String`) transition for follow-up responses
   - Topic guardrails to prevent hallucinated medical/nutrition advice
 - **Prerequisite:** Stable V2 release + real user feedback on what follow-up questions people actually ask
 
@@ -53,7 +88,6 @@
 - **Status:** Watching
 - **Complexity:** Unknown (depends on Apple API availability)
 - **Description:** If Apple exposes model adaptation or fine-tuning APIs for on-device Foundation Models, use accumulated `TrainingCorrection` data to personalize the coaching model per user.
-
 
 ### Apple Watch Companion App & In-Run Metronome
 - **Status:** Proposed

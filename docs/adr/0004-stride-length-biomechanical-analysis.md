@@ -10,7 +10,9 @@
 
 In running biomechanics, horizontal running speed is governed by the fundamental velocity equation:
 
-$$\text{Speed} = \text{Cadence} \times \text{Stride Length}$$
+```
+Speed = Cadence * Stride Length
+```
 
 Currently, Runalyst captures and analyzes pace, cadence, heart rate, and vertical oscillation across its data ingestion, aggregation (`FramboiseEngine`), and AI coaching (`CoachingEngine` / `RunAnalyzerActor`) pipelines. However, **stride length was previously absent** from persistent storage (`RunRecord`), baseline calculations (`BaselineStats`), and coaching directives:
 
@@ -22,22 +24,22 @@ Currently, Runalyst captures and analyzes pace, cadence, heart rate, and vertica
    }
    ```
    This created false positives for tall runners with naturally long, efficient strides, as well as easy recovery runs where cadence is lower without braking forces. Conversely, it failed to detect true braking overstriding at cadences between 150–165 SPM.
-3. **Missing Running Economy Benchmark (Vertical Ratio)**: Apple Watch captures both vertical oscillation (VO) and stride length. The ratio of the two—**Vertical Ratio** ($\frac{\text{Vertical Oscillation}}{\text{Stride Length}} \times 100\%$)—is the gold-standard metric for running economy, describing the percentage of energy directed upward (wasted bounce) versus forward. Runalyst previously could not compute this metric.
+3. **Missing Running Economy Benchmark (Vertical Ratio)**: Apple Watch captures both vertical oscillation (VO) and stride length. The ratio of the two—**Vertical Ratio** (`(Vertical Oscillation / Stride Length) * 100%`)—is the gold-standard metric for running economy, describing the percentage of energy directed upward (wasted bounce) versus forward. Runalyst previously could not compute this metric.
 
 ### Translating Laboratory Biomechanics into HealthKit Telemetry
 
 While sports science labs require high-speed optical motion capture to measure tibial inclination angles, knee flexion, and distance from the center of mass (COM), Runalyst detects and treats this exact mechanical failure using wrist-based Apple HealthKit telemetry.
 
-Because the Apple Watch is worn on the wrist, it cannot directly measure whether a foot strike is $> 30\text{ cm}$ ahead of the COM. However, it captures the three downstream kinematic consequences of that mechanical braking force:
+Because the Apple Watch is worn on the wrist, it cannot directly measure whether a foot strike is > 30 cm ahead of the COM. However, it captures the three downstream kinematic consequences of that mechanical braking force:
 
-* **Cadence vs. Stride Length Disparity**: Overstriding occurs when a runner reaches forward with their lead leg rather than driving backward with their glutes. In the data pipeline, this manifests as an inflated `runningStrideLength` paired with a sluggish cadence (e.g., $< 155\text{ SPM}$).
-* **Spike in Ground Contact Time (GCT)**: When the foot lands with a locked knee and large forward tibial angle, it acts as a mechanical brake. The foot must remain planted on the ground while the runner's COM slowly travels forward over the ankle. That braking phase directly inflates `runningGroundContactTime` (often $> 260\text{ ms}$).
-* **Excessive Vertical Oscillation**: Landing stiff-legged sends high vertical impact forces straight up the kinetic chain. The energy that should have propelled the runner forward bounces upward instead, resulting in elevated `runningVerticalOscillation` (e.g., $> 10.0\text{ cm}$, like the $10.6\text{ cm}$ reading flagged in test fixtures).
+* **Cadence vs. Stride Length Disparity**: Overstriding occurs when a runner reaches forward with their lead leg rather than driving backward with their glutes. In the data pipeline, this manifests as an inflated `runningStrideLength` paired with a sluggish cadence (e.g., < 155 SPM).
+* **Spike in Ground Contact Time (GCT)**: When the foot lands with a locked knee and large forward tibial angle, it acts as a mechanical brake. The foot must remain planted on the ground while the runner's COM slowly travels forward over the ankle. That braking phase directly inflates `runningGroundContactTime` (often > 260 ms).
+* **Excessive Vertical Oscillation**: Landing stiff-legged sends high vertical impact forces straight up the kinetic chain. The energy that should have propelled the runner forward bounces upward instead, resulting in elevated `runningVerticalOscillation` (e.g., > 10.0 cm, like the 10.6 cm reading flagged in test fixtures).
 
 ## Decision Drivers
 
 * **Biomechanical Fidelity**: Distinguish between cadence-driven vs. stride-driven pace adaptations, and detect actual braking overstriding rather than using an arbitrary cadence threshold.
-* **Running Economy Scoring**: Enable computation of Vertical Ratio ($VR$), a key metric for form efficiency.
+* **Running Economy Scoring**: Enable computation of Vertical Ratio (VR), a key metric for form efficiency.
 * **Schema Safety & Zero Redundant Compute**: Model changes must use additive optional fields (`Double?`) to avoid breaking existing SwiftData stores, and working averages must be computed during initial ingestion without launch-time repair scans (per `AGENTS.md`).
 * **Deterministic Math over LLM Hallucinations**: Calculate baseline deltas, acceleration mechanics, and vertical ratios deterministically in Swift, injecting concise contextual English strings into the FoundationModels prompt (adhering to Apple TN3193 4,096-token limits).
 * **Parity Between Watch and Phone**: Ensure both HealthKit historical sync and watchOS Live Coach transfers capture, persist, and analyze stride length identically.
@@ -91,7 +93,7 @@ var verticalRatio: Double? {
 * **Watch Transfer (`WatchConnectivityManager.swift`)**:
   - In `saveRunRecord(from dto: WatchRunRecordDTO, context: ModelContext)`, map `dto.strideLength` to `rawAvgStrideLength` and `workingAvgStrideLength`.
 * **Seed Data Tooling (`HealthKitSeeder.swift`)**:
-  - Seed realistic continuous stride lengths dynamically derived from the velocity equation ($v = \text{distance} / \text{time}$, $\text{stride} = v / (\text{cadence} / 60)$).
+  - Seed realistic continuous stride lengths dynamically derived from the velocity equation (`v = distance / time`, `stride = v / (cadence / 60)`).
 
 ### 3. Baseline & AI Coaching Integration (`RunAnalyzerActor` & `DashboardView`)
 
@@ -112,7 +114,7 @@ struct BaselineStats: Sendable {
 Replace the scalar `cadence < 150` check with multi-signal evaluation:
 
 1. **True Overstriding / High Braking Signature**:
-   - `cadence < 155 SPM` AND `verticalRatio > 9.5%` (or vertical oscillation $> 10.0\text{ cm}$ with stride length exceeding baseline by $> 5\%$).
+   - `cadence < 155 SPM` AND `verticalRatio > 9.5%` (or vertical oscillation `> 10.0 cm` with stride length exceeding baseline by `> 5%`).
    - Directive: `"The runner shows high vertical bounce relative to stride length (VR: X%), indicating overstriding and braking forces. Prescribe Cadence Pyramids or Rhythm Intervals to quicken turnover."`
 2. **Acceleration Mechanics (Cadence vs. Stride Expansion)**:
    - When pace is faster than baseline:
@@ -120,13 +122,13 @@ Replace the scalar `cadence < 150` check with multi-signal evaluation:
      - If `strideDelta > 0.05` and `cadenceDelta <= 2`: `"Pace increase driven by stride extension (+X cm), maintaining steady rhythm."`
      - If both increased: `"Balanced acceleration via both turnover and stride extension."`
 3. **Late-Run Stride Collapse (Mechanical Fatigue)**:
-   - When cadence remains stable ($\pm 2$ SPM) but pace drops and stride length compresses by $> 8\%$, flag mechanical fatigue: `"The runner shows mechanical stride collapse... Prescribe a Form drill to reinforce hip extension and posture under fatigue."`
+   - When cadence remains stable (`+/- 2 SPM`) but pace drops and stride length compresses by `> 8%`, flag mechanical fatigue: `"The runner shows mechanical stride collapse... Prescribe a Form drill to reinforce hip extension and posture under fatigue."`
 4. **Cardiovascular Safety Priority**:
    - As mandated by `AGENTS.md`, cardiac fatigue (`paceDiff < 0 && hrDelta > 0`) overrides race goals and form directives with recovery priority.
 
 #### Macro Strategic AI (`DashboardView.swift`)
 
-In the 30-Day Dashboard view, longitudinal Vertical Ratio changes ($\Delta\text{VR} < -0.3\%$) are evaluated alongside Efficiency Factor and cardiac cost to prompt the sports scientist persona on running economy expansion.
+In the 30-Day Dashboard view, longitudinal Vertical Ratio changes (`Delta VR < -0.3%`) are evaluated alongside Efficiency Factor and cardiac cost to prompt the sports scientist persona on running economy expansion.
 
 ### 4. FoundationModels Prompt Injection
 
@@ -138,16 +140,16 @@ Current: 168 SPM, Baseline: 165 SPM, Deltas: +3. Turnover quickened with improve
 
 ### 5. UI Presentation & Explainer Sheets (`RunDetailView.swift`)
 
-The metrics grid is organized into an **8-card balanced layout** ($2 \times 4$ rows in portrait mode, avoiding an orphan 7th card):
+The metrics grid is organized into an **8-card balanced layout** (2 x 4 rows in portrait mode, avoiding an orphan 7th card):
 
 | Row | Metric 1 | Metric 2 | Thematic Domain |
 | :--- | :--- | :--- | :--- |
 | **Row 1** | **Distance** | **Moving / Total Time** | Volume & Duration |
 | **Row 2** | **Avg Pace** | **Avg HR** | Cardiovascular Intensity |
-| **Row 3** | **Avg Cadence** | **Avg Stride** | Velocity Equation ($v = f \times \lambda$) |
+| **Row 3** | **Avg Cadence** | **Avg Stride** | Velocity Equation (`v = f * lambda`) |
 | **Row 4** | **Vert. Osc.** | **Vertical Ratio** | Vertical Running Economy |
 
-* **Unit Localization**: Stride length formats in meters ($m$) when `useMetricSystem == true`, and converts to feet ($m \times 3.28084$) with unit `"ft"` when imperial. Vertical Ratio remains a dimensionless percentage ($\%$) across both systems.
+* **Unit Localization**: Stride length formats in meters (`m`) when `useMetricSystem == true`, and converts to feet (`m * 3.28084`) with unit `"ft"` when imperial. Vertical Ratio remains a dimensionless percentage (`%`) across both systems.
 * **Rolling Baselines**: `baselineStrideLength` and `baselineVerticalRatio` compute duration-weighted 30-day averages strictly prior to the run date to drive relative delta comparison pills (`StatBox`).
 * **On-Demand Historical Backfill**: When viewing historical runs with missing stride metrics, `RunDetailView` performs a single-run on-demand extraction via HealthKit, satisfying `AGENTS.md` zero-launch-repair constraints.
 * **Explainer Sheets**: [`MetricDetailExplainer`](../Runalyst/Utilities/PaceFormatter.swift) includes comprehensive explainers for **Stride Length** and **Vertical Ratio**.

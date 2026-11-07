@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import RunalystCore
 
 /// Duration categories for prescribed corrective drills.
 public enum DrillDuration: Int, CaseIterable, Sendable, Codable {
@@ -16,10 +17,14 @@ public enum DrillDuration: Int, CaseIterable, Sendable, Codable {
         "\(rawValue) min"
     }
 
-    /// Resolves an integer minute count to the closest canonical DrillDuration using minimum distance.
+    /// Resolves an integer minute count to the canonical template duration via DrillScheduleCore.
+    public static func canonical(forRawMinutes raw: Int) -> DrillDuration {
+        nearest(toMinutes: raw)
+    }
+
+    /// Resolves an integer minute count to the closest canonical DrillDuration via DrillScheduleCore.
     public static func nearest(toMinutes raw: Int) -> DrillDuration {
-        if let exact = DrillDuration(rawValue: raw) { return exact }
-        return allCases.min(by: { abs($0.rawValue - raw) < abs($1.rawValue - raw) }) ?? .thirtyMinutes
+        DrillDuration(rawValue: DrillScheduleCore.canonicalTemplateMinutes(forRawMinutes: raw)) ?? .thirtyMinutes
     }
 }
 

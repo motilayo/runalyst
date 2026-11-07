@@ -28,8 +28,8 @@ A major usability and architectural discrepancy exists between what users expect
 ## Considered Options
 
 * **Option 1 (Dual-Scope Refresh Architecture: Macro Incremental Sync + Targeted Micro Re-Ingestion)**:
-  - **Macro Scope (`DashboardView`)**: Guard against `isSyncing` $\rightarrow$ trigger incremental HealthKit workout ingestion via unstructured task $\rightarrow$ refresh VO2 Max baseline $\rightarrow$ invalidate headline cache $\rightarrow$ generate fresh macro readiness insight.
-  - **Micro Scope (`RunDetailView`)**: Query HealthKit for that specific `hkWorkoutID` $\rightarrow$ extract all sample streams (including stride length) $\rightarrow$ re-run `FramboiseEngine` working stats and topological classifier $\rightarrow$ update SwiftData in-place $\rightarrow$ trigger single-run AI coaching.
+  - **Macro Scope (`DashboardView`)**: Guard against `isSyncing` -> trigger incremental HealthKit workout ingestion via unstructured task -> refresh VO2 Max baseline -> invalidate headline cache -> generate fresh macro readiness insight.
+  - **Micro Scope (`RunDetailView`)**: Query HealthKit for that specific `hkWorkoutID` -> extract all sample streams (including stride length) -> re-run `FramboiseEngine` working stats and topological classifier -> update SwiftData in-place -> trigger single-run AI coaching.
 * **Option 2 (Prompt-Only Refresh + Settings Resync Only - Status Quo)**:
   - Keep pull-to-refresh restricted to re-prompting the LLM with existing scalar data; require users to wipe the entire database in Settings to update any HealthKit metrics or classifications.
 * **Option 3 (Full Historical Scan on Dashboard Pull)**:

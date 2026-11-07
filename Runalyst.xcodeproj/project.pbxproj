@@ -145,6 +145,12 @@
 		P0O9I8U7Y6T5R4E3W2Q1Z0X9 /* Runalyst/Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B1N2M3L4K5J6H7G8F9D0S1A2 /* Runalyst/Assets.xcassets */; };
 		Q2W3E4R5T6Y7U8I9O0P1A2S3 /* Runalyst/Views/OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6G7H8I9J0K1L2 /* Runalyst/Views/OnboardingView.swift */; };
 		Z2X3C4V5B6N7M8L9K0J1H2G3 /* Runalyst/Views/RunDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = Q1W2E3R4T5Y6U7I8O9P0A1S2 /* Runalyst/Views/RunDetailView.swift */; };
+		D1110091D4E5F60718293A91 /* Runalyst/Models/DrillReadout+Adaptive.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1110091D4E5F60718293A91 /* Runalyst/Models/DrillReadout+Adaptive.swift */; };
+		D1110092D4E5F60718293A92 /* Runalyst/Views/HeartRateTrajectoryMapView+Chart.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1110092D4E5F60718293A92 /* Runalyst/Views/HeartRateTrajectoryMapView+Chart.swift */; };
+		D1110093D4E5F60718293A93 /* Runalyst/Views/DrillExecutionScorecard+Evaluation.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1110093D4E5F60718293A93 /* Runalyst/Views/DrillExecutionScorecard+Evaluation.swift */; };
+		D1110094D4E5F60718293A94 /* Runalyst/Views/DrillExecutionScorecard+Subviews.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1110094D4E5F60718293A94 /* Runalyst/Views/DrillExecutionScorecard+Subviews.swift */; };
+		D1110095D4E5F60718293A95 /* Runalyst/Views/RunDetailView+Cards.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1110095D4E5F60718293A95 /* Runalyst/Views/RunDetailView+Cards.swift */; };
+		D1110096D4E5F60718293A96 /* Runalyst/Views/RunDetailView+PillsAndHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1110096D4E5F60718293A96 /* Runalyst/Views/RunDetailView+PillsAndHelpers.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -296,6 +302,12 @@
 		FF6702113B57AA6128E0FBEF /* FramboiseEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FramboiseEngineTests.swift; sourceTree = "<group>"; };
 		AA11000128E0FBEF12345678 /* ContinuousMillAssayTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContinuousMillAssayTests.swift; sourceTree = "<group>"; };
 		Q1W2E3R4T5Y6U7I8O9P0A1S2 /* Runalyst/Views/RunDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/RunDetailView.swift; sourceTree = SOURCE_ROOT; };
+		C1110091D4E5F60718293A91 /* Runalyst/Models/DrillReadout+Adaptive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Runalyst/Models/DrillReadout+Adaptive.swift"; sourceTree = SOURCE_ROOT; };
+		C1110092D4E5F60718293A92 /* Runalyst/Views/HeartRateTrajectoryMapView+Chart.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Runalyst/Views/HeartRateTrajectoryMapView+Chart.swift"; sourceTree = SOURCE_ROOT; };
+		C1110093D4E5F60718293A93 /* Runalyst/Views/DrillExecutionScorecard+Evaluation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Runalyst/Views/DrillExecutionScorecard+Evaluation.swift"; sourceTree = SOURCE_ROOT; };
+		C1110094D4E5F60718293A94 /* Runalyst/Views/DrillExecutionScorecard+Subviews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Runalyst/Views/DrillExecutionScorecard+Subviews.swift"; sourceTree = SOURCE_ROOT; };
+		C1110095D4E5F60718293A95 /* Runalyst/Views/RunDetailView+Cards.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Runalyst/Views/RunDetailView+Cards.swift"; sourceTree = SOURCE_ROOT; };
+		C1110096D4E5F60718293A96 /* Runalyst/Views/RunDetailView+PillsAndHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Runalyst/Views/RunDetailView+PillsAndHelpers.swift"; sourceTree = SOURCE_ROOT; };
 		Z1X2C3V4B5N6M7L8K9J0H1G2 /* Runalyst/CoachingEngine/CoachingEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/CoachingEngine/CoachingEngine.swift; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
@@ -475,6 +487,12 @@
 				768372D4E377479C83BEA700 /* Runalyst/Views/SettingsView.swift */,
 				A1B2C3D4E5F6G7H8I9J0K1L2 /* Runalyst/Views/OnboardingView.swift */,
 				Q1W2E3R4T5Y6U7I8O9P0A1S2 /* Runalyst/Views/RunDetailView.swift */,
+				C1110091D4E5F60718293A91 /* Runalyst/Models/DrillReadout+Adaptive.swift */,
+				C1110092D4E5F60718293A92 /* Runalyst/Views/HeartRateTrajectoryMapView+Chart.swift */,
+				C1110093D4E5F60718293A93 /* Runalyst/Views/DrillExecutionScorecard+Evaluation.swift */,
+				C1110094D4E5F60718293A94 /* Runalyst/Views/DrillExecutionScorecard+Subviews.swift */,
+				C1110095D4E5F60718293A95 /* Runalyst/Views/RunDetailView+Cards.swift */,
+				C1110096D4E5F60718293A96 /* Runalyst/Views/RunDetailView+PillsAndHelpers.swift */,
 				A1110022D4E5F60718293A22 /* Runalyst/Views/StatBox.swift */,
 				A1110023D4E5F60718293A23 /* Runalyst/Views/DrillExecutionScorecard.swift */,
 				A1110024D4E5F60718293A24 /* Runalyst/Views/DrillDeckView.swift */,
@@ -677,6 +695,12 @@
 				98DB7AE1F0FD4D5A9E2AED7E /* Runalyst/Views/SettingsView.swift in Sources */,
 				Q2W3E4R5T6Y7U8I9O0P1A2S3 /* Runalyst/Views/OnboardingView.swift in Sources */,
 				Z2X3C4V5B6N7M8L9K0J1H2G3 /* Runalyst/Views/RunDetailView.swift in Sources */,
+				D1110091D4E5F60718293A91 /* Runalyst/Models/DrillReadout+Adaptive.swift in Sources */,
+				D1110092D4E5F60718293A92 /* Runalyst/Views/HeartRateTrajectoryMapView+Chart.swift in Sources */,
+				D1110093D4E5F60718293A93 /* Runalyst/Views/DrillExecutionScorecard+Evaluation.swift in Sources */,
+				D1110094D4E5F60718293A94 /* Runalyst/Views/DrillExecutionScorecard+Subviews.swift in Sources */,
+				D1110095D4E5F60718293A95 /* Runalyst/Views/RunDetailView+Cards.swift in Sources */,
+				D1110096D4E5F60718293A96 /* Runalyst/Views/RunDetailView+PillsAndHelpers.swift in Sources */,
 				554433221100FFEEDDCCBBAA /* Runalyst/Views/AnimatedLoadingView.swift in Sources */,
 				E1A2B3C4D5E6F708192A3B4C /* Runalyst/Views/WorkoutPhaseTimelineView.swift in Sources */,
 				F1A1B1C1D1E1F10111213142 /* Runalyst/Models/DrillReadout.swift in Sources */,

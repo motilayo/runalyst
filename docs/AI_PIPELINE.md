@@ -1,59 +1,141 @@
 # AI & CoreML Pipeline
 
-Runalyst V2 employs a hybrid intelligence pipeline. It uses traditional deterministic math, offline-trained CoreML, and on-device Generative AI to provide coaching insights. This prevents LLM hallucinations (by offloading math to Swift) and improves response latency.
+Runalyst employs a **"Thick Client, Thin AI"** hybrid intelligence pipeline: deterministic Swift sports science does the math, on-device CoreML classifies workout taxonomy, and native Apple FoundationModels (`LanguageModelSession`) synthesize empathetic coaching language and execute orthogonal tool calls.
+
+This strict division ensures the on-device LLM never hallucinates biomechanical numbers, pace splits, or physiological recovery timelines.
+
+---
 
 ## Pipeline Architecture
 
 ```mermaid
 sequenceDiagram
-    participant HK as HealthKit
-    participant FE as Framboise Engine
-    participant ML as CoreML Model
-    participant RA as RunAnalyzer Actor
-    participant FM as FoundationModels
+    participant HK as Apple HealthKit
+    participant RC as RunalystCore (FramboiseCore)
+    participant ML as CoreML (RunalystClassifier)
+    participant RA as RunAnalyzerActor (@ModelActor)
+    participant OT as OrthogonalToolsCore
+    participant FM as FoundationModels (LanguageModelSession)
 
-    HK->>FE: Raw Buckets
-    FE->>FE: Strip Dead Stops
-    FE->>ML: Pass Feature Vector
-    ML-->>FE: Return Class (e.g. "Tempo")
-    FE->>RA: Working Metrics + Class
-    RA->>RA: Compute Baseline Deltas
-    RA->>RA: Formulate Directives (e.g. "High Oscillation")
-    RA->>FM: Send System Prompt + Directives
-    FM-->>RA: JSON (Drill & Insight)
+    HK->>RC: Raw HKWorkout & Telemetry Buckets
+    RC->>RC: Trim Dead Stops & Compute Working Stats
+    RC->>ML: Extract 11-Feature Vector (pace, hr, cv, hrCV, etc.)
+    ML-->>RA: Taxonomic Classification (e.g. "Tempo Run")
+    RA->>RC: Evaluate 30-Day Deltas & Diagnostics (PhysiologicalDiagnosisCore)
+    RC-->>RA: Deterministic Directive & Form Gaps
+    RA->>FM: System Prompt + Directive Context
+    opt Tool Discovery
+        FM->>OT: Tool Call (inspectWorkout, getTrainingSchedule, etc.)
+        OT-->>FM: Raw Domain Structs (RunDirective, VolumeHistory)
+    end
+    FM-->>RA: Structured @Generable Payload (CoachingInsightPayload)
+    RA->>RA: Persist CoachingInsight to SwiftData
 ```
 
+---
+
 ## 1. The CoreML Classifier
-The `RunalystClassifier.mlmodel` is an offline-trained tabular classification model. It categorizes the overall effort of the run.
 
-### Training the Model
-We do not train the model directly in the app or via GitHub Actions. Instead, we generate synthetic data to feed into Apple's Create ML:
-1. `generate_seed_runs.py` produces a CSV containing thousands of synthetic runs with balanced classes.
-2. The developer downloads `CoreML_Training_Data_v3.csv` from GitHub Actions.
-3. Using Xcode's **Create ML**, the developer trains a tabular classifier targeting the `targetClass` column.
-4. The exported `.mlmodel` is committed back to the repository.
+The `RunalystClassifier.mlmodel` is an offline-trained Random Forest tabular classifier embedded in the app target. It classifies each workout into one of 11 canonical taxonomic classes:
+1. `Recovery Run`
+2. `Easy Run`
+3. `Steady Effort`
+4. `Progression Run`
+5. `Tempo Run`
+6. `Fartlek`
+7. `Intervals`
+8. `Hill Repeats`
+9. `Cadence Pyramids`
+10. `Long Run`
+11. `Urban Traffic`
 
-**Future Code Context**: If you introduce a new feature (like `runningPower`), you must add it to `generate_seed_runs.py`, regenerate the CSV, retrain the model in Create ML, and update the `RunalystClassifierInput` inside `ModelManager.swift`.
+### Feature Vector Specification
+The model consumes an 11-dimensional feature vector extracted deterministically by `FramboiseCore`:
+- `paceDelta`: Difference between working pace and 30-day baseline (s/km).
+- `hrDelta`: Difference between working HR and 30-day baseline (BPM).
+- `percentZone4`: Proportion of time spent in anaerobic Zone 4 / Zone 5.
+- `cadenceDelta`: Turnover change relative to 30-day rolling baseline (SPM).
+- `verticalOscillation`: Mean bounce height in centimeters.
+- `cv`: Pace coefficient of variation (statistical volatility).
+- `paceSlope`: Monotonic acceleration gradient across split quintiles.
+- `runnerStage`: Runner profile experience tier (0 = Beginner to 3 = Elite).
+- `durationMinutes`: Active workout duration.
+- `cadenceCV`: Turnover regularity coefficient of variation.
+- `hrCV`: Heart rate volatility coefficient of variation.
 
-## 2. Deterministic Directives
-FoundationModels are poor at math. We do all math in Swift (`FramboiseEngine`). If a user's cadence dropped by 10 SPM and their vertical oscillation increased by 3 cm, `RunAnalyzerActor` calculates this exactly.
+### Retraining & Data Synthesis
+The model is trained entirely on synthetic, balanced data to prevent class imbalance:
+1. `python3 scripts/generate_seed_runs.py` synthesizes 40,000 runs across all 11 classes, generating `CoreML_Training_Data_v6.csv` and `CoreML_Testing_Data_v6.csv`.
+2. `python3 scripts/train_model.py` trains the `RandomForestClassifier` with `scikit-learn`, executes the 11-case validation test suite, converts the model via `coremltools`, and outputs `RunalystClassifier.mlmodel`.
+3. Automated CI via `.github/workflows/generate-seed-data.yml` verifies data synthesis and training on main branch pushes.
 
-**Future Code Context**: Never ask the LLM to calculate a delta. Instead, compute the delta in Swift, and inject a strict textual directive into the prompt: `"DIRECTIVE: The user's cadence dropped by 10 SPM. Prescribe Cadence Pyramids."`
+---
 
-## 3. FoundationModels Generation
-The generative AI uses the `LanguageModelSession` (iOS 26+). It maps the deterministic directives into a conversational tone.
+## 2. Deterministic Directives & Sports Science Core
 
-### The `@Generable` Schema
-We use Swift's macro system to enforce structured output.
+Language models fail when tasked with calculating metric deltas, standard deviations, or cardiac drift. In Runalyst, all mathematical decisions occur strictly in `RunalystCore`:
+- **`FramboiseCore`**: Computes working averages excluding dead stops.
+- **`IntervalSegmenterCore`**: Segments interval surges and walk-recovery troughs using rolling baselines.
+- **`PhysiologicalDiagnosisCore`**: Identifies overstriding, cardiac drift, and biomechanical fatigue.
+- **`SessionHorizonCore`**: Synthesizes 14-day microcycle progression without calendar drift.
+
+### The Directive Context Pattern
+`RunAnalyzerActor` translates core math into an unambiguous textual directive injected into the LLM system prompt:
+
+```
+// Example Directive Context:
+Current: 148 SPM (BELOW the 150 SPM floor). Baseline: 158 SPM. Deltas: Pace +12s/km, HR +6 BPM.
+GROUP_B_FORM: High vertical bounce detected (10.6 cm).
+DIRECTIVE: Prescribe Cadence Pyramids. Safety overrides any race goal.
+```
+
+**Guardrail Priority**: When biological fatigue is detected (`paceDiff < 0 && hrDelta > 0`), Swift deterministically overrides user training goals with `"PRIORITY: prescribe Easy Aerobic Recovery"`.
+
+---
+
+## 3. Native Tool Calling (`OrthogonalToolsCore`)
+
+On-device FoundationModels interact with app state through Apple's native Tool Calling protocol (`Tool` protocol conformance). Tool endpoints are strictly orthogonal:
+- **`inspectWorkout`**: Diff two workouts polymorphically using `HistoricalQueryCore`.
+- **`getTrainingSchedule`**: Query timeline over a continuous date range (`from: Date, to: Date`).
+- **`getReadinessAndWorkload`**: Retrieve Banister TRIMP and acute:chronic workload ratios.
+- **`queryWorkoutHistory`**: Filter historical logs by tags and terrain without conversational scripting.
+
+### Zero Scripted Dialogue Law
+Tools return raw domain primitives, enums, and numerical telemetry. Swift never constructs canned conversational phrases inside tools; the LLM discovers state and generates its own empathetic coaching prose.
+
+---
+
+## 4. FoundationModels Generation (`LanguageModelSession`)
+
+The generative coaching layer runs natively on iOS 26+ via Apple's `LanguageModelSession`.
+
+### Structured Output with `@Generable`
+We define compiler-checked schemas with granular property guides:
+
 ```swift
 @Generable
-struct CoachingInsightPayload {
-    var drillTitle: String
-    @Guide(description: "Max 3 sentences. Tone must be highly conversational.")
-    var insightBody: String
+public struct CoachingInsightPayload {
+    @Guide(description: "One-sentence high-impact coaching diagnosis based on the directive.")
+    public var diagnosisHeadline: String
+
+    @Guide(description: "Empathetic analysis of today's effort. Maximum 2 sentences. No cheerleading clichés.")
+    public var coachingBody: String
+
+    @Guide(description: "Exact drill title from allowed list: Cadence Pyramids, Rhythm Intervals, Tempo Surges, Strides.")
+    public var drillTitle: String
+
+    public var drillWork: String
+    public var drillRecovery: String
+    public var drillCues: String
+    public var drillEffort: String
+    public var drillPurpose: String
 }
 ```
 
-**Future Code Context**: 
-- **Apple TN3193 Limits**: The underlying on-device models have strict 4,096-token limits. Do not use generic JSON strings. Use `@Generable` to leverage Apple's native schema packing.
-- **Prompt Constraints**: If the model frequently hallucinates a field, do not write a massive paragraph in the system prompt. Instead, use a `@Guide(description:)` directly on the struct property to heavily constrain the generation space for that specific field.
+### Apple TN3193 Token Budgeting
+On-device models enforce a hard **4,096-token ceiling**:
+- Capped array sizes in `@Guide(description:)` (never use `maximumCount`).
+- Compact, comma-delimited input strings instead of verbose JSON payloads.
+- System prompt constrained to under 3 paragraphs and 10 clear rules.
+- Localized response instruction: `"Respond entirely in \(Locale.current.language.languageCode)"`.

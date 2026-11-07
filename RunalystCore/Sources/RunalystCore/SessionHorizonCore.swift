@@ -110,6 +110,57 @@ public enum SessionHorizonCore {
         }
     }
 
+    // MARK: - Steady-State Drift & Dynamic Heart Rate Math
+
+    /// Evaluates whether a continuous steady-state run exhibits true cardiovascular decoupling (cardiac drift).
+    ///
+    /// Structured interval, tempo surge, or hill repeat workouts naturally produce large HR surges across work bouts
+    /// and are strictly excluded. For continuous runs, skips initial cold-start lag (using split 1 when >= 3 splits exist)
+    /// and requires a heart rate rise of at least 12 BPM at a steady or decelerating pace.
+    public static func evaluateSteadyStateSplitDrift(
+        splits: [(pace: Double, hr: Int)],
+        isIntervalOrTempo: Bool
+    ) -> Int? {
+        guard !isIntervalOrTempo, splits.count >= 2 else { return nil }
+
+        // Skip cold-start cardiac lag in kilometer 1 when at least 3 splits are present
+        let baselineSplit = splits.count >= 3 ? splits[1] : splits[0]
+        let finalSplit = splits[splits.count - 1]
+
+        let paceDelta = finalSplit.pace - baselineSplit.pace
+        // Ensure steady pace (within 15 s/km) or natural fatigue deceleration (paceDelta >= -5.0 s/km)
+        let isSteadyOrSlower = abs(paceDelta) <= 15.0 || paceDelta >= -5.0
+        guard isSteadyOrSlower else { return nil }
+
+        let hrRise = finalSplit.hr - baselineSplit.hr
+        if hrRise >= 12 {
+            return hrRise
+        }
+        return nil
+    }
+
+    /// Resolves dynamic heart rate ceiling display string from athlete-specific zone ceilings.
+    public static func resolveDynamicMaxHeartRate(
+        zone: SessionIntensityZone,
+        zone1Ceiling: Int = 135,
+        zone2Ceiling: Int = 148,
+        zone3Ceiling: Int = 158,
+        zone4Ceiling: Int = 168
+    ) -> String {
+        switch zone {
+        case .rest:
+            return "Rest"
+        case .zone1Flush:
+            return "< \(zone1Ceiling) BPM"
+        case .zone2Base, .zone3Steady:
+            return "< \(zone2Ceiling) BPM"
+        case .zone4Tempo:
+            return "< \(zone3Ceiling) BPM"
+        case .zone5Interval:
+            return "< \(zone4Ceiling) BPM"
+        }
+    }
+
     public static func synthesizeHorizon(
         startDate: Date,
         daysCount: Int = 5,
@@ -117,7 +168,11 @@ public enum SessionHorizonCore {
         context: AthleteSynthesisContext,
         isTomorrowRecovery: Bool = false,
         isTomorrowRest: Bool = false,
-        hasRecentLongRun: Bool = false
+        hasRecentLongRun: Bool = false,
+        zone1Ceiling: Int = 135,
+        zone2Ceiling: Int = 148,
+        zone3Ceiling: Int = 158,
+        zone4Ceiling: Int = 168
     ) -> [SynthesizedHorizonDay] {
         var days: [SynthesizedHorizonDay] = []
         let cal = context.calendar
@@ -202,14 +257,17 @@ public enum SessionHorizonCore {
             let intent: DailySessionIntent = isRest ? .fullRest : (template.intensityZone == .zone1Flush ? .recoveryFlush : .train)
             let paceBand = SessionSynthesisCore.resolvePaceBand(for: template.intensityZone, matrix: matrix, useMetric: context.useMetric)
             let hrCap: String = {
-                if isRest { return "HR: Rest / < 125 BPM" }
-                switch template.intensityZone {
-                case .zone1Flush: return "HR: < 135 BPM"
-                case .zone2Base, .zone3Steady: return "HR: < 150 BPM"
-                case .zone4Tempo: return "HR: < 162-165 BPM"
-                case .zone5Interval: return "HR: < 168 BPM"
-                case .rest: return "HR: Rest / < 125 BPM"
+                if isRest || template.intensityZone == .rest {
+                    return "HR: Rest / < 125 BPM"
                 }
+                let dynamicMax = resolveDynamicMaxHeartRate(
+                    zone: template.intensityZone,
+                    zone1Ceiling: zone1Ceiling,
+                    zone2Ceiling: zone2Ceiling,
+                    zone3Ceiling: zone3Ceiling,
+                    zone4Ceiling: zone4Ceiling
+                )
+                return "HR: \(dynamicMax)"
             }()
             let dayCadFloor: Int? = {
                 if isRest { return nil }

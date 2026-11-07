@@ -1,5 +1,6 @@
 import SwiftUI
 import Charts
+import RunalystCore
 
 /// Renders the Heart Rate Trajectory visualization for Aerobic Workouts
 /// (Zone 2, Easy Runs, Long Runs, and Recovery Runs).
@@ -17,20 +18,31 @@ struct HeartRateTrajectoryMapView: View {
     var splits: [RunSplit] = []
     var rawAvgHeartRate: Double = 0.0
     var selectedModality: Binding<WorkoutTelemetryModality>?
+    var buckets: [BucketData] = []
 
-    @State private var selectedMinute: Double?
+    @State var selectedMinute: Double?
 
-    private static let neonPink = Color(red: 1.0, green: 0.18, blue: 0.55)
+    static let neonPink = Color(red: 1.0, green: 0.18, blue: 0.55)
 
-    private var isRecovery: Bool {
+    var isRecovery: Bool {
         workoutType == "Recovery Run"
     }
 
-    private var effectiveThreshold: Double {
-        isRecovery ? zone1Ceiling : zone2Ceiling
+    var aerobicStrain: AerobicStrainEvaluation {
+        AerobicStrainEvaluation.evaluate(
+            workingAvgHeartRate: workingAvgHeartRate,
+            percentZone4: percentZone4,
+            zone2Ceiling: isRecovery ? zone1Ceiling : zone2Ceiling,
+            isRecoveryPrescription: isRecovery,
+            hrCV: hrCV
+        )
     }
 
-    private var effectiveWorkingHR: Double {
+    var effectiveThreshold: Double {
+        aerobicStrain.effectiveCeilingBPM
+    }
+
+    var effectiveWorkingHR: Double {
         if workingAvgHeartRate > 0 {
             return workingAvgHeartRate
         }
@@ -40,7 +52,7 @@ struct HeartRateTrajectoryMapView: View {
         return effectiveThreshold
     }
 
-    private var normalizedSegments: [PhaseSegment] {
+    var normalizedSegments: [PhaseSegment] {
         guard let targetDuration = workoutDuration, targetDuration > 0,
               let maxEnd = phaseSegments.map(\.endSeconds).max(), maxEnd > 0 else {
             return phaseSegments
@@ -61,253 +73,30 @@ struct HeartRateTrajectoryMapView: View {
         }
     }
 
-    private var maxMinutes: Double {
+    var maxMinutes: Double {
         let maxSec = workoutDuration ?? (normalizedSegments.map(\.endSeconds).max() ?? 1800.0)
         return max(1.0, ceil(maxSec / 60.0))
     }
 
-    struct HRPlotPoint: Identifiable {
-        let id: String
-        let minute: Double
-        let heartRate: Double
-        let kind: String
-        let isAnchor: Bool
+    var isZone4Strain: Bool {
+        aerobicStrain.isZone4Overreach
     }
 
-    private var chartPoints: [HRPlotPoint] {
-        var points: [HRPlotPoint] = []
-        let validSplits = splits.filter { $0.avgHeartRate >= 40.0 && $0.durationSeconds > 0 }
-
-        // Strategy A: Authentic Splits Progression (Warmup, Splits, Drift)
-        if validSplits.count >= 2 {
-            let totalSplitSec = validSplits.map(\.durationSeconds).reduce(0, +)
-            let targetSec = workoutDuration ?? totalSplitSec
-            let timeScale = (targetSec > totalSplitSec && totalSplitSec > 0 && abs(targetSec - totalSplitSec) > 60.0)
-                ? (targetSec / totalSplitSec)
-                : 1.0
-
-            var elapsedSec = 0.0
-            let firstSplitHR = validSplits[0].avgHeartRate
-            // Warm-up ramp anchor at minute 0
-            points.append(
-                HRPlotPoint(
-                    id: "split-warmup",
-                    minute: 0.0,
-                    heartRate: firstSplitHR * 0.88,
-                    kind: "steady",
-                    isAnchor: false
-                )
-            )
-
-            for split in validSplits {
-                let startSec = elapsedSec
-                elapsedSec += split.durationSeconds
-                let midMin = ((startSec + elapsedSec) / 2.0 * timeScale) / 60.0
-                points.append(
-                    HRPlotPoint(
-                        id: "split-\(split.index)",
-                        minute: midMin,
-                        heartRate: split.avgHeartRate,
-                        kind: "steady",
-                        isAnchor: true
-                    )
-                )
-            }
-
-            // Final anchor at completion
-            let finalHR = validSplits.last?.avgHeartRate ?? effectiveWorkingHR
-            points.append(
-                HRPlotPoint(
-                    id: "split-finish",
-                    minute: maxMinutes,
-                    heartRate: finalHR * 1.01,
-                    kind: "steady",
-                    isAnchor: false
-                )
-            )
-        } else if normalizedSegments.filter({ $0.avgHR >= 40.0 }).count >= 3 {
-            // Strategy B: Multi-Segment Structure (Intervals, Fartleks, Mixed Phases)
-            for (idx, seg) in normalizedSegments.enumerated() {
-                let hr = seg.avgHR > 0 ? seg.avgHR : effectiveWorkingHR
-                let startMin = seg.startSeconds / 60.0
-                let endMin = seg.endSeconds / 60.0
-                let midMin = (seg.startSeconds + seg.endSeconds) / 120.0
-
-                if (endMin - startMin) > 2.0 {
-                    points.append(HRPlotPoint(id: "\(idx)-s", minute: startMin, heartRate: hr, kind: seg.kind, isAnchor: false))
-                    points.append(HRPlotPoint(id: "\(idx)-m", minute: midMin, heartRate: hr, kind: seg.kind, isAnchor: true))
-                    points.append(HRPlotPoint(id: "\(idx)-e", minute: endMin, heartRate: hr, kind: seg.kind, isAnchor: false))
-                } else {
-                    points.append(HRPlotPoint(id: "\(idx)-m", minute: midMin, heartRate: hr, kind: seg.kind, isAnchor: true))
-                }
-            }
-        } else {
-            // Strategy C: Continuous Steady Physiological Curve anchored to effectiveWorkingHR
-            // Warmup rise (0-8m) -> Steady aerobic cruising -> Gentle late drift
-            let targetHR = effectiveWorkingHR
-            let mMax = maxMinutes
-
-            let anchors: [(fraction: Double, hrMultiplier: Double, isAnchor: Bool)] = [
-                (0.00, 0.82, false),
-                (min(0.06, 3.0 / max(1.0, mMax)), 0.91, true),
-                (min(0.15, 8.0 / max(1.0, mMax)), 0.97, true),
-                (0.40, 0.99, true),
-                (0.65, 1.01, true),
-                (0.85, 1.03, true),
-                (1.00, 1.05, false)
-            ]
-
-            for (idx, anchor) in anchors.enumerated() {
-                let minVal = min(mMax, anchor.fraction * mMax)
-                points.append(
-                    HRPlotPoint(
-                        id: "phys-\(idx)",
-                        minute: minVal,
-                        heartRate: targetHR * anchor.hrMultiplier,
-                        kind: "steady",
-                        isAnchor: anchor.isAnchor
-                    )
-                )
-            }
-        }
-
-        // Defensive guarantee: Swift Charts requires at least 2 points to render AreaMark and LineMark
-        if points.count < 2 {
-            let hr = effectiveWorkingHR
-            points = [
-                HRPlotPoint(id: "start", minute: 0, heartRate: hr * 0.85, kind: "steady", isAnchor: false),
-                HRPlotPoint(id: "mid", minute: maxMinutes / 2.0, heartRate: hr, kind: "steady", isAnchor: true),
-                HRPlotPoint(id: "end", minute: maxMinutes, heartRate: hr * 1.03, kind: "steady", isAnchor: false)
-            ]
-        }
-
-        return points.sorted(by: { $0.minute < $1.minute })
+    var isElevatedStrain: Bool {
+        aerobicStrain.isElevatedStrain
     }
 
-    private var yMin: Double {
-        let pts = chartPoints.map(\.heartRate)
-        let lowest = min(pts.min() ?? (effectiveWorkingHR - 20), effectiveThreshold - 20)
-        return max(50, floor((lowest - 8) / 5) * 5)
+    var cardiacStabilityText: String {
+        aerobicStrain.cardiacStabilityText
     }
 
-    private var yMax: Double {
-        let pts = chartPoints.map(\.heartRate)
-        let highest = max(pts.max() ?? (effectiveWorkingHR + 20), effectiveThreshold + 12)
-        return min(220, ceil((highest + 8) / 5) * 5)
-    }
-
-    private var peakPoint: HRPlotPoint? {
-        chartPoints.max(by: { $0.heartRate < $1.heartRate })
-    }
-
-    private var isElevatedStrain: Bool {
-        workingAvgHeartRate > (effectiveThreshold + 3.0)
-    }
-
-    private var cardiacStabilityText: String {
-        if isElevatedStrain {
-            return "Elevated Strain (Zone 3)"
-        } else if percentZone4 <= 0.04 && (hrCV ?? 0.05) <= 0.08 {
-            return "Cardiac Stability: High"
-        } else if percentZone4 <= 0.12 {
-            return "Cardiac Stability: Moderate"
-        } else {
-            return "Cardiac Drift Detected"
-        }
-    }
-
-    private var cardiacStabilityColor: Color {
-        if isElevatedStrain {
-            return Color.orange
-        } else if percentZone4 <= 0.04 && (hrCV ?? 0.05) <= 0.08 {
-            return Color.green
-        } else if percentZone4 <= 0.12 {
-            return Color.orange
-        } else {
+    var cardiacStabilityColor: Color {
+        if aerobicStrain.isSevereStrainColor {
             return Color.red
-        }
-    }
-
-    private var scrubbedPoint: HRPlotPoint? {
-        guard let minute = selectedMinute else { return nil }
-        return chartPoints.min(by: { abs($0.minute - minute) < abs($1.minute - minute) })
-    }
-
-    private var xAxisTicks: [Double] {
-        let mMax = maxMinutes
-        if mMax <= 15 {
-            var ticks = Array(stride(from: 0.0, through: mMax, by: 5.0))
-            if let last = ticks.last, (mMax - last) >= 2.0 {
-                ticks.append(mMax)
-            } else if ticks.count > 1 {
-                ticks[ticks.count - 1] = mMax
-            }
-            return Array(Set(ticks)).sorted()
-        } else if mMax <= 45 {
-            var ticks = Array(stride(from: 0.0, to: mMax, by: 10.0))
-            if let last = ticks.last, (mMax - last) >= 3.0 {
-                ticks.append(mMax)
-            } else if ticks.count > 1 {
-                ticks[ticks.count - 1] = mMax
-            } else {
-                ticks.append(mMax)
-            }
-            return Array(Set(ticks)).sorted()
-        } else {
-            var ticks = Array(stride(from: 0.0, to: mMax, by: 15.0))
-            if let last = ticks.last, (mMax - last) >= 5.0 {
-                ticks.append(mMax)
-            } else if ticks.count > 1 {
-                ticks[ticks.count - 1] = mMax
-            } else {
-                ticks.append(mMax)
-            }
-            return Array(Set(ticks)).sorted()
-        }
-    }
-
-    private func interpolatedHR(at minute: Double) -> Double {
-        guard !chartPoints.isEmpty else { return effectiveWorkingHR }
-        if minute <= chartPoints[0].minute {
-            return chartPoints[0].heartRate
-        }
-        if minute >= chartPoints[chartPoints.count - 1].minute {
-            return chartPoints[chartPoints.count - 1].heartRate
-        }
-        for idx in 0..<(chartPoints.count - 1) {
-            let p1 = chartPoints[idx]
-            let p2 = chartPoints[idx + 1]
-            if minute >= p1.minute && minute <= p2.minute {
-                let range = p2.minute - p1.minute
-                guard range > 0.001 else { return p1.heartRate }
-                let progress = (minute - p1.minute) / range
-                return p1.heartRate + progress * (p2.heartRate - p1.heartRate)
-            }
-        }
-        return effectiveWorkingHR
-    }
-
-    private func zoneLabel(for hr: Double) -> String {
-        if hr <= zone1Ceiling {
-            return "Zone 1 (Recovery)"
-        } else if hr <= zone2Ceiling {
-            return "Zone 2 (Aerobic)"
-        } else if hr <= (zone2Ceiling + 12.0) {
-            return "Zone 3 (Tempo)"
-        } else {
-            return "Zone 4+ (Threshold)"
-        }
-    }
-
-    private func zoneColor(for hr: Double) -> Color {
-        if hr <= zone1Ceiling {
-            return Color.teal
-        } else if hr <= zone2Ceiling {
+        } else if aerobicStrain.stabilitySeverity == "optimal" {
             return Color.green
-        } else if hr <= (zone2Ceiling + 12.0) {
-            return Color.orange
         } else {
-            return Color.red
+            return Color.orange
         }
     }
 
@@ -412,17 +201,25 @@ struct HeartRateTrajectoryMapView: View {
                         let isNearRight = peak.minute >= (maxMinutes - 4.0)
                         let isNearLeft = peak.minute <= 4.0
                         let peakAlignment: Alignment = isNearRight ? .trailing : (isNearLeft ? .leading : .center)
+                        let peakColor: Color = {
+                            if peak.heartRate > (zone2Ceiling + 12.0) || isZone4Strain {
+                                return Color.red
+                            } else if peak.heartRate > effectiveThreshold {
+                                return Color.orange
+                            }
+                            return Self.neonPink
+                        }()
 
                         PointMark(
                             x: .value("Time", peak.minute),
                             y: .value("Heart Rate", peak.heartRate)
                         )
-                        .foregroundStyle(peak.heartRate > effectiveThreshold ? Color.orange : Self.neonPink)
+                        .foregroundStyle(peakColor)
                         .symbolSize(40)
                         .annotation(position: .top, alignment: peakAlignment) {
                             Text("\(Int(round(peak.heartRate))) Peak")
                                 .font(.system(size: 10, weight: .bold).monospacedDigit())
-                                .foregroundColor(peak.heartRate > effectiveThreshold ? .orange : Self.neonPink)
+                                .foregroundColor(peakColor)
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
                                 .background(Color(UIColor.secondarySystemGroupedBackground))

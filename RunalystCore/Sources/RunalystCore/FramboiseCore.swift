@@ -8,12 +8,24 @@ public enum FramboiseCore {
 
     // MARK: - Dead Stop & Walking Filter
 
+    /// Detects if the bucket sequence contains a structured interval pattern.
+    public static func hasStructuredIntervalPattern(buckets: [TelemetryBucket]) -> Bool {
+        RunClassifierCore.hasStructuredIntervalPattern(buckets: buckets)
+    }
+
     /// Filters out stationary time, traffic stops, and walking breaks.
-    /// Strictly filters to KEEP samples where speed is greater than the walking threshold.
-    /// When step cadence is present, enforces a biomechanical running floor (>= 125 SPM)
-    /// so arm-swing during walking breaks cannot bleed false running speed.
+    /// Preserves active walking recovery and warmup/cooldown buckets when a structured interval pattern is present.
     public static func filterRunningSamples(buckets: [TelemetryBucket]) -> [TelemetryBucket] {
-        buckets.filter { bucket in
+        if hasStructuredIntervalPattern(buckets: buckets) {
+            return buckets.filter { bucket in
+                let speed = bucket.speedMetersPerSecond
+                if bucket.cadenceSPM >= 95.0 || speed >= 0.8 {
+                    return true
+                }
+                return speed >= 0.5
+            }
+        }
+        return buckets.filter { bucket in
             let speedMetersPerSecond = bucket.speedMetersPerSecond
             if bucket.cadenceSPM > 0 {
                 if bucket.cadenceSPM >= 130.0 {
@@ -37,9 +49,6 @@ public enum FramboiseCore {
     // MARK: - Working Averages & Aggregate Pace
 
     /// Calculates true working averages by strictly summing the filtered running samples.
-    /// - Strictly sums the duration of only the kept/filtered samples.
-    /// - Enforces hard safety constraint: workingDuration <= rawWorkoutDuration.
-    /// - Calculates pace using pure aggregate ratios (workingDuration / workingDistanceKm) to eliminate harmonic distortion.
     public static func calculateWorkingAverages(
         trimmed: [TelemetryBucket],
         rawWorkoutDuration: TimeInterval? = nil,
@@ -61,16 +70,9 @@ public enum FramboiseCore {
             return (0, 0, 0, nil, 0, 0, nil, nil)
         }
 
-        var totalDistanceMeters: Double = 0
-        var totalCadence: Double = 0
-        var totalHR: Double = 0
-        var totalOscillation: Double = 0
-        var totalStrideLength: Double = 0
-        var totalGCT: Double = 0
-        var oscillationBucketCount: Int = 0
-        var validHRBucketCount: Int = 0
-        var strideBucketCount: Int = 0
-        var gctBucketCount: Int = 0
+        var totalDistanceMeters: Double = 0, totalCadence: Double = 0, totalHR: Double = 0
+        var totalOscillation: Double = 0, totalStrideLength: Double = 0, totalGCT: Double = 0
+        var oscillationBucketCount = 0, validHRBucketCount = 0, strideBucketCount = 0, gctBucketCount = 0
 
         for bucket in trimmed {
             totalDistanceMeters += bucket.distanceMeters
@@ -334,12 +336,9 @@ public enum FramboiseCore {
                 elevationGainMeters: accumulatedElevation
             ))
             currentSplitIndex += 1
-            accumulatedDistance = 0
-            accumulatedDuration = 0
-            accumulatedWeightedHR = 0
-            accumulatedHRDuration = 0
-            accumulatedWeightedCadence = 0
-            accumulatedCadenceDuration = 0
+            accumulatedDistance = 0; accumulatedDuration = 0
+            accumulatedWeightedHR = 0; accumulatedHRDuration = 0
+            accumulatedWeightedCadence = 0; accumulatedCadenceDuration = 0
             accumulatedElevation = 0
         }
 

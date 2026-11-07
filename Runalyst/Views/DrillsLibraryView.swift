@@ -55,7 +55,7 @@ struct DrillsLibraryView: View {
             drillId: drillId,
             customTitle: title,
             customTarget: target,
-            readinessState: dailyState.activeSession.resolvedReadinessState,
+            readinessState: .productive,
             baselineCadence: baselineCadence,
             onStart: handleStartDrill
         )
@@ -139,7 +139,7 @@ struct DrillsLibraryView: View {
 
                     Picker("Run Environment", selection: $preferredWorkoutIsIndoor) {
                         Text("Outdoor").tag(false)
-                        Text("Indoor (Treadmill)").tag(true)
+                        Text("Indoor").tag(true)
                     }
                     .pickerStyle(.segmented)
                     .frame(maxWidth: 220)

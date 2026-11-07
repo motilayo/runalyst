@@ -221,4 +221,102 @@ struct SessionSynthesisCoreTests {
         #expect(synthesis.reconcileHeadline("") == "Building Aerobic Base")
         #expect(synthesis.reconcileHeadline("Steady Base Momentum") == "Steady Base Momentum")
     }
+
+    @Test("SteadyStateSplitDrift returns nil on intervals/tempo even with large HR spikes")
+    func testSteadyStateSplitDriftExcludesIntervalsAndTempo() {
+        // Warmup 110 BPM -> Surge 165 BPM (+55 BPM surge) on interval/tempo run
+        let intervalSplits: [(pace: Double, hr: Int)] = [
+            (pace: 360.0, hr: 110),
+            (pace: 290.0, hr: 155),
+            (pace: 280.0, hr: 165)
+        ]
+        let drift = SessionHorizonCore.evaluateSteadyStateSplitDrift(
+            splits: intervalSplits,
+            isIntervalOrTempo: true
+        )
+        #expect(drift == nil)
+    }
+
+    @Test("SteadyStateSplitDrift returns nil on normal aerobic warmup lag (5-8 BPM rise)")
+    func testSteadyStateSplitDriftIgnoresNormalWarmupLag() {
+        // Continuous aerobic run with subtle 6 BPM warmup rise between steady split 1 and split 2
+        let aerobicSplits: [(pace: Double, hr: Int)] = [
+            (pace: 360.0, hr: 135),
+            (pace: 360.0, hr: 140),
+            (pace: 360.0, hr: 146)
+        ]
+        let drift = SessionHorizonCore.evaluateSteadyStateSplitDrift(
+            splits: aerobicSplits,
+            isIntervalOrTempo: false
+        )
+        #expect(drift == nil)
+    }
+
+    @Test("SteadyStateSplitDrift returns actual heart rate rise (e.g. 14 BPM, not inflated to 18) when rise >= 12 BPM")
+    func testSteadyStateSplitDriftReturnsActualUninflatedRise() {
+        // Continuous run: split 0 cold start (132), split 1 baseline (140), split 2 drifted (154) -> hrRise = 14
+        let driftedSplits: [(pace: Double, hr: Int)] = [
+            (pace: 360.0, hr: 132),
+            (pace: 360.0, hr: 140),
+            (pace: 365.0, hr: 154)
+        ]
+        let drift = SessionHorizonCore.evaluateSteadyStateSplitDrift(
+            splits: driftedSplits,
+            isIntervalOrTempo: false
+        )
+        #expect(drift == 14)
+    }
+
+    @Test("Dynamic Max Heart Rate returns athlete-specific zone ceilings")
+    func testDynamicMaxHeartRateCeilings() {
+        let z1 = SessionHorizonCore.resolveDynamicMaxHeartRate(
+            zone: .zone1Flush,
+            zone1Ceiling: 134,
+            zone2Ceiling: 144,
+            zone3Ceiling: 154,
+            zone4Ceiling: 164
+        )
+        #expect(z1 == "< 134 BPM")
+
+        let z2 = SessionHorizonCore.resolveDynamicMaxHeartRate(
+            zone: .zone2Base,
+            zone1Ceiling: 134,
+            zone2Ceiling: 144,
+            zone3Ceiling: 154,
+            zone4Ceiling: 164
+        )
+        #expect(z2 == "< 144 BPM")
+
+        let z3 = SessionHorizonCore.resolveDynamicMaxHeartRate(
+            zone: .zone3Steady,
+            zone1Ceiling: 134,
+            zone2Ceiling: 144,
+            zone3Ceiling: 154,
+            zone4Ceiling: 164
+        )
+        #expect(z3 == "< 144 BPM")
+
+        let z4 = SessionHorizonCore.resolveDynamicMaxHeartRate(
+            zone: .zone4Tempo,
+            zone1Ceiling: 134,
+            zone2Ceiling: 144,
+            zone3Ceiling: 154,
+            zone4Ceiling: 164
+        )
+        #expect(z4 == "< 154 BPM")
+
+        let z5 = SessionHorizonCore.resolveDynamicMaxHeartRate(
+            zone: .zone5Interval,
+            zone1Ceiling: 134,
+            zone2Ceiling: 144,
+            zone3Ceiling: 154,
+            zone4Ceiling: 164
+        )
+        #expect(z5 == "< 164 BPM")
+
+        let rest = SessionHorizonCore.resolveDynamicMaxHeartRate(
+            zone: .rest
+        )
+        #expect(rest == "Rest")
+    }
 }

@@ -5,7 +5,8 @@ on:
     branches:
       - main
     paths:
-      - 'generate_seed_runs.py'
+      - 'scripts/generate_seed_runs.py'
+      - 'scripts/train_model.py'
       - '.github/workflows/generate-seed-data.yml'
   workflow_dispatch: # Allow manual triggering
 
@@ -23,14 +24,19 @@ jobs:
           python-version: '3.11'
           
       - name: Install dependencies
-        run: pip install pandas numpy
+        run: pip install pandas numpy scikit-learn coremltools
         
       - name: Generate Seed Data
-        run: python generate_seed_runs.py
+        run: python3 scripts/generate_seed_runs.py
+
+      - name: Train CoreML Model
+        run: python3 scripts/train_model.py
         
-      - name: Upload Generated CSV
+      - name: Upload Generated CSV and Model
         uses: actions/upload-artifact@v4
         with:
-          name: coreml-training-data
-          path: '*.csv'
+          name: coreml-training-artifacts
+          path: |
+            *.csv
+            RunalystClassifier.mlmodel
           retention-days: 14

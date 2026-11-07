@@ -53,7 +53,7 @@ struct WorkoutsView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.horizontal, 16)
                 .padding(.top, 14)
-                .padding(.bottom, 24)
+                .padding(.bottom, 80)
             }
             .refreshable {
                 guard !isSyncing else { return }
@@ -347,13 +347,19 @@ struct WorkoutsView: View {
 
     private func openPrimerReadout(for session: PrescribedDailySession) {
         let state = session.resolvedReadinessState
+        let primerDuration: DrillDuration = {
+            if session.isTrimmed {
+                return session.primerDrillId.defaultDuration
+            }
+            return DrillDuration.canonical(forRawMinutes: session.primerDurationMinutes)
+        }()
         let dto = DrillPrescriptionDTO(
             title: session.primerDrillTitle,
             preRunDrillId: session.primerDrillId.rawValue,
             purpose: session.groundedRationale,
             targetCadence: session.primerTargetCadence,
             previousCadence: session.athleteBaselineCadence ?? session.cadenceFloor,
-            durationMinutes: session.primerDurationMinutes,
+            durationMinutes: primerDuration.rawValue,
             hapticMode: "On",
             readinessState: state == .productive ? nil : state.rawValue,
             isIndoor: preferredWorkoutIsIndoor

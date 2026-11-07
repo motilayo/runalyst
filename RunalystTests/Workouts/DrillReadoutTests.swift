@@ -15,7 +15,7 @@ final class DrillReadoutTests: XCTestCase {
         )
         XCTAssertEqual(
             readout.breakdown,
-            "You’ll start with a 2.5-minute easy warm-up jog. This is followed by 5 sets of intervals where you will run at a high, brisk cadence for 30 seconds, followed by a strict 60-second walk to catch your breath."
+            "You’ll start with a 2-minute easy warm-up jog. This is followed by 4 sets of intervals where you will run at a high, brisk cadence for 30 seconds, followed by a strict 60-second walk to catch your breath. You’ll finish with a 2-minute cool-down."
         )
         XCTAssertTrue(readout.coachingTip.contains("A taller posture reduces vertical bounce and saves energy."))
         XCTAssertTrue(readout.coachingTip.contains("160 SPM target without sprinting."))
@@ -24,11 +24,11 @@ final class DrillReadoutTests: XCTestCase {
         let phases = readout.phases
         XCTAssertFalse(phases.isEmpty)
 
-        // Warmup: 2.5 min = 150 seconds
+        // Warmup: 2 min = 120 seconds
         XCTAssertEqual(phases.first?.kind, .warmup)
-        XCTAssertEqual(phases.first?.durationSeconds, 150)
+        XCTAssertEqual(phases.first?.durationSeconds, 120)
 
-        // 5 sets of (30s work + 60s walk)
+        // 4 sets of (30s work + 60s walk)
         let workPhases = phases.filter { $0.kind == .work }
         let walkPhases = phases.filter {
             if case .recovery(let isWalk) = $0.kind {
@@ -36,10 +36,14 @@ final class DrillReadoutTests: XCTestCase {
             }
             return false
         }
-        XCTAssertEqual(workPhases.count, 5)
-        XCTAssertEqual(walkPhases.count, 5)
+        XCTAssertEqual(workPhases.count, 4)
+        XCTAssertEqual(walkPhases.count, 4)
         XCTAssertEqual(workPhases.first?.durationSeconds, 30)
         XCTAssertEqual(walkPhases.first?.durationSeconds, 60)
+
+        // Cooldown: 2 min = 120 seconds
+        XCTAssertEqual(phases.last?.kind, .cooldown)
+        XCTAssertEqual(phases.last?.durationSeconds, 120)
 
         let totalDuration = phases.reduce(0) { $0 + $1.durationSeconds }
         XCTAssertEqual(totalDuration, 600) // 10 minutes total
@@ -223,19 +227,19 @@ final class DrillReadoutTests: XCTestCase {
         )
 
         let readout = activeItem.readout
-        // Phase math: 2m warm-up (120s) + 2 x (30s work + 45s walk = 150s) + 3m cool-down (180s) = 450s = 7m 30s
-        XCTAssertEqual(readout.totalDurationSeconds, 450)
-        XCTAssertEqual(readout.formattedDuration, "7m 30s")
+        // Phase math: 1.5m warm-up (90s) + 2 x (30s work + 45s walk = 150s) + 3m cool-down (180s) = 420s = 7 min
+        XCTAssertEqual(readout.totalDurationSeconds, 420)
+        XCTAssertEqual(readout.formattedDuration, "7 min")
 
-        // Must display mathematically exact 7m 30s in subtitle, NEVER rounding up to 8 min
-        XCTAssertTrue(readout.subtitle.contains("7m 30s"), "Subtitle must contain 7m 30s")
+        // Must display mathematically exact 7 min in subtitle, NEVER rounding up to 8 min
+        XCTAssertTrue(readout.subtitle.contains("7 min"), "Subtitle must contain 7 min")
         XCTAssertFalse(readout.subtitle.contains("8 min"), "Subtitle must never display rounded-up 8 min")
         // Overview states the drill purpose without redundant duration
         XCTAssertEqual(
             readout.overview,
             "In this drill, you will complete a cadence progression to eliminate overstriding and protect your knees."
         )
-        XCTAssertFalse(readout.overview.contains("7m 30s"), "Overview must not contain duration")
+        XCTAssertFalse(readout.overview.contains("7 min"), "Overview must not contain duration")
         XCTAssertFalse(readout.overview.contains("10-minute"), "Overview must not contain duration")
     }
 
@@ -291,5 +295,79 @@ final class DrillReadoutTests: XCTestCase {
         XCTAssertTrue(readout.breakdown.contains("3 sets of 20-second strides"))
         XCTAssertTrue(readout.breakdown.contains("1 minute of walk recovery"))
         XCTAssertEqual(readout.readinessState, .acuteFatigue)
+    }
+
+    func testTempoSurges35MinMainRunReadoutFormat() {
+        let readout = DrillReadout.readout(for: .tempoSurges, customDuration: .thirtyFiveMinutes)
+
+        XCTAssertEqual(readout.drillId, .tempoSurges)
+        XCTAssertEqual(readout.subtitle, "Tempo Main Run • 35 min")
+        XCTAssertFalse(readout.subtitle.contains("Tempo Pre-Run"))
+        XCTAssertTrue(
+            readout.breakdown.contains("finishing with a 7-minute cool-down."),
+            "Breakdown must dynamically report the 7-minute cooldown matching its 420s cooldown phase"
+        )
+        XCTAssertFalse(
+            readout.breakdown.contains("2-minute cool-down"),
+            "Breakdown must not contain hardcoded 2-minute cooldown"
+        )
+
+        // Verify phase geometry: 4m warmup (240s) + 4 x (3m work + 3m walk = 1440s) + 7m cooldown (420s) = 2100s
+        let phases = readout.phases
+        XCTAssertEqual(phases.first?.kind, .warmup)
+        XCTAssertEqual(phases.first?.durationSeconds, 240)
+        XCTAssertEqual(phases.last?.kind, .cooldown)
+        XCTAssertEqual(phases.last?.durationSeconds, 420)
+        XCTAssertEqual(readout.totalDurationSeconds, 2100)
+    }
+
+    func testPreRunDrillPreciseStructureSummarySubMinuteCooldown() {
+        // Acute fatigue 5m Cadence Pyramids drill has 1m warmup, 2x (20s work / 30s walk), and 90s (1.5m) cooldown
+        let drill = PreRunDrill(
+            id: .cadencePyramids,
+            duration: .fiveMinutes,
+            readinessState: .acuteFatigue
+        )
+
+        XCTAssertEqual(drill.formattedPhasesDuration, "4m 10s")
+        XCTAssertEqual(drill.totalPhasesDurationSeconds, 250)
+        XCTAssertEqual(drill.preciseStructureSummary, "1m in • 2x (20s / 30s) • 1.5m out")
+        XCTAssertFalse(drill.preciseStructureSummary.contains("1m out"), "90s cooldown must format as 1.5m out, not truncated to 1m out")
+    }
+
+    @MainActor
+    func testRunDetailCadenceFloorMatchingDiagnosticCopy() {
+        // Run with cadence exactly matching floor (150 SPM)
+        let matchingRun = RunRecord(
+            hkWorkoutID: UUID(),
+            date: Date(),
+            totalDistanceMeters: 5000,
+            duration: 2400,
+            rawAvgPace: 467,
+            rawAvgHeartRate: 138,
+            rawAvgCadence: 150,
+            workingAvgPace: 467,
+            workingAvgCadence: 150,
+            workingAvgHeartRate: 138,
+            workingDistanceMeters: 5000,
+            workingDurationSeconds: 2400,
+            paceCV: 0.05,
+            paceSlope: 0.0,
+            percentZone4: 0.0,
+            detectedTypeRaw: "Steady Effort"
+        )
+        let detailView = RunDetailView(runRecord: matchingRun)
+        let takeaways = detailView.deterministicRunAnalysisTakeaways
+
+        let cadTakeaway = takeaways.first(where: { $0.title == "Cadence & Form" })
+        XCTAssertNotNil(cadTakeaway)
+        XCTAssertTrue(
+            cadTakeaway?.detail.contains("matching your 150 SPM mechanical floor") ?? false,
+            "When cadence == floor, must say 'matching your X SPM mechanical floor', not 'safely above'"
+        )
+        XCTAssertFalse(
+            cadTakeaway?.detail.contains("safely above") ?? false,
+            "Must not say 'safely above' when cad == floor"
+        )
     }
 }

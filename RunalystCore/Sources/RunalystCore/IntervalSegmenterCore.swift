@@ -199,8 +199,7 @@ public enum IntervalSegmenterCore {
             quintilePaces.append(avgPace)
         }
 
-        var fasterTransitions = 0
-        var slowerTransitions = 0
+        var fasterTransitions = 0, slowerTransitions = 0
         for index in 0..<4 {
             if quintilePaces[index + 1] < quintilePaces[index] - 2.0 {
                 fasterTransitions += 1
@@ -292,9 +291,7 @@ public enum IntervalSegmenterCore {
                 curKind = kind
                 segStart = elapsed
             } else if curKind != kind, let activeKind = curKind {
-                let pace = count > 0 ? pSum / count : 0
-                let cad = count > 0 ? cSum / count : 0
-                let hr = hrCount > 0 ? hrSum / hrCount : 0
+                let pace = count > 0 ? pSum / count : 0, cad = count > 0 ? cSum / count : 0, hr = hrCount > 0 ? hrSum / hrCount : 0
                 raw.append(IntervalPhaseSegment(startSeconds: segStart, endSeconds: elapsed, kind: activeKind, avgPaceSecondsPerKm: pace, avgCadenceSPM: cad, avgHeartRateBPM: hr))
                 curKind = kind
                 segStart = elapsed
@@ -304,17 +301,13 @@ public enum IntervalSegmenterCore {
             pSum += b.paceSecondsPerKm
             cSum += b.cadenceSPM
             if b.heartRateBPM >= 40.0 {
-                hrSum += b.heartRateBPM
-                hrCount += 1.0
+                hrSum += b.heartRateBPM; hrCount += 1.0
             }
-            count += 1.0
-            elapsed += b.durationSeconds
+            count += 1.0; elapsed += b.durationSeconds
         }
 
         if let activeKind = curKind, elapsed > segStart {
-            let pace = count > 0 ? pSum / count : 0
-            let cad = count > 0 ? cSum / count : 0
-            let hr = hrCount > 0 ? hrSum / hrCount : 0
+            let pace = count > 0 ? pSum / count : 0, cad = count > 0 ? cSum / count : 0, hr = hrCount > 0 ? hrSum / hrCount : 0
             raw.append(IntervalPhaseSegment(startSeconds: segStart, endSeconds: elapsed, kind: activeKind, avgPaceSecondsPerKm: pace, avgCadenceSPM: cad, avgHeartRateBPM: hr))
         }
 
@@ -442,11 +435,8 @@ public enum IntervalSegmenterCore {
     }
 
     public static func mergeSegments(_ a: IntervalPhaseSegment, _ b: IntervalPhaseSegment) -> IntervalPhaseSegment {
-        let durA = a.durationSeconds
-        let durB = b.durationSeconds
-        let activeDur = durA + durB
-        let hrDurA = a.avgHeartRateBPM > 0 ? durA : 0.0
-        let hrDurB = b.avgHeartRateBPM > 0 ? durB : 0.0
+        let durA = a.durationSeconds, durB = b.durationSeconds, activeDur = durA + durB
+        let hrDurA = a.avgHeartRateBPM > 0 ? durA : 0.0, hrDurB = b.avgHeartRateBPM > 0 ? durB : 0.0
         let totalHRDur = hrDurA + hrDurB
         let mergedHR = totalHRDur > 0 ? (a.avgHeartRateBPM * hrDurA + b.avgHeartRateBPM * hrDurB) / totalHRDur : (a.avgHeartRateBPM > 0 ? a.avgHeartRateBPM : b.avgHeartRateBPM)
 
@@ -478,8 +468,8 @@ public enum IntervalSegmenterCore {
         let isProgression = totalDurationMinutes >= 20.0 && cv < 0.11 && evaluateQuintileProgression(buckets: buckets)
 
         let avgCycleContrast = cycles.isEmpty ? 0.0 : (cycles.map { $0.recoveryPaceSecondsPerKm - $0.workPaceSecondsPerKm }.reduce(0, +) / Double(cycles.count))
-
-        let isIntermittent = !isProgression && avgCycleContrast >= 25.0 && (cycles.count >= 3 || (cycles.count == 2 && cv >= 0.12 && !isUniformSteady))
+        let structuredIntervals = RunClassifierCore.hasStructuredIntervalPattern(buckets: buckets)
+        let isIntermittent = !isProgression && (structuredIntervals || (avgCycleContrast >= 25.0 && (cycles.count >= 3 || (cycles.count == 2 && cv >= 0.12 && !isUniformSteady))))
 
         return IntervalSegmentationReport(
             phases: phases,
