@@ -1,5 +1,31 @@
 import Foundation
 
+// MARK: - Drill Phase Specification
+
+/// Mathematical phase category for workout interval geometry.
+public enum DrillPhaseKindCore: Sendable, Equatable {
+    case warmup
+    case work
+    case recovery(isWalk: Bool)
+    case steady
+    case cooldown
+}
+
+/// A discrete structural phase of a prescribed workout.
+public struct DrillPhaseSpec: Sendable, Equatable {
+    public let id: String
+    public let name: String
+    public let durationSeconds: Int
+    public let kind: DrillPhaseKindCore
+
+    public init(id: String, name: String, durationSeconds: Int, kind: DrillPhaseKindCore) {
+        self.id = id
+        self.name = name
+        self.durationSeconds = durationSeconds
+        self.kind = kind
+    }
+}
+
 // MARK: - Drill Schedule Specification
 
 /// Canonical structural specification for a prescribed Runalyst corrective drill archetype.
@@ -11,9 +37,30 @@ public struct DrillScheduleCore: Sendable, Equatable {
     public let iterations: Int
     public let workSeconds: Double
     public let recoverySeconds: Double
+    public let isWalkRecovery: Bool
+    public let readinessState: String
+    public let phases: [DrillPhaseSpec]
 
     public var expectedTotalDuration: Double {
         warmupSeconds + Double(iterations) * (workSeconds + recoverySeconds) + cooldownSeconds
+    }
+
+    public var totalDurationSeconds: Int {
+        if !phases.isEmpty {
+            return phases.reduce(0) { $0 + $1.durationSeconds }
+        }
+        return Int(expectedTotalDuration)
+    }
+
+    public var formattedTotalDuration: String {
+        let total = totalDurationSeconds
+        let mins = total / 60
+        let secs = total % 60
+        if secs == 0 {
+            return "\(mins) min"
+        } else {
+            return "\(mins)m \(secs)s"
+        }
     }
 
     public init(
@@ -23,7 +70,10 @@ public struct DrillScheduleCore: Sendable, Equatable {
         cooldownSeconds: Double,
         iterations: Int,
         workSeconds: Double,
-        recoverySeconds: Double
+        recoverySeconds: Double,
+        isWalkRecovery: Bool? = nil,
+        readinessState: String = "productive",
+        phases: [DrillPhaseSpec]? = nil
     ) {
         self.drillIdentifier = drillIdentifier
         self.durationMinutes = durationMinutes
@@ -32,6 +82,75 @@ public struct DrillScheduleCore: Sendable, Equatable {
         self.iterations = iterations
         self.workSeconds = workSeconds
         self.recoverySeconds = recoverySeconds
+        let isWalk = isWalkRecovery ?? Self.defaultIsWalkRecovery(for: drillIdentifier)
+        self.isWalkRecovery = isWalk
+        self.readinessState = readinessState
+        if let providedPhases = phases {
+            self.phases = providedPhases
+        } else {
+            self.phases = Self.buildPhases(
+                drillIdentifier: drillIdentifier,
+                durationMinutes: durationMinutes,
+                warmupSeconds: warmupSeconds,
+                cooldownSeconds: cooldownSeconds,
+                iterations: iterations,
+                workSeconds: workSeconds,
+                recoverySeconds: recoverySeconds,
+                isWalkRecovery: isWalk
+            )
+        }
+    }
+
+    /// Resolves an integer minute count to the closest canonical DrillDuration bucket [5, 10, 15, 20, 30, 35, 40, 50].
+    /// Note: 7 and 8 minute prescriptions represent trimmed 10-minute drills, and map to 10.
+    public static func canonicalTemplateMinutes(forRawMinutes raw: Int) -> Int {
+        let canonical = [5, 10, 15, 20, 30, 35, 40, 50]
+        if canonical.contains(raw) {
+            return raw
+        }
+        if raw >= 7 && raw <= 8 {
+            return 10
+        }
+        return canonical.min(by: { abs($0 - raw) < abs($1 - raw) }) ?? 30
+    }
+
+    /// Default recovery mode (walk vs jog) per drill archetype.
+    public static func defaultIsWalkRecovery(for drillIdentifier: String) -> Bool {
+        let normalized = normalizeDrillIdentifier(drillIdentifier)
+        switch normalized {
+        case "cadence_pyramids", "tempo_surges", "strides", "neuromuscular_primer", "hill_bounds":
+            return true
+        case "rhythm_intervals", "fartlek_primer", "aerobic_flush", "recovery_jog", "zone2_run":
+            return false
+        default:
+            return true
+        }
+    }
+
+    /// Normalizes varied casing and historical raw string representations of drill archetypes.
+    public static func normalizeDrillIdentifier(_ identifier: String) -> String {
+        switch identifier {
+        case "zone_2_run", "zone2_run", "zone2Run":
+            return "zone2_run"
+        case "posture_check", "tempoSurges":
+            return "tempo_surges"
+        case "cadencePyramids":
+            return "cadence_pyramids"
+        case "rhythmIntervals":
+            return "rhythm_intervals"
+        case "neuromuscularPrimer":
+            return "neuromuscular_primer"
+        case "fartlekPrimer":
+            return "fartlek_primer"
+        case "hillBounds":
+            return "hill_bounds"
+        case "recoveryJog":
+            return "recovery_jog"
+        case "aerobicFlush", "zone_1_recovery_flush", "zone_1_active_recovery_flush", "recovery_flush":
+            return "aerobic_flush"
+        default:
+            return identifier
+        }
     }
 
     public func matches(
@@ -79,70 +198,242 @@ public struct DrillScheduleCore: Sendable, Equatable {
     }
 
     public static func schedule(for drillIdentifier: String, durationMinutes: Int) -> DrillScheduleCore {
-        switch drillIdentifier {
-        case "cadence_pyramids":
-            if durationMinutes <= 7 {
-                return DrillScheduleCore(drillIdentifier: drillIdentifier, durationMinutes: 5, warmupSeconds: 60, cooldownSeconds: 30, iterations: 3, workSeconds: 20, recoverySeconds: 30)
-            } else if durationMinutes <= 12 {
-                return DrillScheduleCore(drillIdentifier: drillIdentifier, durationMinutes: 10, warmupSeconds: 120, cooldownSeconds: 60, iterations: 4, workSeconds: 30, recoverySeconds: 45)
-            } else if durationMinutes <= 20 {
-                return DrillScheduleCore(drillIdentifier: drillIdentifier, durationMinutes: 15, warmupSeconds: 180, cooldownSeconds: 120, iterations: 4, workSeconds: 60, recoverySeconds: 90)
+        schedule(for: drillIdentifier, durationMinutes: durationMinutes, readinessState: "productive")
+    }
+
+    public static func schedule(
+        for drillIdentifier: String,
+        durationMinutes: Int,
+        readinessState: String = "productive"
+    ) -> DrillScheduleCore {
+        let normalized = normalizeDrillIdentifier(drillIdentifier)
+        let canonicalMins = canonicalTemplateMinutes(forRawMinutes: durationMinutes)
+        let isAcuteFatigue = readinessState.lowercased() == "acutefatigue" || readinessState.lowercased() == "acute_fatigue"
+
+        if normalized == "aerobic_flush" || normalized == "recovery_jog" {
+            return DrillScheduleCore(
+                drillIdentifier: drillIdentifier,
+                durationMinutes: canonicalMins,
+                warmupSeconds: 0,
+                cooldownSeconds: 0,
+                iterations: 1,
+                workSeconds: Double(canonicalMins * 60),
+                recoverySeconds: 0,
+                isWalkRecovery: false,
+                readinessState: readinessState
+            )
+        }
+
+        if normalized == "zone2_run" {
+            let warmup: Double
+            let cooldown: Double
+            if canonicalMins == 5 {
+                warmup = 300.0
+                cooldown = 0.0
+            } else if canonicalMins == 10 {
+                warmup = 120.0
+                cooldown = 120.0
+            } else if canonicalMins >= 30 {
+                warmup = 300.0
+                cooldown = 300.0
             } else {
-                return DrillScheduleCore(drillIdentifier: drillIdentifier, durationMinutes: 30, warmupSeconds: 240, cooldownSeconds: 180, iterations: 6, workSeconds: 90, recoverySeconds: 120)
+                warmup = 180.0
+                cooldown = 120.0
+            }
+            let steadySeconds: Double
+            if canonicalMins == 5 {
+                steadySeconds = 300.0
+            } else {
+                steadySeconds = max(60.0, Double(canonicalMins * 60) - warmup - cooldown)
+            }
+            return DrillScheduleCore(
+                drillIdentifier: drillIdentifier,
+                durationMinutes: canonicalMins,
+                warmupSeconds: warmup,
+                cooldownSeconds: cooldown,
+                iterations: 1,
+                workSeconds: steadySeconds,
+                recoverySeconds: 0,
+                isWalkRecovery: false,
+                readinessState: readinessState
+            )
+        }
+
+        if isAcuteFatigue && (normalized == "cadence_pyramids" || normalized == "rhythm_intervals") && canonicalMins == 10 {
+            let isWalk = defaultIsWalkRecovery(for: normalized)
+            return DrillScheduleCore(
+                drillIdentifier: drillIdentifier,
+                durationMinutes: canonicalMins,
+                warmupSeconds: 90,
+                cooldownSeconds: 180,
+                iterations: 2,
+                workSeconds: 30,
+                recoverySeconds: 45,
+                isWalkRecovery: isWalk,
+                readinessState: readinessState
+            )
+        }
+
+        let warmupSeconds: Double
+        if normalized == "tempo_surges" && canonicalMins == 10 {
+            warmupSeconds = 150.0
+        } else if normalized == "strides" && canonicalMins == 15 {
+            warmupSeconds = 300.0
+        } else if canonicalMins == 5 {
+            warmupSeconds = 60.0
+        } else if canonicalMins == 10 {
+            warmupSeconds = 120.0
+        } else if canonicalMins >= 30 {
+            warmupSeconds = 240.0
+        } else {
+            warmupSeconds = 180.0
+        }
+
+        let standardIterations: Int
+        let standardWorkSeconds: Double
+        let standardRecoverySeconds: Double
+        let isWalk = defaultIsWalkRecovery(for: normalized)
+
+        switch normalized {
+        case "cadence_pyramids":
+            switch canonicalMins {
+            case ..<10:
+                standardIterations = 3; standardWorkSeconds = 20; standardRecoverySeconds = 30
+            case 10:
+                standardIterations = 4; standardWorkSeconds = 30; standardRecoverySeconds = 45
+            case 15:
+                standardIterations = 4; standardWorkSeconds = 60; standardRecoverySeconds = 90
+            case 20:
+                standardIterations = 4; standardWorkSeconds = 90; standardRecoverySeconds = 90
+            default:
+                standardIterations = 6; standardWorkSeconds = 90; standardRecoverySeconds = 120
             }
         case "rhythm_intervals":
-            if durationMinutes <= 7 {
-                return DrillScheduleCore(drillIdentifier: drillIdentifier, durationMinutes: 5, warmupSeconds: 60, cooldownSeconds: 30, iterations: 3, workSeconds: 20, recoverySeconds: 30)
-            } else if durationMinutes <= 12 {
-                return DrillScheduleCore(drillIdentifier: drillIdentifier, durationMinutes: 10, warmupSeconds: 120, cooldownSeconds: 60, iterations: 4, workSeconds: 30, recoverySeconds: 45)
-            } else if durationMinutes <= 20 {
-                return DrillScheduleCore(drillIdentifier: drillIdentifier, durationMinutes: 15, warmupSeconds: 180, cooldownSeconds: 120, iterations: 5, workSeconds: 45, recoverySeconds: 75)
-            } else {
-                return DrillScheduleCore(drillIdentifier: drillIdentifier, durationMinutes: 30, warmupSeconds: 240, cooldownSeconds: 180, iterations: 6, workSeconds: 90, recoverySeconds: 120)
+            switch canonicalMins {
+            case ..<10:
+                standardIterations = 3; standardWorkSeconds = 20; standardRecoverySeconds = 30
+            case 10:
+                standardIterations = 4; standardWorkSeconds = 30; standardRecoverySeconds = 45
+            case 15:
+                standardIterations = 5; standardWorkSeconds = 45; standardRecoverySeconds = 75
+            case 20:
+                standardIterations = 6; standardWorkSeconds = 45; standardRecoverySeconds = 75
+            default:
+                standardIterations = 6; standardWorkSeconds = 90; standardRecoverySeconds = 120
             }
         case "tempo_surges":
-            if durationMinutes <= 7 {
-                return DrillScheduleCore(drillIdentifier: drillIdentifier, durationMinutes: 5, warmupSeconds: 60, cooldownSeconds: 30, iterations: 3, workSeconds: 30, recoverySeconds: 45)
-            } else if durationMinutes <= 12 {
-                return DrillScheduleCore(drillIdentifier: drillIdentifier, durationMinutes: 10, warmupSeconds: 120, cooldownSeconds: 60, iterations: 3, workSeconds: 60, recoverySeconds: 90)
-            } else if durationMinutes <= 20 {
-                return DrillScheduleCore(drillIdentifier: drillIdentifier, durationMinutes: 15, warmupSeconds: 180, cooldownSeconds: 120, iterations: 3, workSeconds: 120, recoverySeconds: 120)
-            } else {
-                return DrillScheduleCore(drillIdentifier: drillIdentifier, durationMinutes: 30, warmupSeconds: 240, cooldownSeconds: 180, iterations: 4, workSeconds: 180, recoverySeconds: 180)
+            switch canonicalMins {
+            case ..<10:
+                standardIterations = 3; standardWorkSeconds = 30; standardRecoverySeconds = 45
+            case 10:
+                standardIterations = 5; standardWorkSeconds = 30; standardRecoverySeconds = 60
+            case 15:
+                standardIterations = 3; standardWorkSeconds = 120; standardRecoverySeconds = 120
+            case 20:
+                standardIterations = 4; standardWorkSeconds = 90; standardRecoverySeconds = 120
+            default:
+                standardIterations = 4; standardWorkSeconds = 180; standardRecoverySeconds = 180
+            }
+        case "strides":
+            switch canonicalMins {
+            case ..<10:
+                standardIterations = 4; standardWorkSeconds = 15; standardRecoverySeconds = 45
+            case 10:
+                standardIterations = 4; standardWorkSeconds = 15; standardRecoverySeconds = 45
+            case 15:
+                standardIterations = 6; standardWorkSeconds = 20; standardRecoverySeconds = 60
+            default:
+                standardIterations = 8; standardWorkSeconds = 30; standardRecoverySeconds = 90
             }
         case "neuromuscular_primer", "hill_bounds":
-            if durationMinutes <= 7 {
-                return DrillScheduleCore(drillIdentifier: drillIdentifier, durationMinutes: 5, warmupSeconds: 60, cooldownSeconds: 30, iterations: 3, workSeconds: 15, recoverySeconds: 30)
-            } else if durationMinutes <= 12 {
-                return DrillScheduleCore(drillIdentifier: drillIdentifier, durationMinutes: 10, warmupSeconds: 120, cooldownSeconds: 60, iterations: 4, workSeconds: 20, recoverySeconds: 40)
-            } else if durationMinutes <= 20 {
-                return DrillScheduleCore(drillIdentifier: drillIdentifier, durationMinutes: 15, warmupSeconds: 180, cooldownSeconds: 120, iterations: 5, workSeconds: 30, recoverySeconds: 60)
-            } else {
-                return DrillScheduleCore(drillIdentifier: drillIdentifier, durationMinutes: 30, warmupSeconds: 240, cooldownSeconds: 180, iterations: 6, workSeconds: 45, recoverySeconds: 90)
+            switch canonicalMins {
+            case ..<10:
+                standardIterations = 3; standardWorkSeconds = 15; standardRecoverySeconds = 30
+            case 10:
+                standardIterations = 4; standardWorkSeconds = 20; standardRecoverySeconds = 40
+            case 15:
+                standardIterations = 5; standardWorkSeconds = 30; standardRecoverySeconds = 60
+            default:
+                standardIterations = 6; standardWorkSeconds = 45; standardRecoverySeconds = 90
             }
         case "fartlek_primer":
-            if durationMinutes <= 7 {
-                return DrillScheduleCore(drillIdentifier: drillIdentifier, durationMinutes: 5, warmupSeconds: 60, cooldownSeconds: 30, iterations: 3, workSeconds: 30, recoverySeconds: 30)
-            } else if durationMinutes <= 12 {
-                return DrillScheduleCore(drillIdentifier: drillIdentifier, durationMinutes: 10, warmupSeconds: 120, cooldownSeconds: 60, iterations: 4, workSeconds: 45, recoverySeconds: 45)
-            } else if durationMinutes <= 20 {
-                return DrillScheduleCore(drillIdentifier: drillIdentifier, durationMinutes: 15, warmupSeconds: 180, cooldownSeconds: 120, iterations: 5, workSeconds: 60, recoverySeconds: 60)
-            } else {
-                return DrillScheduleCore(drillIdentifier: drillIdentifier, durationMinutes: 30, warmupSeconds: 240, cooldownSeconds: 180, iterations: 6, workSeconds: 120, recoverySeconds: 120)
+            switch canonicalMins {
+            case ..<10:
+                standardIterations = 3; standardWorkSeconds = 30; standardRecoverySeconds = 30
+            case 10:
+                standardIterations = 4; standardWorkSeconds = 45; standardRecoverySeconds = 45
+            case 15:
+                standardIterations = 5; standardWorkSeconds = 60; standardRecoverySeconds = 60
+            case 20:
+                standardIterations = 6; standardWorkSeconds = 60; standardRecoverySeconds = 60
+            default:
+                standardIterations = 6; standardWorkSeconds = 120; standardRecoverySeconds = 120
             }
-        case "aerobic_flush", "recovery_jog", "zone2_run":
-            return DrillScheduleCore(drillIdentifier: drillIdentifier, durationMinutes: durationMinutes, warmupSeconds: 0, cooldownSeconds: 0, iterations: 1, workSeconds: Double(durationMinutes * 60), recoverySeconds: 0)
-        default: // strides
-            if durationMinutes <= 7 {
-                return DrillScheduleCore(drillIdentifier: drillIdentifier, durationMinutes: 5, warmupSeconds: 60, cooldownSeconds: 30, iterations: 4, workSeconds: 15, recoverySeconds: 45)
-            } else if durationMinutes <= 12 {
-                return DrillScheduleCore(drillIdentifier: drillIdentifier, durationMinutes: 10, warmupSeconds: 120, cooldownSeconds: 60, iterations: 4, workSeconds: 15, recoverySeconds: 45)
-            } else if durationMinutes <= 20 {
-                return DrillScheduleCore(drillIdentifier: drillIdentifier, durationMinutes: 15, warmupSeconds: 180, cooldownSeconds: 120, iterations: 6, workSeconds: 20, recoverySeconds: 60)
-            } else {
-                return DrillScheduleCore(drillIdentifier: drillIdentifier, durationMinutes: 30, warmupSeconds: 240, cooldownSeconds: 180, iterations: 8, workSeconds: 30, recoverySeconds: 90)
+        default:
+            switch canonicalMins {
+            case ..<10:
+                standardIterations = 4; standardWorkSeconds = 15; standardRecoverySeconds = 45
+            case 10:
+                standardIterations = 4; standardWorkSeconds = 15; standardRecoverySeconds = 45
+            case 15:
+                standardIterations = 6; standardWorkSeconds = 20; standardRecoverySeconds = 60
+            default:
+                standardIterations = 8; standardWorkSeconds = 30; standardRecoverySeconds = 90
             }
         }
+
+        let standardIntervalSeconds = Double(standardIterations) * (standardWorkSeconds + standardRecoverySeconds)
+        let targetTotalSeconds = Double(canonicalMins * 60)
+        let standardCooldownSeconds = max(0.0, targetTotalSeconds - warmupSeconds - standardIntervalSeconds)
+
+        let isModulated: Bool
+        let volumeScale: Double
+        let recoveryScale: Double
+
+        switch readinessState.lowercased() {
+        case "productive":
+            isModulated = false
+            volumeScale = 1.0
+            recoveryScale = 1.0
+        case "deload":
+            isModulated = true
+            volumeScale = 0.5
+            recoveryScale = 1.5
+        case "acutefatigue", "acute_fatigue", "accumulatedfatigue", "accumulated_fatigue", "illnessorpain", "illness_or_pain", "detraining":
+            isModulated = true
+            volumeScale = 0.5
+            recoveryScale = 1.0
+        default:
+            isModulated = false
+            volumeScale = 1.0
+            recoveryScale = 1.0
+        }
+
+        let finalIterations: Int
+        let finalWorkSeconds: Double
+        let finalRecoverySeconds: Double
+
+        if isModulated {
+            finalIterations = max(2, Int((Double(standardIterations) * volumeScale).rounded()))
+            finalRecoverySeconds = Double(Int((standardRecoverySeconds * recoveryScale / 5.0).rounded()) * 5)
+            finalWorkSeconds = standardWorkSeconds
+        } else {
+            finalIterations = standardIterations
+            finalWorkSeconds = standardWorkSeconds
+            finalRecoverySeconds = standardRecoverySeconds
+        }
+
+        return DrillScheduleCore(
+            drillIdentifier: drillIdentifier,
+            durationMinutes: canonicalMins,
+            warmupSeconds: warmupSeconds,
+            cooldownSeconds: standardCooldownSeconds,
+            iterations: finalIterations,
+            workSeconds: finalWorkSeconds,
+            recoverySeconds: finalRecoverySeconds,
+            isWalkRecovery: isWalk,
+            readinessState: readinessState
+        )
     }
 
     public static func findMatchingSchedule(
@@ -152,11 +443,24 @@ public struct DrillScheduleCore: Sendable, Equatable {
         avgRecoveryDuration: Double,
         candidateDrills: [String]
     ) -> DrillScheduleCore? {
-        let durations = [5, 10, 15, 30]
+        let durations = [5, 10, 15, 20, 30, 35, 40, 50]
         for drill in candidateDrills {
             for dur in durations {
-                let sched = schedule(for: drill, durationMinutes: dur)
-                if sched.matches(
+                var candidates = [schedule(for: drill, durationMinutes: dur, readinessState: "productive")]
+                if normalizeDrillIdentifier(drill) == "tempo_surges" && dur == 10 {
+                    candidates.append(
+                        DrillScheduleCore(
+                            drillIdentifier: drill,
+                            durationMinutes: 10,
+                            warmupSeconds: 120,
+                            cooldownSeconds: 60,
+                            iterations: 3,
+                            workSeconds: 60,
+                            recoverySeconds: 90
+                        )
+                    )
+                }
+                for sched in candidates where sched.matches(
                     workoutDuration: workoutDuration,
                     detectedIterations: detectedIterations,
                     avgWorkDuration: avgWorkDuration,

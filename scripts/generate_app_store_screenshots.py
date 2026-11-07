@@ -1,7 +1,7 @@
 import os
 from PIL import Image, ImageDraw, ImageFont
 
-REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 OUTPUT_DIR_PORTRAIT_2778 = os.path.join(REPO_ROOT, "Media/Screenshots/AppStore")
 OUTPUT_DIR_PORTRAIT_2688 = os.path.join(REPO_ROOT, "Media/Screenshots/AppStore_1242x2688")

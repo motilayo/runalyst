@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import RunalystCore
 
 /// Represents a discrete phase of a pre-run workout/drill for visual timeline mapping.
 struct WorkoutPhase: Identifiable, Sendable, Equatable {
@@ -8,12 +9,24 @@ struct WorkoutPhase: Identifiable, Sendable, Equatable {
     let durationSeconds: Int
     let kind: Kind
 
+    typealias PhaseKind = Kind
+
     enum Kind: Sendable, Equatable {
         case warmup
         case work
         case recovery(isWalk: Bool)
         case cooldown
         case steady
+
+        init(core: DrillPhaseKindCore) {
+            switch core {
+            case .warmup: self = .warmup
+            case .work: self = .work
+            case .recovery(let isWalk): self = .recovery(isWalk: isWalk)
+            case .steady: self = .steady
+            case .cooldown: self = .cooldown
+            }
+        }
 
         /// Canonical unified color palette across all workout phase views.
         /// Carefully tuned for high-contrast visibility in both light mode and dark mode.

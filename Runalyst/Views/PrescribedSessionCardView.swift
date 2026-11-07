@@ -287,10 +287,7 @@ struct PrescribedSessionCardView: View {
             if session.isTrimmed {
                 return session.primerDrillId.defaultDuration
             }
-            if session.primerDurationMinutes >= 7 && session.primerDurationMinutes <= 8 {
-                return .tenMinutes
-            }
-            return DrillDuration.nearest(toMinutes: session.primerDurationMinutes)
+            return DrillDuration.canonical(forRawMinutes: session.primerDurationMinutes)
         }()
 
         DrillPrimerCardView(
@@ -312,7 +309,7 @@ struct PrescribedSessionCardView: View {
 
     @ViewBuilder
     private var mainRunCard: some View {
-        let mainDuration = DrillDuration.nearest(toMinutes: session.mainRunDurationMinutes)
+        let mainDuration = DrillDuration.canonical(forRawMinutes: session.mainRunDurationMinutes)
         let paceTitle = preferredWorkoutIsIndoor ? "Belt Pace" : "Pace"
         let paceIcon = preferredWorkoutIsIndoor ? RunalystIcon.indoor : RunalystIcon.pace
         let maxHrValue = session.hrCap.replacingOccurrences(of: "HR: ", with: "")

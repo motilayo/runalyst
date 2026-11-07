@@ -107,12 +107,13 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
        - Recommendation: "Update implementation or revise design.md to match reality"
    - If no design.md: Skip design adherence check, note "No design.md to verify against"
 
-   **Code Pattern Consistency**:
-   - Review new code for consistency with project patterns
-   - Check file naming, directory structure, coding style
-   - If significant deviations found:
-     - Add SUGGESTION: "Code pattern deviation: <details>"
-     - Recommendation: "Consider following project pattern: <example>"
+   **Code Pattern Consistency & Reverse Air-Gap (Hollow View / Modal Boundary)**:
+   - Audit `git diff` across `Runalyst/Views/`, `Runalyst/Models/`, and `Runalyst/Engine/` to verify zero domain math leaked outside `RunalystCore/`:
+     - Check for physiological thresholds (e.g., `percentZone4 >`, `workingAvgHeartRate >`, hardcoded BPM/SPM ceilings), workout phase/cooldown arithmetic, or duration template mapping switches in SwiftUI Views or modal models (`DrillReadout.swift`, `PreRunDrill.swift`).
+     - If domain logic was written in the Foundry or View layer instead of `RunalystCore/`:
+       - Add CRITICAL issue: "Reverse Air-Gap violation: Domain math leaked into Foundry/View layer at <file>:<lines>"
+       - Recommendation: "Move calculation into RunalystCore (`DrillScheduleCore`, `PhysiologicalDiagnosisCore`, `SessionSynthesisCore`) via `senior-engineer` and reduce <file> to a hollow binding."
+   - Review new code for consistency with project patterns, file naming, directory structure, and <= 500 LOC ceiling (splitting into `<Module>+Extension.swift` rather than golfing code).
 
 8. **Generate Verification Report**
 

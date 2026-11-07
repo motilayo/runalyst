@@ -304,7 +304,13 @@ struct DrillExecutionScorecard: View {
                     }
                 }()
                 let hrCeiling = drillId.targetHeartRateZone == 2 ? 144 : 135
-                let isZone4Spike = runRecord.percentZone4 > 0.15 || actualHR > (hrCeiling + 12)
+                let strain = AerobicStrainEvaluation.evaluate(
+                    workingAvgHeartRate: Double(actualHR),
+                    percentZone4: runRecord.percentZone4,
+                    zone2Ceiling: Double(hrCeiling),
+                    isRecoveryPrescription: drillId.targetHeartRateZone != 2
+                )
+                let isZone4Spike = strain.isZone4Overreach
                 let hrSubtitle: String = {
                     if drillId.targetHeartRateZone == 2 {
                         if isZone4Spike {
@@ -320,7 +326,7 @@ struct DrillExecutionScorecard: View {
                         }
                     }
                 }()
-                let ceilingValue = (actualHR <= hrCeiling && !isZone4Spike) ? "Preserved" : "Exceeded"
+                let ceilingValue = !strain.isCeilingExceeded ? "Preserved" : "Exceeded"
                 let ceilingColor: Color = ceilingValue == "Preserved" ? Color(red: 0.0, green: 0.75, blue: 0.65) : (isZone4Spike ? .red : .orange)
 
                 HStack(spacing: 8) {
@@ -368,7 +374,13 @@ struct DrillExecutionScorecard: View {
             }
 
             // High threshold guardrail chip (if unexpected Zone 4 spike)
-            if !isDualTarget && runRecord.percentZone4 > 0.15 {
+            let highStrain = AerobicStrainEvaluation.evaluate(
+                workingAvgHeartRate: Double(actualHR),
+                percentZone4: runRecord.percentZone4,
+                zone2Ceiling: Double(drillId.targetHeartRateZone == 2 ? 144 : 135),
+                isRecoveryPrescription: drillId.targetHeartRateZone != 2
+            )
+            if !isDualTarget && highStrain.isZone4Overreach {
                 HStack(spacing: 4) {
                     Image(systemName: "bolt.fill")
                         .font(.caption2)

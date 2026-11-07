@@ -114,7 +114,7 @@ struct DrillPrimerCardView: View {
             return locked
         }
         if let mins = config.lockedDurationMinutes {
-            return DrillDuration.nearest(toMinutes: mins)
+            return DrillDuration.canonical(forRawMinutes: mins)
         }
         return drillId.defaultDuration
     }

@@ -1,4 +1,5 @@
 import csv
+import os
 import random
 
 try:
@@ -284,20 +285,25 @@ def export_v6_dataset():
     train_runs = generate_smooth_seed_data(35000)
     test_runs = generate_smooth_seed_data(5000)
     
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    out_dir = repo_root if os.path.isdir(os.path.join(repo_root, "scripts")) else "."
+    train_path = os.path.join(out_dir, "CoreML_Training_Data_v6.csv")
+    test_path = os.path.join(out_dir, "CoreML_Testing_Data_v6.csv")
+    
     if HAS_PANDAS:
         df_train = pd.DataFrame(train_runs)
         df_test = pd.DataFrame(test_runs)
-        df_train.to_csv("CoreML_Training_Data_v6.csv", index=False)
-        df_test.to_csv("CoreML_Testing_Data_v6.csv", index=False)
+        df_train.to_csv(train_path, index=False)
+        df_test.to_csv(test_path, index=False)
     else:
         fieldnames = ["paceDelta", "hrDelta", "percentZone4", "cadenceDelta", "verticalOscillation", "cv", "paceSlope", "runnerStage", "durationMinutes", "cadenceCV", "hrCV", "targetClass"]
-        for runs, filename in [(train_runs, "CoreML_Training_Data_v6.csv"), (test_runs, "CoreML_Testing_Data_v6.csv")]:
+        for runs, filename in [(train_runs, train_path), (test_runs, test_path)]:
             with open(filename, "w", newline="") as f:
                 writer = csv.DictWriter(f, fieldnames=fieldnames)
                 writer.writeheader()
                 writer.writerows(runs)
             
-    print("Generated v6 datasets with hrCV for all 11 run classifications.")
+    print(f"Generated v6 datasets with hrCV for all 11 run classifications in {out_dir}.")
 
 if __name__ == "__main__":
     export_v6_dataset()

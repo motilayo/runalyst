@@ -6,7 +6,7 @@ import shutil
 RAW_IPHONE = "/tmp/raw_iphone_tour.mp4"
 RAW_IPAD = "/tmp/raw_ipad_tour.mp4"
 
-REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 PREVIEWS_DIR = os.path.join(REPO_ROOT, "Media/AppStorePreviews")
 WEBSITE_VIDEO = os.path.join(REPO_ROOT, "website/assets/videos/app_tour_web.mp4")

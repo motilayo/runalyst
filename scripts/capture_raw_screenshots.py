@@ -21,7 +21,7 @@ IPHONE_ID = get_booted_device_id("iPhone")
 IPAD_ID = get_booted_device_id("iPad")
 BUNDLE_ID = "com.runalyzer.Runalyzer"
 
-REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 IPHONE_DIR = os.path.join(REPO_ROOT, "Media/Screenshots/iPhone_Raw")
 IPAD_DIR = os.path.join(REPO_ROOT, "Media/Screenshots/iPad_Raw")

@@ -39,6 +39,7 @@ fastlane/test_output
 .swiftpm/
 
 # Python
+.venv/
 __pycache__/
 *.py[cod]
 *.csv

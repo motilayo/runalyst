@@ -1,7 +1,7 @@
 import os, math, subprocess, shutil
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
-REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 OUTPUT_DIR = os.path.join(REPO_ROOT, "Media/PromoVideo")
 TEMP_FRAMES_DIR = os.path.join(OUTPUT_DIR, "temp_frames")
 os.makedirs(OUTPUT_DIR, exist_ok=True)

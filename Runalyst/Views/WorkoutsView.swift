@@ -351,10 +351,7 @@ struct WorkoutsView: View {
             if session.isTrimmed {
                 return session.primerDrillId.defaultDuration
             }
-            if session.primerDurationMinutes >= 7 && session.primerDurationMinutes <= 8 {
-                return .tenMinutes
-            }
-            return DrillDuration.nearest(toMinutes: session.primerDurationMinutes)
+            return DrillDuration.canonical(forRawMinutes: session.primerDurationMinutes)
         }()
         let dto = DrillPrescriptionDTO(
             title: session.primerDrillTitle,

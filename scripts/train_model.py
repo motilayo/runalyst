@@ -1,3 +1,4 @@
+import os
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score
@@ -6,8 +7,11 @@ import coremltools as ct
 def train_and_export():
     # Load data
     print("Loading data...")
-    train_df = pd.read_csv("CoreML_Training_Data_v6.csv")
-    test_df = pd.read_csv("CoreML_Testing_Data_v6.csv")
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    train_path = "CoreML_Training_Data_v6.csv" if os.path.exists("CoreML_Training_Data_v6.csv") else os.path.join(repo_root, "CoreML_Training_Data_v6.csv")
+    test_path = "CoreML_Testing_Data_v6.csv" if os.path.exists("CoreML_Testing_Data_v6.csv") else os.path.join(repo_root, "CoreML_Testing_Data_v6.csv")
+    train_df = pd.read_csv(train_path)
+    test_df = pd.read_csv(test_path)
 
     features = [
         "paceDelta", "hrDelta", "percentZone4", "cadenceDelta", 
@@ -111,7 +115,7 @@ def train_and_export():
     coreml_model.short_description = "Runalyst AI Coach Classifier"
     
     # Save the model
-    model_path = "RunalystClassifier.mlmodel"
+    model_path = "RunalystClassifier.mlmodel" if os.path.exists("RunalystClassifier.mlmodel") else os.path.join(repo_root, "RunalystClassifier.mlmodel")
     coreml_model.save(model_path)
     print(f"Successfully saved new model to {model_path}")
 

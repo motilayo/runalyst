@@ -1,7 +1,7 @@
 import os
 from PIL import Image, ImageDraw, ImageFont
 
-REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 OUTPUT_DIR_2048 = os.path.join(REPO_ROOT, "Media/Screenshots/iPad_2048x2732")
 OUTPUT_DIR_2064 = os.path.join(REPO_ROOT, "Media/Screenshots/iPad_2064x2752")
@@ -179,5 +179,6 @@ cards = [
 
 if __name__ == "__main__":
     for c in cards:
-        render_ipad_portrait(c["title"], c["subtitle"], c["screen"], c["output"])
-        render_ipad_landscape(c["title"], c["subtitle"], c["screen"], c["output"])
+        screen_path = os.path.join(REPO_ROOT, c["screen"]) if not os.path.isabs(c["screen"]) else c["screen"]
+        render_ipad_portrait(c["title"], c["subtitle"], screen_path, c["output"])
+        render_ipad_landscape(c["title"], c["subtitle"], screen_path, c["output"])

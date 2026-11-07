@@ -1,5 +1,6 @@
 import SwiftUI
 import Charts
+import RunalystCore
 
 /// Renders the Heart Rate Trajectory visualization for Aerobic Workouts
 /// (Zone 2, Easy Runs, Long Runs, and Recovery Runs).
@@ -27,8 +28,17 @@ struct HeartRateTrajectoryMapView: View {
         workoutType == "Recovery Run"
     }
 
+    private var aerobicStrain: AerobicStrainEvaluation {
+        AerobicStrainEvaluation.evaluate(
+            workingAvgHeartRate: workingAvgHeartRate,
+            percentZone4: percentZone4,
+            zone2Ceiling: isRecovery ? zone1Ceiling : zone2Ceiling,
+            isRecoveryPrescription: isRecovery
+        )
+    }
+
     private var effectiveThreshold: Double {
-        isRecovery ? zone1Ceiling : zone2Ceiling
+        aerobicStrain.effectiveCeilingBPM
     }
 
     private var effectiveWorkingHR: Double {
@@ -283,7 +293,7 @@ struct HeartRateTrajectoryMapView: View {
     }
 
     private var isZone4Strain: Bool {
-        percentZone4 > 0.15 || workingAvgHeartRate > (zone2Ceiling + 12.0)
+        aerobicStrain.isZone4Overreach
     }
 
     private var isElevatedStrain: Bool {
