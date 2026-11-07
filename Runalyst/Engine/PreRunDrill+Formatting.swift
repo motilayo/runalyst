@@ -81,14 +81,14 @@ extension PreRunDrill {
         case .tempoSurges:
             switch customDuration {
             case .fiveMinutes: return "3 x 30 sec work"
-            case .tenMinutes: return "5 x 30 sec work"
+            case .tenMinutes: return "4 x 30 sec work"
             case .fifteenMinutes: return "3 x 2 min work"
             case .twentyMinutes: return "4 x 90 sec work"
             case .thirtyMinutes, .thirtyFiveMinutes, .fortyMinutes, .fiftyMinutes: return "4 x 3 min work"
             }
         case .strides:
             switch customDuration {
-            case .fiveMinutes: return "4 x 15 sec strides"
+            case .fiveMinutes: return "3 x 15 sec strides"
             case .tenMinutes: return "4 x 15 sec strides"
             case .fifteenMinutes: return "6 x 20 sec strides"
             case .twentyMinutes, .thirtyMinutes, .thirtyFiveMinutes, .fortyMinutes, .fiftyMinutes: return "8 x 30 sec strides"
@@ -247,26 +247,11 @@ extension PreRunDrill {
 
     /// Punchy work representation suitable for compact 2x2 metric cells (e.g. "4x 30s", "Zone 2 Base").
     var shortWorkSummary: String {
-        let spec = intervalSpec
-        if spec.iterations > 1 {
-            return "\(spec.iterations)x \(spec.workSeconds)s"
-        } else {
-            if id == .zone2Run {
-                return "Zone 2 Base"
-            } else if id == .aerobicFlush || id == .recoveryJog {
-                return "Zone 1 Flush"
-            }
-            return "\(spec.workSeconds / 60)m steady"
-        }
+        coreSchedule.shortWorkSummary
     }
 
-    /// Punchy recovery representation suitable for compact 2x2 metric cells (e.g. "45s Jog", "45s Walk", "Continuous").
+    /// Punchy recovery representation suitable for compact 2x2 metric cells (e.g. "60s Walk", "60s Jog", "Continuous").
     var shortRecoverySummary: String {
-        let spec = intervalSpec
-        if let rec = spec.recoverySeconds {
-            return "\(rec)s \(spec.isWalk ? "Walk" : "Jog")"
-        } else {
-            return "Continuous"
-        }
+        coreSchedule.shortRecoverySummary
     }
 }

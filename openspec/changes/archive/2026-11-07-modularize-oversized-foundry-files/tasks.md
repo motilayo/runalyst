@@ -1,0 +1,6 @@
+# Tasks: Modularize Oversized Foundry Views and Modals
+
+- [x] 1.1 [Mid/Jnr | flash] Split `Runalyst/Models/DrillReadout.swift` (`687 LOC`) into `DrillReadout.swift` (`<= 450 LOC`) and `Runalyst/Models/DrillReadout+Adaptive.swift` (`<= 300 LOC`), and split `Runalyst/Views/HeartRateTrajectoryMapView.swift` (`637 LOC`) into `HeartRateTrajectoryMapView.swift` (`<= 360 LOC`) and `Runalyst/Views/HeartRateTrajectoryMapView+Chart.swift` (`<= 320 LOC`).
+- [x] 1.2 [Mid/Jnr | flash] Split `Runalyst/Views/DrillExecutionScorecard.swift` (`1,012 LOC`) into `DrillExecutionScorecard.swift` (`<= 420 LOC`), `Runalyst/Views/DrillExecutionScorecard+Evaluation.swift` (`<= 420 LOC`), and `Runalyst/Views/DrillExecutionScorecard+Subviews.swift` (`<= 280 LOC`).
+- [x] 1.3 [Mid/Jnr | flash] Split `Runalyst/Views/RunDetailView.swift` (`1,256 LOC`) into `RunDetailView.swift` (`<= 450 LOC`), `Runalyst/Views/RunDetailView+Cards.swift` (`<= 450 LOC`), and `Runalyst/Views/RunDetailView+PillsAndHelpers.swift` (`<= 420 LOC`).
+- [x] 1.4 [Mid/Jnr | flash] Register all 6 new companion `.swift` files in `Runalyst.xcodeproj/project.pbxproj`, verify `wc -l` is `<= 500 LOC` for all 10 files, run `./assay.sh` and `swiftlint --strict`, and run `xcodebuild test` on `DrillReadoutTests` and `CrossSurfaceIdempotencyTests`.

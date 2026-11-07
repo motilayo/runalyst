@@ -55,7 +55,7 @@ struct DrillsLibraryView: View {
             drillId: drillId,
             customTitle: title,
             customTarget: target,
-            readinessState: dailyState.activeSession.resolvedReadinessState,
+            readinessState: .productive,
             baselineCadence: baselineCadence,
             onStart: handleStartDrill
         )

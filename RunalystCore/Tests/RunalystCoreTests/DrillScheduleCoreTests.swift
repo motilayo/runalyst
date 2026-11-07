@@ -83,6 +83,68 @@ struct DrillScheduleCoreTests {
         #expect(!breakdown.contains("2-minute cool-down"))
     }
 
+    @Test("10-minute Tempo Surges has symmetric 2-minute cool-down and unified summaries")
+    func testTempoSurges10MinutesHasCooldownAndSummaries() {
+        let schedule = DrillScheduleCore.schedule(
+            for: "tempo_surges",
+            durationMinutes: 10,
+            readinessState: "productive"
+        )
+
+        #expect(schedule.warmupSeconds == 120.0)
+        #expect(schedule.iterations == 4)
+        #expect(schedule.workSeconds == 30.0)
+        #expect(schedule.recoverySeconds == 60.0)
+        #expect(schedule.cooldownSeconds == 120.0)
+        #expect(schedule.totalDurationSeconds == 600)
+        #expect(schedule.formattedTotalDuration == "10 min")
+        #expect(schedule.isWalkRecovery == true)
+        #expect(schedule.preciseStructureSummary == "2m in • 4x (30s / 60s) • 2m out")
+        #expect(schedule.shortWorkSummary == "4x 30s")
+        #expect(schedule.shortRecoverySummary == "60s Walk")
+
+        let breakdown = schedule.generateStructureBreakdownProse()
+        #expect(breakdown.contains("2-minute easy warm-up jog"))
+        #expect(breakdown.contains("4 sets of intervals"))
+        #expect(breakdown.contains("60-second walk"))
+        #expect(breakdown.contains("2-minute cool-down"))
+    }
+
+    @Test("All other drills across 5, 10, and 15 min have non-zero warmup, non-zero cooldown, and exact duration sum")
+    func testAllOtherDrillsAcrossDurationsHaveWarmupAndCooldown() {
+        let drills = [
+            "cadence_pyramids",
+            "rhythm_intervals",
+            "strides",
+            "neuromuscular_primer",
+            "fartlek_primer",
+            "hill_bounds"
+        ]
+        let durations = [5, 10, 15]
+
+        for drill in drills {
+            for dur in durations {
+                let schedule = DrillScheduleCore.schedule(for: drill, durationMinutes: dur, readinessState: "productive")
+                #expect(schedule.warmupSeconds > 0, "Warmup must be > 0 for \(drill) at \(dur) min")
+                #expect(schedule.cooldownSeconds > 0, "Cooldown must be > 0 for \(drill) at \(dur) min")
+                let calculatedTotal = schedule.warmupSeconds + Double(schedule.iterations) * (schedule.workSeconds + schedule.recoverySeconds) + schedule.cooldownSeconds
+                #expect(calculatedTotal == Double(dur * 60), "Calculated total duration must equal \(dur * 60) for \(drill) at \(dur) min")
+                #expect(schedule.totalDurationSeconds == dur * 60, "totalDurationSeconds must equal \(dur * 60) for \(drill) at \(dur) min")
+            }
+        }
+    }
+
+    @Test("Format work recovery interval uses seconds below 120 and minutes at or above 120")
+    func testFormatWorkRecoveryInterval() {
+        #expect(DrillScheduleCore.formatWorkRecoveryInterval(30) == "30s")
+        #expect(DrillScheduleCore.formatWorkRecoveryInterval(45) == "45s")
+        #expect(DrillScheduleCore.formatWorkRecoveryInterval(60) == "60s")
+        #expect(DrillScheduleCore.formatWorkRecoveryInterval(75) == "75s")
+        #expect(DrillScheduleCore.formatWorkRecoveryInterval(90) == "90s")
+        #expect(DrillScheduleCore.formatWorkRecoveryInterval(120) == "2m")
+        #expect(DrillScheduleCore.formatWorkRecoveryInterval(180) == "3m")
+    }
+
     @Test("Deload and acute fatigue modulate 15-minute Strides correctly")
     func testStridesReadinessModulation() {
         // Deload: 5m warmup + 3 x (20s sprint + 90s walk = 330s) + 2m cooldown = 750s = 12m 30s

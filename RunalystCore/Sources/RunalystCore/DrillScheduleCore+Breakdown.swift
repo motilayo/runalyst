@@ -3,6 +3,7 @@ import Foundation
 // MARK: - Phase Generation & Prose Breakdown
 
 extension DrillScheduleCore {
+    // swiftlint:disable function_parameter_count
     /// Builds structured workout phases for timeline visualization and Apple Watch WorkoutKit parity.
     public static func buildPhases(
         drillIdentifier: String,
@@ -82,6 +83,7 @@ extension DrillScheduleCore {
 
         return phases
     }
+    // swiftlint:enable function_parameter_count
 
     private static func formatPhaseMinutes(_ seconds: Int) -> String {
         let mins = seconds / 60
@@ -95,11 +97,35 @@ extension DrillScheduleCore {
         }
     }
 
-    private static func formatWorkRecoveryInterval(_ seconds: Int) -> String {
-        if seconds >= 60 && seconds % 60 == 0 {
+    public static func formatWorkRecoveryInterval(_ seconds: Int) -> String {
+        if seconds >= 120 && seconds % 60 == 0 {
             return "\(seconds / 60)m"
         }
         return "\(seconds)s"
+    }
+
+    /// Punchy work representation suitable for compact 2x2 metric cells (e.g. "4x 30s", "Zone 2 Base").
+    public var shortWorkSummary: String {
+        if iterations > 1 {
+            return "\(iterations)x \(Self.formatWorkRecoveryInterval(Int(workSeconds)))"
+        } else {
+            let normalized = Self.normalizeDrillIdentifier(drillIdentifier)
+            if normalized == "zone2_run" {
+                return "Zone 2 Base"
+            } else if normalized == "aerobic_flush" || normalized == "recovery_jog" {
+                return "Zone 1 Flush"
+            }
+            return "\(Int(workSeconds) / 60)m steady"
+        }
+    }
+
+    /// Punchy recovery representation suitable for compact 2x2 metric cells (e.g. "60s Walk", "60s Jog", "Continuous").
+    public var shortRecoverySummary: String {
+        if recoverySeconds > 0 {
+            return "\(Self.formatWorkRecoveryInterval(Int(recoverySeconds))) \(isWalkRecovery ? "Walk" : "Jog")"
+        } else {
+            return "Continuous"
+        }
     }
 
     /// Structured plain-English phase summary line with exact minute/sub-minute formatting.
@@ -222,7 +248,7 @@ extension DrillScheduleCore {
             case 5:
                 return "You’ll start with a 1-minute easy warm-up jog. This is followed by 3 sets of brisk intervals for 30 seconds, followed by 45 seconds of walk recovery."
             case 10:
-                return "You’ll start with a 2.5-minute easy warm-up jog. This is followed by 5 sets of intervals where you will run at a high, brisk cadence for 30 seconds, followed by a strict 60-second walk to catch your breath."
+                return "You’ll start with a 2-minute easy warm-up jog. This is followed by 4 sets of intervals where you will run at a high, brisk cadence for 30 seconds, followed by a strict 60-second walk to catch your breath. You’ll finish with a 2-minute cool-down."
             case 15:
                 return "You’ll start with a 3-minute easy warm-up jog. This is followed by 3 sets of 2-minute tempo surges, paired with 2 minutes of walk recovery."
             case 20:
@@ -235,7 +261,7 @@ extension DrillScheduleCore {
         case "strides":
             switch durationMinutes {
             case 5:
-                return "You’ll start with a 1-minute easy jog, followed by 4 short interval sets of 15-second strides and 45-second walks."
+                return "You’ll start with a 1-minute easy jog, followed by 3 short interval sets of 15-second strides and 45-second walks, finishing with a 1-minute cool-down."
             case 10:
                 return "You’ll start with a 2-minute easy jog, followed by 4 short interval sets of 15-second strides and 45-second walks."
             case 15:

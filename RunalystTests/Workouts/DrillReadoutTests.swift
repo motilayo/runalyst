@@ -15,7 +15,7 @@ final class DrillReadoutTests: XCTestCase {
         )
         XCTAssertEqual(
             readout.breakdown,
-            "You’ll start with a 2.5-minute easy warm-up jog. This is followed by 5 sets of intervals where you will run at a high, brisk cadence for 30 seconds, followed by a strict 60-second walk to catch your breath."
+            "You’ll start with a 2-minute easy warm-up jog. This is followed by 4 sets of intervals where you will run at a high, brisk cadence for 30 seconds, followed by a strict 60-second walk to catch your breath. You’ll finish with a 2-minute cool-down."
         )
         XCTAssertTrue(readout.coachingTip.contains("A taller posture reduces vertical bounce and saves energy."))
         XCTAssertTrue(readout.coachingTip.contains("160 SPM target without sprinting."))
@@ -24,11 +24,11 @@ final class DrillReadoutTests: XCTestCase {
         let phases = readout.phases
         XCTAssertFalse(phases.isEmpty)
 
-        // Warmup: 2.5 min = 150 seconds
+        // Warmup: 2 min = 120 seconds
         XCTAssertEqual(phases.first?.kind, .warmup)
-        XCTAssertEqual(phases.first?.durationSeconds, 150)
+        XCTAssertEqual(phases.first?.durationSeconds, 120)
 
-        // 5 sets of (30s work + 60s walk)
+        // 4 sets of (30s work + 60s walk)
         let workPhases = phases.filter { $0.kind == .work }
         let walkPhases = phases.filter {
             if case .recovery(let isWalk) = $0.kind {
@@ -36,10 +36,14 @@ final class DrillReadoutTests: XCTestCase {
             }
             return false
         }
-        XCTAssertEqual(workPhases.count, 5)
-        XCTAssertEqual(walkPhases.count, 5)
+        XCTAssertEqual(workPhases.count, 4)
+        XCTAssertEqual(walkPhases.count, 4)
         XCTAssertEqual(workPhases.first?.durationSeconds, 30)
         XCTAssertEqual(walkPhases.first?.durationSeconds, 60)
+
+        // Cooldown: 2 min = 120 seconds
+        XCTAssertEqual(phases.last?.kind, .cooldown)
+        XCTAssertEqual(phases.last?.durationSeconds, 120)
 
         let totalDuration = phases.reduce(0) { $0 + $1.durationSeconds }
         XCTAssertEqual(totalDuration, 600) // 10 minutes total

@@ -275,9 +275,7 @@ public struct DrillScheduleCore: Sendable, Equatable {
         }
 
         let warmupSeconds: Double
-        if normalized == "tempo_surges" && canonicalMins == 10 {
-            warmupSeconds = 150.0
-        } else if normalized == "strides" && canonicalMins == 15 {
+        if normalized == "strides" && canonicalMins == 15 {
             warmupSeconds = 300.0
         } else if canonicalMins == 5 {
             warmupSeconds = 60.0
@@ -326,7 +324,7 @@ public struct DrillScheduleCore: Sendable, Equatable {
             case ..<10:
                 standardIterations = 3; standardWorkSeconds = 30; standardRecoverySeconds = 45
             case 10:
-                standardIterations = 5; standardWorkSeconds = 30; standardRecoverySeconds = 60
+                standardIterations = 4; standardWorkSeconds = 30; standardRecoverySeconds = 60
             case 15:
                 standardIterations = 3; standardWorkSeconds = 120; standardRecoverySeconds = 120
             case 20:
@@ -337,7 +335,7 @@ public struct DrillScheduleCore: Sendable, Equatable {
         case "strides":
             switch canonicalMins {
             case ..<10:
-                standardIterations = 4; standardWorkSeconds = 15; standardRecoverySeconds = 45
+                standardIterations = 3; standardWorkSeconds = 15; standardRecoverySeconds = 45
             case 10:
                 standardIterations = 4; standardWorkSeconds = 15; standardRecoverySeconds = 45
             case 15:
