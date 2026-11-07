@@ -170,6 +170,7 @@ struct MilestoneAwardDetailSheet: View {
     let useMetricSystem: Bool
 
     @Environment(\.dismiss) private var dismiss
+    @State private var selectedDetent: PresentationDetent = .large
 
     private var formattedQualifyingDate: String? {
         guard let date = spec.qualifyingDate ?? qualifyingRun?.date else { return nil }
@@ -191,132 +192,163 @@ struct MilestoneAwardDetailSheet: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 20) {
-                // Top Close Bar
-                HStack {
-                    Spacer()
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.title2)
-                            .foregroundColor(.secondary)
-                            .frame(width: 44, height: 44)
-                            .contentShape(Rectangle())
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
-
-                // Hero Metallic Medallion with Subtle Glow
-                ZStack {
-                    Circle()
-                        .fill(accentColor.opacity(spec.isUnlocked ? 0.22 : 0.05))
-                        .frame(width: 210, height: 210)
-                        .blur(radius: 26)
-
-                    MetallicMedallionView(spec: spec, accentColor: accentColor, size: 176)
-                }
-
-                // Award Title & Narrative Prose
-                VStack(spacing: 8) {
-                    Text(spec.title)
-                        .font(.system(size: 26, weight: .bold, design: .rounded))
-                        .foregroundColor(.primary)
-                        .multilineTextAlignment(.center)
-
-                    Text(spec.earnedNarrativeProse(useMetric: useMetricSystem, formattedDate: formattedQualifyingDate))
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
-                        .lineSpacing(3)
-                        .padding(.horizontal, 24)
-                }
-
-                // Progress Bar Card (When Locked)
-                if !spec.isUnlocked {
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack {
-                            Text("PROGRESS")
-                                .font(.caption2.bold())
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 20) {
+                    // Top Close Bar
+                    HStack {
+                        Spacer()
+                        Button {
+                            dismiss()
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.title2)
                                 .foregroundColor(.secondary)
-                            Spacer()
-                            Text(spec.earnedMetricSubtitle(useMetric: useMetricSystem))
-                                .font(.system(size: 13, weight: .bold, design: .rounded))
-                                .monospacedDigit()
-                                .foregroundColor(accentColor)
+                                .frame(width: 44, height: 44)
+                                .contentShape(Rectangle())
                         }
-                        ProgressView(value: spec.progressFraction)
-                            .tint(accentColor)
                     }
-                    .padding(16)
-                    .background(Color(UIColor.secondarySystemGroupedBackground))
-                    .cornerRadius(16)
-                    .padding(.horizontal, 20)
-                }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
 
-                // Qualifying Workout Card (When Unlocked)
-                if spec.isUnlocked {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Workout")
-                            .font(.headline)
+                    // Hero Metallic Medallion with Subtle Glow
+                    ZStack {
+                        Circle()
+                            .fill(accentColor.opacity(spec.isUnlocked ? 0.22 : 0.05))
+                            .frame(width: 210, height: 210)
+                            .blur(radius: 26)
+
+                        MetallicMedallionView(spec: spec, accentColor: accentColor, size: 176)
+                    }
+
+                    // Award Title & Narrative Prose
+                    VStack(spacing: 8) {
+                        Text(spec.title)
+                            .font(.system(size: 26, weight: .bold, design: .rounded))
                             .foregroundColor(.primary)
+                            .multilineTextAlignment(.center)
 
-                        HStack(alignment: .center, spacing: 14) {
-                            ZStack {
-                                Circle()
-                                    .fill(accentColor.opacity(0.18))
-                                    .frame(width: 44, height: 44)
-                                Image(systemName: spec.iconName)
-                                    .font(.headline)
-                                    .foregroundColor(accentColor)
-                            }
+                        Text(spec.earnedNarrativeProse(useMetric: useMetricSystem, formattedDate: formattedQualifyingDate))
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                            .lineSpacing(3)
+                            .padding(.horizontal, 24)
+                    }
 
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(qualifyingWorkoutTitle)
-                                    .font(.system(size: 15, weight: .semibold, design: .rounded))
-                                    .foregroundColor(.primary)
-                                    .lineLimit(1)
-
+                    // Progress Bar Card (When Locked)
+                    if !spec.isUnlocked {
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack {
+                                Text("PROGRESS")
+                                    .font(.caption2.bold())
+                                    .foregroundColor(.secondary)
+                                Spacer()
                                 Text(spec.earnedMetricSubtitle(useMetric: useMetricSystem))
-                                    .font(.system(size: 22, weight: .bold, design: .rounded))
+                                    .font(.system(size: 13, weight: .bold, design: .rounded))
                                     .monospacedDigit()
                                     .foregroundColor(accentColor)
                             }
-
-                            Spacer()
-
-                            VStack(alignment: .trailing, spacing: 6) {
-                                HStack(spacing: 4) {
-                                    Text("\(max(1, spec.timesEarnedCount))")
-                                        .font(.system(size: 14, weight: .bold, design: .rounded))
-                                        .monospacedDigit()
-                                    Image(systemName: "hexagon.fill")
-                                        .font(.caption2)
-                                }
-                                .foregroundColor(accentColor)
-
-                                if let dateStr = formattedQualifyingDate {
-                                    Text(dateStr)
-                                        .font(.caption)
-                                        .monospacedDigit()
-                                        .foregroundColor(.secondary)
-                                }
-                            }
+                            ProgressView(value: spec.progressFraction)
+                                .tint(accentColor)
                         }
                         .padding(16)
                         .background(Color(UIColor.secondarySystemGroupedBackground))
                         .cornerRadius(16)
+                        .padding(.horizontal, 20)
                     }
-                    .padding(.horizontal, 20)
-                }
 
-                Spacer(minLength: 24)
+                    // Qualifying Workout Card (When Unlocked)
+                    if spec.isUnlocked {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Workout")
+                                .font(.headline)
+                                .foregroundColor(.primary)
+
+                            if let run = qualifyingRun {
+                                NavigationLink(value: run) {
+                                    qualifyingWorkoutCardContent(showChevron: true)
+                                }
+                                .buttonStyle(.plain)
+                                .simultaneousGesture(
+                                    TapGesture().onEnded {
+                                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                        selectedDetent = .large
+                                    }
+                                )
+                            } else {
+                                qualifyingWorkoutCardContent(showChevron: false)
+                            }
+                        }
+                        .padding(.horizontal, 20)
+                    }
+
+                    Spacer(minLength: 24)
+                }
+            }
+            .background(Color(UIColor.systemGroupedBackground).ignoresSafeArea())
+            .navigationBarHidden(true)
+            .navigationDestination(for: RunRecord.self) { run in
+                RunDetailView(runRecord: run)
             }
         }
-        .background(Color(UIColor.systemGroupedBackground).ignoresSafeArea())
-        .presentationDetents([.medium, .large])
+        .presentationDetents([.medium, .large], selection: $selectedDetent)
         .presentationDragIndicator(.visible)
+    }
+
+    @ViewBuilder
+    private func qualifyingWorkoutCardContent(showChevron: Bool) -> some View {
+        HStack(alignment: .center, spacing: 14) {
+            ZStack {
+                Circle()
+                    .fill(accentColor.opacity(0.18))
+                    .frame(width: 44, height: 44)
+                Image(systemName: spec.iconName)
+                    .font(.headline)
+                    .foregroundColor(accentColor)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(qualifyingWorkoutTitle)
+                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+                    .foregroundColor(.primary)
+                    .lineLimit(1)
+
+                Text(spec.earnedMetricSubtitle(useMetric: useMetricSystem))
+                    .font(.system(size: 22, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundColor(accentColor)
+            }
+
+            Spacer()
+
+            VStack(alignment: .trailing, spacing: 6) {
+                HStack(spacing: 4) {
+                    Text("\(max(1, spec.timesEarnedCount))")
+                        .font(.system(size: 14, weight: .bold, design: .rounded))
+                        .monospacedDigit()
+                    Image(systemName: "hexagon.fill")
+                        .font(.caption2)
+                }
+                .foregroundColor(accentColor)
+
+                if let dateStr = formattedQualifyingDate {
+                    Text(dateStr)
+                        .font(.caption)
+                        .monospacedDigit()
+                        .foregroundColor(.secondary)
+                }
+            }
+
+            if showChevron {
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.bold))
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding(16)
+        .background(Color(UIColor.secondarySystemGroupedBackground))
+        .cornerRadius(16)
+        .contentShape(Rectangle())
     }
 }
