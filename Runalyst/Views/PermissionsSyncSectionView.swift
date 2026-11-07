@@ -18,7 +18,21 @@ struct PermissionsSyncSectionView: View {
     var body: some View {
         Section(
             header: Text("Permissions & Sync"),
-            footer: Text("Tap a permission to request access directly in the app.")
+            footer: VStack(alignment: .leading, spacing: 6) {
+                Text("Tap a permission to request access directly in the app.")
+                HStack(spacing: 6) {
+                    Image(systemName: "heart.fill")
+                        .foregroundColor(.pink)
+                    Text("Works with Apple Health")
+                    Text("•")
+                    Image(systemName: "lock.shield.fill")
+                        .foregroundColor(Color(red: 0.0, green: 0.8, blue: 0.65))
+                    Text("Analyzed on-device with Apple Intelligence")
+                }
+                .font(.caption2)
+                .foregroundColor(.secondary)
+                .padding(.top, 2)
+            }
         ) {
             Button(action: {
                 Task {

@@ -181,6 +181,28 @@ struct ProgressionChartView: View {
         return allPoints.min(by: { abs($0.date.timeIntervalSince(selDate)) < abs($1.date.timeIntervalSince(selDate)) })
     }
 
+    private var audioGraphDescriptor: ProgressionAudioGraphDescriptor {
+        let allPoints = activeSegments.flatMap(\.points)
+        let pts = allPoints.enumerated().map { idx, pt in
+            (
+                index: Double(idx),
+                value: pt.value,
+                label: pt.date.formatted(.dateTime.month(.abbreviated).day())
+            )
+        }
+        let metricTitle = selectedMetric.rawValue
+        let unitLabel = selectedMetric == .efficiencyFactor ? "EF" : "s/km"
+        let selType = selectedRunType ?? "Running"
+        let summary = "\(metricTitle) progression for \(selType) across \(selectedHorizon.rawValue)."
+
+        return ProgressionAudioGraphDescriptor(
+            points: pts,
+            metricTitle: metricTitle,
+            unitLabel: unitLabel,
+            summary: summary
+        )
+    }
+
     private func syncDefaultSelectedRunType() {
         let types = availableRunTypesSorted
         guard !types.isEmpty else {
@@ -405,6 +427,7 @@ struct ProgressionChartView: View {
                     }
                 }
                 .chartYScale(domain: yDomain)
+                .accessibilityChartDescriptor(audioGraphDescriptor)
                 .chartYAxis {
                     AxisMarks(position: .leading) { value in
                         AxisGridLine()

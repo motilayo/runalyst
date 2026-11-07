@@ -1,6 +1,7 @@
 import Foundation
 import WorkoutKit
 import HealthKit
+import RunalystCore
 @preconcurrency import AVFoundation
 #if os(watchOS)
 import WatchKit
@@ -26,6 +27,12 @@ public class LiveCoachEngine {
     private func setupAudioIfNeeded() {
         guard !isRunningInTest else { return }
         guard !audioEngine.isRunning else { return }
+        do {
+            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [.mixWithOthers])
+            try AVAudioSession.sharedInstance().setActive(true, options: [])
+        } catch {
+            print("Failed to configure AVAudioSession: \(error)")
+        }
         audioEngine.attach(playerNode)
         let format = audioEngine.outputNode.inputFormat(forBus: 0)
         audioEngine.connect(playerNode, to: audioEngine.outputNode, format: format)
@@ -39,26 +46,18 @@ public class LiveCoachEngine {
     /// Translates an AI drill prescription string into a CustomWorkout.
     /// Expects a string like "4x400m intervals".
     public func translate(prescription: String, targetSPM: Int) -> CustomWorkout? {
-        let pattern = #"(\d+)x(\d+)m"#
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
-              let match = regex.firstMatch(in: prescription, options: [], range: NSRange(location: 0, length: prescription.utf16.count)),
-              let iterRange = Range(match.range(at: 1), in: prescription),
-              let distRange = Range(match.range(at: 2), in: prescription),
-              let iterations = Int(prescription[iterRange]),
-              let distance = Double(prescription[distRange]) else {
+        guard let parsed = LiveMetronomeCore.parsePrescription(prescription, targetSPM: targetSPM) else {
             return nil
         }
 
-        var workStep = WorkoutStep(goal: .distance(distance, .meters))
-        let lowerBound = Double(max(0, targetSPM - 5))
-        let upperBound = Double(targetSPM + 5)
-        workStep.alert = .cadence(lowerBound...upperBound)
+        var workStep = WorkoutStep(goal: .distance(parsed.distanceMeters, .meters))
+        workStep.alert = .cadence(parsed.cadenceRange)
         let recoveryStep = WorkoutStep(goal: .open)
 
         let workInterval = IntervalStep(.work, step: workStep)
         let recoveryInterval = IntervalStep(.recovery, step: recoveryStep)
 
-        let block = IntervalBlock(steps: [workInterval, recoveryInterval], iterations: iterations)
+        let block = IntervalBlock(steps: [workInterval, recoveryInterval], iterations: parsed.iterations)
 
         return CustomWorkout(
             activity: .running,
@@ -73,15 +72,13 @@ public class LiveCoachEngine {
     /// Starts the continuous audio metronome mapped directly to the target SPM.
     public func startMetronome(targetSPM: Int) {
         if silentModeEnabled { return }
-        if targetSPM <= 0 { return }
+        guard let interval = LiveMetronomeCore.beatIntervalSeconds(forTargetSPM: targetSPM) else { return }
 
         currentMetronomeTargetSPM = targetSPM
         isMetronomeRunning = true
 
         guard !isRunningInTest else { return }
         setupAudioIfNeeded()
-
-        let interval = 60.0 / Double(targetSPM)
 
         self.metronomeTimer?.invalidate()
 
@@ -107,7 +104,7 @@ public class LiveCoachEngine {
 
     /// Evaluates if a corrective haptic should be triggered.
     public func shouldTriggerCorrectiveHaptic(currentSPM: Int, targetSPM: Int) -> Bool {
-        return currentSPM < targetSPM
+        LiveMetronomeCore.shouldTriggerCorrectiveHaptic(currentSPM: currentSPM, targetSPM: targetSPM)
     }
 
     /// Evaluates if haptic feedback should be delivered according to the selected HapticFeedbackMode.
@@ -117,13 +114,12 @@ public class LiveCoachEngine {
         targetSPM: Int,
         intervalElapsedSeconds: TimeInterval
     ) -> Bool {
-        switch mode {
-        case .off:
-            return false
-        case .on:
-            // Pulses rhythm during the first 20 seconds of each work interval or when cadence drops below target threshold
-            return intervalElapsedSeconds <= 20.0 || currentSPM < (targetSPM - 2)
-        }
+        LiveMetronomeCore.shouldTriggerDutyCycledHaptic(
+            isEnabled: mode == .on,
+            currentSPM: currentSPM,
+            targetSPM: targetSPM,
+            intervalElapsedSeconds: intervalElapsedSeconds
+        )
     }
 
     public func shouldTriggerHaptic(

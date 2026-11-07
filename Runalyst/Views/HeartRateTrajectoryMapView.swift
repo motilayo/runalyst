@@ -292,6 +292,7 @@ struct HeartRateTrajectoryMapView: View {
                 .chartXSelection(value: $selectedMinute)
                 .chartXScale(domain: 0...maxMinutes)
                 .chartYScale(domain: yMin...yMax)
+                .accessibilityChartDescriptor(audioGraphDescriptor)
                 .chartXAxis {
                     AxisMarks(values: xAxisTicks) { value in
                         AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [3, 3]))

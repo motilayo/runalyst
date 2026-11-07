@@ -300,4 +300,12 @@ extension HeartRateTrajectoryMapView {
             return Color.red
         }
     }
+
+    var audioGraphDescriptor: HRWaveAudioGraphDescriptor {
+        HRWaveAudioGraphDescriptor(
+            points: chartPoints.map { ($0.minute, $0.heartRate) },
+            title: isRecovery ? "Recovery Heart Rate Envelope" : "Heart Rate Trajectory",
+            summary: "Heart rate trajectory spanning \(Int(maxMinutes)) minutes with working average of \(Int(round(effectiveWorkingHR))) BPM."
+        )
+    }
 }

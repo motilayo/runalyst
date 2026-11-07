@@ -316,4 +316,35 @@ extension DrillScheduleCore {
             return "You’ll execute a structured \(durationMinutes)-minute running session."
         }
     }
+
+    /// User-facing display title for the prescribed drill archetype.
+    public var displayName: String {
+        let normalized = Self.normalizeDrillIdentifier(drillIdentifier)
+        switch normalized {
+        case "cadence_pyramids": return "Cadence Pyramids"
+        case "rhythm_intervals": return "Rhythm Intervals"
+        case "tempo_surges": return "Tempo Surges"
+        case "strides": return "Strides"
+        case "neuromuscular_primer": return "Form Primer"
+        case "aerobic_flush": return "Aerobic Flush"
+        case "fartlek_primer": return "Fartlek Primer"
+        case "hill_bounds": return "Hill Bounds"
+        case "recovery_jog": return "Recovery Jog"
+        case "zone2_run": return "Zone 2 Run"
+        default: return drillIdentifier.replacingOccurrences(of: "_", with: " ").capitalized
+        }
+    }
+
+    /// Prescribed cadence alert band for the drill.
+    public var targetCadenceRange: ClosedRange<Int> {
+        let normalized = Self.normalizeDrillIdentifier(drillIdentifier)
+        switch normalized {
+        case "cadence_pyramids": return 168...176
+        case "rhythm_intervals": return 165...175
+        case "tempo_surges": return 170...180
+        case "strides": return 175...185
+        case "neuromuscular_primer": return 170...182
+        default: return 160...170
+        }
+    }
 }
