@@ -4,8 +4,10 @@ on:
   push:
     branches:
       - main
+      - master
     paths:
       - 'Runalyst/**'
+      - 'RunalystCore/**'
       - 'RunalystTests/**'
       - 'RunalystUITests/**'
       - 'Runalyst.xcodeproj/**'
@@ -15,14 +17,17 @@ on:
       - 'PrivacyInfo.xcprivacy'
       - '.swiftlint.yml'
       - '.swiftformat'
+      - 'assay.sh'
       - '.github/workflows/ci.yml'
       - '*.swift'
       - '*.mlmodel'
   pull_request:
     branches:
       - main
+      - master
     paths:
       - 'Runalyst/**'
+      - 'RunalystCore/**'
       - 'RunalystTests/**'
       - 'RunalystUITests/**'
       - 'Runalyst.xcodeproj/**'
@@ -32,6 +37,7 @@ on:
       - 'PrivacyInfo.xcprivacy'
       - '.swiftlint.yml'
       - '.swiftformat'
+      - 'assay.sh'
       - '.github/workflows/ci.yml'
       - '*.swift'
       - '*.mlmodel'
@@ -57,25 +63,30 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # 2. SwiftLint (Static Code Quality)
-  lint:
-    name: SwiftLint Static Analysis
+  # 2. Reference Core Assay & Strict SwiftLint (All 5 Constitutional Gates)
+  assay-and-lint:
+    name: Reference Core Assay & SwiftLint Gate
     runs-on: macos-26
+    needs: [secret-scan]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Run SwiftLint
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+
+      - name: Ensure SwiftLint Installed
         run: |
-          if which swiftlint >/dev/null; then
-            swiftlint lint --config .swiftlint.yml --strict
-          else
-            echo "SwiftLint not pre-installed on runner; installing via Homebrew..."
+          if ! which swiftlint >/dev/null; then
             brew install swiftlint
-            swiftlint lint --config .swiftlint.yml --strict
           fi
 
-  # 3. Build & Automated Tests
+      - name: Execute Reference Core Assay (./assay.sh)
+        run: |
+          chmod +x ./assay.sh
+          ./assay.sh
+
+  # 3. Foundry iOS Build & Automated Test Suite (Single Execution)
   build-and-test:
     name: Build & Test Suite
     runs-on: macos-26

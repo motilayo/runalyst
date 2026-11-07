@@ -57,6 +57,13 @@ public enum DrillPatternCore {
             ) {
                 return tempoMatch
             }
+            if let extendedMatch = detectThresholdSurgesWithWalkRecovery(
+                buckets: buckets,
+                workoutDuration: workoutDuration,
+                zone4Threshold: zone4Threshold
+            ) {
+                return extendedMatch
+            }
         }
 
         guard cadenceCV >= 0.020 && stdCadence >= 2.5 else { return nil }
@@ -280,8 +287,7 @@ public enum DrillPatternCore {
 
         for i in 0..<buckets.count {
             let b = buckets[i]
-            let isSurge = (b.heartRateBPM >= (zone4Threshold - 2.0) && b.cadenceSPM >= (refBaseline + 5.0)) ||
-                          (b.cadenceSPM >= 145.0 && (b.paceSecondsPerKm > 0 && b.paceSecondsPerKm <= 360.0 || b.speedMetersPerSecond >= 2.2) && (b.heartRateBPM >= (zone4Threshold - 8.0) || b.heartRateBPM >= zone2Threshold))
+            let isSurge = b.heartRateBPM >= (zone4Threshold - 2.0) && b.cadenceSPM >= (refBaseline + 5.0)
             if isSurge {
                 if surgeStart == nil { surgeStart = i }
             } else {
@@ -341,24 +347,12 @@ public enum DrillPatternCore {
         let surgeCadence = allSurgeBuckets.map(\.cadenceSPM).reduce(0, +) / Double(allSurgeBuckets.count)
         let surgeTime = allSurgeBuckets.map(\.durationSeconds).reduce(0, +)
 
-        let isThresholdWalkRecovery = workoutDuration <= 2400.0 && avgWorkDuration >= 120.0 && surgeRanges.count >= 3
-        if isThresholdWalkRecovery {
-            guard surgeCadence >= 145.0,
-                  (surgeCadence - baseCadence) >= 15.0 || baseCadence <= 135.0 else {
-                return nil
-            }
-        } else {
-            guard baseCadence >= (refBaseline - 4.0),
-                  baseHR >= (zone2Threshold - 2.0),
-                  (surgeCadence - baseCadence) >= 7.0,
-                  (surgeTime / workoutDuration) <= 0.35 else {
-                return nil
-            }
+        guard baseCadence >= (refBaseline - 4.0),
+              baseHR >= (zone2Threshold - 2.0),
+              (surgeCadence - baseCadence) >= 7.0,
+              (surgeTime / workoutDuration) <= 0.35 else {
+            return nil
         }
-
-        let desc = isThresholdWalkRecovery
-            ? "Detected \(surgeRanges.count) threshold surge intervals (\(matchingSchedule.durationMinutes) min, avg \(Int(round(surgeCadence))) SPM in Zone 4)."
-            : "Detected continuous tempo run containing \(surgeRanges.count) threshold surges (\(matchingSchedule.durationMinutes) min, avg \(Int(round(surgeCadence))) SPM in Zone 4)."
 
         return DrillPatternMatchCore(
             drillIdentifier: "tempo_surges",
@@ -366,7 +360,7 @@ public enum DrillPatternCore {
             detectedIntervalCount: surgeRanges.count,
             avgWorkCadence: Int(round(surgeCadence)),
             avgRecoveryCadence: Int(round(baseCadence)),
-            signatureDescription: desc
+            signatureDescription: "Detected continuous tempo run containing \(surgeRanges.count) threshold surges (\(matchingSchedule.durationMinutes) min, avg \(Int(round(surgeCadence))) SPM in Zone 4)."
         )
     }
 
@@ -472,7 +466,7 @@ public enum DrillPatternCore {
             avgWorkDuration: avgWorkDur,
             avgRecoveryDuration: avgRecDur,
             candidateDrills: ["tempo_surges"]
-        ), wMean >= 145.0 && (wMean >= Double(baselineCadence) + 5.0 || (avgRecC > 0 && wMean - avgRecC >= 15.0)) {
+        ), wMean >= Double(baselineCadence) + 5.0 {
             return DrillPatternMatchCore(
                 drillIdentifier: "tempo_surges",
                 confidence: 0.95,

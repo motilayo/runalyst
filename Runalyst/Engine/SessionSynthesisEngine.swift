@@ -823,9 +823,6 @@ enum SessionSynthesisEngine {
             if todayIntent == .fullRest {
                 return "Full Rest Day"
             }
-            if primerSecsRemainder > 0 {
-                return "\(totalSessionMins)m \(primerSecsRemainder)s"
-            }
             return "\(totalSessionMins) Min"
         }()
 

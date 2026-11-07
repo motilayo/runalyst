@@ -469,10 +469,7 @@ public enum IntervalSegmenterCore {
 
         let avgCycleContrast = cycles.isEmpty ? 0.0 : (cycles.map { $0.recoveryPaceSecondsPerKm - $0.workPaceSecondsPerKm }.reduce(0, +) / Double(cycles.count))
         let structuredIntervals = RunClassifierCore.hasStructuredIntervalPattern(buckets: buckets)
-        let hasWorkWalkCycles = cycles.count >= 3 && cycles.allSatisfy {
-            ($0.recoveryPaceSecondsPerKm - $0.workPaceSecondsPerKm >= 45.0) && $0.workCadenceSPM >= 145.0
-        }
-        let isIntermittent = !isProgression && (structuredIntervals || hasWorkWalkCycles || (avgCycleContrast >= 25.0 && (cycles.count >= 3 || (cycles.count == 2 && cv >= 0.12 && !isUniformSteady))))
+        let isIntermittent = !isProgression && (structuredIntervals || (avgCycleContrast >= 25.0 && (cycles.count >= 3 || (cycles.count == 2 && cv >= 0.12 && !isUniformSteady))))
 
         return IntervalSegmentationReport(
             phases: phases,

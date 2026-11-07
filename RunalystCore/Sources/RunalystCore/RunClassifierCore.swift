@@ -108,78 +108,57 @@ public enum RunClassifierCore {
         return climbEpisodes >= 3
     }
 
-    /// Detects if the bucket sequence contains a structured interval pattern:
-    /// >= 3 distinct running surges of >= 45s (speed >= 2.2 m/s or cadence >= 145 SPM)
-    /// separated by active recovery/walk windows (speed >= 0.8 m/s or cadence >= 95 SPM).
+    /// Detects if the bucket sequence contains a structured continuous walk-recovery interval pattern:
+    /// - Zero dead stops: every bucket has speed >= 0.8 m/s and cadence >= 95 SPM.
+    /// - >= 3 work surges of >= 120s (cadence >= 145 SPM, speed >= 2.0 m/s) alternating with
+    ///   continuous active walking recoveries of >= 90s (cadence 100...130 SPM, speed 1.1...1.65 m/s).
+    /// - Work pace is >= 90 s/km faster than walk pace and work cadence is >= 25 SPM higher than walk cadence.
     public static func hasStructuredIntervalPattern(buckets: [TelemetryBucket]) -> Bool {
-        guard buckets.count >= 6 else { return false }
+        guard buckets.count >= 16 else { return false }
 
-        struct RawSurge {
-            var startIndex: Int
-            var endIndex: Int
+        // A. Any stationary dead stop or traffic pause disqualifies continuous walk intervals
+        if buckets.contains(where: { $0.cadenceSPM < 95.0 || $0.speedMetersPerSecond < 0.8 }) {
+            return false
+        }
+
+        struct SurgeBlock {
+            let isWork: Bool
+            let isWalk: Bool
             var duration: Double
+            var buckets: [TelemetryBucket]
         }
 
-        var rawSurges: [RawSurge] = []
-        var inSurge = false
-        var startIdx = 0
-        var dur = 0.0
+        var blocks: [SurgeBlock] = []
+        for b in buckets {
+            let isWork = b.cadenceSPM >= 145.0 && b.speedMetersPerSecond >= 2.0
+            let isWalk = (100.0...130.0).contains(b.cadenceSPM) && (1.1...1.65).contains(b.speedMetersPerSecond)
 
-        for (i, b) in buckets.enumerated() {
-            let isSurge = b.cadenceSPM >= 145.0 || b.speedMetersPerSecond >= 2.2
-            if isSurge {
-                if !inSurge {
-                    inSurge = true
-                    startIdx = i
-                    dur = b.durationSeconds
-                } else {
-                    dur += b.durationSeconds
-                }
-            } else if inSurge {
-                inSurge = false
-                rawSurges.append(RawSurge(startIndex: startIdx, endIndex: i, duration: dur))
-                dur = 0.0
-            }
-        }
-        if inSurge {
-            rawSurges.append(RawSurge(startIndex: startIdx, endIndex: buckets.count, duration: dur))
-        }
-
-        // Sub-20s phase debouncing: bridge momentary gaps (< 20s) between surges
-        var debouncedSurges: [RawSurge] = []
-        for surge in rawSurges {
-            if let last = debouncedSurges.last {
-                let gapBuckets = buckets[last.endIndex..<surge.startIndex]
-                let gapDur = gapBuckets.map(\.durationSeconds).reduce(0, +)
-                if gapDur < 20.0 {
-                    debouncedSurges[debouncedSurges.count - 1].endIndex = surge.endIndex
-                    debouncedSurges[debouncedSurges.count - 1].duration += (gapDur + surge.duration)
-                } else {
-                    debouncedSurges.append(surge)
-                }
+            if let last = blocks.last, last.isWork == isWork && last.isWalk == isWalk {
+                blocks[blocks.count - 1].duration += b.durationSeconds
+                blocks[blocks.count - 1].buckets.append(b)
             } else {
-                debouncedSurges.append(surge)
+                blocks.append(SurgeBlock(isWork: isWork, isWalk: isWalk, duration: b.durationSeconds, buckets: [b]))
             }
         }
 
-        let qualifiedSurges = debouncedSurges.filter { $0.duration >= 45.0 }
-        guard qualifiedSurges.count >= 3 else { return false }
+        let workSurges = blocks.filter { $0.isWork && $0.duration >= 120.0 }
+        let walkRecoveries = blocks.filter { $0.isWalk && $0.duration >= 90.0 }
 
-        var validSeparatedCount = 1
-        for i in 0..<(qualifiedSurges.count - 1) {
-            let recStart = qualifiedSurges[i].endIndex
-            let recEnd = qualifiedSurges[i + 1].startIndex
-            guard recEnd > recStart else { continue }
-            let recBuckets = buckets[recStart..<recEnd]
-            let recDuration = recBuckets.map(\.durationSeconds).reduce(0, +)
-            guard recDuration >= 20.0 else { continue }
-            let activeCount = recBuckets.filter { $0.cadenceSPM >= 95.0 || $0.speedMetersPerSecond >= 0.8 }.count
-            if Double(activeCount) / Double(recBuckets.count) >= 0.50 {
-                validSeparatedCount += 1
-            }
-        }
+        guard workSurges.count >= 3 && walkRecoveries.count >= 2 else { return false }
 
-        return validSeparatedCount >= 3
+        let allWork = workSurges.flatMap(\.buckets)
+        let allWalk = walkRecoveries.flatMap(\.buckets)
+        guard !allWork.isEmpty && !allWalk.isEmpty else { return false }
+
+        let avgWorkCadence = allWork.map(\.cadenceSPM).reduce(0, +) / Double(allWork.count)
+        let avgWalkCadence = allWalk.map(\.cadenceSPM).reduce(0, +) / Double(allWalk.count)
+        let avgWorkPace = allWork.map(\.paceSecondsPerKm).reduce(0, +) / Double(allWork.count)
+        let avgWalkPace = allWalk.map(\.paceSecondsPerKm).reduce(0, +) / Double(allWalk.count)
+
+        guard (avgWorkCadence - avgWalkCadence) >= 25.0 else { return false }
+        guard (avgWalkPace - avgWorkPace) >= 90.0 else { return false }
+
+        return true
     }
 
     /// Multi-delta weighted classification engine enforcing turnover stability,
@@ -216,11 +195,8 @@ public enum RunClassifierCore {
         let validatedCycles = cycles ?? IntervalSegmenterCore.extractOscillationCycles(buckets: buckets)
         let avgCycleContrast = validatedCycles.isEmpty ? 0.0 : (validatedCycles.map { $0.recoveryPaceSecondsPerKm - $0.workPaceSecondsPerKm }.reduce(0, +) / Double(validatedCycles.count))
         let structuredIntervals = hasStructuredIntervalPattern(buckets: buckets)
-        let hasWorkWalkCycles = validatedCycles.count >= 3 && validatedCycles.allSatisfy {
-            ($0.recoveryPaceSecondsPerKm - $0.workPaceSecondsPerKm >= 45.0) && $0.workCadenceSPM >= 145.0 && ($0.recoveryCadenceSPM <= 125.0 || $0.recoveryPaceSecondsPerKm >= 540.0)
-        }
         let isIntermittent: Bool = {
-            if structuredIntervals || hasWorkWalkCycles {
+            if structuredIntervals {
                 return true
             }
             guard avgCycleContrast >= 25.0 else { return false }
@@ -235,7 +211,7 @@ public enum RunClassifierCore {
         let regularityScore = isIntermittent ? IntervalSegmenterCore.calculateCycleRegularity(cycles: validatedCycles) : 0.0
 
         // If traffic was chaotic and it's not a structured threshold interval workout, classify as Urban Traffic
-        if !isIndoor && !isUniformSteady && isChaoticTraffic && !structuredIntervals && !hasWorkWalkCycles && (zone4 < 0.35 || regularityScore < 0.65) {
+        if !isIndoor && !isUniformSteady && isChaoticTraffic && !structuredIntervals && (zone4 < 0.35 || regularityScore < 0.65) {
             return "Urban Traffic"
         }
 
@@ -252,7 +228,7 @@ public enum RunClassifierCore {
             }
 
             let recoveryFloor = calculateRecoveryCadenceFloor(buckets: buckets, cycles: validatedCycles)
-            return (recoveryFloor <= 125.0 || regularityScore >= 0.65 || hasWorkWalkCycles) ? "Intervals" : "Fartlek"
+            return (recoveryFloor <= 125.0 || regularityScore >= 0.65 || structuredIntervals) ? "Intervals" : "Fartlek"
         }
 
         // LAYER 4: Continuous Structural Archetypes (Volume & Fatigue)
