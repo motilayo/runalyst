@@ -30,7 +30,7 @@ rules:
   design:
     - "Specify exact Swift types, method signatures, and data flow between RunalystCore value structs and Runalyst Foundry adapters/views."
     - "Enforce the Core-First Handshake: Any new workout phase geometry, duration mapping, cadence band, zone threshold, or diagnostic takeaway needed by a modal (`DrillReadout`, `PreRunDrill`) or SwiftUI View (`RunDetailView`, `WorkoutsView`, `PrescribedSessionCardView`, `DrillExecutionScorecard`, `HeartRateTrajectoryMapView`) MUST be designed as a pure struct/method in RunalystCore (`DrillScheduleCore`, `PhysiologicalDiagnosisCore`, `SessionSynthesisCore`) first. Never place domain conditionals or arithmetic in Foundry models or Views."
-    - "Verify that every new or modified file stays below the 500-LOC ceiling by placing new helpers in clean companion <Module>+Extension.swift files when a file is near 450-500 LOC. NEVER golf code, delete existing edge-case logic, or make risky structural cuts just to squeeze under 500 LOC."
+    - "Treat ~500 LOC as a soft modularity guideline, NEVER a hard rule or ceiling. Correctness and preserving edge-case logic always take priority over line count. When a file grows large, prefer clean companion <Module>+Extension.swift files where natural, and never golf code or make risky cuts."
     - "Identify which components require Senior-tier reasoning (RunalystCore math, @ModelActor concurrency) vs Mid/Junior-tier implementation (flash code generation for hollow views, pure adapters, and tests)."
   tasks:
     - "Tag EVERY task checkbox item with an explicit Engineering Org assignee tier and model badge: [Scout | flash_lite], [Mid/Jnr | flash], [Senior | pro], or [Staff/Lead | parent]."

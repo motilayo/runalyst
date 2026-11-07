@@ -79,8 +79,8 @@ When writing or refactoring code in this repository, you **MUST** strictly abide
 ### Law 1: Forward Air-Gap (`RunalystCore/`)
 * **Strict Framework Isolation:** Zero `import SwiftUI`, `import HealthKit`, `import SwiftData`, `import CoreML`, `import OSLog`, or `import FoundationModels`. Only `Foundation` is allowed.
 * **Determinism Invariant:** Zero calling `Date()`, `Date.now`, or `Calendar.current` inside `RunalystCore/`. All time boundaries must be passed in explicitly as epoch seconds (`TimeInterval`) or discrete `DateInterval` ranges.
-* **Mass Ceiling (< 500 LOC per Ingot):** No single `.swift` file inside `RunalystCore/Sources` may exceed 500 lines of code.
-* **The Anti-Golfing Rule:** When a module approaches 500 LOC, split cohesive logic cleanly into a companion `<Module>+Extension.swift` file (e.g., `DrillScheduleCore+Breakdown.swift`, `DrillPatternCore+Extended.swift`, `PhysiologicalDiagnosisCore+Takeaways.swift`). **Never code-golf, compress formatting, delete existing edge-case guards, or make risky structural cuts just to squeeze under 500 lines.**
+* **Modularity Guideline (~500 LOC Soft Target — Never a Hard Rule):** Aim to keep `.swift` files around ~500 lines of code where natural, but **500 LOC is a soft guideline, never a hard rule or build-failing limit**.
+* **The Anti-Golfing Rule:** Correctness, clarity, and preserving edge-case guards always outrank line count. When a module grows large, you may split cohesive responsibilities into a companion `<Module>+Extension.swift` file, **never code-golf, compress formatting, delete existing edge-case guards, or make risky structural cuts just to hit a line count target.**
 
 ### Law 2: Reverse Air-Gap & Hollow View / Display Modal Doctrine (`Runalyst/`)
 * **Hollow Views & Modals:** SwiftUI views (`Runalyst/Views/`), modal presentation sheets (`DrillReadout.swift`), and workout bridges (`PreRunDrill.swift`) are pure read-only renderers and `WorkoutKit` mappers over immutable `RunalystCore` structs (`DrillScheduleCore`, `PhysiologicalDiagnosisCore`, `SessionSynthesisCore`, `SessionHorizonCore`).
