@@ -588,9 +588,9 @@ extension RunRecord {
         MilestoneRunSample(
             id: id,
             date: date,
-            totalDistanceMeters: totalDistanceMeters,
-            durationSeconds: duration,
-            workingAvgPace: workingAvgPace,
+            totalDistanceMeters: effectiveWorkingDistanceMeters,
+            durationSeconds: effectiveWorkingDurationSeconds,
+            workingAvgPace: effectiveWorkingAvgPace,
             workingAvgCadence: workingAvgCadence,
             efficiencyFactor: efficiencyFactor
         )

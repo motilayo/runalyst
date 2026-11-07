@@ -54,6 +54,64 @@ struct LifetimeMilestonesCoreTests {
         }
     }
 
+    @Test("Evaluating 5K Milestone selects fastest 5K-tier run over longer or out-of-bracket runs")
+    func testEvaluatingFiveKSelectsFastestTierRun() {
+        let runFastFiveKID = UUID()
+        let runSlowLongerFiveKID = UUID()
+        let runTenKID = UUID()
+        let refDate = Date(timeIntervalSince1970: 1_700_000_000)
+
+        // 6.40 km at pace 300 s/km (5:00/km) - fastest within 5K bracket [5000m, 10000m)
+        let fastFiveK = MilestoneRunSample(
+            id: runFastFiveKID,
+            date: refDate.addingTimeInterval(-86400 * 3),
+            totalDistanceMeters: 6400.0,
+            durationSeconds: 1920.0,
+            workingAvgPace: 300.0,
+            workingAvgCadence: 168.0
+        )
+        // 9.64 km at pace 340 s/km (5:40/km) - longer within 5K bracket, but slower
+        let slowLongerFiveK = MilestoneRunSample(
+            id: runSlowLongerFiveKID,
+            date: refDate.addingTimeInterval(-86400 * 2),
+            totalDistanceMeters: 9640.0,
+            durationSeconds: 3277.6,
+            workingAvgPace: 340.0,
+            workingAvgCadence: 160.0
+        )
+        // 12.00 km at pace 290 s/km (4:50/km) - faster pace, but belongs to 10K+ bracket (>= 10,000m)
+        let tenKRun = MilestoneRunSample(
+            id: runTenKID,
+            date: refDate.addingTimeInterval(-86400 * 1),
+            totalDistanceMeters: 12_000.0,
+            durationSeconds: 3480.0,
+            workingAvgPace: 290.0,
+            workingAvgCadence: 172.0
+        )
+
+        let summary = LifetimeMilestonesCore.evaluate(samples: [fastFiveK, slowLongerFiveK, tenKRun])
+        let fiveKBadge = summary.badges.first { $0.identifier == .fiveK }
+        let tenKBadge = summary.badges.first { $0.identifier == .tenK }
+
+        #expect(fiveKBadge != nil)
+        if let fiveKBadge {
+            #expect(fiveKBadge.isUnlocked == true)
+            #expect(fiveKBadge.timesEarnedCount == 3)
+            #expect(fiveKBadge.qualifyingRunID == runFastFiveKID)
+            #expect(fiveKBadge.qualifyingDistanceMeters == 6400.0)
+            #expect(fiveKBadge.earnedMetricSubtitle(useMetric: true) == "6.40 km")
+        }
+
+        #expect(tenKBadge != nil)
+        if let tenKBadge {
+            #expect(tenKBadge.isUnlocked == true)
+            #expect(tenKBadge.timesEarnedCount == 1)
+            #expect(tenKBadge.qualifyingRunID == runTenKID)
+            #expect(tenKBadge.qualifyingDistanceMeters == 12_000.0)
+            #expect(tenKBadge.earnedMetricSubtitle(useMetric: true) == "12.00 km")
+        }
+    }
+
     @Test("Evaluating locked 100K Century Volume badge progress and metric subtitle")
     func testEvaluatingLockedCenturyVolumeProgress() {
         let refDate = Date(timeIntervalSince1970: 1_700_000_000)

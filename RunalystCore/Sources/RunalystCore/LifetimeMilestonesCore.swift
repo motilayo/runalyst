@@ -168,17 +168,17 @@ public enum LifetimeMilestonesCore {
 
         // 5K Qualifying
         let qualifyingFiveKRuns = samples.filter { $0.totalDistanceMeters >= 5000.0 }
-        let bestFiveKRun = qualifyingFiveKRuns.max(by: { $0.totalDistanceMeters < $1.totalDistanceMeters }) ?? longestRun
+        let bestFiveKRun = selectBestTierRun(from: qualifyingFiveKRuns, upperBoundMeters: 10_000.0, fallback: longestRun)
         let isFiveKUnlocked = maxRunKm >= 5.0
 
         // 10K Qualifying
         let qualifyingTenKRuns = samples.filter { $0.totalDistanceMeters >= 10_000.0 }
-        let bestTenKRun = qualifyingTenKRuns.max(by: { $0.totalDistanceMeters < $1.totalDistanceMeters }) ?? longestRun
+        let bestTenKRun = selectBestTierRun(from: qualifyingTenKRuns, upperBoundMeters: 21_097.5, fallback: longestRun)
         let isTenKUnlocked = maxRunKm >= 10.0
 
         // Half Marathon Qualifying
         let qualifyingHalfMarathonRuns = samples.filter { $0.totalDistanceMeters >= 21_097.5 }
-        let bestHalfMarathonRun = qualifyingHalfMarathonRuns.max(by: { $0.totalDistanceMeters < $1.totalDistanceMeters }) ?? longestRun
+        let bestHalfMarathonRun = selectBestTierRun(from: qualifyingHalfMarathonRuns, upperBoundMeters: nil, fallback: longestRun)
         let isHalfMarathonUnlocked = maxRunKm >= 21.1 || longestMeters >= 21_097.5
 
         // Rhythm Master Qualifying
@@ -355,5 +355,26 @@ public enum LifetimeMilestonesCore {
             peakEfficiencyFactor: peakEF,
             badges: badges
         )
+    }
+
+    private static func selectBestTierRun(
+        from qualifyingRuns: [MilestoneRunSample],
+        upperBoundMeters: Double?,
+        fallback: MilestoneRunSample?
+    ) -> MilestoneRunSample? {
+        let candidatePool: [MilestoneRunSample]
+        if let upperBound = upperBoundMeters {
+            let bracketed = qualifyingRuns.filter { $0.totalDistanceMeters < upperBound }
+            candidatePool = bracketed.isEmpty ? qualifyingRuns : bracketed
+        } else {
+            candidatePool = qualifyingRuns
+        }
+
+        let validPaceRuns = candidatePool.filter { $0.workingAvgPace > 0.0 }
+        if let fastest = validPaceRuns.min(by: { $0.workingAvgPace < $1.workingAvgPace }) {
+            return fastest
+        }
+
+        return candidatePool.min(by: { $0.totalDistanceMeters < $1.totalDistanceMeters }) ?? fallback
     }
 }
