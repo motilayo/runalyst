@@ -381,7 +381,7 @@ struct PrescribedSessionCardView: View {
             .trimmingCharacters(in: .whitespaces)
         if !raw.isEmpty {
             if raw.contains("m") || raw.contains("s") {
-                return raw
+                return raw.replacingOccurrences(of: " min", with: "m")
             } else if let mins = Int(raw) {
                 return "\(mins)m"
             }

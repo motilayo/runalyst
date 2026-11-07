@@ -17,8 +17,10 @@ public enum DrillDuration: Int, CaseIterable, Sendable, Codable {
     }
 
     /// Resolves an integer minute count to the closest canonical DrillDuration using minimum distance.
+    /// Note: 7 and 8 minute prescriptions represent trimmed 10-minute drills, and map to .tenMinutes.
     public static func nearest(toMinutes raw: Int) -> DrillDuration {
         if let exact = DrillDuration(rawValue: raw) { return exact }
+        if raw >= 7 && raw <= 8 { return .tenMinutes }
         return allCases.min(by: { abs($0.rawValue - raw) < abs($1.rawValue - raw) }) ?? .thirtyMinutes
     }
 }

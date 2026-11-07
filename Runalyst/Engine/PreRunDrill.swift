@@ -105,6 +105,8 @@ struct PreRunDrill: Sendable {
             return 5.0
         } else if id == .aerobicFlush || id == .recoveryJog {
             return 0.0
+        } else if (id == .cadencePyramids || id == .rhythmIntervals) && duration == .tenMinutes && readinessState == .acuteFatigue {
+            return 1.5
         } else {
             return duration == .fiveMinutes ? 1.0 : (duration == .tenMinutes ? 2.0 : ((duration == .thirtyMinutes || duration == .thirtyFiveMinutes || duration == .fortyMinutes || duration == .fiftyMinutes) ? 4.0 : 3.0))
         }
@@ -206,6 +208,8 @@ struct PreRunDrill: Sendable {
             return 0.0
         } else if id == .zone2Run {
             return duration == .fiveMinutes ? 0.0 : (duration == .tenMinutes ? 2.0 : ((duration == .thirtyMinutes || duration == .thirtyFiveMinutes || duration == .fortyMinutes || duration == .fiftyMinutes) ? 5.0 : 2.0))
+        } else if (id == .cadencePyramids || id == .rhythmIntervals) && duration == .tenMinutes && readinessState == .acuteFatigue {
+            return 3.0
         } else {
             // Cool-down is anchored to the standard geometry so a readiness-reduced session
             // becomes shorter instead of padding an oversized cool-down.
@@ -343,7 +347,7 @@ struct PreRunDrill: Sendable {
         return parts.joined(separator: " • ")
     }
 
-    /// Formatted duration string for card headers (e.g. "7m 30s drill (Trimmed from 10 min)" or "10 min drill").
+    /// Formatted duration string for card headers (e.g. "7m drill (Trimmed from 10 min)" or "10 min drill").
     var dynamicDurationTitle: String {
         let totalSec = totalPhasesDurationSeconds
         let minutes = totalSec / 60

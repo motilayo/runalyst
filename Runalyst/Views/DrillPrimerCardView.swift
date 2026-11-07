@@ -39,7 +39,7 @@ struct DrillCardConfig: Sendable {
         self.customTarget = customTarget
         self.categoryLabel = categoryLabel
         self.canChangeDuration = canChangeDuration
-        self.lockedDuration = lockedDuration
+        self.lockedDuration = lockedDuration ?? (lockedDurationMinutes.map(DrillDuration.nearest))
         self.lockedDurationMinutes = lockedDurationMinutes
         self.readinessState = readinessState
         self.customMetrics = customMetrics
@@ -77,7 +77,7 @@ struct DrillPrimerCardView: View {
         self.baselineCadence = baselineCadence
         self.onPreview = onPreview
         self.onStart = onStart
-        self._selectedDuration = State(initialValue: config.lockedDuration ?? drillId.defaultDuration)
+        self._selectedDuration = State(initialValue: config.lockedDuration ?? (config.lockedDurationMinutes.map(DrillDuration.nearest) ?? drillId.defaultDuration))
     }
 
     init(
@@ -110,7 +110,13 @@ struct DrillPrimerCardView: View {
         if config.canChangeDuration {
             return selectedDuration
         }
-        return config.lockedDuration ?? drillId.defaultDuration
+        if let locked = config.lockedDuration {
+            return locked
+        }
+        if let mins = config.lockedDurationMinutes {
+            return DrillDuration.nearest(toMinutes: mins)
+        }
+        return drillId.defaultDuration
     }
 
     private var effectiveTargetCadence: String? {

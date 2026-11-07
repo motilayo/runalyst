@@ -347,16 +347,22 @@ struct WorkoutsView: View {
 
     private func openPrimerReadout(for session: PrescribedDailySession) {
         let state = session.resolvedReadinessState
-        let primerDurationMinutes = (session.isTrimmed || (session.primerDurationMinutes >= 7 && session.primerDurationMinutes <= 8))
-            ? session.primerDrillId.defaultDuration.rawValue
-            : session.primerDurationMinutes
+        let primerDuration: DrillDuration = {
+            if session.isTrimmed {
+                return session.primerDrillId.defaultDuration
+            }
+            if session.primerDurationMinutes >= 7 && session.primerDurationMinutes <= 8 {
+                return .tenMinutes
+            }
+            return DrillDuration.nearest(toMinutes: session.primerDurationMinutes)
+        }()
         let dto = DrillPrescriptionDTO(
             title: session.primerDrillTitle,
             preRunDrillId: session.primerDrillId.rawValue,
             purpose: session.groundedRationale,
             targetCadence: session.primerTargetCadence,
             previousCadence: session.athleteBaselineCadence ?? session.cadenceFloor,
-            durationMinutes: primerDurationMinutes,
+            durationMinutes: primerDuration.rawValue,
             hapticMode: "On",
             readinessState: state == .productive ? nil : state.rawValue,
             isIndoor: preferredWorkoutIsIndoor

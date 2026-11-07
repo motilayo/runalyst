@@ -624,7 +624,7 @@ enum SessionSynthesisEngine {
             primerDrillId = .cadencePyramids
             primerTitle = "Cadence Pyramids"
             primerWork = "2 x 30 sec work • 45 sec walk • Moderate / Zone 3"
-            primerDuration = "7m 30s"
+            primerDuration = "7 min"
             isTrimmed = true
         } else if readiness.state == .deload {
             readinessStatus = "Deload Week (Consolidation)"

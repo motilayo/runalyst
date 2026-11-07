@@ -122,7 +122,7 @@ final class SessionSynthesisEngineTests: XCTestCase {
         switch state {
         case .preRun(let session):
             XCTAssertTrue(session.isTrimmed, "Drill should be trimmed to protect fatigued legs after cardiac drift")
-            XCTAssertEqual(session.primerPhasesDuration, "7m 30s", "Trimmed drill must display clean 7m 30s")
+            XCTAssertEqual(session.primerPhasesDuration, "7 min", "Trimmed drill must display clean 7 min")
             XCTAssertFalse(session.primerTargetCadence.contains("(Adapted)"), "Target cadence must be clean without (Adapted)")
             XCTAssertTrue(
                 session.sessionTitle.contains("Recovery") || session.sessionTitle.contains("Base") || session.sessionTitle.contains("Aerobic"),
@@ -183,7 +183,7 @@ final class SessionSynthesisEngineTests: XCTestCase {
                 "Tomorrow should be downgraded to an active recovery flush after today's fartlek"
             )
             XCTAssertTrue(tomorrowSession.isTrimmed, "Tomorrow's drill must be trimmed to protect legs")
-            XCTAssertEqual(tomorrowSession.primerPhasesDuration, "7m 30s")
+            XCTAssertEqual(tomorrowSession.primerPhasesDuration, "7 min")
             XCTAssertFalse(tomorrowSession.primerTargetCadence.contains("(Adapted)"))
             XCTAssertTrue(tomorrowSession.hrCap.contains("< 135 BPM") || tomorrowSession.hrCap.contains("< 145 BPM"))
 
@@ -414,8 +414,8 @@ final class SessionSynthesisEngineTests: XCTestCase {
         )
 
         let item = ActiveDrillReadoutItem.adaptive(dto: dto, readiness: .productive)
-        XCTAssertEqual(item.readout.totalDurationSeconds, 450, "Trimmed 10-min Cadence Pyramids must be 7m 30s (450s), never 15m")
-        XCTAssertEqual(item.readout.formattedDuration, "7m 30s")
+        XCTAssertEqual(item.readout.totalDurationSeconds, 420, "Trimmed 10-min Cadence Pyramids must be 7 min (420s), never 15m")
+        XCTAssertEqual(item.readout.formattedDuration, "7 min")
         XCTAssertEqual(item.dto.targetCadence, "155-161")
         XCTAssertEqual(item.dto.isIndoor, true)
 
@@ -428,7 +428,7 @@ final class SessionSynthesisEngineTests: XCTestCase {
             isIndoor: true
         )
         XCTAssertEqual(drill.effectiveTargetCadence, 155...161)
-        XCTAssertEqual(drill.totalPhasesDurationSeconds, 450)
+        XCTAssertEqual(drill.totalPhasesDurationSeconds, 420)
         XCTAssertEqual(drill.coolDownDurationMinutes, 3.0)
     }
 

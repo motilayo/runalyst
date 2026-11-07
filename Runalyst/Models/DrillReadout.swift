@@ -223,7 +223,7 @@ struct DrillReadout: Sendable, Identifiable {
             case .fiveMinutes:
                 breakdownText = "You’ll start with a 1-minute easy warm-up jog. This is followed by 3 sets of 20-second high cadence intervals, paired with 30 seconds of walk recovery."
             case .tenMinutes:
-                breakdownText = "You’ll start with a 2-minute easy jog warm-up. This is followed by 4 sets of intervals where you run at high cadence for 30 seconds, followed by 45 seconds of walk recovery to reset."
+                breakdownText = "You’ll start with a 2-minute easy jog warm-up. This is followed by 4 sets of intervals where you run at high cadence for 30 seconds, followed by 45 seconds of walk recovery to reset. You’ll finish with a 3-minute cool-down."
             case .fifteenMinutes:
                 breakdownText = "You’ll start with a 3-minute easy jog warm-up. This is followed by 4 sets of 1-minute high cadence intervals, paired with 90 seconds of walk recovery."
             case .twentyMinutes:
@@ -516,6 +516,7 @@ extension ActiveDrillReadoutItem {
         let drillId = standardDTO.preRunDrillId.flatMap(PreRunDrillId.init(rawValue:)) ?? .strides
         let duration: DrillDuration = {
             if let raw = standardDTO.durationMinutes {
+                if raw >= 7 && raw <= 8 { return .tenMinutes }
                 return DrillDuration.nearest(toMinutes: raw)
             }
             return drillId.defaultDuration
@@ -600,6 +601,7 @@ extension ActiveDrillReadoutItem {
         let drillId = dto.preRunDrillId.flatMap(PreRunDrillId.init(rawValue:)) ?? .strides
         let duration: DrillDuration = {
             if let raw = dto.durationMinutes {
+                if raw >= 7 && raw <= 8 { return .tenMinutes }
                 return DrillDuration.nearest(toMinutes: raw)
             }
             return drillId.defaultDuration

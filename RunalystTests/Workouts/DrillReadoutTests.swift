@@ -223,19 +223,19 @@ final class DrillReadoutTests: XCTestCase {
         )
 
         let readout = activeItem.readout
-        // Phase math: 2m warm-up (120s) + 2 x (30s work + 45s walk = 150s) + 3m cool-down (180s) = 450s = 7m 30s
-        XCTAssertEqual(readout.totalDurationSeconds, 450)
-        XCTAssertEqual(readout.formattedDuration, "7m 30s")
+        // Phase math: 1.5m warm-up (90s) + 2 x (30s work + 45s walk = 150s) + 3m cool-down (180s) = 420s = 7 min
+        XCTAssertEqual(readout.totalDurationSeconds, 420)
+        XCTAssertEqual(readout.formattedDuration, "7 min")
 
-        // Must display mathematically exact 7m 30s in subtitle, NEVER rounding up to 8 min
-        XCTAssertTrue(readout.subtitle.contains("7m 30s"), "Subtitle must contain 7m 30s")
+        // Must display mathematically exact 7 min in subtitle, NEVER rounding up to 8 min
+        XCTAssertTrue(readout.subtitle.contains("7 min"), "Subtitle must contain 7 min")
         XCTAssertFalse(readout.subtitle.contains("8 min"), "Subtitle must never display rounded-up 8 min")
         // Overview states the drill purpose without redundant duration
         XCTAssertEqual(
             readout.overview,
             "In this drill, you will complete a cadence progression to eliminate overstriding and protect your knees."
         )
-        XCTAssertFalse(readout.overview.contains("7m 30s"), "Overview must not contain duration")
+        XCTAssertFalse(readout.overview.contains("7 min"), "Overview must not contain duration")
         XCTAssertFalse(readout.overview.contains("10-minute"), "Overview must not contain duration")
     }
 
