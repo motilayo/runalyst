@@ -28,6 +28,16 @@ else
     echo "✅ [PURE] Zero wall-clock time or dynamic Calendar found in Core."
 fi
 
+# 1c. Reverse Air-Gap Audit (Hollow Views & Display Modals)
+echo "🛡️  [Gate 1c] Checking Reverse Air-Gap (Zero Leaked Domain Math in Views/Modals)..."
+LEAKED_MATH_PATTERN="percentZone4[[:space:]]*>|workingAvgHeartRate[[:space:]]*>[[:space:]]*\(|raw[[:space:]]*>=[[:space:]]*7[[:space:]]*&&[[:space:]]*raw[[:space:]]*<=[[:space:]]*8|isRec[[:space:]]*\?[[:space:]]*135[[:space:]]*:[[:space:]]*144"
+if grep -rnE "$LEAKED_MATH_PATTERN" Runalyst/Views Runalyst/Models --include=\*.swift; then
+    echo "🚨 [IMPURE] Domain threshold or duration math leaked into Runalyst/Views or Runalyst/Models! Delegate to RunalystCore."
+    ASSAY_PASSED=false
+else
+    echo "✅ [PURE] Views and Display Modals respect Reverse Air-Gap (Hollow Renderers)."
+fi
+
 # 2. Syntax & Lint Audit
 echo "🧹 [Gate 2] Running strict SwiftLint..."
 if swiftlint --strict "$CORE_DIR"; then
