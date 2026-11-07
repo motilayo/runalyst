@@ -162,8 +162,9 @@ public enum LifetimeMilestonesCore {
         let totalKm = totalDistance / 1000.0
         let maxRunKm = longestMeters / 1000.0
 
-        let earliestRun = samples.min(by: { $0.date < $1.date })
-        let mostRecentRun = samples.max(by: { $0.date < $1.date })
+        let chronologicalRuns = samples.sorted { $0.date < $1.date }
+        let earliestRun = chronologicalRuns.first
+        let mostRecentRun = chronologicalRuns.last
         let longestRun = samples.max(by: { $0.totalDistanceMeters < $1.totalDistanceMeters })
 
         // 5K Qualifying
@@ -196,6 +197,22 @@ public enum LifetimeMilestonesCore {
         let isCenturyUnlocked = totalKm >= 100.0
         let isFiveHundredKUnlocked = totalKm >= 500.0
         let isConsistencyUnlocked = count >= 10
+
+        let centuryCount = Int(totalKm / 100.0)
+        let centuryClinchingRun = isCenturyUnlocked
+            ? clinchingVolumeRun(in: chronologicalRuns, thresholdMeters: Double(max(1, centuryCount)) * 100_000.0)
+            : nil
+
+        let fiveHundredCount = Int(totalKm / 500.0)
+        let fiveHundredClinchingRun = isFiveHundredKUnlocked
+            ? clinchingVolumeRun(in: chronologicalRuns, thresholdMeters: Double(max(1, fiveHundredCount)) * 500_000.0)
+            : nil
+
+        let consistencyEarnedCount = count / 10
+        let consistencyClinchingIndex = max(0, (consistencyEarnedCount * 10) - 1)
+        let consistencyClinchingRun = (isConsistencyUnlocked && consistencyClinchingIndex < chronologicalRuns.count)
+            ? chronologicalRuns[consistencyClinchingIndex]
+            : mostRecentRun
 
         let badges: [MilestoneBadgeSpec] = [
             MilestoneBadgeSpec(
@@ -270,13 +287,13 @@ public enum LifetimeMilestonesCore {
                 isUnlocked: isCenturyUnlocked,
                 accentColorName: "cyan",
                 medallionShape: .splitHorizonDistance,
-                timesEarnedCount: Int(totalKm / 100.0),
+                timesEarnedCount: centuryCount,
                 progressFraction: min(1.0, max(0.0, totalKm / 100.0)),
-                qualifyingRunID: isCenturyUnlocked ? mostRecentRun?.id : nil,
-                qualifyingDate: isCenturyUnlocked ? mostRecentRun?.date : nil,
+                qualifyingRunID: centuryClinchingRun?.id,
+                qualifyingDate: centuryClinchingRun?.date,
                 qualifyingDistanceMeters: totalDistance,
-                qualifyingDurationSeconds: isCenturyUnlocked ? mostRecentRun?.durationSeconds : nil,
-                qualifyingCadenceSPM: isCenturyUnlocked ? mostRecentRun?.workingAvgCadence : nil
+                qualifyingDurationSeconds: isCenturyUnlocked ? centuryClinchingRun?.durationSeconds : nil,
+                qualifyingCadenceSPM: isCenturyUnlocked ? centuryClinchingRun?.workingAvgCadence : nil
             ),
             MilestoneBadgeSpec(
                 identifier: .fiveHundredK,
@@ -286,13 +303,13 @@ public enum LifetimeMilestonesCore {
                 isUnlocked: isFiveHundredKUnlocked,
                 accentColorName: "indigo",
                 medallionShape: .splitHorizonDistance,
-                timesEarnedCount: Int(totalKm / 500.0),
+                timesEarnedCount: fiveHundredCount,
                 progressFraction: min(1.0, max(0.0, totalKm / 500.0)),
-                qualifyingRunID: isFiveHundredKUnlocked ? mostRecentRun?.id : nil,
-                qualifyingDate: isFiveHundredKUnlocked ? mostRecentRun?.date : nil,
+                qualifyingRunID: fiveHundredClinchingRun?.id,
+                qualifyingDate: fiveHundredClinchingRun?.date,
                 qualifyingDistanceMeters: totalDistance,
-                qualifyingDurationSeconds: isFiveHundredKUnlocked ? mostRecentRun?.durationSeconds : nil,
-                qualifyingCadenceSPM: isFiveHundredKUnlocked ? mostRecentRun?.workingAvgCadence : nil
+                qualifyingDurationSeconds: isFiveHundredKUnlocked ? fiveHundredClinchingRun?.durationSeconds : nil,
+                qualifyingCadenceSPM: isFiveHundredKUnlocked ? fiveHundredClinchingRun?.workingAvgCadence : nil
             ),
             MilestoneBadgeSpec(
                 identifier: .rhythmMaster,
@@ -335,13 +352,13 @@ public enum LifetimeMilestonesCore {
                 isUnlocked: isConsistencyUnlocked,
                 accentColorName: "green",
                 medallionShape: .hexagonStreak,
-                timesEarnedCount: count / 10,
+                timesEarnedCount: consistencyEarnedCount,
                 progressFraction: min(1.0, Double(count) / 10.0),
-                qualifyingRunID: isConsistencyUnlocked ? mostRecentRun?.id : nil,
-                qualifyingDate: isConsistencyUnlocked ? mostRecentRun?.date : nil,
-                qualifyingDistanceMeters: isConsistencyUnlocked ? mostRecentRun?.totalDistanceMeters : nil,
-                qualifyingDurationSeconds: isConsistencyUnlocked ? mostRecentRun?.durationSeconds : nil,
-                qualifyingCadenceSPM: isConsistencyUnlocked ? mostRecentRun?.workingAvgCadence : nil
+                qualifyingRunID: isConsistencyUnlocked ? consistencyClinchingRun?.id : nil,
+                qualifyingDate: isConsistencyUnlocked ? consistencyClinchingRun?.date : nil,
+                qualifyingDistanceMeters: isConsistencyUnlocked ? consistencyClinchingRun?.totalDistanceMeters : nil,
+                qualifyingDurationSeconds: isConsistencyUnlocked ? consistencyClinchingRun?.durationSeconds : nil,
+                qualifyingCadenceSPM: isConsistencyUnlocked ? consistencyClinchingRun?.workingAvgCadence : nil
             )
         ]
 
@@ -376,5 +393,19 @@ public enum LifetimeMilestonesCore {
         }
 
         return candidatePool.min(by: { $0.totalDistanceMeters < $1.totalDistanceMeters }) ?? fallback
+    }
+
+    private static func clinchingVolumeRun(
+        in chronologicalRuns: [MilestoneRunSample],
+        thresholdMeters: Double
+    ) -> MilestoneRunSample? {
+        var accumulated = 0.0
+        for run in chronologicalRuns {
+            accumulated += run.totalDistanceMeters
+            if accumulated >= thresholdMeters {
+                return run
+            }
+        }
+        return chronologicalRuns.last
     }
 }

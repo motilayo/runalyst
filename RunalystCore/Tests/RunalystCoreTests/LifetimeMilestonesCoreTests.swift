@@ -241,16 +241,132 @@ struct LifetimeMilestonesCoreTests {
         #expect(fiveKBadge != nil)
         if let fiveKBadge {
             let proseWithDate = fiveKBadge.earnedNarrativeProse(useMetric: true, formattedDate: "2026-10-09")
-            #expect(proseWithDate == "You earned this award by logging a single run of at least 5 km. Best qualifying run: 6.42 km on 2026-10-09.")
+            #expect(proseWithDate == "You earned this award by completing a 5K workout. Fastest 5K-tier run: 6.42 km on 2026-10-09.")
 
             let proseWithoutDate = fiveKBadge.earnedNarrativeProse(useMetric: true, formattedDate: nil)
-            #expect(proseWithoutDate == "You earned this award by logging a single run of at least 5 km. Best qualifying run: 6.42 km.")
+            #expect(proseWithoutDate == "You earned this award by completing a 5K workout. Fastest 5K-tier run: 6.42 km.")
         }
 
         #expect(tenKBadge != nil)
         if let tenKBadge {
             let lockedProse = tenKBadge.earnedNarrativeProse(useMetric: true, formattedDate: nil)
             #expect(lockedProse == "Complete a single run of at least 10 km to unlock this award. Current progress: 64%.")
+        }
+    }
+
+    @Test("Clinching workout selection and workout card metric formatting for cumulative milestones")
+    func testClinchingRunSelectionAndWorkoutCardMetricText() {
+        let refDate = Date(timeIntervalSince1970: 1_700_000_000)
+        var samples: [MilestoneRunSample] = []
+
+        let distances: [Double] = [
+            10_000.0, // Run 0 (10 km)
+            15_000.0, // Run 1 (25 km total)
+            20_000.0, // Run 2 (45 km total)
+            25_000.0, // Run 3 (70 km total)
+            35_000.0, // Run 4 (105 km total -> clinches 100K Century)
+            5_000.0,  // Run 5 (110 km total)
+            5_000.0,  // Run 6 (115 km total)
+            5_000.0,  // Run 7 (120 km total)
+            5_000.0,  // Run 8 (125 km total)
+            5_420.0,  // Run 9 (130.42 km total -> 10th run, clinches Consistency)
+            6_000.0,  // Run 10 (136.42 km total)
+            7_000.0   // Run 11 (143.42 km total -> most recent run)
+        ]
+
+        var runIDs: [UUID] = []
+        for (index, dist) in distances.enumerated() {
+            let id = UUID()
+            runIDs.append(id)
+            samples.append(
+                MilestoneRunSample(
+                    id: id,
+                    date: refDate.addingTimeInterval(Double(index * 86400)),
+                    totalDistanceMeters: dist,
+                    durationSeconds: dist * 0.3,
+                    workingAvgPace: 300.0,
+                    workingAvgCadence: 168.0
+                )
+            )
+        }
+
+        let shuffled = samples.shuffled()
+        let summary = LifetimeMilestonesCore.evaluate(samples: shuffled)
+        let badgeMap = Dictionary(uniqueKeysWithValues: summary.badges.map { ($0.identifier, $0) })
+
+        let centuryBadge = badgeMap[.centuryVolume]
+        #expect(centuryBadge != nil)
+        if let centuryBadge {
+            #expect(centuryBadge.isUnlocked == true)
+            #expect(centuryBadge.timesEarnedCount == 1)
+            #expect(centuryBadge.qualifyingRunID == runIDs[4])
+            #expect(centuryBadge.qualifyingDistanceMeters == 143_420.0)
+            #expect(centuryBadge.earnedMetricSubtitle(useMetric: true) == "143.4 km")
+            #expect(centuryBadge.workoutCardMetricText(useMetric: true, workoutDistanceMeters: distances[4]) == "35.00 km")
+            #expect(centuryBadge.workoutCardMetricText(useMetric: false, workoutDistanceMeters: distances[4]) == "21.75 mi")
+            #expect(centuryBadge.earnedNarrativeProse(useMetric: true, formattedDate: nil) ==
+                "You earned this award by crossing 100 km of lifetime running volume (143.4 km lifetime total).")
+        }
+
+        let consistencyBadge = badgeMap[.consistency]
+        #expect(consistencyBadge != nil)
+        if let consistencyBadge {
+            #expect(consistencyBadge.isUnlocked == true)
+            #expect(consistencyBadge.timesEarnedCount == 1)
+            #expect(consistencyBadge.qualifyingRunID == runIDs[9])
+            #expect(consistencyBadge.qualifyingDistanceMeters == 5420.0)
+            #expect(consistencyBadge.earnedMetricSubtitle(useMetric: true) == "10+ Runs")
+            #expect(consistencyBadge.workoutCardMetricText(useMetric: true, workoutDistanceMeters: distances[9]) == "5.42 km")
+            #expect(consistencyBadge.workoutCardMetricText(useMetric: true, workoutDistanceMeters: nil) == "5.42 km")
+            #expect(consistencyBadge.workoutCardMetricText(useMetric: false, workoutDistanceMeters: distances[9]) == "3.37 mi")
+            #expect(consistencyBadge.earnedNarrativeProse(useMetric: true, formattedDate: nil) ==
+                "You earned this award by completing your 10th structured running workout.")
+        }
+    }
+
+    @Test("Multi-earned cumulative milestones narrative copy and clinching runs")
+    func testMultiEarnedCumulativeMilestones() {
+        let refDate = Date(timeIntervalSince1970: 1_700_000_000)
+        var samples: [MilestoneRunSample] = []
+        var runIDs: [UUID] = []
+
+        for index in 0..<25 {
+            let id = UUID()
+            runIDs.append(id)
+            samples.append(
+                MilestoneRunSample(
+                    id: id,
+                    date: refDate.addingTimeInterval(Double(index * 86400)),
+                    totalDistanceMeters: 25_000.0,
+                    durationSeconds: 7500.0,
+                    workingAvgPace: 300.0,
+                    workingAvgCadence: 170.0
+                )
+            )
+        }
+
+        let summary = LifetimeMilestonesCore.evaluate(samples: samples)
+        let badgeMap = Dictionary(uniqueKeysWithValues: summary.badges.map { ($0.identifier, $0) })
+
+        if let century = badgeMap[.centuryVolume] {
+            #expect(century.timesEarnedCount == 6)
+            #expect(century.qualifyingRunID == runIDs[23])
+            #expect(century.earnedNarrativeProse(useMetric: true, formattedDate: nil) ==
+                "You earn this award for every 100 km of lifetime running volume. You crossed 600 km (625.0 km lifetime total).")
+        }
+
+        if let consistency = badgeMap[.consistency] {
+            #expect(consistency.timesEarnedCount == 2)
+            #expect(consistency.qualifyingRunID == runIDs[19])
+            #expect(consistency.earnedNarrativeProse(useMetric: true, formattedDate: nil) ==
+                "You earn this award for every 10 structured running workouts you complete. You logged your 20th workout.")
+        }
+
+        if let titan = badgeMap[.fiveHundredK] {
+            #expect(titan.timesEarnedCount == 1)
+            #expect(titan.qualifyingRunID == runIDs[19])
+            #expect(titan.earnedNarrativeProse(useMetric: true, formattedDate: nil) ==
+                "You earned this award by crossing 500 km of lifetime running volume (625.0 km lifetime total).")
         }
     }
 

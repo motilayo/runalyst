@@ -119,6 +119,18 @@ extension MilestoneBadgeSpec {
         }
     }
 
+    public func workoutCardMetricText(useMetric: Bool, workoutDistanceMeters: Double?) -> String {
+        switch identifier {
+        case .rhythmMaster, .aerobicEngine:
+            return earnedMetricSubtitle(useMetric: useMetric)
+        default:
+            let meters = workoutDistanceMeters ?? qualifyingDistanceMeters ?? 0.0
+            let val = useMetric ? (meters / 1000.0) : (meters / 1609.344)
+            let unit = useMetric ? "km" : "mi"
+            return String(format: "%.2f %@", val, unit)
+        }
+    }
+
     public func earnedNarrativeProse(useMetric: Bool, formattedDate: String?) -> String {
         let dateClause: String
         if let formattedDate = formattedDate, !formattedDate.isEmpty {
@@ -134,7 +146,7 @@ extension MilestoneBadgeSpec {
                     let distance = useMetric ? (meters / 1000.0) : (meters / 1609.344)
                     let unit = useMetric ? "km" : "mi"
                     let distStr = String(format: "%.2f %@", distance, unit)
-                    return "You earned this award by recording your first run in Runalyst. First run: \(distStr)\(dateClause)."
+                    return "You earned this award by recording your first run in Runalyst\(dateClause) (\(distStr))."
                 }
                 return "You earned this award by recording your first run in Runalyst\(dateClause)."
 
@@ -142,45 +154,63 @@ extension MilestoneBadgeSpec {
                 let dist = useMetric ? ((qualifyingDistanceMeters ?? 5000.0) / 1000.0) : ((qualifyingDistanceMeters ?? 5000.0) / 1609.344)
                 let unit = useMetric ? "km" : "mi"
                 let distStr = String(format: "%.2f %@", dist, unit)
-                return "You earned this award by logging a single run of at least 5 km. Best qualifying run: \(distStr)\(dateClause)."
+                return "You earned this award by completing a 5K workout. Fastest 5K-tier run: \(distStr)\(dateClause)."
 
             case .tenK:
                 let dist = useMetric ? ((qualifyingDistanceMeters ?? 10_000.0) / 1000.0) : ((qualifyingDistanceMeters ?? 10_000.0) / 1609.344)
                 let unit = useMetric ? "km" : "mi"
                 let distStr = String(format: "%.2f %@", dist, unit)
-                return "You earned this award by logging a single run of at least 10 km. Best qualifying run: \(distStr)\(dateClause)."
+                return "You earned this award by completing a 10K workout. Fastest 10K-tier run: \(distStr)\(dateClause)."
 
             case .halfMarathon:
                 let dist = useMetric ? ((qualifyingDistanceMeters ?? 21_097.5) / 1000.0) : ((qualifyingDistanceMeters ?? 21_097.5) / 1609.344)
                 let unit = useMetric ? "km" : "mi"
                 let distStr = String(format: "%.2f %@", dist, unit)
-                return "You earned this award by completing a 21.1 km endurance effort. Best qualifying run: \(distStr)\(dateClause)."
+                return "You earned this award by completing a 21.1 km half marathon effort. Fastest qualifying run: \(distStr)\(dateClause)."
 
             case .centuryVolume:
                 let dist = useMetric ? ((qualifyingDistanceMeters ?? 100_000.0) / 1000.0) : ((qualifyingDistanceMeters ?? 100_000.0) / 1609.344)
                 let unit = useMetric ? "km" : "mi"
                 let distStr = String(format: "%.1f %@", dist, unit)
                 let targetStr = useMetric ? "100 km" : "62.1 mi"
-                return "You earned this award by accumulating \(targetStr) of total lifetime running volume. Total volume: \(distStr)\(dateClause)."
+                let milestoneTarget = useMetric
+                    ? "\(max(1, timesEarnedCount) * 100) km"
+                    : String(format: "%.1f mi", Double(max(1, timesEarnedCount)) * 62.1371)
+                if timesEarnedCount > 1 {
+                    return "You earn this award for every \(targetStr) of lifetime running volume. You crossed \(milestoneTarget)\(dateClause) (\(distStr) lifetime total)."
+                } else {
+                    return "You earned this award by crossing \(targetStr) of lifetime running volume\(dateClause) (\(distStr) lifetime total)."
+                }
 
             case .fiveHundredK:
                 let dist = useMetric ? ((qualifyingDistanceMeters ?? 500_000.0) / 1000.0) : ((qualifyingDistanceMeters ?? 500_000.0) / 1609.344)
                 let unit = useMetric ? "km" : "mi"
                 let distStr = String(format: "%.1f %@", dist, unit)
                 let targetStr = useMetric ? "500 km" : "310.7 mi"
-                return "You earned this award by accumulating \(targetStr) of total lifetime running volume. Total volume: \(distStr)\(dateClause)."
+                let milestoneTarget = useMetric
+                    ? "\(max(1, timesEarnedCount) * 500) km"
+                    : String(format: "%.1f mi", Double(max(1, timesEarnedCount)) * 310.6856)
+                if timesEarnedCount > 1 {
+                    return "You earn this award for every \(targetStr) of lifetime running volume. You crossed \(milestoneTarget)\(dateClause) (\(distStr) lifetime total)."
+                } else {
+                    return "You earned this award by crossing \(targetStr) of lifetime running volume\(dateClause) (\(distStr) lifetime total)."
+                }
 
             case .rhythmMaster:
                 let cad = Int(round(qualifyingCadenceSPM ?? 170.0))
-                return "You earned this award by maintaining optimal turnover of 170+ SPM. Peak cadence: \(cad) SPM\(dateClause)."
+                return "You earned this award for maintaining an average cadence of 170 SPM or higher. Peak cadence: \(cad) SPM\(dateClause)."
 
             case .aerobicEngine:
                 let efStr = String(format: "%.2f EF", qualifyingEfficiencyFactor ?? 1.35)
-                return "You earned this award by achieving an Efficiency Factor exceeding 1.35 m/beat. Peak efficiency: \(efStr)\(dateClause)."
+                return "You earned this award for achieving an Efficiency Factor of 1.35 or higher. Peak efficiency: \(efStr)\(dateClause)."
 
             case .consistency:
-                let count = max(1, timesEarnedCount) * 10
-                return "You earned this award by logging \(count) or more structured running workouts\(dateClause)."
+                let milestoneWorkoutNumber = max(1, timesEarnedCount) * 10
+                if timesEarnedCount > 1 {
+                    return "You earn this award for every 10 structured running workouts you complete. You logged your \(milestoneWorkoutNumber)th workout\(dateClause)."
+                } else {
+                    return "You earned this award by completing your 10th structured running workout\(dateClause)."
+                }
             }
         } else {
             let pct = Int(round(progressFraction * 100))

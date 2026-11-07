@@ -319,7 +319,7 @@ struct MilestoneAwardDetailSheet: View {
                     .foregroundColor(.primary)
                     .lineLimit(1)
 
-                Text(spec.earnedMetricSubtitle(useMetric: useMetricSystem))
+                Text(spec.workoutCardMetricText(useMetric: useMetricSystem, workoutDistanceMeters: qualifyingRun?.effectiveWorkingDistanceMeters))
                     .font(.system(size: 22, weight: .bold, design: .rounded))
                     .monospacedDigit()
                     .foregroundColor(accentColor)
