@@ -25,9 +25,8 @@
 		30D56F4F440461C12AD5223E /* CoachingInsight.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B51607F39154844B5E46210 /* CoachingInsight.swift */; };
 		31740D413B821056F85765AC /* DrillRecommendation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FC0868FA1D2D6FB2E59A10C /* DrillRecommendation.swift */; };
 		34C493421E7F4ACCB2EE5001 /* PreRunDrillId.swift in Sources */ = {isa = PBXBuildFile; fileRef = A72B03F5BC3D402A96C0C907 /* PreRunDrillId.swift */; };
-		438FD31B3051C867003DEDA5 /* LiveCoachDTOs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 438FD3173051C866003DEDA5 /* LiveCoachDTOs.swift */; };
 		438FD31C3051C867003DEDA5 /* LiveCoachEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 438FD3183051C866003DEDA5 /* LiveCoachEngine.swift */; };
-		438FD31D3051C867003DEDA5 /* WatchConnectivityManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 438FD3193051C866003DEDA5 /* WatchConnectivityManager.swift */; };
+		B2220098D4E5F60718293A98 /* Runalyst/Views/Components/MilestoneAwardDetailSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2220098D4E5F60718293A98 /* Runalyst/Views/Components/MilestoneAwardDetailSheet.swift */; };
 		43D90B67B3C2451D924E0314 /* PreRunDrill.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCBBAC046CE14168A1BB76B0 /* PreRunDrill.swift */; };
 		54A8E7032FED357C324CC7FD /* DrillPatternRecognitionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5319F7CFFB69E39F2B52D9D0 /* DrillPatternRecognitionTests.swift */; };
 		554433221100FFEEDDCCBBAA /* Runalyst/Views/AnimatedLoadingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABBCCDDEEFF001122334455 /* Runalyst/Views/AnimatedLoadingView.swift */; };
@@ -177,9 +176,8 @@
 		35724688B362914BC9EAC058 /* ModelManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ModelManager.swift; path = Runalyst/Engine/ModelManager.swift; sourceTree = SOURCE_ROOT; };
 		376830066BD295E24C449FB2 /* RunRecord.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = RunRecord.swift; path = Runalyst/Models/RunRecord.swift; sourceTree = "<group>"; };
 		3EF4AE46EBF2F38F6B44624C /* RunalystTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RunalystTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		438FD3173051C866003DEDA5 /* LiveCoachDTOs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveCoachDTOs.swift; sourceTree = "<group>"; };
 		438FD3183051C866003DEDA5 /* LiveCoachEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveCoachEngine.swift; sourceTree = "<group>"; };
-		438FD3193051C866003DEDA5 /* WatchConnectivityManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchConnectivityManager.swift; sourceTree = "<group>"; };
+		A2220098D4E5F60718293A98 /* Runalyst/Views/Components/MilestoneAwardDetailSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Runalyst/Views/Components/MilestoneAwardDetailSheet.swift"; sourceTree = SOURCE_ROOT; };
 		496FDE679EF9990CBA052270 /* CoachingEngineDataTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachingEngineDataTests.swift; sourceTree = "<group>"; };
 		52FF9D9245C901D4BDBA1FFB /* RunalystApp.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = RunalystApp.swift; path = Runalyst/RunalystApp.swift; sourceTree = "<group>"; };
 		5319F7CFFB69E39F2B52D9D0 /* DrillPatternRecognitionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrillPatternRecognitionTests.swift; sourceTree = "<group>"; };
@@ -417,9 +415,7 @@
 		438FD31A3051C866003DEDA5 /* Runalyst/LiveCoach */ = {
 			isa = PBXGroup;
 			children = (
-				438FD3173051C866003DEDA5 /* LiveCoachDTOs.swift */,
 				438FD3183051C866003DEDA5 /* LiveCoachEngine.swift */,
-				438FD3193051C866003DEDA5 /* WatchConnectivityManager.swift */,
 			);
 			path = Runalyst/LiveCoach;
 			sourceTree = "<group>";
@@ -499,6 +495,7 @@
 				C1110096D4E5F60718293A96 /* Runalyst/Views/RunDetailView+PillsAndHelpers.swift */,
 				A1110097D4E5F60718293A97 /* Runalyst/Intents/RunalystShortcuts.swift */,
 				A1110098D4E5F60718293A98 /* Runalyst/Views/Components/ChartAudioGraphDescriptors.swift */,
+				A2220098D4E5F60718293A98 /* Runalyst/Views/Components/MilestoneAwardDetailSheet.swift */,
 				A1110022D4E5F60718293A22 /* Runalyst/Views/StatBox.swift */,
 				A1110023D4E5F60718293A23 /* Runalyst/Views/DrillExecutionScorecard.swift */,
 				A1110024D4E5F60718293A24 /* Runalyst/Views/DrillDeckView.swift */,
@@ -717,9 +714,8 @@
 				73A1B2C3D4E5F60718293A43 /* Runalyst/Views/LifetimeMilestonesCard.swift in Sources */,
 				89A1B2C3D4E5F60718293A81 /* Runalyst/Views/OverstrideBiomechanicsView.swift in Sources */,
 				M1N2B3V4C5X6Z7A8S9D0F1G2 /* Runalyst/CoachingEngine/CoachingEngine.swift in Sources */,
-				438FD31B3051C867003DEDA5 /* LiveCoachDTOs.swift in Sources */,
 				438FD31C3051C867003DEDA5 /* LiveCoachEngine.swift in Sources */,
-				438FD31D3051C867003DEDA5 /* WatchConnectivityManager.swift in Sources */,
+				B2220098D4E5F60718293A98 /* Runalyst/Views/Components/MilestoneAwardDetailSheet.swift in Sources */,
 				8A134F81873E70E012F97522 /* TrainingCorrection.swift in Sources */,
 				E3784833987D299F1E0A3301 /* PaceFormatter.swift in Sources */,
 				DEE345D7801E107E3983DDDE /* FramboiseEngine.swift in Sources */,

@@ -2,12 +2,14 @@ import SwiftUI
 import RunalystCore
 
 struct MilestoneBadge: Identifiable {
-    let id: String
-    let title: String
-    let iconName: String
-    let description: String
-    let isUnlocked: Bool
+    let spec: MilestoneBadgeSpec
     let accentColor: Color
+
+    var id: String { spec.id }
+    var title: String { spec.title }
+    var iconName: String { spec.iconName }
+    var description: String { spec.description }
+    var isUnlocked: Bool { spec.isUnlocked }
 }
 
 struct LifetimeMilestonesCard: View {
@@ -69,11 +71,7 @@ struct LifetimeMilestonesCard: View {
     private var milestoneBadges: [MilestoneBadge] {
         recordsSummary.badges.map { spec in
             MilestoneBadge(
-                id: spec.id,
-                title: spec.title,
-                iconName: spec.iconName,
-                description: spec.description,
-                isUnlocked: spec.isUnlocked,
+                spec: spec,
                 accentColor: color(for: spec.accentColorName)
             )
         }
@@ -186,8 +184,8 @@ struct LifetimeMilestonesCard: View {
                 }
             }
 
-            // Milestone Badges Carousel / Grid
-            VStack(alignment: .leading, spacing: 8) {
+            // Milestone Badges 3-Column Medallion Grid
+            VStack(alignment: .leading, spacing: 10) {
                 HStack {
                     Text("MILESTONE BADGES")
                         .font(.caption2.bold())
@@ -199,54 +197,46 @@ struct LifetimeMilestonesCard: View {
                         .foregroundColor(.secondary)
                 }
 
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 12) {
-                        ForEach(milestoneBadges) { badge in
-                            Button(action: {
-                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                selectedBadge = badge
-                            }) {
-                                VStack(spacing: 6) {
-                                    ZStack {
-                                        Circle()
-                                            .fill(badge.isUnlocked ? badge.accentColor.opacity(0.18) : Color.gray.opacity(0.12))
-                                            .frame(width: 52, height: 52)
-                                        Image(systemName: badge.iconName)
-                                            .font(.title3)
-                                            .foregroundColor(badge.isUnlocked ? badge.accentColor : Color.secondary.opacity(0.4))
-                                    }
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 3), spacing: 16) {
+                    ForEach(milestoneBadges) { badge in
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            selectedBadge = badge
+                        } label: {
+                            VStack(spacing: 8) {
+                                MetallicMedallionView(spec: badge.spec, accentColor: badge.accentColor, size: 74)
 
-                                    Text(badge.title)
-                                        .font(.system(size: 11, weight: .bold))
-                                        .foregroundColor(badge.isUnlocked ? .primary : .secondary)
-                                        .multilineTextAlignment(.center)
-                                        .lineLimit(2)
-                                        .minimumScaleFactor(0.80)
-                                        .frame(height: 28, alignment: .top)
-                                }
-                                .frame(width: 86)
-                                .padding(.vertical, 8)
-                                .background(badge.isUnlocked ? Color(UIColor.secondarySystemGroupedBackground) : Color.clear)
-                                .cornerRadius(12)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .stroke(badge.isUnlocked ? badge.accentColor.opacity(0.3) : Color.clear, lineWidth: 1)
-                                )
+                                Text(badge.spec.title)
+                                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                    .foregroundColor(badge.spec.isUnlocked ? .primary : .secondary)
+                                    .multilineTextAlignment(.center)
+                                    .lineLimit(2)
+                                    .fixedSize(horizontal: false, vertical: true)
+
+                                Text(badge.spec.earnedMetricSubtitle(useMetric: useMetricSystem))
+                                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                                    .monospacedDigit()
+                                    .foregroundColor(badge.spec.isUnlocked ? badge.accentColor : .secondary)
+                                    .lineLimit(1)
                             }
-                            .buttonStyle(.plain)
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                            .contentShape(Rectangle())
                         }
+                        .buttonStyle(.plain)
                     }
-                    .padding(.vertical, 2)
                 }
+                .padding(.vertical, 4)
             }
         }
         .liquidGlass(cornerRadius: 16, padding: 16, accentColor: .yellow)
         .padding(.horizontal)
-        .alert(item: $selectedBadge) { badge in
-            Alert(
-                title: Text(badge.title),
-                message: Text(badge.description + (badge.isUnlocked ? "\n\nStatus: Unlocked ✓" : "\n\nStatus: Locked")),
-                dismissButton: .default(Text("OK"))
+        .sheet(item: $selectedBadge) { badge in
+            let qualifyingRun = allRuns.first(where: { $0.id == badge.spec.qualifyingRunID })
+            MilestoneAwardDetailSheet(
+                spec: badge.spec,
+                accentColor: badge.accentColor,
+                qualifyingRun: qualifyingRun,
+                useMetricSystem: useMetricSystem
             )
         }
     }

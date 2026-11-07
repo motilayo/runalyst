@@ -2,50 +2,6 @@ import XCTest
 @testable import Runalyst
 
 final class LiveCoachDTOCodableTests: XCTestCase {
-    func testWatchRunRecordDTOEncodingDecoding() throws {
-        let original = WatchRunRecordDTO(
-            id: UUID(),
-            date: Date(),
-            distance: 5200.0,
-            duration: 1600.0,
-            avgPace: 307.7,
-            avgHeartRate: 154,
-            avgCadence: 168,
-            verticalOscillation: 8.4,
-            groundContactTime: 235.0,
-            strideLength: 1.15
-        )
-
-        let data = try JSONEncoder().encode(original)
-        let decoded = try JSONDecoder().decode(WatchRunRecordDTO.self, from: data)
-
-        XCTAssertEqual(decoded.id, original.id)
-        XCTAssertEqual(decoded.distance, 5200.0)
-        XCTAssertEqual(decoded.avgHeartRate, 154)
-        XCTAssertEqual(decoded.avgCadence, 168)
-        XCTAssertEqual(decoded.verticalOscillation, 8.4)
-    }
-
-    func testDrillRecommendationDTOEncodingDecoding() throws {
-        let original = DrillRecommendationDTO(
-            drillTitle: "Cadence Pyramids",
-            drillPurpose: "Turnover improvement",
-            drillWork: "4 x 30s accelerations",
-            drillCues: "Quick steps",
-            drillEffort: "Controlled surge",
-            drillRecovery: "60s easy jog",
-            targetCadence: "168 SPM"
-        )
-
-        let data = try JSONEncoder().encode(original)
-        let decoded = try JSONDecoder().decode(DrillRecommendationDTO.self, from: data)
-
-        XCTAssertEqual(decoded.drillTitle, "Cadence Pyramids")
-        XCTAssertEqual(decoded.drillPurpose, "Turnover improvement")
-        XCTAssertEqual(decoded.drillRecovery, "60s easy jog")
-        XCTAssertEqual(decoded.targetCadence, "168 SPM")
-    }
-
     func testDrillPrescriptionDTOEncodingDecodingWithDurationAndHaptics() throws {
         let original = DrillPrescriptionDTO(
             title: "Cadence Pyramids",

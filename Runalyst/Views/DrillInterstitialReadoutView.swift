@@ -1,5 +1,6 @@
 import SwiftUI
 import WorkoutKit
+import RunalystCore
 
 /// An interstitial UX sheet bridging the static dashboard and an active WorkoutKit Apple Watch session.
 /// Presented as a half-sheet modal (.presentationDetents([.medium, .large])) to mentally prepare
@@ -17,6 +18,12 @@ struct DrillInterstitialReadoutView: View {
     @State private var scheduleSuccess = false
     @State private var scheduleError: String?
     @State private var showSettingsAlert = false
+    @State private var metronomeEngine = LiveCoachEngine()
+    @State private var isMetronomePlaying = false
+
+    private var midpointTargetSPM: Int? {
+        LiveMetronomeCore.midpointSPM(fromTargetString: readout.targetCadence)
+    }
 
     var body: some View {
         NavigationStack {
@@ -46,17 +53,39 @@ struct DrillInterstitialReadoutView: View {
                         Spacer()
 
                         if let target = readout.targetCadence {
-                            HStack(spacing: 4) {
-                                Image(systemName: "target")
-                                    .font(.caption2.bold())
-                                Text(target)
-                                    .font(.caption2.bold())
+                            if let spm = midpointTargetSPM {
+                                Button {
+                                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                    isMetronomePlaying = metronomeEngine.toggleMetronome(targetSPM: spm)
+                                } label: {
+                                    HStack(spacing: 5) {
+                                        Image(systemName: isMetronomePlaying ? "speaker.wave.2.fill" : "metronome.fill")
+                                            .font(.caption2.bold())
+                                        Text(isMetronomePlaying ? "Playing \(spm) SPM" : target)
+                                            .font(.caption2.bold())
+                                            .monospacedDigit()
+                                    }
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 6)
+                                    .frame(minHeight: 44)
+                                    .background(isMetronomePlaying ? Color.orange : Color.orange.opacity(0.15))
+                                    .foregroundColor(isMetronomePlaying ? .white : .orange)
+                                    .cornerRadius(8)
+                                }
+                                .buttonStyle(.plain)
+                            } else {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "target")
+                                        .font(.caption2.bold())
+                                    Text(target)
+                                        .font(.caption2.bold())
+                                }
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color.orange.opacity(0.15))
+                                .foregroundColor(.orange)
+                                .cornerRadius(8)
                             }
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Color.orange.opacity(0.15))
-                            .foregroundColor(.orange)
-                            .cornerRadius(8)
                         } else if let zone = readout.targetZone {
                             HStack(spacing: 4) {
                                 Image(systemName: "heart.fill")
@@ -111,6 +140,47 @@ struct DrillInterstitialReadoutView: View {
                     .padding(.vertical, 8)
                     .background(Color(UIColor.secondarySystemGroupedBackground))
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                    // Cadence Beat Preview Bar
+                    if let spm = midpointTargetSPM {
+                        HStack(spacing: 12) {
+                            Button {
+                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                isMetronomePlaying = metronomeEngine.toggleMetronome(targetSPM: spm)
+                            } label: {
+                                Image(systemName: isMetronomePlaying ? "pause.circle.fill" : "play.circle.fill")
+                                    .font(.title2)
+                                    .foregroundColor(.orange)
+                                    .frame(width: 44, height: 44)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Cadence Beat Preview")
+                                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                                    .foregroundColor(.primary)
+                                Text(isMetronomePlaying ? "Audio tick + haptic pulse active at \(spm) SPM" : "Entrain your cadence rhythm before stepping out")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+
+                            Spacer()
+
+                            Text("\(spm) SPM")
+                                .font(.system(size: 14, weight: .bold, design: .rounded))
+                                .monospacedDigit()
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color.orange.opacity(0.15))
+                                .foregroundColor(.orange)
+                                .clipShape(Capsule())
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color(UIColor.secondarySystemGroupedBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
 
                     // 1. Overview
                     VStack(alignment: .leading, spacing: 6) {
@@ -244,6 +314,10 @@ struct DrillInterstitialReadoutView: View {
         }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
+        .onDisappear {
+            metronomeEngine.stopMetronome()
+            isMetronomePlaying = false
+        }
     }
 
     // MARK: - Readiness Card
