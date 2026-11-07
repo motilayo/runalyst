@@ -1,6 +1,7 @@
 import Accessibility
 import Charts
 import Foundation
+import SwiftUI
 
 // MARK: - Heart Rate Wave Audio Graph Descriptor
 
