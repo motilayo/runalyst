@@ -90,6 +90,16 @@ final class RunRecord {
         return workingDurationSeconds ?? duration
     }
 
+    var effectiveWorkingAvgPace: Double {
+        let activeDistanceMeters = effectiveWorkingDistanceMeters > 0 ? effectiveWorkingDistanceMeters : totalDistanceMeters
+        let activeDuration = effectiveWorkingDurationSeconds > 0 ? effectiveWorkingDurationSeconds : duration
+        let workingKm = activeDistanceMeters / 1000.0
+        if workingKm > 0 && activeDuration > 0 {
+            return activeDuration / workingKm
+        }
+        return workingAvgPace
+    }
+
     /// Speed in meters per minute (derived from working average pace).
     var speedMetersPerMinute: Double? {
         guard workingAvgPace > 0 else { return nil }
