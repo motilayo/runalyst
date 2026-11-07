@@ -33,7 +33,8 @@ struct HeartRateTrajectoryMapView: View {
             workingAvgHeartRate: workingAvgHeartRate,
             percentZone4: percentZone4,
             zone2Ceiling: isRecovery ? zone1Ceiling : zone2Ceiling,
-            isRecoveryPrescription: isRecovery
+            isRecoveryPrescription: isRecovery,
+            hrCV: hrCV
         )
     }
 
@@ -297,34 +298,20 @@ struct HeartRateTrajectoryMapView: View {
     }
 
     private var isElevatedStrain: Bool {
-        workingAvgHeartRate > (effectiveThreshold + 3.0)
+        aerobicStrain.isElevatedStrain
     }
 
     private var cardiacStabilityText: String {
-        if isZone4Strain {
-            return "Zone 4 Threshold Strain"
-        } else if isElevatedStrain {
-            return "Elevated Strain (Zone 3)"
-        } else if percentZone4 <= 0.04 && (hrCV ?? 0.05) <= 0.08 {
-            return "Cardiac Stability: High"
-        } else if percentZone4 <= 0.12 {
-            return "Cardiac Stability: Moderate"
-        } else {
-            return "Cardiac Drift Detected"
-        }
+        aerobicStrain.cardiacStabilityText
     }
 
     private var cardiacStabilityColor: Color {
-        if isZone4Strain {
-            return percentZone4 >= 0.30 ? Color.red : Color.orange
-        } else if isElevatedStrain {
-            return Color.orange
-        } else if percentZone4 <= 0.04 && (hrCV ?? 0.05) <= 0.08 {
-            return Color.green
-        } else if percentZone4 <= 0.12 {
-            return Color.orange
-        } else {
+        if aerobicStrain.isSevereStrainColor {
             return Color.red
+        } else if aerobicStrain.stabilitySeverity == "optimal" {
+            return Color.green
+        } else {
+            return Color.orange
         }
     }
 

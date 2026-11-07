@@ -62,12 +62,32 @@ final class RunRecord {
         return oscCm / stride
     }
 
+    var hasPrescribedWalkRecoveryDrill: Bool {
+        guard let drillName = prescribedDrillName,
+              let resolved = PreRunDrillId.resolve(from: drillName) else {
+            return false
+        }
+        return DrillScheduleCore.defaultIsWalkRecovery(for: resolved.rawValue)
+    }
+
     var effectiveWorkingDistanceMeters: Double {
-        workingDistanceMeters ?? totalDistanceMeters
+        if hasPrescribedWalkRecoveryDrill,
+           totalDistanceMeters > 0,
+           let workingDist = workingDistanceMeters,
+           workingDist < totalDistanceMeters * 0.85 {
+            return totalDistanceMeters
+        }
+        return workingDistanceMeters ?? totalDistanceMeters
     }
 
     var effectiveWorkingDurationSeconds: Double {
-        workingDurationSeconds ?? duration
+        if hasPrescribedWalkRecoveryDrill,
+           duration > 0,
+           let workingDur = workingDurationSeconds,
+           workingDur < duration * 0.85 {
+            return duration
+        }
+        return workingDurationSeconds ?? duration
     }
 
     /// Speed in meters per minute (derived from working average pace).

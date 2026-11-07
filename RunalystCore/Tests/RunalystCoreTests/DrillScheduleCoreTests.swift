@@ -120,6 +120,20 @@ struct DrillScheduleCoreTests {
         #expect(highZ4.isZone4Overreach == true)
         #expect(highZ4.isCeilingExceeded == true)
         #expect(highZ4.effectiveCeilingBPM == 144.0)
+        #expect(highZ4.cardiacStabilityText == "Zone 4 Threshold Strain")
+        #expect(highZ4.isSevereStrainColor == false)
+        #expect(highZ4.stabilitySeverity == "moderate")
+
+        // Zone 4 severe overreach (>= 30% Zone 4)
+        let severeZ4 = AerobicStrainEvaluation.evaluate(
+            workingAvgHeartRate: 155.0,
+            percentZone4: 0.35,
+            zone2Ceiling: 144.0,
+            isRecoveryPrescription: false
+        )
+        #expect(severeZ4.isZone4Overreach == true)
+        #expect(severeZ4.isSevereStrainColor == true)
+        #expect(severeZ4.stabilitySeverity == "severe")
 
         // Recovery ceiling enforcement
         let recoveryStrain = AerobicStrainEvaluation.evaluate(
@@ -132,15 +146,59 @@ struct DrillScheduleCoreTests {
         #expect(recoveryStrain.isCeilingExceeded == true)
         #expect(recoveryStrain.isZone4Overreach == false)
 
-        // Controlled zone 2 run
+        // Elevated strain (Zone 3)
+        let elevatedStrain = AerobicStrainEvaluation.evaluate(
+            workingAvgHeartRate: 148.0,
+            percentZone4: 0.05,
+            zone2Ceiling: 144.0,
+            isRecoveryPrescription: false
+        )
+        #expect(elevatedStrain.isElevatedStrain == true)
+        #expect(elevatedStrain.cardiacStabilityText == "Elevated Strain (Zone 3)")
+        #expect(elevatedStrain.stabilitySeverity == "moderate")
+
+        // Controlled zone 2 run (high stability)
         let controlled = AerobicStrainEvaluation.evaluate(
             workingAvgHeartRate: 132.0,
             percentZone4: 0.01,
             zone2Ceiling: 144.0,
-            isRecoveryPrescription: false
+            isRecoveryPrescription: false,
+            hrCV: 0.04
         )
         #expect(controlled.isCeilingExceeded == false)
         #expect(controlled.isZone4Overreach == false)
+        #expect(controlled.isElevatedStrain == false)
+        #expect(controlled.cardiacStabilityText == "Cardiac Stability: High")
+        #expect(controlled.isSevereStrainColor == false)
+        #expect(controlled.stabilitySeverity == "optimal")
+
+        // Moderate stability
+        let moderate = AerobicStrainEvaluation.evaluate(
+            workingAvgHeartRate: 135.0,
+            percentZone4: 0.10,
+            zone2Ceiling: 144.0,
+            isRecoveryPrescription: false
+        )
+        #expect(moderate.cardiacStabilityText == "Cardiac Stability: Moderate")
+        #expect(moderate.stabilitySeverity == "moderate")
+
+        // Cardiac drift detected (fallback branch)
+        let drift = AerobicStrainEvaluation.evaluate(
+            workingAvgHeartRate: 135.0,
+            percentZone4: 0.14,
+            zone2Ceiling: 144.0,
+            isRecoveryPrescription: false
+        )
+        #expect(drift.cardiacStabilityText == "Cardiac Drift Detected")
+        #expect(drift.isSevereStrainColor == true)
+        #expect(drift.stabilitySeverity == "severe")
+
+        // Threshold goal tier evaluation
+        #expect(AerobicStrainEvaluation.evaluateThresholdGoalTier(percentZone4: 0.25) == "met")
+        #expect(AerobicStrainEvaluation.evaluateThresholdGoalTier(percentZone4: 0.20) == "met")
+        #expect(AerobicStrainEvaluation.evaluateThresholdGoalTier(percentZone4: 0.18) == "partial")
+        #expect(AerobicStrainEvaluation.evaluateThresholdGoalTier(percentZone4: 0.15) == "partial")
+        #expect(AerobicStrainEvaluation.evaluateThresholdGoalTier(percentZone4: 0.12) == "missed")
     }
 
     @Test("RunTakeawaySummary evaluates cadence floor matching diagnostic copy")

@@ -7,11 +7,27 @@ public struct AerobicStrainEvaluation: Sendable, Equatable {
     public let isZone4Overreach: Bool
     public let isCeilingExceeded: Bool
     public let effectiveCeilingBPM: Double
+    public let isElevatedStrain: Bool
+    public let cardiacStabilityText: String
+    public let isSevereStrainColor: Bool
+    public let stabilitySeverity: String
 
-    public init(isZone4Overreach: Bool, isCeilingExceeded: Bool, effectiveCeilingBPM: Double) {
+    public init(
+        isZone4Overreach: Bool,
+        isCeilingExceeded: Bool,
+        effectiveCeilingBPM: Double,
+        isElevatedStrain: Bool = false,
+        cardiacStabilityText: String = "",
+        isSevereStrainColor: Bool = false,
+        stabilitySeverity: String = "moderate"
+    ) {
         self.isZone4Overreach = isZone4Overreach
         self.isCeilingExceeded = isCeilingExceeded
         self.effectiveCeilingBPM = effectiveCeilingBPM
+        self.isElevatedStrain = isElevatedStrain
+        self.cardiacStabilityText = cardiacStabilityText
+        self.isSevereStrainColor = isSevereStrainColor
+        self.stabilitySeverity = stabilitySeverity
     }
 
     /// Evaluates cardiovascular strain against heart rate ceiling boundaries and anaerobic exposure.
@@ -19,7 +35,8 @@ public struct AerobicStrainEvaluation: Sendable, Equatable {
         workingAvgHeartRate: Double,
         percentZone4: Double,
         zone2Ceiling: Double,
-        isRecoveryPrescription: Bool
+        isRecoveryPrescription: Bool,
+        hrCV: Double? = nil
     ) -> AerobicStrainEvaluation {
         let effectiveCeiling: Double
         if isRecoveryPrescription {
@@ -30,12 +47,60 @@ public struct AerobicStrainEvaluation: Sendable, Equatable {
 
         let isOverreach = percentZone4 > 0.15 || (workingAvgHeartRate > (effectiveCeiling + 12.0))
         let isExceeded = (workingAvgHeartRate > effectiveCeiling) || (percentZone4 > 0.15)
+        let isElevated = workingAvgHeartRate > (effectiveCeiling + 3.0)
+
+        let stabilityText: String
+        let isSevereColor: Bool
+        let severity: String
+
+        if isOverreach {
+            stabilityText = "Zone 4 Threshold Strain"
+            if percentZone4 >= 0.30 {
+                isSevereColor = true
+                severity = "severe"
+            } else {
+                isSevereColor = false
+                severity = "moderate"
+            }
+        } else if isElevated {
+            stabilityText = "Elevated Strain (Zone 3)"
+            isSevereColor = false
+            severity = "moderate"
+        } else if percentZone4 <= 0.04 && (hrCV ?? 0.05) <= 0.08 {
+            stabilityText = "Cardiac Stability: High"
+            isSevereColor = false
+            severity = "optimal"
+        } else if percentZone4 <= 0.12 {
+            stabilityText = "Cardiac Stability: Moderate"
+            isSevereColor = false
+            severity = "moderate"
+        } else {
+            stabilityText = "Cardiac Drift Detected"
+            isSevereColor = true
+            severity = "severe"
+        }
 
         return AerobicStrainEvaluation(
             isZone4Overreach: isOverreach,
             isCeilingExceeded: isExceeded,
-            effectiveCeilingBPM: effectiveCeiling
+            effectiveCeilingBPM: effectiveCeiling,
+            isElevatedStrain: isElevated,
+            cardiacStabilityText: stabilityText,
+            isSevereStrainColor: isSevereColor,
+            stabilitySeverity: severity
         )
+    }
+
+    /// Evaluates threshold drill achievement tier based on Zone 4 exposure percentage.
+    /// Returns "met" (>= 0.20), "partial" (>= 0.15), or "missed" (< 0.15).
+    public static func evaluateThresholdGoalTier(percentZone4: Double) -> String {
+        if percentZone4 >= 0.20 {
+            return "met"
+        } else if percentZone4 >= 0.15 {
+            return "partial"
+        } else {
+            return "missed"
+        }
     }
 }
 

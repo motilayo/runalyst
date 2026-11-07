@@ -251,6 +251,7 @@ struct DrillExecutionScorecard: View {
                     }
 
                     if isDualTarget {
+                        let thresholdTier = AerobicStrainEvaluation.evaluateThresholdGoalTier(percentZone4: runRecord.percentZone4)
                         HStack(spacing: 10) {
                             metricTile(
                                 label: "THRESHOLD GOAL",
@@ -260,7 +261,7 @@ struct DrillExecutionScorecard: View {
                             metricTile(
                                 label: "ZONE 4 TIME",
                                 value: String(format: "%.0f%%", runRecord.percentZone4 * 100),
-                                valueColor: runRecord.percentZone4 >= 0.20 ? .green : (runRecord.percentZone4 >= 0.15 ? .orange : .red)
+                                valueColor: thresholdTier == "met" ? .green : (thresholdTier == "partial" ? .orange : .red)
                             )
                         }
                     }
@@ -281,6 +282,7 @@ struct DrillExecutionScorecard: View {
                         )
                     }
 
+                    let thresholdTier = AerobicStrainEvaluation.evaluateThresholdGoalTier(percentZone4: runRecord.percentZone4)
                     HStack(spacing: 10) {
                         metricTile(
                             label: "THRESHOLD GOAL",
@@ -290,7 +292,7 @@ struct DrillExecutionScorecard: View {
                         metricTile(
                             label: "ZONE 4 TIME",
                             value: String(format: "%.0f%%", runRecord.percentZone4 * 100),
-                            valueColor: runRecord.percentZone4 >= 0.20 ? .green : .orange
+                            valueColor: thresholdTier == "met" ? .green : .orange
                         )
                     }
                 }

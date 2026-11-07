@@ -881,11 +881,13 @@ struct RunDetailView: View {
                             .foregroundColor(.secondary)
                     }
 
-                    // Compact horizontal tags strip: [ 🏠 Indoor ] [ 🏃 Easy Run ▾ ] [ ＋ Add Drill ]
+                    // Compact horizontal tags strip: hide redundant classification pill when a specific drill is linked
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 8) {
                             environmentPill
-                            classificationPill
+                            if prescribedDrillName == nil {
+                                classificationPill
+                            }
                             drillControl
                         }
                     }
