@@ -69,9 +69,10 @@ struct RunListRowView: View {
             }
 
             HStack {
-                let distanceConverted = useMetricSystem ? (runRecord.totalDistanceMeters / 1000.0) : (runRecord.totalDistanceMeters / 1609.344)
+                let activeDistanceMeters = runRecord.effectiveWorkingDistanceMeters > 0 ? runRecord.effectiveWorkingDistanceMeters : runRecord.totalDistanceMeters
+                let distanceConverted = useMetricSystem ? (activeDistanceMeters / 1000.0) : (activeDistanceMeters / 1609.344)
                 let distanceUnit = useMetricSystem ? "km" : "mi"
-                let pace = PaceFormatter.formatPace(secondsPerKilometer: runRecord.workingAvgPace)
+                let pace = PaceFormatter.formatPace(secondsPerKilometer: runRecord.effectiveWorkingAvgPace)
 
                 HStack(spacing: 6) {
                     Text(String(format: "%.2f %@", distanceConverted, distanceUnit))

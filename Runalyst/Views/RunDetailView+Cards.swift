@@ -119,8 +119,7 @@ extension RunDetailView {
         let seconds = Int(activeDuration) % 60
         let timeString = hours > 0 ? String(format: "%d:%02d:%02d", hours, minutes, seconds) : String(format: "%d:%02d", minutes, seconds)
 
-        let workingKm = activeDistanceMeters / 1000.0
-        let currentPace = (workingKm > 0 && activeDuration > 0) ? (activeDuration / workingKm) : runRecord.workingAvgPace
+        let currentPace = runRecord.effectiveWorkingAvgPace
         let paceValue = PaceFormatter.formatPaceValue(secondsPerKilometer: currentPace)
         let paceUnit = PaceFormatter.paceUnit()
 
