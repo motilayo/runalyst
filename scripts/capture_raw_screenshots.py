@@ -15,7 +15,7 @@ def get_booted_device_id(device_type="iPhone"):
                             return cand
     except Exception:
         pass
-    return "9B8ADDDA-B76A-4A28-BCA3-239FB5B25BC6" if device_type == "iPhone" else "F37FD237-165F-4849-8A85-2E4817486EC5"
+    return "9B8ADDDA-B76A-4A28-BCA3-239FB5B25BC6" if device_type == "iPhone" else "AC8423AB-A1C1-44E2-BA23-89FDC58521C8"
 
 IPHONE_ID = get_booted_device_id("iPhone")
 IPAD_ID = get_booted_device_id("iPad")
@@ -97,9 +97,12 @@ if __name__ == "__main__":
     import sys
     target = sys.argv[1] if len(sys.argv) > 1 else "all"
 
+    iphone_id = get_booted_device_id("iPhone")
+    ipad_id = get_booted_device_id("iPad")
+
     if target in ("all", "iphone"):
-        capture_device(IPHONE_ID, IPHONE_DIR, "iPhone 17 Pro")
+        capture_device(iphone_id, IPHONE_DIR, "iPhone Pro")
     if target in ("all", "ipad"):
-        capture_device(IPAD_ID, IPAD_DIR, "iPad Pro 13-inch (M5)")
+        capture_device(ipad_id, IPAD_DIR, "iPad Pro 13-inch (M5)")
 
     print("\nAll raw screenshots successfully captured!")

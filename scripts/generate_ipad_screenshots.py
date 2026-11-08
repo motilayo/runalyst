@@ -147,7 +147,7 @@ cards = [
     },
     {
         "title": "Targeted Form Drills",
-        "subtitle": "Structured phase breakdown & Apple Watch export",
+        "subtitle": "Live cadence metronome & Apple Watch WorkoutKit export",
         "screen": "Media/Screenshots/iPad_Raw/screen_drill_readout.png",
         "output": "03_Targeted_Drills.png",
     },
@@ -165,7 +165,7 @@ cards = [
     },
     {
         "title": "Longitudinal Progression",
-        "subtitle": "Track efficiency factor gains and cadence over time",
+        "subtitle": "Efficiency factor gains, PRs & milestone medallions",
         "screen": "Media/Screenshots/iPad_Raw/screen_progression.png",
         "output": "06_Longitudinal_Progression.png",
     },

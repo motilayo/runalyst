@@ -103,7 +103,7 @@ def draw_title_card(t, is_intro=True):
         tb_sub = draw.textbbox((0, 0), sub, font=f_sub)
         draw.text(((WIDTH - (tb_sub[2]-tb_sub[0]))//2, 530), sub, fill=(200, 220, 245, 240), font=f_sub)
         
-        pills = "11-Profile Taxonomy  •  Mental Readiness Readouts  •  Overstride Kinematics  •  100% Private"
+        pills = "Live Cadence Metronome  •  Milestone Medallions  •  Siri & App Shortcuts  •  100% Private"
         f_p = get_font(24, bold=True)
         tb_p = draw.textbbox((0, 0), pills, font=f_p)
         draw.text(((WIDTH - (tb_p[2]-tb_p[0]))//2, 620), pills, fill=(130, 165, 205, 230), font=f_p)
@@ -240,6 +240,11 @@ cmd = [
 ]
 subprocess.run(cmd, check=True)
 print(f"Created landscape iPad promo video: {video_ipad_16x9}")
+
+web_ipad_landscape = os.path.join(REPO_ROOT, "website/assets/videos/promo_ipad_landscape.mp4")
+os.makedirs(os.path.dirname(web_ipad_landscape), exist_ok=True)
+shutil.copyfile(video_ipad_16x9, web_ipad_landscape)
+print(f"Copied iPad promo video to {web_ipad_landscape}")
 
 shutil.rmtree(TEMP_FRAMES_DIR)
 print("Complete!")
