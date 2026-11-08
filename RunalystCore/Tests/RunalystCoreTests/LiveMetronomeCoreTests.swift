@@ -79,6 +79,33 @@ struct LiveMetronomeCoreTests {
         #expect(prescription1.cadenceRange == 160.0...170.0)
     }
 
+    // MARK: - Midpoint SPM Extraction Tests
+
+    @Test("Extracts cadence midpoint from ranges with hyphens and en-dashes")
+    func testMidpointSPMExtractionRanges() {
+        #expect(LiveMetronomeCore.midpointSPM(fromTargetString: "153-159 SPM") == 156)
+        #expect(LiveMetronomeCore.midpointSPM(fromTargetString: "153–159 SPM") == 156)
+        #expect(LiveMetronomeCore.midpointSPM(fromTargetString: "160–166 SPM (Adapted)") == 163)
+        #expect(LiveMetronomeCore.midpointSPM(fromTargetString: "🎯 153-159 SPM") == 156)
+    }
+
+    @Test("Extracts single cadence value when string contains single SPM number")
+    func testMidpointSPMExtractionSingleValue() {
+        #expect(LiveMetronomeCore.midpointSPM(fromTargetString: "170 SPM") == 170)
+        #expect(LiveMetronomeCore.midpointSPM(fromTargetString: "Steady 180spm") == 180)
+        #expect(LiveMetronomeCore.midpointSPM(fromTargetString: "4x400m intervals at 170 SPM") == 170)
+    }
+
+    @Test("Returns nil for invalid, empty, or out-of-range cadence strings")
+    func testMidpointSPMExtractionEdgeCases() {
+        #expect(LiveMetronomeCore.midpointSPM(fromTargetString: nil) == nil)
+        #expect(LiveMetronomeCore.midpointSPM(fromTargetString: "") == nil)
+        #expect(LiveMetronomeCore.midpointSPM(fromTargetString: "   ") == nil)
+        #expect(LiveMetronomeCore.midpointSPM(fromTargetString: "invalid text") == nil)
+        #expect(LiveMetronomeCore.midpointSPM(fromTargetString: "50 SPM") == nil)
+        #expect(LiveMetronomeCore.midpointSPM(fromTargetString: "300 SPM") == nil)
+    }
+
     // MARK: - Beat Interval Tests
 
     @Test("Calculates beat intervals accurately for valid SPM values")

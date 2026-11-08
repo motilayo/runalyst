@@ -6,6 +6,9 @@ import RunalystCore
 #if os(watchOS)
 import WatchKit
 #endif
+#if os(iOS)
+import UIKit
+#endif
 
 @available(iOS 17.0, watchOS 10.0, *)
 @MainActor
@@ -18,7 +21,20 @@ public class LiveCoachEngine {
     private var currentMetronomeTargetSPM: Int = 0
     private var metronomeTimer: Timer?
 
+    public var isPlayingMetronome: Bool { isMetronomeRunning }
+
     public init() {}
+
+    @discardableResult
+    public func toggleMetronome(targetSPM: Int) -> Bool {
+        if isMetronomeRunning {
+            stopMetronome()
+            return false
+        } else {
+            startMetronome(targetSPM: targetSPM)
+            return isMetronomeRunning
+        }
+    }
 
     private var isRunningInTest: Bool {
         NSClassFromString("XCTestCase") != nil || ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
@@ -82,10 +98,13 @@ public class LiveCoachEngine {
 
         self.metronomeTimer?.invalidate()
 
-        if let buffer = self.generateBeep(frequency: 880, duration: 0.05) {
+        if let buffer = self.generateClickBuffer(frequency: 1050, duration: 0.035) {
             self.metronomeTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
                 MainActor.assumeIsolated {
                     guard let self = self, self.isMetronomeRunning, !self.silentModeEnabled else { return }
+                    #if os(iOS)
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    #endif
                     self.playerNode.scheduleBuffer(buffer, at: nil, options: .interrupts, completionHandler: nil)
                     if !self.playerNode.isPlaying {
                         self.playerNode.play()
@@ -164,6 +183,27 @@ public class LiveCoachEngine {
         }
 
         return (audioTriggered, hapticTriggered)
+    }
+
+    private func generateClickBuffer(frequency: Float = 1050, duration: Double = 0.035) -> AVAudioPCMBuffer? {
+        let format = audioEngine.outputNode.inputFormat(forBus: 0)
+        let sampleRate = format.sampleRate
+        let frameCount = AVAudioFrameCount(sampleRate * duration)
+
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else { return nil }
+        buffer.frameLength = frameCount
+
+        let channels = Int(format.channelCount)
+        for channelIndex in 0..<channels {
+            let channelData = buffer.floatChannelData?[channelIndex]
+            for frame in 0..<Int(frameCount) {
+                let time = Double(frame) / sampleRate
+                let envelope = exp(-55.0 * time)
+                let value = Float(sin(2.0 * Double.pi * Double(frequency) * time) * envelope)
+                channelData?[frame] = value
+            }
+        }
+        return buffer
     }
 
     private func generateBeep(frequency: Float, duration: Double) -> AVAudioPCMBuffer? {

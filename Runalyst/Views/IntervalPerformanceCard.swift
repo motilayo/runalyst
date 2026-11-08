@@ -268,10 +268,10 @@ struct IntervalPerformanceCard: View {
                             .background(gradeColor(for: rep.letterGrade).opacity(0.12))
                             .clipShape(Capsule())
 
-                        Image(systemName: "chevron.right")
+                        Image(systemName: "chevron.down")
                             .font(.system(size: 10, weight: .semibold))
                             .foregroundColor(.secondary.opacity(0.6))
-                            .rotationEffect(.degrees(isRepExpanded ? 90 : 0))
+                            .rotationEffect(.degrees(isRepExpanded ? 180 : 0))
                     }
 
                     // Line 2: Biometrics & Recovery Summary

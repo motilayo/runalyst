@@ -66,6 +66,52 @@ public enum LiveMetronomeCore {
         )
     }
 
+    /// Deterministically extracts target cadence midpoint in SPM from AI drill prescription or target strings
+    /// (e.g. "153-159 SPM", "160–166 SPM (Adapted)", "170 SPM").
+    ///
+    /// Extracts all integers in the valid running cadence range 100...240 SPM.
+    /// Returns nil if empty or no valid cadence integers are found,
+    /// the single cadence if 1 integer is found,
+    /// or the integer midpoint `(first + last) / 2` if multiple integers are found.
+    public static func midpointSPM(fromTargetString target: String?) -> Int? {
+        guard let target = target?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !target.isEmpty else {
+            return nil
+        }
+
+        let pattern = #"\d+"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else {
+            return nil
+        }
+
+        let range = NSRange(location: 0, length: target.utf16.count)
+        let matches = regex.matches(in: target, options: [], range: range)
+
+        var validCadences: [Int] = []
+        for match in matches {
+            guard let matchRange = Range(match.range, in: target),
+                  let value = Int(target[matchRange]),
+                  (100...240).contains(value) else {
+                continue
+            }
+            validCadences.append(value)
+        }
+
+        guard !validCadences.isEmpty else {
+            return nil
+        }
+
+        if validCadences.count == 1 {
+            return validCadences[0]
+        }
+
+        guard let first = validCadences.first, let last = validCadences.last else {
+            return nil
+        }
+
+        return (first + last) / 2
+    }
+
     /// Calculates the beat interval in seconds corresponding to a target SPM.
     /// Returns nil if targetSPM is non-positive.
     public static func beatIntervalSeconds(forTargetSPM targetSPM: Int) -> TimeInterval? {
