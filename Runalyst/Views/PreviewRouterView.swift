@@ -125,6 +125,8 @@ struct PreviewRouterView: View {
                     .padding()
                 }
                 .navigationTitle("Progression & Milestones")
+                .navigationBarTitleDisplayMode(.inline)
+                .background(Color(UIColor.systemGroupedBackground).ignoresSafeArea())
             }
         case "WORKOUTS":
             WorkoutsView()

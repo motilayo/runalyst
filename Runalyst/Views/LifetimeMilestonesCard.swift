@@ -140,6 +140,50 @@ struct LifetimeMilestonesCard: View {
                 .cornerRadius(12)
             }
 
+            // Milestone Badges 3-Column Medallion Grid
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("MILESTONE BADGES")
+                        .font(.caption2.bold())
+                        .foregroundColor(.secondary)
+                    Spacer()
+                    let unlockedCount = milestoneBadges.filter(\.isUnlocked).count
+                    Text("\(unlockedCount) of \(milestoneBadges.count) Unlocked")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 3), spacing: 16) {
+                    ForEach(milestoneBadges) { badge in
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            selectedBadge = badge
+                        } label: {
+                            VStack(spacing: 8) {
+                                MetallicMedallionView(spec: badge.spec, accentColor: badge.accentColor, size: 74)
+
+                                Text(badge.spec.title)
+                                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                    .foregroundColor(badge.spec.isUnlocked ? .primary : .secondary)
+                                    .multilineTextAlignment(.center)
+                                    .lineLimit(2)
+                                    .fixedSize(horizontal: false, vertical: true)
+
+                                Text(badge.spec.earnedMetricSubtitle(useMetric: useMetricSystem))
+                                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                                    .monospacedDigit()
+                                    .foregroundColor(badge.spec.isUnlocked ? badge.accentColor : .secondary)
+                                    .lineLimit(1)
+                            }
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+
             // Personal Records 2x2 Grid (Eliminates Cramping and Tiny Icons)
             VStack(alignment: .leading, spacing: 8) {
                 Text("PERSONAL RECORDS")
@@ -183,50 +227,6 @@ struct LifetimeMilestonesCard: View {
                         subtitle: "Speed ÷ HR"
                     )
                 }
-            }
-
-            // Milestone Badges 3-Column Medallion Grid
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Text("MILESTONE BADGES")
-                        .font(.caption2.bold())
-                        .foregroundColor(.secondary)
-                    Spacer()
-                    let unlockedCount = milestoneBadges.filter(\.isUnlocked).count
-                    Text("\(unlockedCount) of \(milestoneBadges.count) Unlocked")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                }
-
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 3), spacing: 16) {
-                    ForEach(milestoneBadges) { badge in
-                        Button {
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            selectedBadge = badge
-                        } label: {
-                            VStack(spacing: 8) {
-                                MetallicMedallionView(spec: badge.spec, accentColor: badge.accentColor, size: 74)
-
-                                Text(badge.spec.title)
-                                    .font(.system(size: 12, weight: .semibold, design: .rounded))
-                                    .foregroundColor(badge.spec.isUnlocked ? .primary : .secondary)
-                                    .multilineTextAlignment(.center)
-                                    .lineLimit(2)
-                                    .fixedSize(horizontal: false, vertical: true)
-
-                                Text(badge.spec.earnedMetricSubtitle(useMetric: useMetricSystem))
-                                    .font(.system(size: 11, weight: .medium, design: .rounded))
-                                    .monospacedDigit()
-                                    .foregroundColor(badge.spec.isUnlocked ? badge.accentColor : .secondary)
-                                    .lineLimit(1)
-                            }
-                            .frame(maxWidth: .infinity, minHeight: 44)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(.vertical, 4)
             }
         }
         .liquidGlass(cornerRadius: 16, padding: 16, accentColor: .yellow)
