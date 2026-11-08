@@ -499,6 +499,19 @@ struct DashboardView: View {
             isFetchingInsight = false
             return
         }
+
+        let isPreviewScreen = UserDefaults.standard.string(forKey: "RUNALYST_PREVIEW_SCREEN") != nil || ProcessInfo.processInfo.environment["RUNALYST_PREVIEW_SCREEN"] != nil
+        if isPreviewScreen {
+            if currentHeadline().isEmpty {
+                cachedHeadline7Day = "Ready for Quality Turnover"
+                cachedBody7Day = "Your 7-day workload is balanced and cadence is trending +3 SPM above baseline. Today is an ideal window for structured rhythm intervals while keeping heart rate controlled."
+                cachedHeadline30Day = "On Track For Goal"
+                cachedBody30Day = "Your steady aerobic volume over the past 30 days is paying off with rising Efficiency Factor and a stable 170 SPM cadence floor."
+            }
+            isFetchingInsight = false
+            return
+        }
+
         let currentFingerprint = "\(trainingGoal)_\(dashboardTrajectorySynthesis.directiveCode)_\(DailyTrainingStateStore.computeFingerprint(runs: runRecords))"
         if currentFingerprint != lastInsightFingerprint {
             // Invalidate cache

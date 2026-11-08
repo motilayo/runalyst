@@ -65,30 +65,37 @@ def capture_device(device_id, out_dir, label):
         out_path = os.path.join(out_dir, filename)
         print(f"--> Capturing {screen_key} -> {filename}...")
 
-        subprocess.run(["xcrun", "simctl", "terminate", device_id, BUNDLE_ID], stderr=subprocess.DEVNULL)
-        time.sleep(0.8)
+        max_attempts = 3
+        for attempt in range(1, max_attempts + 1):
+            subprocess.run(["xcrun", "simctl", "terminate", device_id, BUNDLE_ID], stderr=subprocess.DEVNULL)
+            time.sleep(0.8)
 
-        subprocess.run(["xcrun", "simctl", "spawn", device_id, "defaults", "write", BUNDLE_ID, "RUNALYST_PREVIEW_SCREEN", "-string", screen_key])
+            subprocess.run(["xcrun", "simctl", "spawn", device_id, "defaults", "write", BUNDLE_ID, "RUNALYST_PREVIEW_SCREEN", "-string", screen_key])
 
-        env = os.environ.copy()
-        env["SIMCTL_CHILD_RUNALYST_PREVIEW_SCREEN"] = screen_key
+            env = os.environ.copy()
+            env["SIMCTL_CHILD_RUNALYST_PREVIEW_SCREEN"] = screen_key
 
-        res = subprocess.run([
-            "xcrun", "simctl", "launch", device_id, BUNDLE_ID
-        ], env=env, capture_output=True, text=True)
+            res = subprocess.run([
+                "xcrun", "simctl", "launch", device_id, BUNDLE_ID
+            ], env=env, capture_output=True, text=True)
 
-        # Wait for views to render and transitions to settle
-        time.sleep(3.5)
+            # Wait for views to render and transitions to settle
+            time.sleep(4.5)
 
-        subprocess.run([
-            "xcrun", "simctl", "io", device_id, "screenshot", out_path
-        ], check=True)
+            subprocess.run([
+                "xcrun", "simctl", "io", device_id, "screenshot", out_path
+            ], check=True)
 
-        if os.path.exists(out_path):
-            size_kb = os.path.getsize(out_path) // 1024
-            print(f"    ✓ Saved {out_path} ({size_kb} KB)")
-        else:
-            print(f"    ✗ Failed to save {out_path}")
+            if os.path.exists(out_path):
+                file_size = os.path.getsize(out_path)
+                size_kb = file_size // 1024
+                if file_size >= 120 * 1024 or attempt == max_attempts:
+                    print(f"    ✓ Saved {out_path} ({size_kb} KB)")
+                    break
+                else:
+                    print(f"    ⚠️ Screenshot too small ({size_kb} KB < 120 KB), retrying (attempt {attempt}/{max_attempts})...")
+            else:
+                print(f"    ✗ Failed to save {out_path}")
 
         subprocess.run(["xcrun", "simctl", "terminate", device_id, BUNDLE_ID], stderr=subprocess.DEVNULL)
         time.sleep(0.3)
