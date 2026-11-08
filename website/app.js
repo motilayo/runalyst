@@ -26,7 +26,7 @@ function initScreenshotShowcase() {
 
   const cardData = {
     biometrics: {
-      src: 'assets/images/01_Intelligent_Biometrics.png',
+      src: 'assets/images/01_Intelligent_Biometrics.png?v=2.8.0',
       badge: '01 / RAW RUNNING TELEMETRY',
       title: 'Intelligent Running Biometrics',
       desc: 'Ditch static vanity metrics. Runalyst extracts live cadence deltas, vertical oscillation, and ground contact balance from Apple Watch and benchmarks them against your rolling 30-day relative baseline.',
@@ -35,7 +35,7 @@ function initScreenshotShowcase() {
       b3: 'Working stats engine that automatically trims dead-stop traffic pauses'
     },
     coaching: {
-      src: 'assets/images/02_AI_Coaching.png',
+      src: 'assets/images/02_AI_Coaching.png?v=2.8.0',
       badge: '02 / ON-DEVICE FOUNDATION MODELS',
       title: 'Interactive AI Running Analyst & Coach',
       desc: 'Powered natively by Apple FoundationModels with pure native tool calling. Ask anything about your workouts, fatigue, pacing, or race preparation. Swift does the math; the AI coaches with empathy.',
@@ -44,16 +44,16 @@ function initScreenshotShowcase() {
       b3: '100% on-device inference: private, instant, and works completely offline'
     },
     drills: {
-      src: 'assets/images/03_Targeted_Drills.png',
+      src: 'assets/images/03_Targeted_Drills.png?v=2.8.0',
       badge: '03 / PRE-RUN DRILL BREAKDOWN',
-      title: 'Targeted Form Drills & Mental Preparation',
-      desc: 'Never guess what warm-up to run. When low cadence or fatigue is detected, Runalyst prescribes targeted drills with proportional phase timelines and an interstitial mental preparation readout before syncing to Apple Watch.',
-      b1: 'Structured 5-point mental readout: Target Cues, Biomechanical Focus, Phase Breakdown, Strategy, Effort',
+      title: 'Targeted Form Drills & Live Cadence Metronome',
+      desc: 'Never guess what warm-up to run. When low cadence or fatigue is detected, Runalyst prescribes targeted drills with an integrated live cadence beat metronome, proportional phase timelines, and instant Apple Watch WorkoutKit export.',
+      b1: 'Live cadence beat metronome: lock in target rhythm with rhythmic audio feedback',
       b2: 'Proportional horizontal geometry blocks visualizing warmups, surges, and recovery intervals',
       b3: 'Dynamic duration scaling (5m, 10m, 15m) with one-tap export to Apple Watch WorkoutKit'
     },
     biomechanics: {
-      src: 'assets/images/04_Biomechanical_Analysis.png',
+      src: 'assets/images/04_Biomechanical_Analysis.png?v=2.8.0',
       badge: '04 / KINEMATIC FOOT-STRIKE & BOUNCE',
       title: 'Biomechanical Form & Overstride Analysis',
       desc: 'Overstriding acts as an invisible brake on every stride. Runalyst inspects ground contact duration, vertical oscillation, and vertical ratio from your Apple Watch to identify high-impact braking forces before they cause injury.',
@@ -62,7 +62,7 @@ function initScreenshotShowcase() {
       b3: 'Targeted form cues: quick step frequency, soft foot landing, and forward pelvis drive'
     },
     catalog: {
-      src: 'assets/images/05_PreRun_Library.png',
+      src: 'assets/images/05_PreRun_Library.png?v=2.8.0',
       badge: '05 / STRUCTURED RUNS & PRE-RUN PRIMERS',
       title: 'Structured Runs & Pre-Run Primers',
       desc: 'Take the guesswork out of daily training. Runalyst prescribes adaptive daily sessions locked to your active goal (from 5K to Marathon), paired with biomechanically targeted pre-run primers ready for one-tap Apple Watch export.',
@@ -71,16 +71,16 @@ function initScreenshotShowcase() {
       b3: 'Seamless one-tap export to Apple Watch WorkoutKit for guided wrist workouts'
     },
     progression: {
-      src: 'assets/images/06_Longitudinal_Progression.png',
+      src: 'assets/images/06_Longitudinal_Progression.png?v=2.8.0',
       badge: '06 / EFFICIENCY FACTOR & METRICS',
-      title: 'Longitudinal Progression',
-      desc: 'Watch your running economy evolve over weeks and months. Interactive charts reveal whether your aerobic pace is accelerating while your cardiac cost and vertical oscillation trend lower.',
+      title: 'Longitudinal Progression & Milestone Medallions',
+      desc: 'Watch your running economy evolve over weeks and months. Interactive charts reveal whether your aerobic pace is accelerating while your cardiac cost trends lower, paired with lifetime personal records and Apple Fitness-style milestone medallions.',
       b1: 'Efficiency Factor (Pace-to-Heart Rate ratio) tracking over time',
-      b2: 'Longitudinal cadence trendlines across steady runs, tempos, and intervals',
+      b2: 'Personal records & milestone medallions for volume, pace, and cadence breakthroughs',
       b3: 'Automatic classification into Steady Effort, Progression, Intervals, or Recovery'
     },
     privacy: {
-      src: 'assets/images/07_HealthKit_Privacy.png',
+      src: 'assets/images/07_HealthKit_Privacy.png?v=2.8.0',
       badge: '07 / ZERO-TRACKING MANIFESTO',
       title: '100% Private & HealthKit-Native',
       desc: 'Your health data belongs to you—not third-party ad networks or subscription servers. Runalyst reads and writes exclusively to your iPhone local SwiftData store and Apple HealthKit.',

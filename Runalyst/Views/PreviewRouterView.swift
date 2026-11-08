@@ -118,10 +118,13 @@ struct PreviewRouterView: View {
         case "PROGRESSION":
             NavigationStack {
                 ScrollView {
-                    ProgressionChartView(allRuns: existingRuns, defaultHorizon: .allTime)
-                        .padding()
+                    VStack(spacing: 20) {
+                        ProgressionChartView(allRuns: existingRuns, defaultHorizon: .allTime)
+                        LifetimeMilestonesCard(allRuns: existingRuns)
+                    }
+                    .padding()
                 }
-                .navigationTitle("Cadence Progression")
+                .navigationTitle("Progression & Milestones")
             }
         case "WORKOUTS":
             WorkoutsView()

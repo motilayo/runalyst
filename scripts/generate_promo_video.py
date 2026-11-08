@@ -99,14 +99,14 @@ def draw_title_card(t, is_intro=True):
         draw.text(((WIDTH - (tb_sub[2]-tb_sub[0]))//2, 780), sub, fill=(200, 220, 245, 240), font=f_sub)
         
         # Feature Badges
-        pills = ["Apple FoundationModels", "Biomechanical Telemetry", "100% Private"]
+        pills = ["Apple FoundationModels", "Live Cadence Metronome", "Milestones & Siri", "100% Private"]
         f_p = get_font(26, bold=True)
         y_p = 860
         for p in pills:
             tb = draw.textbbox((0, 0), p, font=f_p)
             w = tb[2] - tb[0]
             draw.text(((WIDTH - w)//2, y_p), f"•  {p}", fill=(130, 160, 195, 220), font=f_p)
-            y_p += 46
+            y_p += 44
     else:
         # Outro Call to Action
         tag = "ELEVATE YOUR RUNNING FORM"

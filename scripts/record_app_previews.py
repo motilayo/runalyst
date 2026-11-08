@@ -3,8 +3,23 @@ import subprocess
 import time
 import signal
 
-IPHONE_ID = "A59BB117-5AD3-4BEF-959A-95B526E29F06"
-IPAD_ID = "F37FD237-165F-4849-8A85-2E4817486EC5"
+def get_booted_device_id(device_type="iPhone"):
+    try:
+        out = subprocess.check_output(["xcrun", "simctl", "list", "devices", "booted"], text=True)
+        for line in out.splitlines():
+            if device_type in line and "(" in line and ")" in line:
+                parts = line.split("(")
+                for p in parts[1:]:
+                    if ")" in p:
+                        cand = p.split(")")[0].strip()
+                        if len(cand) == 36 and "-" in cand:
+                            return cand
+    except Exception:
+        pass
+    return "9B8ADDDA-B76A-4A28-BCA3-239FB5B25BC6" if device_type == "iPhone" else "AC8423AB-A1C1-44E2-BA23-89FDC58521C8"
+
+IPHONE_ID = get_booted_device_id("iPhone")
+IPAD_ID = get_booted_device_id("iPad")
 BUNDLE_ID = "com.runalyzer.Runalyzer"
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 PREVIEWS_DIR = os.path.join(REPO_ROOT, "Media/AppStorePreviews")
@@ -20,6 +35,7 @@ def setup_simulator(device_id):
     subprocess.run(["xcrun", "simctl", "spawn", device_id, "defaults", "write", BUNDLE_ID, "useMetricSystem", "-bool", "true"])
     subprocess.run(["xcrun", "simctl", "spawn", device_id, "defaults", "write", BUNDLE_ID, "dashboardTimeRange", "-string", "30 Days"])
     subprocess.run(["xcrun", "simctl", "spawn", device_id, "defaults", "write", BUNDLE_ID, "minimumRunDistance", "-float", "1.0"])
+    subprocess.run(["xcrun", "simctl", "spawn", device_id, "defaults", "write", BUNDLE_ID, "RUNALYST_PREVIEW_SCREEN", "-string", "AUTO_TOUR"])
 
 def record_tour(device_id, output_raw, duration_sec=32.0):
     if os.path.exists(output_raw):
@@ -37,7 +53,7 @@ def record_tour(device_id, output_raw, duration_sec=32.0):
         "--mask=black",
         "--force",
         output_raw
-    ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     time.sleep(1.5)
 
@@ -66,8 +82,10 @@ def record_tour(device_id, output_raw, duration_sec=32.0):
 if __name__ == "__main__":
     import sys
     target = sys.argv[1] if len(sys.argv) > 1 else "all"
+    iphone_id = get_booted_device_id("iPhone")
+    ipad_id = get_booted_device_id("iPad")
     if target in ("all", "iphone"):
-        record_tour(IPHONE_ID, RAW_IPHONE, duration_sec=32.0)
+        record_tour(iphone_id, RAW_IPHONE, duration_sec=32.0)
     if target in ("all", "ipad"):
-        record_tour(IPAD_ID, RAW_IPAD, duration_sec=32.0)
+        record_tour(ipad_id, RAW_IPAD, duration_sec=32.0)
 
