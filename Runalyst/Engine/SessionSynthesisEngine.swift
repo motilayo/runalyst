@@ -203,6 +203,23 @@ struct PrescribedDailySession: Sendable, Equatable {
         get { mainSessionTemplateId }
         set { mainSessionTemplateId = newValue }
     }
+
+    /// Converts this prescribed daily session into a pure `PlannedSessionSpec` for RunalystCore and watch calibration.
+    public func toPlannedSessionSpec() -> PlannedSessionSpec {
+        PlannedSessionSpec(
+            kind: isRestDay ? "rest" : "run",
+            intent: intent,
+            title: sessionTitle,
+            minutesLow: isRestDay ? 0 : totalDurationMinutes,
+            minutesHigh: isRestDay ? 0 : totalDurationMinutes,
+            paceBand: isRestDay ? nil : paceBand,
+            hrCap: hrCap,
+            cadenceFloor: cadenceFloor > 0 ? cadenceFloor : nil,
+            primerTitle: isRestDay ? nil : primerDrillTitle,
+            adjustmentTriggers: isTrimmed ? ["readiness_adjusted"] : [],
+            provisional: false
+        )
+    }
 }
 
 /// Lightweight snapshot of today's completed run for thread safety and fast rendering.
@@ -329,7 +346,62 @@ enum SessionSynthesisEngine {
             .sorted { $0.date < $1.date }
 
         // 1. If today has no completed workouts, remain in .preRun
-        guard !todayRuns.isEmpty else {
+        let resolvedState: DailyTrainingState = {
+            guard !todayRuns.isEmpty else {
+                let todaySession = synthesizePreRunPrescription(
+                    runRecords: runRecords,
+                    activeGoal: activeGoal,
+                    experienceLevel: experienceLevel,
+                    useMetric: useMetric,
+                    userHeightCm: userHeightCm,
+                    now: now
+                )
+                return .preRun(session: todaySession)
+            }
+
+            // 2. If the runner completed a primer or partial run that does not yet satisfy a full day's completion:
+            // Keep today's session in .preRun with the primer attached so the runner can start/complete the main run!
+            if !isWorkoutDayComplete(runs: todayRuns) {
+                let priorRuns = runRecords.filter { !calendar.isDate($0.date, inSameDayAs: now) && !$0.isDeleted }
+                var todaySession = synthesizePreRunPrescription(
+                    runRecords: priorRuns,
+                    activeGoal: activeGoal,
+                    experienceLevel: experienceLevel,
+                    useMetric: useMetric,
+                    userHeightCm: userHeightCm,
+                    now: now
+                )
+                if let completedPrimer = todayRuns.first(where: { isShortPrimerWorkout($0) }) ?? todayRuns.first {
+                    todaySession.completedPrimerRun = buildSnapshot(from: completedPrimer, useMetric: useMetric)
+                    todaySession.durationBand = "\(todaySession.mainRunDurationMinutes) Min"
+                }
+                return .preRun(session: todaySession)
+            }
+
+            // 3. Main Run satisfied: transition to .completedToday and prepare tomorrow's prescription
+            if let primaryRun = todayRuns.max(by: { $0.duration < $1.duration }) ?? todayRuns.last {
+                var primarySnapshot = buildSnapshot(from: primaryRun, useMetric: useMetric)
+                let otherSnapshots = todayRuns
+                    .filter { $0.id != primaryRun.id }
+                    .map { buildSnapshot(from: $0, useMetric: useMetric) }
+                primarySnapshot.additionalCompletedRuns = otherSnapshots
+
+                let context = SynthesisContext(
+                    activeGoal: activeGoal,
+                    experienceLevel: experienceLevel,
+                    useMetric: useMetric,
+                    userHeightCm: userHeightCm,
+                    now: now
+                )
+                let tomorrowSession = synthesizeTomorrowPrescription(
+                    todayRun: primaryRun,
+                    runRecords: runRecords,
+                    context: context
+                )
+                return .completedToday(completedRun: primarySnapshot, tomorrowSession: tomorrowSession)
+            }
+
+            // 4. Fallback Pre-Run State
             let todaySession = synthesizePreRunPrescription(
                 runRecords: runRecords,
                 activeGoal: activeGoal,
@@ -339,60 +411,16 @@ enum SessionSynthesisEngine {
                 now: now
             )
             return .preRun(session: todaySession)
-        }
+        }()
 
-        // 2. If the runner completed a primer or partial run that does not yet satisfy a full day's completion:
-        // Keep today's session in .preRun with the primer attached so the runner can start/complete the main run!
-        if !isWorkoutDayComplete(runs: todayRuns) {
-            let priorRuns = runRecords.filter { !calendar.isDate($0.date, inSameDayAs: now) && !$0.isDeleted }
-            var todaySession = synthesizePreRunPrescription(
-                runRecords: priorRuns,
-                activeGoal: activeGoal,
-                experienceLevel: experienceLevel,
-                useMetric: useMetric,
-                userHeightCm: userHeightCm,
-                now: now
-            )
-            if let completedPrimer = todayRuns.first(where: { isShortPrimerWorkout($0) }) ?? todayRuns.first {
-                todaySession.completedPrimerRun = buildSnapshot(from: completedPrimer, useMetric: useMetric)
-                todaySession.durationBand = "\(todaySession.mainRunDurationMinutes) Min"
-            }
-            return .preRun(session: todaySession)
-        }
-
-        // 3. Main Run satisfied: transition to .completedToday and prepare tomorrow's prescription
-        if let primaryRun = todayRuns.max(by: { $0.duration < $1.duration }) ?? todayRuns.last {
-            var primarySnapshot = buildSnapshot(from: primaryRun, useMetric: useMetric)
-            let otherSnapshots = todayRuns
-                .filter { $0.id != primaryRun.id }
-                .map { buildSnapshot(from: $0, useMetric: useMetric) }
-            primarySnapshot.additionalCompletedRuns = otherSnapshots
-
-            let context = SynthesisContext(
-                activeGoal: activeGoal,
-                experienceLevel: experienceLevel,
-                useMetric: useMetric,
-                userHeightCm: userHeightCm,
-                now: now
-            )
-            let tomorrowSession = synthesizeTomorrowPrescription(
-                todayRun: primaryRun,
-                runRecords: runRecords,
-                context: context
-            )
-            return .completedToday(completedRun: primarySnapshot, tomorrowSession: tomorrowSession)
-        }
-
-        // 4. Fallback Pre-Run State
-        let todaySession = synthesizePreRunPrescription(
-            runRecords: runRecords,
-            activeGoal: activeGoal,
-            experienceLevel: experienceLevel,
-            useMetric: useMetric,
-            userHeightCm: userHeightCm,
+        let spec = resolvedState.activeSession.toPlannedSessionSpec()
+        WatchCalibrationBridge.shared.publishContext(
+            runs: runRecords,
+            spec: spec,
             now: now
         )
-        return .preRun(session: todaySession)
+
+        return resolvedState
     }
 
     // MARK: - Pre-Run Synthesis

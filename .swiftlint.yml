@@ -3,6 +3,7 @@
 included:
   - Runalyst
   - RunalystTests
+  - RunalystWatch
 
 excluded:
   - DerivedData

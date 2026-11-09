@@ -25,6 +25,8 @@ public struct TelemetryBucket: Sendable, Codable, Equatable {
     public let strideLengthMeters: Double?
     /// Cumulative elevation gain in meters.
     public let elevationGainMeters: Double?
+    /// Running power in Watts, if available from watch or power meter.
+    public let powerWatts: Double?
 
     public init(
         timestamp: Date,
@@ -36,7 +38,8 @@ public struct TelemetryBucket: Sendable, Codable, Equatable {
         groundContactTimeMs: Double? = nil,
         verticalOscillationCm: Double? = nil,
         strideLengthMeters: Double? = nil,
-        elevationGainMeters: Double? = nil
+        elevationGainMeters: Double? = nil,
+        powerWatts: Double? = nil
     ) {
         self.timestamp = timestamp
         self.durationSeconds = durationSeconds
@@ -48,6 +51,7 @@ public struct TelemetryBucket: Sendable, Codable, Equatable {
         self.verticalOscillationCm = verticalOscillationCm
         self.strideLengthMeters = strideLengthMeters
         self.elevationGainMeters = elevationGainMeters
+        self.powerWatts = powerWatts
     }
 
     /// Speed in meters per second for this slice.
