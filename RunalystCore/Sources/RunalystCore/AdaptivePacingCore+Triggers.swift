@@ -101,6 +101,56 @@ extension AdaptivePacingCore {
         return nil
     }
 
+    /// Evaluates real-time cadence drop alerts based on short-window cadence statistics.
+    ///
+    /// Emits a `.cadenceDrift` event when the runner continuously runs below target cadence by >= 6 SPM
+    /// (or below the absolute 150 SPM floor) for >= 12 seconds, followed by a 30-second refractory cooldown period.
+    /// Non-destructive: does NOT mutate target paces or triggers.
+    internal mutating func evaluateCadenceDriftAlert() -> PacingEvent? {
+        // 1. Decrement cooldown if active
+        cadenceDriftCooldownRemainingSeconds = max(0, cadenceDriftCooldownRemainingSeconds - 1)
+
+        // 2. Check short-window cadence stats
+        let resolvedCadence: Int? = {
+            if let shortCadence = ringBuffer.shortWindowStats(for: .cadence), shortCadence.mean > 0 {
+                return Int(shortCadence.mean.rounded())
+            }
+            if let latestCadence = ringBuffer.latestTick?.cadenceSPM, latestCadence > 0 {
+                return Int(latestCadence.rounded())
+            }
+            return nil
+        }()
+
+        guard let currentCadence = resolvedCadence, let targetCadence = currentTargetCadenceSPM else {
+            cadenceDriftContinuousSeconds = 0.0
+            return nil
+        }
+
+        // 3. Evaluate threshold or floor violation
+        let isBelowThreshold = Double(currentCadence) < Double(targetCadence) - configuration.cadenceDriftThresholdSPM
+        let isBelowFloor = currentCadence < configuration.cadenceFloorSPM
+
+        if isBelowThreshold || isBelowFloor {
+            cadenceDriftContinuousSeconds += 1.0
+
+            if cadenceDriftContinuousSeconds >= configuration.cadenceDriftDebounceDurationSeconds && cadenceDriftCooldownRemainingSeconds == 0 {
+                cadenceDriftCooldownRemainingSeconds = Int(configuration.cadenceDriftCooldownSeconds)
+                cadenceDriftContinuousSeconds = 0.0
+                let delta = max(0, targetCadence - currentCadence)
+                return .cadenceDrift(
+                    currentCadenceSPM: currentCadence,
+                    targetCadenceSPM: targetCadence,
+                    deltaSPM: delta
+                )
+            }
+        } else {
+            // Cadence is healthy / within target
+            cadenceDriftContinuousSeconds = 0.0
+        }
+
+        return nil
+    }
+
     // MARK: - Private Trigger Implementations
 
     private mutating func evaluateRecover(filteredHR: Double?) -> PacingEvent? {

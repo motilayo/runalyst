@@ -102,6 +102,21 @@ public struct PacingEventFeedbackSpec: Sendable, Equatable {
                     accentToken: .neutral
                 )
             }
+        case .cadenceDrift:
+            self.init(
+                haptic: .retry,
+                voiceCueText: "Cadence dropping. Quicken your steps.",
+                accentToken: .vibrantGreen
+            )
+        case .splitMilestone(let index, let pace):
+            let mins = pace / 60
+            let secs = pace % 60
+            let paceText = String(format: "%d:%02d", mins, secs)
+            self.init(
+                haptic: .success,
+                voiceCueText: "Kilometer \(index). \(paceText) pace.",
+                accentToken: .electricBlue
+            )
         }
     }
 }
@@ -128,6 +143,12 @@ public struct PacingDisplayState: Sendable, Equatable {
     public let lastReason: PacingReason?
     public let adjustmentsEnabled: Bool
 
+    // Cadence
+    public let filteredCadenceSPM: Int?
+    public let filteredCadenceFormatted: String
+    public let targetCadenceSPM: Int?
+    public let targetCadenceFormatted: String
+
     // Precomputed presentation helpers (Zero leaked view math)
     public let targetPaceFormatted: String
     public let filteredPaceFormatted: String
@@ -152,7 +173,11 @@ public struct PacingDisplayState: Sendable, Equatable {
         deviationTitle: String,
         calibrationProgress: Double?,
         calibrationProgressFormatted: String,
-        refractoryProgress: Double
+        refractoryProgress: Double,
+        filteredCadenceSPM: Int? = nil,
+        filteredCadenceFormatted: String = "--",
+        targetCadenceSPM: Int? = nil,
+        targetCadenceFormatted: String = "--"
     ) {
         self.state = state
         self.targetPaceSecondsPerKm = targetPaceSecondsPerKm
@@ -169,6 +194,10 @@ public struct PacingDisplayState: Sendable, Equatable {
         self.calibrationProgress = calibrationProgress
         self.calibrationProgressFormatted = calibrationProgressFormatted
         self.refractoryProgress = refractoryProgress
+        self.filteredCadenceSPM = filteredCadenceSPM
+        self.filteredCadenceFormatted = filteredCadenceFormatted
+        self.targetCadenceSPM = targetCadenceSPM
+        self.targetCadenceFormatted = targetCadenceFormatted
     }
 }
 
@@ -217,7 +246,8 @@ extension PacingDisplayState {
     /// Creates an initial ready-to-render display state prior to receiving any telemetry ticks.
     public static func initial(
         targetPaceSecondsPerKm: Int? = nil,
-        adjustmentsEnabled: Bool = true
+        adjustmentsEnabled: Bool = true,
+        targetCadenceSPM: Int? = nil
     ) -> PacingDisplayState {
         let targetFormatted: String = {
             guard let seconds = targetPaceSecondsPerKm, seconds > 0 else { return "--:--" }
@@ -225,6 +255,8 @@ extension PacingDisplayState {
             let secs = seconds % 60
             return String(format: "%d:%02d /km", mins, secs)
         }()
+
+        let targetCadFormatted = targetCadenceSPM.map { "\($0) SPM" } ?? "--"
 
         return PacingDisplayState(
             state: .calibrating(progress: 0.0),
@@ -241,7 +273,98 @@ extension PacingDisplayState {
             deviationTitle: "--",
             calibrationProgress: 0.0,
             calibrationProgressFormatted: "0%",
-            refractoryProgress: 0.0
+            refractoryProgress: 0.0,
+            filteredCadenceSPM: nil,
+            filteredCadenceFormatted: "--",
+            targetCadenceSPM: targetCadenceSPM,
+            targetCadenceFormatted: targetCadFormatted
         )
+    }
+}
+
+// MARK: - AdaptivePacingCore Display State Builder Extension
+
+extension AdaptivePacingCore {
+    internal func buildDisplayState(speedEstimate: Double?, hrEstimate: Double?) -> PacingDisplayState {
+        let filteredPace: Int? = {
+            if let shortSpeed = ringBuffer.shortWindowStats(for: .filteredSpeed)?.mean, shortSpeed > 0 {
+                return Int((1000.0 / shortSpeed).rounded())
+            }
+            if let current = speedEstimate, current > 0 {
+                return Int((1000.0 / current).rounded())
+            }
+            return nil
+        }()
+
+        let filteredCadence: Int? = {
+            if let shortCadence = ringBuffer.shortWindowStats(for: .cadence)?.mean, shortCadence > 0 {
+                return Int(shortCadence.rounded())
+            }
+            if let current = ringBuffer.latestTick?.cadenceSPM, current > 0 {
+                return Int(current.rounded())
+            }
+            return nil
+        }()
+
+        let filteredHR: Int? = hrEstimate.map { Int($0.rounded()) }
+        let deviation = evaluateDeviation(target: currentTargetPaceSecondsPerKm, current: filteredPace)
+
+        let calProgress: Double? = {
+            if case .calibrating(let p) = state { return p }
+            return nil
+        }()
+
+        let calProgressStr: String = {
+            if let p = calProgress {
+                return "\(Int((p * 100.0).rounded()))%"
+            }
+            return "--"
+        }()
+
+        let refractoryProg: Double = {
+            guard configuration.refractoryDurationSeconds > 0 else { return 0.0 }
+            return Double(refractorySecondsRemaining) / configuration.refractoryDurationSeconds
+        }()
+
+        let filteredCadFormatted: String = filteredCadence.map { "\($0) SPM" } ?? "--"
+        let targetCadFormatted: String = currentTargetCadenceSPM.map { "\($0) SPM" } ?? "--"
+
+        return PacingDisplayState(
+            state: state,
+            targetPaceSecondsPerKm: currentTargetPaceSecondsPerKm,
+            filteredPaceSecondsPerKm: filteredPace,
+            filteredHeartRateBPM: filteredHR,
+            deviation: deviation,
+            refractorySecondsRemaining: refractorySecondsRemaining,
+            lastReason: lastReason,
+            adjustmentsEnabled: adjustmentsEnabled,
+            targetPaceFormatted: formatPace(secondsPerKm: currentTargetPaceSecondsPerKm),
+            filteredPaceFormatted: formatPace(secondsPerKm: filteredPace),
+            filteredHeartRateFormatted: filteredHR.map { "\($0) BPM" } ?? "--",
+            deviationTitle: deviationTitle(for: deviation),
+            calibrationProgress: calProgress,
+            calibrationProgressFormatted: calProgressStr,
+            refractoryProgress: refractoryProg,
+            filteredCadenceSPM: filteredCadence,
+            filteredCadenceFormatted: filteredCadFormatted,
+            targetCadenceSPM: currentTargetCadenceSPM,
+            targetCadenceFormatted: targetCadFormatted
+        )
+    }
+
+    private func formatPace(secondsPerKm: Int?) -> String {
+        guard let seconds = secondsPerKm, seconds > 0 else { return "--:--" }
+        let mins = seconds / 60
+        let secs = seconds % 60
+        return String(format: "%d:%02d /km", mins, secs)
+    }
+
+    private func deviationTitle(for deviation: PaceDeviation) -> String {
+        switch deviation {
+        case .onTarget: return "On Target"
+        case .tooFast: return "Too Fast"
+        case .tooSlow: return "Too Slow"
+        case .unknown: return "--"
+        }
     }
 }

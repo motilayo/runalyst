@@ -29,6 +29,9 @@ public actor TelemetryEngine {
 
     private var lastEmittedSecond: Int = -1
     private var isPaused: Bool = false
+    private var lastCompletedKilometer: Int = 0
+    private var cumulativeDistanceMeters: Double = 0.0
+    private var lastSplitElapsed: TimeInterval = 0.0
 
     public init(
         profile: AthleteCalibrationProfile,
@@ -68,6 +71,9 @@ public actor TelemetryEngine {
         )
         self.lastEmittedSecond = -1
         self.isPaused = false
+        self.lastCompletedKilometer = 0
+        self.cumulativeDistanceMeters = 0.0
+        self.lastSplitElapsed = 0.0
         self.resetSamples()
     }
 
@@ -127,18 +133,29 @@ public actor TelemetryEngine {
         gradeFraction = MetricSample(value: fraction, timestamp: elapsed)
     }
 
+    public func updateDistance(_ meters: Double, at elapsed: TimeInterval) {
+        cumulativeDistanceMeters = max(cumulativeDistanceMeters, meters)
+    }
+
     // MARK: - 1 Hz Tick Generation
 
     /// Emits exactly one `TelemetryTick` per whole elapsed second from `elapsedTime`.
     ///
     /// Skips tick emission if paused or if this whole second was already emitted.
     @discardableResult
-    public func processTick(at elapsed: TimeInterval) async -> (events: [PacingEvent], display: PacingDisplayState)? {
+    public func processTick(
+        at elapsed: TimeInterval,
+        distanceMeters: Double? = nil
+    ) async -> (events: [PacingEvent], display: PacingDisplayState)? {
         guard !isPaused else { return nil }
 
         let currentSecond = Int(elapsed)
         guard currentSecond > lastEmittedSecond, currentSecond >= 0 else { return nil }
         lastEmittedSecond = currentSecond
+
+        if let distanceMeters {
+            cumulativeDistanceMeters = max(cumulativeDistanceMeters, distanceMeters)
+        }
 
         let tick = TelemetryTick(
             elapsedSeconds: elapsed,
@@ -190,9 +207,23 @@ public actor TelemetryEngine {
         )
 
         let result = core.ingest(tick)
-        if let vm = viewModel {
-            await vm.update(events: result.events, display: result.display)
+        var finalEvents = result.events
+
+        while cumulativeDistanceMeters >= Double(lastCompletedKilometer + 1) * 1000.0 {
+            lastCompletedKilometer += 1
+            let splitDuration = elapsed - lastSplitElapsed
+            let splitPace = splitDuration > 0 ? Int(splitDuration) : (result.display.filteredPaceSecondsPerKm ?? 300)
+            lastSplitElapsed = elapsed
+            let splitEvent = PacingEvent.splitMilestone(
+                splitIndex: lastCompletedKilometer,
+                splitPaceSecondsPerKm: splitPace
+            )
+            finalEvents.append(splitEvent)
         }
-        return result
+
+        if let vm = viewModel {
+            await vm.update(events: finalEvents, display: result.display)
+        }
+        return (events: finalEvents, display: result.display)
     }
 }

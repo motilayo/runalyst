@@ -87,7 +87,7 @@ struct AdaptivePacingCoreTests {
                     calibrationCompleteEvent = event
                 case .surge, .recover:
                     adjustments.append(event)
-                case .backOnTarget, .paceDrift:
+                case .backOnTarget, .paceDrift, .cadenceDrift, .splitMilestone:
                     break
                 }
             }
