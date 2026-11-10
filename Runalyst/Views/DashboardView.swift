@@ -641,6 +641,7 @@ struct DashboardView: View {
                 let bridge = WorkoutBridge()
                 await WorkoutScheduler.shared.removeAllWorkouts()
                 try await bridge.scheduleDrill(dto: dto)
+                WatchCalibrationBridge.shared.publishDrillIntent(dto: dto)
                 await MainActor.run {
                     self.lastWatchExportTimestamp = Date().timeIntervalSince1970
                 }

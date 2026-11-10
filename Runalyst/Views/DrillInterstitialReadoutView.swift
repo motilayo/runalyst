@@ -466,6 +466,7 @@ struct DrillInterstitialReadoutView: View {
                     dtoToSchedule.isIndoor = preferredWorkoutIsIndoor
                     let bridge = WorkoutBridge()
                     try await bridge.scheduleDrill(dto: dtoToSchedule)
+                    WatchCalibrationBridge.shared.publishDrillIntent(dto: dtoToSchedule)
                     await MainActor.run {
                         self.isScheduling = false
                         self.scheduleSuccess = true

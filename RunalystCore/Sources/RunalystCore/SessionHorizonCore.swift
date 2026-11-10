@@ -169,6 +169,7 @@ public enum SessionHorizonCore {
         isTomorrowRecovery: Bool = false,
         isTomorrowRest: Bool = false,
         hasRecentLongRun: Bool = false,
+        recoveryHoursRemaining: Double = 0.0,
         zone1Ceiling: Int = 135,
         zone2Ceiling: Int = 148,
         zone3Ceiling: Int = 158,
@@ -191,6 +192,9 @@ public enum SessionHorizonCore {
             let isFirstDay = (offset == 0)
             let isTomorrow = cal.isDate(canonicalDate, inSameDayAs: cal.date(byAdding: .day, value: 1, to: context.now) ?? context.now)
             let label = isTomorrow ? "Tomorrow" : dayName
+
+            let daysFromToday = cal.dateComponents([.day], from: cal.startOfDay(for: context.now), to: canonicalDate).day ?? (offset + 1)
+            let isDayUnderMultiDayRecovery = recoveryHoursRemaining > Double(max(0, daysFromToday - 1)) * 24.0
 
             var template = templateSpecForWeekday(
                 weekday: weekday,
@@ -218,6 +222,23 @@ public enum SessionHorizonCore {
                     minutesHigh: 0,
                     primerTitle: nil,
                     iconName: "bed.double.fill"
+                )
+            } else if isDayUnderMultiDayRecovery && (template.intensityZone == .zone4Tempo || template.intensityZone == .zone5Interval) {
+                let easyTitle: String = {
+                    if context.activeGoal.localizedCaseInsensitiveContains("5K") {
+                        return context.useMetric ? "5 km Easy Aerobic Run" : "3 mi Easy Aerobic Run"
+                    } else {
+                        return context.useMetric ? "6 km Easy Aerobic Run" : "3.5 mi Easy Aerobic Run"
+                    }
+                }()
+                template = WeekdayTemplateSpec(
+                    kind: "run",
+                    title: easyTitle,
+                    intensityZone: .zone2Base,
+                    minutesLow: 30,
+                    minutesHigh: 35,
+                    primerTitle: nil,
+                    iconName: "figure.run"
                 )
             } else if offset == 4 && !hasRecentLongRun && !days.contains(where: { $0.sessionTitle.lowercased().contains("long") }) {
                 if context.activeGoal.localizedCaseInsensitiveContains("5K") {

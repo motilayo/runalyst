@@ -377,6 +377,12 @@ struct ContentView: View {
                 profile.save()
                 await MainActor.run {
                     DailyTrainingStateStore.shared.invalidate()
+                    let state = DailyTrainingStateStore.shared.resolveState(runRecords: allRuns)
+                    let spec = state.activeSession.toPlannedSessionSpec()
+                    WatchCalibrationBridge.shared.publishContext(
+                        runs: allRuns,
+                        spec: spec
+                    )
                 }
             }
 

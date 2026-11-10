@@ -3,17 +3,10 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 54;
+	objectVersion = 60;
 	objects = {
 
 /* Begin PBXBuildFile section */
-		E74C3C473F1526410EAF5328 /* WorkoutSnapshotEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8E4D5F7BAB01E4F8E957903 /* WorkoutSnapshotEngineTests.swift */; };
-		E5E7E0539323754096A6518B /* WorkoutSnapshotEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = F676ECAC20EAE842A1A27CE0 /* WorkoutSnapshotEngine.swift */; };
-		C3BB09AAFCF8C74A278194FC /* GoldenTemporalFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4CCF9393E14DB4E4B931D0C /* GoldenTemporalFixtures.swift */; };
-		A16E3E307FD4144851A65AB8 /* GoldenTemporalHarnessIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B281B3BC7FCFF84C1EBB336A /* GoldenTemporalHarnessIntegrationTests.swift */; };
-		E11100100D4E5F60718293B1 /* Runalyst/Views/ActivityVolumeSummaryCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11100100D4E5F60718293B1 /* Runalyst/Views/ActivityVolumeSummaryCard.swift */; };
-		D4E5F60718293A0100000003 /* RunalystCore in Frameworks */ = {isa = PBXBuildFile; productRef = D4E5F60718293A0100000002 /* RunalystCore */; };
-		D4E5F60718293A0100000004 /* RunalystCore in Frameworks */ = {isa = PBXBuildFile; productRef = D4E5F60718293A0100000002 /* RunalystCore */; };
 		075FD91D330B77E5867419C9 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0C58A0BCEA50BA9ED3463C4 /* ContentView.swift */; };
 		0B18257CB15134E50E06CFC5 /* PaceFormatterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00D99981A310B02F2B8044D6 /* PaceFormatterTests.swift */; };
 		109644F6A12FCEE27F8160DA /* RunalystClassifier.mlmodel in Sources */ = {isa = PBXBuildFile; fileRef = B06944F28CDA8831E8FA559D /* RunalystClassifier.mlmodel */; };
@@ -26,7 +19,6 @@
 		31740D413B821056F85765AC /* DrillRecommendation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FC0868FA1D2D6FB2E59A10C /* DrillRecommendation.swift */; };
 		34C493421E7F4ACCB2EE5001 /* PreRunDrillId.swift in Sources */ = {isa = PBXBuildFile; fileRef = A72B03F5BC3D402A96C0C907 /* PreRunDrillId.swift */; };
 		438FD31C3051C867003DEDA5 /* LiveCoachEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 438FD3183051C866003DEDA5 /* LiveCoachEngine.swift */; };
-		B2220098D4E5F60718293A98 /* Runalyst/Views/Components/MilestoneAwardDetailSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2220098D4E5F60718293A98 /* Runalyst/Views/Components/MilestoneAwardDetailSheet.swift */; };
 		43D90B67B3C2451D924E0314 /* PreRunDrill.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCBBAC046CE14168A1BB76B0 /* PreRunDrill.swift */; };
 		54A8E7032FED357C324CC7FD /* DrillPatternRecognitionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5319F7CFFB69E39F2B52D9D0 /* DrillPatternRecognitionTests.swift */; };
 		554433221100FFEEDDCCBBAA /* Runalyst/Views/AnimatedLoadingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABBCCDDEEFF001122334455 /* Runalyst/Views/AnimatedLoadingView.swift */; };
@@ -50,6 +42,7 @@
 		98DB7AE1F0FD4D5A9E2AED7E /* Runalyst/Views/SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 768372D4E377479C83BEA700 /* Runalyst/Views/SettingsView.swift */; };
 		9A22F762B423A292DEEDCBF8 /* HealthKitManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2225B5F6B6513A7AC03E5246 /* HealthKitManager.swift */; };
 		9DEC99887D72772D3AB524D1 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B29A62CEEC0D478BA7CAB794 /* Foundation.framework */; };
+		A16E3E307FD4144851A65AB8 /* GoldenTemporalHarnessIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B281B3BC7FCFF84C1EBB336A /* GoldenTemporalHarnessIntegrationTests.swift */; };
 		A1B2C3D4E5F60718293A4B5C /* RunalystMigrationPlan.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F6A708192A3B4C5D /* RunalystMigrationPlan.swift */; };
 		A23FEDA4C174E041B9C8C854 /* TrainingCorrectionModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBE2F57F5A0633E69F7E89BE /* TrainingCorrectionModelTests.swift */; };
 		A2B3C4D5E6F7G8H9I0J1K2L3 /* Runalyst/Views/DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1A2B3C4D5E6F7G8H9I0J1K2 /* Runalyst/Views/DashboardView.swift */; };
@@ -58,20 +51,7 @@
 		B1110001D4E5F60718293A01 /* Runalyst/Models/RunSignature.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110001D4E5F60718293A01 /* Runalyst/Models/RunSignature.swift */; };
 		B1110002D4E5F60718293A02 /* Runalyst/Models/MacroProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110002D4E5F60718293A02 /* Runalyst/Models/MacroProfile.swift */; };
 		B1110004D4E5F60718293A04 /* Runalyst/Views/ReadinessMathModal.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110004D4E5F60718293A04 /* Runalyst/Views/ReadinessMathModal.swift */; };
-		B1110054D4E5F60718293A54 /* Runalyst/Views/PrescribedSessionCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110054D4E5F60718293A54 /* Runalyst/Views/PrescribedSessionCardView.swift */; };
-		B1110055D4E5F60718293A55 /* Runalyst/Views/UpcomingScheduleCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110055D4E5F60718293A55 /* Runalyst/Views/UpcomingScheduleCardView.swift */; };
-		B1110056D4E5F60718293A56 /* Runalyst/Views/DrillPrimerCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110056D4E5F60718293A56 /* Runalyst/Views/DrillPrimerCardView.swift */; };
-		B1110057D4E5F60718293A57 /* Runalyst/Views/GoalReadinessCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110057D4E5F60718293A57 /* Runalyst/Views/GoalReadinessCard.swift */; };
-		E1110001D4E5F60718293A01 /* Runalyst/Views/DesignSystem/LiquidGlassCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1110001D4E5F60718293A01 /* Runalyst/Views/DesignSystem/LiquidGlassCard.swift */; };
-		E1110002D4E5F60718293A02 /* Runalyst/Views/DesignSystem/MiniStatTile.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1110002D4E5F60718293A02 /* Runalyst/Views/DesignSystem/MiniStatTile.swift */; };
-		E1110004D4E5F60718293A04 /* Runalyst/Views/DesignSystem/GlassBoxExplainerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1110004D4E5F60718293A04 /* Runalyst/Views/DesignSystem/GlassBoxExplainerSheet.swift */; };
-		E1110005D4E5F60718293A05 /* Runalyst/Views/DesignSystem/PillFilterStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1110005D4E5F60718293A05 /* Runalyst/Views/DesignSystem/PillFilterStrip.swift */; };
-		E1110006D4E5F60718293A06 /* Runalyst/Views/DesignSystem/RunalystDesignTokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1110006D4E5F60718293A06 /* Runalyst/Views/DesignSystem/RunalystDesignTokens.swift */; };
 		B1110005D4E5F60718293A05 /* Runalyst/Views/RunVarianceMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110005D4E5F60718293A05 /* Runalyst/Views/RunVarianceMapView.swift */; };
-		B1110080D4E5F60718293A80 /* Runalyst/Models/WorkoutTelemetryModality.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110080D4E5F60718293A80 /* Runalyst/Models/WorkoutTelemetryModality.swift */; };
-		B1110081D4E5F60718293A81 /* Runalyst/Views/HeartRateTrajectoryMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110081D4E5F60718293A81 /* Runalyst/Views/HeartRateTrajectoryMapView.swift */; };
-		B1110082D4E5F60718293A82 /* Runalyst/Views/AdaptiveWorkoutTelemetryCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110082D4E5F60718293A82 /* Runalyst/Views/AdaptiveWorkoutTelemetryCard.swift */; };
-		B1110083D4E5F60718293A83 /* WorkoutTelemetryModalityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110083D4E5F60718293A83 /* WorkoutTelemetryModalityTests.swift */; };
 		B1110007D4E5F60718293A07 /* Runalyst/Utilities/TelemetryHighlighter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110007D4E5F60718293A07 /* Runalyst/Utilities/TelemetryHighlighter.swift */; };
 		B1110009D4E5F60718293A09 /* IndoorIntelligenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110009D4E5F60718293A09 /* IndoorIntelligenceTests.swift */; };
 		B1110010D4E5F60718293A10 /* Runalyst/CoachingEngine/WorkoutAnalysisContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110010D4E5F60718293A10 /* Runalyst/CoachingEngine/WorkoutAnalysisContext.swift */; };
@@ -83,10 +63,6 @@
 		B1110017D4E5F60718293A17 /* Runalyst/CoachingEngine/AnalystChatTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110017D4E5F60718293A17 /* Runalyst/CoachingEngine/AnalystChatTools.swift */; };
 		B1110018D4E5F60718293A18 /* Runalyst/CoachingEngine/CoachingAssetLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110018D4E5F60718293A18 /* Runalyst/CoachingEngine/CoachingAssetLibrary.swift */; };
 		B1110019D4E5F60718293A19 /* DynamicAssetGroundingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110019D4E5F60718293A19 /* DynamicAssetGroundingTests.swift */; };
-		B1110053D4E5F60718293A53 /* SessionSynthesisEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110053D4E5F60718293A53 /* SessionSynthesisEngineTests.swift */; };
-		B1110CST001F60718293A001 /* CrossSurfaceIdempotencyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110CST001F60718293A001 /* CrossSurfaceIdempotencyTests.swift */; };
-		B111005DD4E5F60718293A5D /* TrainingCalendarTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A111005DD4E5F60718293A5D /* TrainingCalendarTests.swift */; };
-		B111005ED4E5F60718293A5E /* ToolPayloadSchemaTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A111005ED4E5F60718293A5E /* ToolPayloadSchemaTests.swift */; };
 		B1110020D4E5F60718293A20 /* Runalyst/CoachingEngine/WorkoutAnalysisContextFormatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110020D4E5F60718293A20 /* Runalyst/CoachingEngine/WorkoutAnalysisContextFormatting.swift */; };
 		B1110021D4E5F60718293A21 /* Runalyst/Utilities/RunSplitSynthesis.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110021D4E5F60718293A21 /* Runalyst/Utilities/RunSplitSynthesis.swift */; };
 		B1110022D4E5F60718293A22 /* Runalyst/Views/StatBox.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110022D4E5F60718293A22 /* Runalyst/Views/StatBox.swift */; };
@@ -115,26 +91,58 @@
 		B1110046D4E5F60718293A46 /* Runalyst/Views/SyncProgressBannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110046D4E5F60718293A46 /* Runalyst/Views/SyncProgressBannerView.swift */; };
 		B1110047D4E5F60718293A47 /* Runalyst/Engine/PreRunDrill+Formatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110047D4E5F60718293A47 /* Runalyst/Engine/PreRunDrill+Formatting.swift */; };
 		B1110048D4E5F60718293A48 /* Runalyst/Engine/PreRunDrill+WorkoutPlan.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110048D4E5F60718293A48 /* Runalyst/Engine/PreRunDrill+WorkoutPlan.swift */; };
-		B1110DTS001F60718293A001 /* Runalyst/Engine/DailyTrainingStateStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110DTS001F60718293A001 /* Runalyst/Engine/DailyTrainingStateStore.swift */; };
 		B1110050D4E5F60718293A50 /* Runalyst/Engine/SessionSynthesisEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110050D4E5F60718293A50 /* Runalyst/Engine/SessionSynthesisEngine.swift */; };
-		B111005CD4E5F60718293A5C /* Runalyst/Engine/TrainingCalendar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A111005CD4E5F60718293A5C /* Runalyst/Engine/TrainingCalendar.swift */; };
 		B1110051D4E5F60718293A51 /* Runalyst/Views/WorkoutsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110051D4E5F60718293A51 /* Runalyst/Views/WorkoutsView.swift */; };
 		B1110052D4E5F60718293A52 /* Runalyst/Views/AnalysisDashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110052D4E5F60718293A52 /* Runalyst/Views/AnalysisDashboardView.swift */; };
+		B1110053D4E5F60718293A53 /* SessionSynthesisEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110053D4E5F60718293A53 /* SessionSynthesisEngineTests.swift */; };
+		B1110054D4E5F60718293A54 /* Runalyst/Views/PrescribedSessionCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110054D4E5F60718293A54 /* Runalyst/Views/PrescribedSessionCardView.swift */; };
+		B1110055D4E5F60718293A55 /* Runalyst/Views/UpcomingScheduleCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110055D4E5F60718293A55 /* Runalyst/Views/UpcomingScheduleCardView.swift */; };
+		B1110056D4E5F60718293A56 /* Runalyst/Views/DrillPrimerCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110056D4E5F60718293A56 /* Runalyst/Views/DrillPrimerCardView.swift */; };
+		B1110057D4E5F60718293A57 /* Runalyst/Views/GoalReadinessCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110057D4E5F60718293A57 /* Runalyst/Views/GoalReadinessCard.swift */; };
+		B111005CD4E5F60718293A5C /* Runalyst/Engine/TrainingCalendar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A111005CD4E5F60718293A5C /* Runalyst/Engine/TrainingCalendar.swift */; };
+		B111005DD4E5F60718293A5D /* TrainingCalendarTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A111005DD4E5F60718293A5D /* TrainingCalendarTests.swift */; };
+		B111005ED4E5F60718293A5E /* ToolPayloadSchemaTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A111005ED4E5F60718293A5E /* ToolPayloadSchemaTests.swift */; };
+		B1110080D4E5F60718293A80 /* Runalyst/Models/WorkoutTelemetryModality.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110080D4E5F60718293A80 /* Runalyst/Models/WorkoutTelemetryModality.swift */; };
+		B1110081D4E5F60718293A81 /* Runalyst/Views/HeartRateTrajectoryMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110081D4E5F60718293A81 /* Runalyst/Views/HeartRateTrajectoryMapView.swift */; };
+		B1110082D4E5F60718293A82 /* Runalyst/Views/AdaptiveWorkoutTelemetryCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110082D4E5F60718293A82 /* Runalyst/Views/AdaptiveWorkoutTelemetryCard.swift */; };
+		B1110083D4E5F60718293A83 /* WorkoutTelemetryModalityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110083D4E5F60718293A83 /* WorkoutTelemetryModalityTests.swift */; };
+		B1110097D4E5F60718293A97 /* Runalyst/Intents/RunalystShortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110097D4E5F60718293A97 /* Runalyst/Intents/RunalystShortcuts.swift */; };
+		B1110098D4E5F60718293A98 /* Runalyst/Views/Components/ChartAudioGraphDescriptors.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110098D4E5F60718293A98 /* Runalyst/Views/Components/ChartAudioGraphDescriptors.swift */; };
 		B1110099D4E5F60718293A99 /* Runalyst/CoachingEngine/HistoricalRunMatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110099D4E5F60718293A99 /* Runalyst/CoachingEngine/HistoricalRunMatcher.swift */; };
+		B1110CST001F60718293A001 /* CrossSurfaceIdempotencyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110CST001F60718293A001 /* CrossSurfaceIdempotencyTests.swift */; };
+		B1110DTS001F60718293A001 /* Runalyst/Engine/DailyTrainingStateStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110DTS001F60718293A001 /* Runalyst/Engine/DailyTrainingStateStore.swift */; };
+		B2220098D4E5F60718293A98 /* Runalyst/Views/Components/MilestoneAwardDetailSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2220098D4E5F60718293A98 /* Runalyst/Views/Components/MilestoneAwardDetailSheet.swift */; };
 		B34F9612C3224FC787FE1029 /* DrillTemplate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F216137F6DD0451D940D3AF6 /* DrillTemplate.swift */; };
 		B9C0D1E2F3A4B5C6D7E80102 /* ReadinessModifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8B9C0D1E2F3A4B5C6D7E801 /* ReadinessModifier.swift */; };
-		BCCC58D89E55F0E512F2AA77 /* FramboiseEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF6702113B57AA6128E0FBEF /* FramboiseEngineTests.swift */; };
 		BB1100019E55F0E512345678 /* ContinuousMillAssayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11000128E0FBEF12345678 /* ContinuousMillAssayTests.swift */; };
+		BCCC58D89E55F0E512F2AA77 /* FramboiseEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF6702113B57AA6128E0FBEF /* FramboiseEngineTests.swift */; };
+		C3BB09AAFCF8C74A278194FC /* GoldenTemporalFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4CCF9393E14DB4E4B931D0C /* GoldenTemporalFixtures.swift */; };
 		CE739F8BEC86FD28A3B81019 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B29A62CEEC0D478BA7CAB794 /* Foundation.framework */; };
+		D1110091D4E5F60718293A91 /* Runalyst/Models/DrillReadout+Adaptive.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1110091D4E5F60718293A91 /* Runalyst/Models/DrillReadout+Adaptive.swift */; };
+		D1110092D4E5F60718293A92 /* Runalyst/Views/HeartRateTrajectoryMapView+Chart.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1110092D4E5F60718293A92 /* Runalyst/Views/HeartRateTrajectoryMapView+Chart.swift */; };
+		D1110093D4E5F60718293A93 /* Runalyst/Views/DrillExecutionScorecard+Evaluation.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1110093D4E5F60718293A93 /* Runalyst/Views/DrillExecutionScorecard+Evaluation.swift */; };
+		D1110094D4E5F60718293A94 /* Runalyst/Views/DrillExecutionScorecard+Subviews.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1110094D4E5F60718293A94 /* Runalyst/Views/DrillExecutionScorecard+Subviews.swift */; };
+		D1110095D4E5F60718293A95 /* Runalyst/Views/RunDetailView+Cards.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1110095D4E5F60718293A95 /* Runalyst/Views/RunDetailView+Cards.swift */; };
+		D1110096D4E5F60718293A96 /* Runalyst/Views/RunDetailView+PillsAndHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1110096D4E5F60718293A96 /* Runalyst/Views/RunDetailView+PillsAndHelpers.swift */; };
 		D1E2F3A4B5C6D7E801020304 /* ReadinessModifierTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D1E2F3A4B5C6D7E8010203 /* ReadinessModifierTests.swift */; };
 		D4199BCA5EEC404CA22EC9CA /* HealthKitSeeder.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCEEDA06759A48099F6A59F2 /* HealthKitSeeder.swift */; };
+		D4E5F60718293A0100000003 /* RunalystCore in Frameworks */ = {isa = PBXBuildFile; productRef = D4E5F60718293A0100000002 /* RunalystCore */; };
+		D4E5F60718293A0100000004 /* RunalystCore in Frameworks */ = {isa = PBXBuildFile; productRef = D4E5F60718293A0100000002 /* RunalystCore */; };
 		D71E5C4E0D1E4E8A9C0D1E2F /* DrillSchedule.swift in Sources */ = {isa = PBXBuildFile; fileRef = E82F6D5F1E2F5F9B0D1E2F3A /* DrillSchedule.swift */; };
 		DEE345D7801E107E3983DDDE /* FramboiseEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = B11742538A05B00142AABD16 /* FramboiseEngine.swift */; };
+		E1110001D4E5F60718293A01 /* Runalyst/Views/DesignSystem/LiquidGlassCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1110001D4E5F60718293A01 /* Runalyst/Views/DesignSystem/LiquidGlassCard.swift */; };
+		E1110002D4E5F60718293A02 /* Runalyst/Views/DesignSystem/MiniStatTile.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1110002D4E5F60718293A02 /* Runalyst/Views/DesignSystem/MiniStatTile.swift */; };
+		E1110004D4E5F60718293A04 /* Runalyst/Views/DesignSystem/GlassBoxExplainerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1110004D4E5F60718293A04 /* Runalyst/Views/DesignSystem/GlassBoxExplainerSheet.swift */; };
+		E1110005D4E5F60718293A05 /* Runalyst/Views/DesignSystem/PillFilterStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1110005D4E5F60718293A05 /* Runalyst/Views/DesignSystem/PillFilterStrip.swift */; };
+		E1110006D4E5F60718293A06 /* Runalyst/Views/DesignSystem/RunalystDesignTokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1110006D4E5F60718293A06 /* Runalyst/Views/DesignSystem/RunalystDesignTokens.swift */; };
+		E11100100D4E5F60718293B1 /* Runalyst/Views/ActivityVolumeSummaryCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11100100D4E5F60718293B1 /* Runalyst/Views/ActivityVolumeSummaryCard.swift */; };
 		E1A2B3C4D5E6F708192A3B4C /* Runalyst/Views/WorkoutPhaseTimelineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2A2B3C4D5E6F708192A3B4D /* Runalyst/Views/WorkoutPhaseTimelineView.swift */; };
 		E281FD251253EC8B87980001 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 580A0BC2BD569014814FB14C /* PrivacyInfo.xcprivacy */; };
 		E2BA48FFFCCF7AE4809E455B /* RunRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = 376830066BD295E24C449FB2 /* RunRecord.swift */; };
 		E3784833987D299F1E0A3301 /* PaceFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = EED84D71A6E15EE3D9CFDA45 /* PaceFormatter.swift */; };
 		E46F03B7BDFFEF9966F9EE5F /* LiveCoachDTOCodableTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD4515C1529B7E7851E3D385 /* LiveCoachDTOCodableTests.swift */; };
+		E5E7E0539323754096A6518B /* Runalyst/Engine/WorkoutSnapshotEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = F676ECAC20EAE842A1A27CE0 /* Runalyst/Engine/WorkoutSnapshotEngine.swift */; };
+		E74C3C473F1526410EAF5328 /* WorkoutSnapshotEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8E4D5F7BAB01E4F8E957903 /* WorkoutSnapshotEngineTests.swift */; };
 		EA1EEE590D98ECC58149601F /* CardiacGuardrailTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4A42CA73D5E956FCF8904D4 /* CardiacGuardrailTests.swift */; };
 		F1A1B1C1D1E1F10111213142 /* Runalyst/Models/DrillReadout.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1A1B1C1D1E1F10111213141 /* Runalyst/Models/DrillReadout.swift */; };
 		F20E4C048AB2389BBF14327D /* ModelManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35724688B362914BC9EAC058 /* ModelManager.swift */; };
@@ -143,15 +151,18 @@
 		M1N2B3V4C5X6Z7A8S9D0F1G2 /* Runalyst/CoachingEngine/CoachingEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = Z1X2C3V4B5N6M7L8K9J0H1G2 /* Runalyst/CoachingEngine/CoachingEngine.swift */; };
 		P0O9I8U7Y6T5R4E3W2Q1Z0X9 /* Runalyst/Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B1N2M3L4K5J6H7G8F9D0S1A2 /* Runalyst/Assets.xcassets */; };
 		Q2W3E4R5T6Y7U8I9O0P1A2S3 /* Runalyst/Views/OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6G7H8I9J0K1L2 /* Runalyst/Views/OnboardingView.swift */; };
+		W1110011D4E5F60718293A11 /* RunalystWatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = W1110001D4E5F60718293A01 /* RunalystWatchApp.swift */; };
+		W1110012D4E5F60718293A12 /* TelemetryEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = W1110002D4E5F60718293A02 /* TelemetryEngine.swift */; };
+		W1110013D4E5F60718293A13 /* PacingViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = W1110003D4E5F60718293A03 /* PacingViewModel.swift */; };
+		W1110014D4E5F60718293A14 /* WorkoutManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = W1110004D4E5F60718293A04 /* WorkoutManager.swift */; };
+		W1110015D4E5F60718293A15 /* MotionStreamService.swift in Sources */ = {isa = PBXBuildFile; fileRef = W1110005D4E5F60718293A05 /* MotionStreamService.swift */; };
+		W1110016D4E5F60718293A16 /* FeedbackDispatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = W1110006D4E5F60718293A06 /* FeedbackDispatcher.swift */; };
+		W1110017D4E5F60718293A17 /* WatchContextStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = W1110007D4E5F60718293A07 /* WatchContextStore.swift */; };
+		W1110018D4E5F60718293A18 /* Views/StartRunView.swift in Sources */ = {isa = PBXBuildFile; fileRef = W1110008D4E5F60718293A08 /* Views/StartRunView.swift */; };
+		W1110019D4E5F60718293A19 /* Views/PacingGaugeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = W1110009D4E5F60718293A09 /* Views/PacingGaugeView.swift */; };
+		W111001AD4E5F60718293A1A /* RunalystCore in Frameworks */ = {isa = PBXBuildFile; productRef = D4E5F60718293A0100000002 /* RunalystCore */; };
+		WCB10002D4E5F60718293A02 /* Runalyst/Services/WatchCalibrationBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = WCB10001D4E5F60718293A01 /* Runalyst/Services/WatchCalibrationBridge.swift */; };
 		Z2X3C4V5B6N7M8L9K0J1H2G3 /* Runalyst/Views/RunDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = Q1W2E3R4T5Y6U7I8O9P0A1S2 /* Runalyst/Views/RunDetailView.swift */; };
-		D1110091D4E5F60718293A91 /* Runalyst/Models/DrillReadout+Adaptive.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1110091D4E5F60718293A91 /* Runalyst/Models/DrillReadout+Adaptive.swift */; };
-		D1110092D4E5F60718293A92 /* Runalyst/Views/HeartRateTrajectoryMapView+Chart.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1110092D4E5F60718293A92 /* Runalyst/Views/HeartRateTrajectoryMapView+Chart.swift */; };
-		D1110093D4E5F60718293A93 /* Runalyst/Views/DrillExecutionScorecard+Evaluation.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1110093D4E5F60718293A93 /* Runalyst/Views/DrillExecutionScorecard+Evaluation.swift */; };
-		D1110094D4E5F60718293A94 /* Runalyst/Views/DrillExecutionScorecard+Subviews.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1110094D4E5F60718293A94 /* Runalyst/Views/DrillExecutionScorecard+Subviews.swift */; };
-		D1110095D4E5F60718293A95 /* Runalyst/Views/RunDetailView+Cards.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1110095D4E5F60718293A95 /* Runalyst/Views/RunDetailView+Cards.swift */; };
-		D1110096D4E5F60718293A96 /* Runalyst/Views/RunDetailView+PillsAndHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1110096D4E5F60718293A96 /* Runalyst/Views/RunDetailView+PillsAndHelpers.swift */; };
-		B1110097D4E5F60718293A97 /* Runalyst/Intents/RunalystShortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110097D4E5F60718293A97 /* Runalyst/Intents/RunalystShortcuts.swift */; };
-		B1110098D4E5F60718293A98 /* Runalyst/Views/Components/ChartAudioGraphDescriptors.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110098D4E5F60718293A98 /* Runalyst/Views/Components/ChartAudioGraphDescriptors.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -165,11 +176,6 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		F8E4D5F7BAB01E4F8E957903 /* WorkoutSnapshotEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutSnapshotEngineTests.swift; sourceTree = "<group>"; };
-		F676ECAC20EAE842A1A27CE0 /* Runalyst/Engine/WorkoutSnapshotEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Engine/WorkoutSnapshotEngine.swift; sourceTree = SOURCE_ROOT; };
-		D4CCF9393E14DB4E4B931D0C /* GoldenTemporalFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoldenTemporalFixtures.swift; sourceTree = "<group>"; };
-		B281B3BC7FCFF84C1EBB336A /* GoldenTemporalHarnessIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoldenTemporalHarnessIntegrationTests.swift; sourceTree = "<group>"; };
-		F11100100D4E5F60718293B1 /* Runalyst/Views/ActivityVolumeSummaryCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/ActivityVolumeSummaryCard.swift; sourceTree = SOURCE_ROOT; };
 		00D99981A310B02F2B8044D6 /* PaceFormatterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaceFormatterTests.swift; sourceTree = "<group>"; };
 		0FC0868FA1D2D6FB2E59A10C /* DrillRecommendation.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DrillRecommendation.swift; path = Runalyst/Models/DrillRecommendation.swift; sourceTree = "<group>"; };
 		2225B5F6B6513A7AC03E5246 /* HealthKitManager.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = HealthKitManager.swift; path = Runalyst/Managers/HealthKitManager.swift; sourceTree = "<group>"; };
@@ -177,7 +183,6 @@
 		376830066BD295E24C449FB2 /* RunRecord.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = RunRecord.swift; path = Runalyst/Models/RunRecord.swift; sourceTree = "<group>"; };
 		3EF4AE46EBF2F38F6B44624C /* RunalystTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RunalystTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		438FD3183051C866003DEDA5 /* LiveCoachEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveCoachEngine.swift; sourceTree = "<group>"; };
-		A2220098D4E5F60718293A98 /* Runalyst/Views/Components/MilestoneAwardDetailSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Runalyst/Views/Components/MilestoneAwardDetailSheet.swift"; sourceTree = SOURCE_ROOT; };
 		496FDE679EF9990CBA052270 /* CoachingEngineDataTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachingEngineDataTests.swift; sourceTree = "<group>"; };
 		52FF9D9245C901D4BDBA1FFB /* RunalystApp.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = RunalystApp.swift; path = Runalyst/RunalystApp.swift; sourceTree = "<group>"; };
 		5319F7CFFB69E39F2B52D9D0 /* DrillPatternRecognitionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrillPatternRecognitionTests.swift; sourceTree = "<group>"; };
@@ -202,20 +207,7 @@
 		A1110001D4E5F60718293A01 /* Runalyst/Models/RunSignature.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Models/RunSignature.swift; sourceTree = SOURCE_ROOT; };
 		A1110002D4E5F60718293A02 /* Runalyst/Models/MacroProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Models/MacroProfile.swift; sourceTree = SOURCE_ROOT; };
 		A1110004D4E5F60718293A04 /* Runalyst/Views/ReadinessMathModal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/ReadinessMathModal.swift; sourceTree = SOURCE_ROOT; };
-		A1110054D4E5F60718293A54 /* Runalyst/Views/PrescribedSessionCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/PrescribedSessionCardView.swift; sourceTree = SOURCE_ROOT; };
-		A1110055D4E5F60718293A55 /* Runalyst/Views/UpcomingScheduleCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/UpcomingScheduleCardView.swift; sourceTree = SOURCE_ROOT; };
-		A1110056D4E5F60718293A56 /* Runalyst/Views/DrillPrimerCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/DrillPrimerCardView.swift; sourceTree = SOURCE_ROOT; };
-		A1110057D4E5F60718293A57 /* Runalyst/Views/GoalReadinessCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/GoalReadinessCard.swift; sourceTree = SOURCE_ROOT; };
-		D1110001D4E5F60718293A01 /* Runalyst/Views/DesignSystem/LiquidGlassCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/DesignSystem/LiquidGlassCard.swift; sourceTree = SOURCE_ROOT; };
-		D1110002D4E5F60718293A02 /* Runalyst/Views/DesignSystem/MiniStatTile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/DesignSystem/MiniStatTile.swift; sourceTree = SOURCE_ROOT; };
-		D1110004D4E5F60718293A04 /* Runalyst/Views/DesignSystem/GlassBoxExplainerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/DesignSystem/GlassBoxExplainerSheet.swift; sourceTree = SOURCE_ROOT; };
-		D1110005D4E5F60718293A05 /* Runalyst/Views/DesignSystem/PillFilterStrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/DesignSystem/PillFilterStrip.swift; sourceTree = SOURCE_ROOT; };
-		D1110006D4E5F60718293A06 /* Runalyst/Views/DesignSystem/RunalystDesignTokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/DesignSystem/RunalystDesignTokens.swift; sourceTree = SOURCE_ROOT; };
 		A1110005D4E5F60718293A05 /* Runalyst/Views/RunVarianceMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/RunVarianceMapView.swift; sourceTree = SOURCE_ROOT; };
-		A1110080D4E5F60718293A80 /* Runalyst/Models/WorkoutTelemetryModality.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Models/WorkoutTelemetryModality.swift; sourceTree = SOURCE_ROOT; };
-		A1110081D4E5F60718293A81 /* Runalyst/Views/HeartRateTrajectoryMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/HeartRateTrajectoryMapView.swift; sourceTree = SOURCE_ROOT; };
-		A1110082D4E5F60718293A82 /* Runalyst/Views/AdaptiveWorkoutTelemetryCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/AdaptiveWorkoutTelemetryCard.swift; sourceTree = SOURCE_ROOT; };
-		A1110083D4E5F60718293A83 /* WorkoutTelemetryModalityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutTelemetryModalityTests.swift; sourceTree = "<group>"; };
 		A1110007D4E5F60718293A07 /* Runalyst/Utilities/TelemetryHighlighter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Utilities/TelemetryHighlighter.swift; sourceTree = SOURCE_ROOT; };
 		A1110009D4E5F60718293A09 /* IndoorIntelligenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IndoorIntelligenceTests.swift; sourceTree = "<group>"; };
 		A1110010D4E5F60718293A10 /* Runalyst/CoachingEngine/WorkoutAnalysisContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/CoachingEngine/WorkoutAnalysisContext.swift; sourceTree = SOURCE_ROOT; };
@@ -227,10 +219,6 @@
 		A1110017D4E5F60718293A17 /* Runalyst/CoachingEngine/AnalystChatTools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/CoachingEngine/AnalystChatTools.swift; sourceTree = SOURCE_ROOT; };
 		A1110018D4E5F60718293A18 /* Runalyst/CoachingEngine/CoachingAssetLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/CoachingEngine/CoachingAssetLibrary.swift; sourceTree = SOURCE_ROOT; };
 		A1110019D4E5F60718293A19 /* DynamicAssetGroundingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamicAssetGroundingTests.swift; sourceTree = "<group>"; };
-		A1110053D4E5F60718293A53 /* SessionSynthesisEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionSynthesisEngineTests.swift; sourceTree = "<group>"; };
-		A1110CST001F60718293A001 /* CrossSurfaceIdempotencyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrossSurfaceIdempotencyTests.swift; sourceTree = "<group>"; };
-		A111005DD4E5F60718293A5D /* TrainingCalendarTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainingCalendarTests.swift; sourceTree = "<group>"; };
-		A111005ED4E5F60718293A5E /* ToolPayloadSchemaTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolPayloadSchemaTests.swift; sourceTree = "<group>"; };
 		A1110020D4E5F60718293A20 /* Runalyst/CoachingEngine/WorkoutAnalysisContextFormatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/CoachingEngine/WorkoutAnalysisContextFormatting.swift; sourceTree = SOURCE_ROOT; };
 		A1110021D4E5F60718293A21 /* Runalyst/Utilities/RunSplitSynthesis.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Utilities/RunSplitSynthesis.swift; sourceTree = SOURCE_ROOT; };
 		A1110022D4E5F60718293A22 /* Runalyst/Views/StatBox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/StatBox.swift; sourceTree = SOURCE_ROOT; };
@@ -259,22 +247,39 @@
 		A1110046D4E5F60718293A46 /* Runalyst/Views/SyncProgressBannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/SyncProgressBannerView.swift; sourceTree = SOURCE_ROOT; };
 		A1110047D4E5F60718293A47 /* Runalyst/Engine/PreRunDrill+Formatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Runalyst/Engine/PreRunDrill+Formatting.swift"; sourceTree = SOURCE_ROOT; };
 		A1110048D4E5F60718293A48 /* Runalyst/Engine/PreRunDrill+WorkoutPlan.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Runalyst/Engine/PreRunDrill+WorkoutPlan.swift"; sourceTree = SOURCE_ROOT; };
-		A1110DTS001F60718293A001 /* Runalyst/Engine/DailyTrainingStateStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Engine/DailyTrainingStateStore.swift; sourceTree = SOURCE_ROOT; };
 		A1110050D4E5F60718293A50 /* Runalyst/Engine/SessionSynthesisEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Engine/SessionSynthesisEngine.swift; sourceTree = SOURCE_ROOT; };
-		A111005CD4E5F60718293A5C /* Runalyst/Engine/TrainingCalendar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Engine/TrainingCalendar.swift; sourceTree = SOURCE_ROOT; };
 		A1110051D4E5F60718293A51 /* Runalyst/Views/WorkoutsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/WorkoutsView.swift; sourceTree = SOURCE_ROOT; };
 		A1110052D4E5F60718293A52 /* Runalyst/Views/AnalysisDashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/AnalysisDashboardView.swift; sourceTree = SOURCE_ROOT; };
+		A1110053D4E5F60718293A53 /* SessionSynthesisEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionSynthesisEngineTests.swift; sourceTree = "<group>"; };
+		A1110054D4E5F60718293A54 /* Runalyst/Views/PrescribedSessionCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/PrescribedSessionCardView.swift; sourceTree = SOURCE_ROOT; };
+		A1110055D4E5F60718293A55 /* Runalyst/Views/UpcomingScheduleCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/UpcomingScheduleCardView.swift; sourceTree = SOURCE_ROOT; };
+		A1110056D4E5F60718293A56 /* Runalyst/Views/DrillPrimerCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/DrillPrimerCardView.swift; sourceTree = SOURCE_ROOT; };
+		A1110057D4E5F60718293A57 /* Runalyst/Views/GoalReadinessCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/GoalReadinessCard.swift; sourceTree = SOURCE_ROOT; };
+		A111005CD4E5F60718293A5C /* Runalyst/Engine/TrainingCalendar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Engine/TrainingCalendar.swift; sourceTree = SOURCE_ROOT; };
+		A111005DD4E5F60718293A5D /* TrainingCalendarTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainingCalendarTests.swift; sourceTree = "<group>"; };
+		A111005ED4E5F60718293A5E /* ToolPayloadSchemaTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolPayloadSchemaTests.swift; sourceTree = "<group>"; };
+		A1110080D4E5F60718293A80 /* Runalyst/Models/WorkoutTelemetryModality.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Models/WorkoutTelemetryModality.swift; sourceTree = SOURCE_ROOT; };
+		A1110081D4E5F60718293A81 /* Runalyst/Views/HeartRateTrajectoryMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/HeartRateTrajectoryMapView.swift; sourceTree = SOURCE_ROOT; };
+		A1110082D4E5F60718293A82 /* Runalyst/Views/AdaptiveWorkoutTelemetryCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/AdaptiveWorkoutTelemetryCard.swift; sourceTree = SOURCE_ROOT; };
+		A1110083D4E5F60718293A83 /* WorkoutTelemetryModalityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutTelemetryModalityTests.swift; sourceTree = "<group>"; };
+		A1110097D4E5F60718293A97 /* Runalyst/Intents/RunalystShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Intents/RunalystShortcuts.swift; sourceTree = SOURCE_ROOT; };
+		A1110098D4E5F60718293A98 /* Runalyst/Views/Components/ChartAudioGraphDescriptors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/Components/ChartAudioGraphDescriptors.swift; sourceTree = SOURCE_ROOT; };
 		A1110099D4E5F60718293A99 /* Runalyst/CoachingEngine/HistoricalRunMatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/CoachingEngine/HistoricalRunMatcher.swift; sourceTree = SOURCE_ROOT; };
+		A1110CST001F60718293A001 /* CrossSurfaceIdempotencyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrossSurfaceIdempotencyTests.swift; sourceTree = "<group>"; };
+		A1110DTS001F60718293A001 /* Runalyst/Engine/DailyTrainingStateStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Engine/DailyTrainingStateStore.swift; sourceTree = SOURCE_ROOT; };
 		A1B2C3D4E5F6G7H8I9J0K1L2 /* Runalyst/Views/OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/OnboardingView.swift; sourceTree = SOURCE_ROOT; };
 		A1C44838A872210F6909E642 /* TrainingCorrection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrainingCorrection.swift; path = Runalyst/Models/TrainingCorrection.swift; sourceTree = SOURCE_ROOT; };
+		A2220098D4E5F60718293A98 /* Runalyst/Views/Components/MilestoneAwardDetailSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/Components/MilestoneAwardDetailSheet.swift; sourceTree = SOURCE_ROOT; };
 		A72B03F5BC3D402A96C0C907 /* PreRunDrillId.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PreRunDrillId.swift; path = Runalyst/Models/PreRunDrillId.swift; sourceTree = SOURCE_ROOT; };
 		A8B9C0D1E2F3A4B5C6D7E801 /* ReadinessModifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ReadinessModifier.swift; path = Runalyst/Engine/ReadinessModifier.swift; sourceTree = SOURCE_ROOT; };
+		AA11000128E0FBEF12345678 /* ContinuousMillAssayTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContinuousMillAssayTests.swift; sourceTree = "<group>"; };
 		AABBCCDDEEFF001122334455 /* Runalyst/Views/AnimatedLoadingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/AnimatedLoadingView.swift; sourceTree = SOURCE_ROOT; };
 		AAFBFC7678A5632D5492EAD9 /* MockHealthStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockHealthStore.swift; sourceTree = "<group>"; };
 		AD4515C1529B7E7851E3D385 /* LiveCoachDTOCodableTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveCoachDTOCodableTests.swift; sourceTree = "<group>"; };
 		B06944F28CDA8831E8FA559D /* RunalystClassifier.mlmodel */ = {isa = PBXFileReference; lastKnownFileType = file.mlmodel; path = RunalystClassifier.mlmodel; sourceTree = SOURCE_ROOT; };
 		B11742538A05B00142AABD16 /* FramboiseEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FramboiseEngine.swift; path = Runalyst/Engine/FramboiseEngine.swift; sourceTree = SOURCE_ROOT; };
 		B1N2M3L4K5J6H7G8F9D0S1A2 /* Runalyst/Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Runalyst/Assets.xcassets; sourceTree = SOURCE_ROOT; };
+		B281B3BC7FCFF84C1EBB336A /* GoldenTemporalHarnessIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoldenTemporalHarnessIntegrationTests.swift; sourceTree = "<group>"; };
 		B29A62CEEC0D478BA7CAB794 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
 		B2C3D4E5F6A708192A3B4C5D /* RunalystMigrationPlan.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = RunalystMigrationPlan.swift; path = Runalyst/Models/RunalystMigrationPlan.swift; sourceTree = "<group>"; };
 		B4A42CA73D5E956FCF8904D4 /* CardiacGuardrailTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardiacGuardrailTests.swift; sourceTree = "<group>"; };
@@ -282,10 +287,22 @@
 		BF8446C093FADDF41149B361 /* WorkoutBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = WorkoutBridge.swift; path = Runalyst/Engine/WorkoutBridge.swift; sourceTree = SOURCE_ROOT; };
 		C0C58A0BCEA50BA9ED3463C4 /* ContentView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ContentView.swift; path = Runalyst/ContentView.swift; sourceTree = "<group>"; };
 		C0D1E2F3A4B5C6D7E8010203 /* ReadinessModifierTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadinessModifierTests.swift; sourceTree = "<group>"; };
+		C1110091D4E5F60718293A91 /* Runalyst/Models/DrillReadout+Adaptive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Runalyst/Models/DrillReadout+Adaptive.swift"; sourceTree = SOURCE_ROOT; };
+		C1110092D4E5F60718293A92 /* Runalyst/Views/HeartRateTrajectoryMapView+Chart.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Runalyst/Views/HeartRateTrajectoryMapView+Chart.swift"; sourceTree = SOURCE_ROOT; };
+		C1110093D4E5F60718293A93 /* Runalyst/Views/DrillExecutionScorecard+Evaluation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Runalyst/Views/DrillExecutionScorecard+Evaluation.swift"; sourceTree = SOURCE_ROOT; };
+		C1110094D4E5F60718293A94 /* Runalyst/Views/DrillExecutionScorecard+Subviews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Runalyst/Views/DrillExecutionScorecard+Subviews.swift"; sourceTree = SOURCE_ROOT; };
+		C1110095D4E5F60718293A95 /* Runalyst/Views/RunDetailView+Cards.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Runalyst/Views/RunDetailView+Cards.swift"; sourceTree = SOURCE_ROOT; };
+		C1110096D4E5F60718293A96 /* Runalyst/Views/RunDetailView+PillsAndHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Runalyst/Views/RunDetailView+PillsAndHelpers.swift"; sourceTree = SOURCE_ROOT; };
 		CBE2F57F5A0633E69F7E89BE /* TrainingCorrectionModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainingCorrectionModelTests.swift; sourceTree = "<group>"; };
 		CCBBAC046CE14168A1BB76B0 /* PreRunDrill.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PreRunDrill.swift; path = Runalyst/Engine/PreRunDrill.swift; sourceTree = SOURCE_ROOT; };
 		CDDF4AD982B5C44AF7523E68 /* DrillsLibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DrillsLibraryView.swift; path = Runalyst/Views/DrillsLibraryView.swift; sourceTree = SOURCE_ROOT; };
+		D1110001D4E5F60718293A01 /* Runalyst/Views/DesignSystem/LiquidGlassCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/DesignSystem/LiquidGlassCard.swift; sourceTree = SOURCE_ROOT; };
+		D1110002D4E5F60718293A02 /* Runalyst/Views/DesignSystem/MiniStatTile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/DesignSystem/MiniStatTile.swift; sourceTree = SOURCE_ROOT; };
+		D1110004D4E5F60718293A04 /* Runalyst/Views/DesignSystem/GlassBoxExplainerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/DesignSystem/GlassBoxExplainerSheet.swift; sourceTree = SOURCE_ROOT; };
+		D1110005D4E5F60718293A05 /* Runalyst/Views/DesignSystem/PillFilterStrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/DesignSystem/PillFilterStrip.swift; sourceTree = SOURCE_ROOT; };
+		D1110006D4E5F60718293A06 /* Runalyst/Views/DesignSystem/RunalystDesignTokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/DesignSystem/RunalystDesignTokens.swift; sourceTree = SOURCE_ROOT; };
 		D3E4F5A60718293A4B5C6D7E /* BuildSettings.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = BuildSettings.xcconfig; sourceTree = SOURCE_ROOT; };
+		D4CCF9393E14DB4E4B931D0C /* GoldenTemporalFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoldenTemporalFixtures.swift; sourceTree = "<group>"; };
 		DD66FA54810DAEAB1B57337A /* Runalyst.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Runalyst.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		DDA2195BBF9ED0F85905F31B /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = XCTest.framework; sourceTree = "<group>"; };
 		E2A2B3C4D5E6F708192A3B4D /* Runalyst/Views/WorkoutPhaseTimelineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/WorkoutPhaseTimelineView.swift; sourceTree = SOURCE_ROOT; };
@@ -293,23 +310,30 @@
 		E82F6D5F1E2F5F9B0D1E2F3A /* DrillSchedule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DrillSchedule.swift; path = Runalyst/Models/DrillSchedule.swift; sourceTree = SOURCE_ROOT; };
 		E8F28AB98675AE6C20EB792B /* LiveCoachEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveCoachEngineTests.swift; sourceTree = "<group>"; };
 		EED84D71A6E15EE3D9CFDA45 /* PaceFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PaceFormatter.swift; path = Runalyst/Utilities/PaceFormatter.swift; sourceTree = SOURCE_ROOT; };
+		F11100100D4E5F60718293B1 /* Runalyst/Views/ActivityVolumeSummaryCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/ActivityVolumeSummaryCard.swift; sourceTree = SOURCE_ROOT; };
 		F1A1B1C1D1E1F10111213141 /* Runalyst/Models/DrillReadout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Models/DrillReadout.swift; sourceTree = SOURCE_ROOT; };
 		F1A2B3C4D5E6F7G8H9I0J1K2 /* Runalyst/Views/DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/DashboardView.swift; sourceTree = SOURCE_ROOT; };
 		F216137F6DD0451D940D3AF6 /* DrillTemplate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DrillTemplate.swift; path = Runalyst/Models/DrillTemplate.swift; sourceTree = SOURCE_ROOT; };
 		F2A2B2C2D2E2F20212223242 /* Runalyst/Views/DrillInterstitialReadoutView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/DrillInterstitialReadoutView.swift; sourceTree = SOURCE_ROOT; };
 		F3A3B3C3D3E3F30313233343 /* DrillReadoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrillReadoutTests.swift; sourceTree = "<group>"; };
+		F676ECAC20EAE842A1A27CE0 /* Runalyst/Engine/WorkoutSnapshotEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Engine/WorkoutSnapshotEngine.swift; sourceTree = SOURCE_ROOT; };
+		F8E4D5F7BAB01E4F8E957903 /* WorkoutSnapshotEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutSnapshotEngineTests.swift; sourceTree = "<group>"; };
 		FCEEDA06759A48099F6A59F2 /* HealthKitSeeder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HealthKitSeeder.swift; path = Runalyst/Utilities/HealthKitSeeder.swift; sourceTree = SOURCE_ROOT; };
 		FF6702113B57AA6128E0FBEF /* FramboiseEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FramboiseEngineTests.swift; sourceTree = "<group>"; };
-		AA11000128E0FBEF12345678 /* ContinuousMillAssayTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContinuousMillAssayTests.swift; sourceTree = "<group>"; };
 		Q1W2E3R4T5Y6U7I8O9P0A1S2 /* Runalyst/Views/RunDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/RunDetailView.swift; sourceTree = SOURCE_ROOT; };
-		C1110091D4E5F60718293A91 /* Runalyst/Models/DrillReadout+Adaptive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Runalyst/Models/DrillReadout+Adaptive.swift"; sourceTree = SOURCE_ROOT; };
-		C1110092D4E5F60718293A92 /* Runalyst/Views/HeartRateTrajectoryMapView+Chart.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Runalyst/Views/HeartRateTrajectoryMapView+Chart.swift"; sourceTree = SOURCE_ROOT; };
-		C1110093D4E5F60718293A93 /* Runalyst/Views/DrillExecutionScorecard+Evaluation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Runalyst/Views/DrillExecutionScorecard+Evaluation.swift"; sourceTree = SOURCE_ROOT; };
-		C1110094D4E5F60718293A94 /* Runalyst/Views/DrillExecutionScorecard+Subviews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Runalyst/Views/DrillExecutionScorecard+Subviews.swift"; sourceTree = SOURCE_ROOT; };
-		C1110095D4E5F60718293A95 /* Runalyst/Views/RunDetailView+Cards.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Runalyst/Views/RunDetailView+Cards.swift"; sourceTree = SOURCE_ROOT; };
-		C1110096D4E5F60718293A96 /* Runalyst/Views/RunDetailView+PillsAndHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Runalyst/Views/RunDetailView+PillsAndHelpers.swift"; sourceTree = SOURCE_ROOT; };
-		A1110097D4E5F60718293A97 /* Runalyst/Intents/RunalystShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Runalyst/Intents/RunalystShortcuts.swift"; sourceTree = SOURCE_ROOT; };
-		A1110098D4E5F60718293A98 /* Runalyst/Views/Components/ChartAudioGraphDescriptors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Runalyst/Views/Components/ChartAudioGraphDescriptors.swift"; sourceTree = SOURCE_ROOT; };
+		W1110000D4E5F60718293A00 /* RunalystWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = RunalystWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		W1110001D4E5F60718293A01 /* RunalystWatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunalystWatchApp.swift; sourceTree = "<group>"; };
+		W1110002D4E5F60718293A02 /* TelemetryEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TelemetryEngine.swift; sourceTree = "<group>"; };
+		W1110003D4E5F60718293A03 /* PacingViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PacingViewModel.swift; sourceTree = "<group>"; };
+		W1110004D4E5F60718293A04 /* WorkoutManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutManager.swift; sourceTree = "<group>"; };
+		W1110005D4E5F60718293A05 /* MotionStreamService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MotionStreamService.swift; sourceTree = "<group>"; };
+		W1110006D4E5F60718293A06 /* FeedbackDispatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedbackDispatcher.swift; sourceTree = "<group>"; };
+		W1110007D4E5F60718293A07 /* WatchContextStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchContextStore.swift; sourceTree = "<group>"; };
+		W1110008D4E5F60718293A08 /* Views/StartRunView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/StartRunView.swift; sourceTree = "<group>"; };
+		W1110009D4E5F60718293A09 /* Views/PacingGaugeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/PacingGaugeView.swift; sourceTree = "<group>"; };
+		W111000AD4E5F60718293A0A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		W111000BD4E5F60718293A0B /* RunalystWatch.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = RunalystWatch.entitlements; sourceTree = "<group>"; };
+		WCB10001D4E5F60718293A01 /* Runalyst/Services/WatchCalibrationBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Services/WatchCalibrationBridge.swift; sourceTree = SOURCE_ROOT; };
 		Z1X2C3V4B5N6M7L8K9J0H1G2 /* Runalyst/CoachingEngine/CoachingEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/CoachingEngine/CoachingEngine.swift; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
@@ -329,6 +353,14 @@
 			files = (
 				D4E5F60718293A0100000004 /* RunalystCore in Frameworks */,
 				9DEC99887D72772D3AB524D1 /* Foundation.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		W1110021D4E5F60718293A21 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				W111001AD4E5F60718293A1A /* RunalystCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -453,6 +485,7 @@
 		86C3E3CDC03F671C6EE600C2 /* Products */ = {
 			isa = PBXGroup;
 			children = (
+				W1110000D4E5F60718293A00 /* RunalystWatch.app */,
 				DD66FA54810DAEAB1B57337A /* Runalyst.app */,
 				3EF4AE46EBF2F38F6B44624C /* RunalystTests.xctest */,
 			);
@@ -473,6 +506,7 @@
 		AECDF6AF529E503EF8331ED7 = {
 			isa = PBXGroup;
 			children = (
+				W1110000D4E5F60718293GRP /* RunalystWatch */,
 				86C3E3CDC03F671C6EE600C2 /* Products */,
 				1C9E876BBB1092C707E7856D /* Frameworks */,
 				54B19B6DFF797ACC20446E48 /* Runalyst */,
@@ -495,6 +529,7 @@
 				C1110096D4E5F60718293A96 /* Runalyst/Views/RunDetailView+PillsAndHelpers.swift */,
 				A1110097D4E5F60718293A97 /* Runalyst/Intents/RunalystShortcuts.swift */,
 				A1110098D4E5F60718293A98 /* Runalyst/Views/Components/ChartAudioGraphDescriptors.swift */,
+				WCB10001D4E5F60718293A01 /* Runalyst/Services/WatchCalibrationBridge.swift */,
 				A2220098D4E5F60718293A98 /* Runalyst/Views/Components/MilestoneAwardDetailSheet.swift */,
 				A1110022D4E5F60718293A22 /* Runalyst/Views/StatBox.swift */,
 				A1110023D4E5F60718293A23 /* Runalyst/Views/DrillExecutionScorecard.swift */,
@@ -583,6 +618,24 @@
 			path = Workouts;
 			sourceTree = "<group>";
 		};
+		W1110000D4E5F60718293GRP /* RunalystWatch */ = {
+			isa = PBXGroup;
+			children = (
+				W1110001D4E5F60718293A01 /* RunalystWatchApp.swift */,
+				W1110002D4E5F60718293A02 /* TelemetryEngine.swift */,
+				W1110003D4E5F60718293A03 /* PacingViewModel.swift */,
+				W1110004D4E5F60718293A04 /* WorkoutManager.swift */,
+				W1110005D4E5F60718293A05 /* MotionStreamService.swift */,
+				W1110006D4E5F60718293A06 /* FeedbackDispatcher.swift */,
+				W1110007D4E5F60718293A07 /* WatchContextStore.swift */,
+				W1110008D4E5F60718293A08 /* Views/StartRunView.swift */,
+				W1110009D4E5F60718293A09 /* Views/PacingGaugeView.swift */,
+				W111000AD4E5F60718293A0A /* Info.plist */,
+				W111000BD4E5F60718293A0B /* RunalystWatch.entitlements */,
+			);
+			path = RunalystWatch;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -627,6 +680,26 @@
 			productReference = 3EF4AE46EBF2F38F6B44624C /* RunalystTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		W1110030D4E5F60718293A30 /* RunalystWatch */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = W1110040D4E5F60718293A40 /* Build configuration list for PBXNativeTarget "RunalystWatch" */;
+			buildPhases = (
+				W1110020D4E5F60718293A20 /* Sources */,
+				W1110021D4E5F60718293A21 /* Frameworks */,
+				W1110022D4E5F60718293A22 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = RunalystWatch;
+			packageProductDependencies = (
+				D4E5F60718293A0100000002 /* RunalystCore */,
+			);
+			productName = RunalystWatch;
+			productReference = W1110000D4E5F60718293A00 /* RunalystWatch.app */;
+			productType = "com.apple.product-type.application";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -659,6 +732,7 @@
 			projectRoot = "";
 			targets = (
 				8116EBABCB75011FBB77F3DF /* Runalyst */,
+				W1110030D4E5F60718293A30 /* RunalystWatch */,
 				F8945871DD242B1F3C041378 /* RunalystTests */,
 			);
 		};
@@ -675,6 +749,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		A6DCF436D5C326BA17944D99 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		W1110022D4E5F60718293A22 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -706,6 +787,7 @@
 				D1110096D4E5F60718293A96 /* Runalyst/Views/RunDetailView+PillsAndHelpers.swift in Sources */,
 				B1110097D4E5F60718293A97 /* Runalyst/Intents/RunalystShortcuts.swift in Sources */,
 				B1110098D4E5F60718293A98 /* Runalyst/Views/Components/ChartAudioGraphDescriptors.swift in Sources */,
+				WCB10002D4E5F60718293A02 /* Runalyst/Services/WatchCalibrationBridge.swift in Sources */,
 				554433221100FFEEDDCCBBAA /* Runalyst/Views/AnimatedLoadingView.swift in Sources */,
 				E1A2B3C4D5E6F708192A3B4C /* Runalyst/Views/WorkoutPhaseTimelineView.swift in Sources */,
 				F1A1B1C1D1E1F10111213142 /* Runalyst/Models/DrillReadout.swift in Sources */,
@@ -793,7 +875,7 @@
 				B111005CD4E5F60718293A5C /* Runalyst/Engine/TrainingCalendar.swift in Sources */,
 				B1110051D4E5F60718293A51 /* Runalyst/Views/WorkoutsView.swift in Sources */,
 				B1110052D4E5F60718293A52 /* Runalyst/Views/AnalysisDashboardView.swift in Sources */,
-				E5E7E0539323754096A6518B /* WorkoutSnapshotEngine.swift in Sources */,
+				E5E7E0539323754096A6518B /* Runalyst/Engine/WorkoutSnapshotEngine.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -834,6 +916,22 @@
 				B111005ED4E5F60718293A5E /* ToolPayloadSchemaTests.swift in Sources */,
 				B1110009D4E5F60718293A09 /* IndoorIntelligenceTests.swift in Sources */,
 				B1110083D4E5F60718293A83 /* WorkoutTelemetryModalityTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		W1110020D4E5F60718293A20 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				W1110011D4E5F60718293A11 /* RunalystWatchApp.swift in Sources */,
+				W1110012D4E5F60718293A12 /* TelemetryEngine.swift in Sources */,
+				W1110013D4E5F60718293A13 /* PacingViewModel.swift in Sources */,
+				W1110014D4E5F60718293A14 /* WorkoutManager.swift in Sources */,
+				W1110015D4E5F60718293A15 /* MotionStreamService.swift in Sources */,
+				W1110016D4E5F60718293A16 /* FeedbackDispatcher.swift in Sources */,
+				W1110017D4E5F60718293A17 /* WatchContextStore.swift in Sources */,
+				W1110018D4E5F60718293A18 /* Views/StartRunView.swift in Sources */,
+				W1110019D4E5F60718293A19 /* Views/PacingGaugeView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1062,6 +1160,63 @@
 			};
 			name = Debug;
 		};
+		W1110041D4E5F60718293A41 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CODE_SIGN_ENTITLEMENTS = RunalystWatch/RunalystWatch.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = GFC8G9A3MX;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = RunalystWatch/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = RunalystWatch;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.runalyst.app.watchkitapp;
+				PRODUCT_NAME = RunalystWatch;
+				SDKROOT = watchos;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 26.0;
+			};
+			name = Debug;
+		};
+		W1110042D4E5F60718293A42 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CODE_SIGN_ENTITLEMENTS = RunalystWatch/RunalystWatch.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = GFC8G9A3MX;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = RunalystWatch/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = RunalystWatch;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.runalyst.app.watchkitapp;
+				PRODUCT_NAME = RunalystWatch;
+				SDKROOT = watchos;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				VALIDATE_PRODUCT = YES;
+				WATCHOS_DEPLOYMENT_TARGET = 26.0;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -1088,6 +1243,15 @@
 			buildConfigurations = (
 				4C7F5C7F7E16C92FC2B82B12 /* Release */,
 				FA660FB7A9C265CDDCB41CB1 /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		W1110040D4E5F60718293A40 /* Build configuration list for PBXNativeTarget "RunalystWatch" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				W1110041D4E5F60718293A41 /* Debug */,
+				W1110042D4E5F60718293A42 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
