@@ -988,6 +988,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CLANG_ENABLE_OBJC_WEAK = NO;
 				CODE_SIGN_ENTITLEMENTS = Runalyst/Runalyst.entitlements;
+				CURRENT_PROJECT_VERSION = 11;
 				DEVELOPMENT_TEAM = GFC8G9A3MX;
 				INFOPLIST_FILE = Runalyst/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Runalyst;
@@ -997,6 +998,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				MARKETING_VERSION = 2.8.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.runalyzer.Runalyzer;
 				PRODUCT_NAME = Runalyst;
 				SDKROOT = iphoneos;
@@ -1177,6 +1179,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CLANG_ENABLE_OBJC_WEAK = NO;
 				CODE_SIGN_ENTITLEMENTS = Runalyst/Runalyst.entitlements;
+				CURRENT_PROJECT_VERSION = 11;
 				DEVELOPMENT_TEAM = GFC8G9A3MX;
 				INFOPLIST_FILE = Runalyst/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Runalyst;
@@ -1186,6 +1189,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				MARKETING_VERSION = 2.8.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.runalyzer.Runalyzer;
 				PRODUCT_NAME = Runalyst;
 				SDKROOT = iphoneos;
@@ -1205,15 +1209,17 @@
 				CLANG_ENABLE_OBJC_ARC = YES;
 				CODE_SIGN_ENTITLEMENTS = RunalystWatch/RunalystWatch.entitlements;
 				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 11;
 				DEVELOPMENT_TEAM = GFC8G9A3MX;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
+				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = RunalystWatch/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = RunalystWatch;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				MARKETING_VERSION = 2.8.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.runalyzer.Runalyzer.watchkitapp;
 				PRODUCT_NAME = RunalystWatch;
 				SDKROOT = watchos;
@@ -1236,15 +1242,17 @@
 				CLANG_ENABLE_OBJC_ARC = YES;
 				CODE_SIGN_ENTITLEMENTS = RunalystWatch/RunalystWatch.entitlements;
 				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 11;
 				DEVELOPMENT_TEAM = GFC8G9A3MX;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
+				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = RunalystWatch/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = RunalystWatch;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				MARKETING_VERSION = 2.8.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.runalyzer.Runalyzer.watchkitapp;
 				PRODUCT_NAME = RunalystWatch;
 				SDKROOT = watchos;
