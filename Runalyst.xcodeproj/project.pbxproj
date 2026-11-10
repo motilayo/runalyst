@@ -163,6 +163,7 @@
 		W111001AD4E5F60718293A1A /* RunalystCore in Frameworks */ = {isa = PBXBuildFile; productRef = D4E5F60718293A0100000002 /* RunalystCore */; };
 		WCB10002D4E5F60718293A02 /* Runalyst/Services/WatchCalibrationBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = WCB10001D4E5F60718293A01 /* Runalyst/Services/WatchCalibrationBridge.swift */; };
 		Z2X3C4V5B6N7M8L9K0J1H2G3 /* Runalyst/Views/RunDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = Q1W2E3R4T5Y6U7I8O9P0A1S2 /* Runalyst/Views/RunDetailView.swift */; };
+		W1110061D4E5F60718293A61 /* RunalystWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = W1110000D4E5F60718293A00 /* RunalystWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -172,6 +173,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = 8116EBABCB75011FBB77F3DF;
 			remoteInfo = Runalyst;
+		};
+		W1110050D4E5F60718293A50 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = EF32A70DD7FC6FB6AB476E75 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = W1110030D4E5F60718293A30;
+			remoteInfo = RunalystWatch;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -336,6 +344,20 @@
 		WCB10001D4E5F60718293A01 /* Runalyst/Services/WatchCalibrationBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Services/WatchCalibrationBridge.swift; sourceTree = SOURCE_ROOT; };
 		Z1X2C3V4B5N6M7L8K9J0H1G2 /* Runalyst/CoachingEngine/CoachingEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/CoachingEngine/CoachingEngine.swift; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		W1110060D4E5F60718293A60 /* Embed Watch Content */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";
+			dstSubfolderSpec = 16;
+			files = (
+				W1110061D4E5F60718293A61 /* RunalystWatch.app in Embed Watch Content */,
+			);
+			name = "Embed Watch Content";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		059DF1D89F96B18AEFE606CE /* Frameworks */ = {
@@ -646,10 +668,12 @@
 				60924B213CE12D34FBC58D03 /* Sources */,
 				059DF1D89F96B18AEFE606CE /* Frameworks */,
 				29EADEA10D75A19A80AD8181 /* Resources */,
+				W1110060D4E5F60718293A60 /* Embed Watch Content */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				W1110051D4E5F60718293A51 /* PBXTargetDependency */,
 			);
 			name = Runalyst;
 			packageProductDependencies = (
@@ -943,6 +967,11 @@
 			target = 8116EBABCB75011FBB77F3DF /* Runalyst */;
 			targetProxy = 4392F17E3030C57100B7BA8F /* PBXContainerItemProxy */;
 		};
+		W1110051D4E5F60718293A51 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = W1110030D4E5F60718293A30 /* RunalystWatch */;
+			targetProxy = W1110050D4E5F60718293A50 /* PBXContainerItemProxy */;
+		};
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
@@ -1178,7 +1207,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.runalyst.app.watchkitapp;
+				PRODUCT_BUNDLE_IDENTIFIER = com.runalyzer.Runalyzer.watchkitapp;
 				PRODUCT_NAME = RunalystWatch;
 				SDKROOT = watchos;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
@@ -1206,7 +1235,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.runalyst.app.watchkitapp;
+				PRODUCT_BUNDLE_IDENTIFIER = com.runalyzer.Runalyzer.watchkitapp;
 				PRODUCT_NAME = RunalystWatch;
 				SDKROOT = watchos;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";

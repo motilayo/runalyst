@@ -21,7 +21,7 @@
 	<key>WKApplication</key>
 	<true/>
 	<key>WKCompanionAppBundleIdentifier</key>
-	<string>com.runalyst.app</string>
+	<string>com.runalyzer.Runalyzer</string>
 	<key>WKBackgroundModes</key>
 	<array>
 		<string>workout-processing</string>
