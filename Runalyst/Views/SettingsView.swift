@@ -3,6 +3,7 @@ import SwiftData
 
 struct SettingsView: View {
     @AppStorage("useMetricSystem") private var useMetricSystem: Bool = Locale.current.measurementSystem == .metric
+    @AppStorage("preferredWorkoutIsIndoor") private var preferredWorkoutIsIndoor: Bool = false
 
     @Query private var runRecords: [RunRecord]
 
@@ -41,6 +42,25 @@ struct SettingsView: View {
                     Picker("Unit System", selection: $useMetricSystem) {
                         Text("Metric").tag(true)
                         Text("Imperial").tag(false)
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(maxWidth: 160)
+                }
+
+                HStack {
+                    HStack(spacing: 12) {
+                        Image(systemName: preferredWorkoutIsIndoor ? "figure.run.square.stack" : "sun.max.fill")
+                            .foregroundColor(.teal)
+                            .font(.title3)
+                        Text("Default Environment")
+                            .font(.body)
+                    }
+
+                    Spacer()
+
+                    Picker("Default Environment", selection: $preferredWorkoutIsIndoor) {
+                        Text("Outdoor").tag(false)
+                        Text("Indoor").tag(true)
                     }
                     .pickerStyle(.segmented)
                     .frame(maxWidth: 160)
@@ -84,6 +104,9 @@ struct SettingsView: View {
         }
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
+        .onChange(of: preferredWorkoutIsIndoor) { _, newIndoor in
+            WatchCalibrationBridge.shared.sendPacingContext(isIndoorPreferred: newIndoor)
+        }
         .sheet(isPresented: $showWalkthroughSheet) {
             OnboardingView(isReplay: true, onComplete: {
                 showWalkthroughSheet = false

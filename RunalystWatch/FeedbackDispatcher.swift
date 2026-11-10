@@ -79,6 +79,10 @@ public final class FeedbackDispatcher: NSObject, AVSpeechSynthesizerDelegate {
         let utterance = AVSpeechUtterance(string: localizedText)
         utterance.voice = AVSpeechSynthesisVoice(language: Locale.current.language.languageCode?.identifier ?? "en-US")
 
+        if speechSynthesizer.isSpeaking {
+            speechSynthesizer.stopSpeaking(at: .immediate)
+        }
+
         speechSynthesizer.speak(utterance)
     }
 

@@ -6,10 +6,14 @@ import Foundation
 public enum PacingAccentToken: String, Sendable, Codable, CaseIterable, Equatable {
     /// Pace metric accent (Electric Blue).
     case electricBlue
+    /// Surge / pace speedup accent.
+    case surgeBlue
     /// Heart rate metric accent (Neon Pink).
     case neonPink
     /// Cadence & biomechanics metric accent (Vibrant Green).
     case vibrantGreen
+    /// Recover / warning accent (Recover Orange).
+    case recoverOrange
     /// Neutral / baseline accent.
     case neutral
 }
@@ -22,6 +26,9 @@ public enum PacingHapticSemantic: String, Sendable, Codable, CaseIterable, Equat
     case success
     case none
 }
+
+/// Backward-compatible alias for deterministic pacing event feedback specification.
+public typealias PacingFeedbackSpec = PacingEventFeedbackSpec
 
 /// Deterministic multimodal feedback specification for a pacing event.
 public struct PacingEventFeedbackSpec: Sendable, Equatable {
@@ -74,6 +81,27 @@ public struct PacingEventFeedbackSpec: Sendable, Equatable {
                 voiceCueText: nil,
                 accentToken: .neutral
             )
+        case .paceDrift(let deviation, _):
+            switch deviation {
+            case .tooSlow:
+                self.init(
+                    haptic: .directionUp,
+                    voiceCueText: "Pace dropping. Pick up rhythm.",
+                    accentToken: .surgeBlue
+                )
+            case .tooFast:
+                self.init(
+                    haptic: .directionDown,
+                    voiceCueText: "Pace high. Ease into rhythm.",
+                    accentToken: .recoverOrange
+                )
+            case .onTarget, .unknown:
+                self.init(
+                    haptic: .none,
+                    voiceCueText: nil,
+                    accentToken: .neutral
+                )
+            }
         }
     }
 }
@@ -82,6 +110,65 @@ extension PacingEvent {
     /// Deterministic feedback specification (haptic, voice cue, accent token) for this event.
     public var feedbackSpec: PacingEventFeedbackSpec {
         PacingEventFeedbackSpec(for: self)
+    }
+}
+
+// MARK: - Display State
+
+/// Pure, pre-rendered snapshot for hollow watchOS and iOS views.
+///
+/// Contains all formatted strings and presentation tokens so views perform zero inline arithmetic.
+public struct PacingDisplayState: Sendable, Equatable {
+    public let state: PacingState
+    public let targetPaceSecondsPerKm: Int?
+    public let filteredPaceSecondsPerKm: Int?
+    public let filteredHeartRateBPM: Int?
+    public let deviation: PaceDeviation
+    public let refractorySecondsRemaining: Int
+    public let lastReason: PacingReason?
+    public let adjustmentsEnabled: Bool
+
+    // Precomputed presentation helpers (Zero leaked view math)
+    public let targetPaceFormatted: String
+    public let filteredPaceFormatted: String
+    public let filteredHeartRateFormatted: String
+    public let deviationTitle: String
+    public let calibrationProgress: Double?
+    public let calibrationProgressFormatted: String
+    public let refractoryProgress: Double
+
+    public init(
+        state: PacingState,
+        targetPaceSecondsPerKm: Int?,
+        filteredPaceSecondsPerKm: Int?,
+        filteredHeartRateBPM: Int?,
+        deviation: PaceDeviation,
+        refractorySecondsRemaining: Int,
+        lastReason: PacingReason?,
+        adjustmentsEnabled: Bool,
+        targetPaceFormatted: String,
+        filteredPaceFormatted: String,
+        filteredHeartRateFormatted: String,
+        deviationTitle: String,
+        calibrationProgress: Double?,
+        calibrationProgressFormatted: String,
+        refractoryProgress: Double
+    ) {
+        self.state = state
+        self.targetPaceSecondsPerKm = targetPaceSecondsPerKm
+        self.filteredPaceSecondsPerKm = filteredPaceSecondsPerKm
+        self.filteredHeartRateBPM = filteredHeartRateBPM
+        self.deviation = deviation
+        self.refractorySecondsRemaining = refractorySecondsRemaining
+        self.lastReason = lastReason
+        self.adjustmentsEnabled = adjustmentsEnabled
+        self.targetPaceFormatted = targetPaceFormatted
+        self.filteredPaceFormatted = filteredPaceFormatted
+        self.filteredHeartRateFormatted = filteredHeartRateFormatted
+        self.deviationTitle = deviationTitle
+        self.calibrationProgress = calibrationProgress
+        self.calibrationProgressFormatted = calibrationProgressFormatted
+        self.refractoryProgress = refractoryProgress
     }
 }
 

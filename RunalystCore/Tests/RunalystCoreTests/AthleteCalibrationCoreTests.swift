@@ -217,6 +217,18 @@ struct AthleteCalibrationCoreTests {
         #expect(decoded.schemaVersion == 1)
         #expect(decoded.profile.maxHR == 185.0)
         #expect(decoded.intent.targetPaceSecondsPerKm == 290)
+        #expect(decoded.isIndoorPreferred == nil)
+
+        // Test with explicit isIndoorPreferred: true
+        let indoorContext = WatchPacingContext(profile: profile, intent: intent, isIndoorPreferred: true)
+        let indoorData = try encoder.encode(indoorContext)
+        let decodedIndoor = try decoder.decode(WatchPacingContext.self, from: indoorData)
+        #expect(decodedIndoor == indoorContext)
+        #expect(decodedIndoor.isIndoorPreferred == true)
+
+        // Test resolution carrying through isIndoorPreferred
+        let resolved = AthleteCalibrationCore.resolveWatchSession(cachedContext: indoorContext, currentDayString: "2026-11-09")
+        #expect(resolved.isIndoorPreferred == true)
     }
 
     @Test("Forward-incompatible schema detection flags versions greater than 1 as unsupported")
