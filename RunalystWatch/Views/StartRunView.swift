@@ -77,7 +77,9 @@ public struct StartRunView: View {
             }
         }
         .task {
-            _ = await workoutManager.requestAuthorization()
+            if ProcessInfo.processInfo.environment["RUNALYST_PREVIEW_SCREEN"] == nil {
+                _ = await workoutManager.requestAuthorization()
+            }
         }
         .navigationDestination(isPresented: $isNavigatingToGauge) {
             PacingGaugeView()
