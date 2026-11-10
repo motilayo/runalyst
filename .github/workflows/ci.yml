@@ -110,7 +110,6 @@ jobs:
           xcodebuild \
             -project Runalyst.xcodeproj \
             -scheme Runalyst \
-            -sdk iphonesimulator \
             -destination "platform=iOS Simulator,name=${{ steps.simulator.outputs.device }}" \
             -enableCodeCoverage YES \
             CODE_SIGN_IDENTITY="" \
