@@ -46,17 +46,33 @@ public struct PacingSessionIntent: Sendable, Codable, Equatable {
     public let subjectiveDistress: Bool
     /// ISO-8601 day identifier ("yyyy-MM-dd", en_US_POSIX) for which this intent is valid.
     public let validForDay: String
+    /// Optional structured drill title (e.g. "Cadence Pyramids").
+    public let prescribedDrillTitle: String?
+    /// Optional structured drill identifier (e.g. "cadencePyramids").
+    public let prescribedDrillId: String?
+    /// Optional target cadence in SPM for drill execution.
+    public let targetCadenceSPM: Int?
+    /// Optional prescribed drill duration in minutes.
+    public let prescribedDurationMinutes: Int?
 
     public init(
         targetPaceSecondsPerKm: Int? = nil,
         intent: PacingIntentKind = .steady,
         subjectiveDistress: Bool = false,
-        validForDay: String
+        validForDay: String,
+        prescribedDrillTitle: String? = nil,
+        prescribedDrillId: String? = nil,
+        targetCadenceSPM: Int? = nil,
+        prescribedDurationMinutes: Int? = nil
     ) {
         self.targetPaceSecondsPerKm = targetPaceSecondsPerKm
         self.intent = intent
         self.subjectiveDistress = subjectiveDistress
         self.validForDay = validForDay
+        self.prescribedDrillTitle = prescribedDrillTitle
+        self.prescribedDrillId = prescribedDrillId
+        self.targetCadenceSPM = targetCadenceSPM
+        self.prescribedDurationMinutes = prescribedDurationMinutes
     }
 }
 
@@ -124,6 +140,24 @@ public struct WatchResolvedSessionConfig: Sendable, Equatable {
     public let profile: AthleteCalibrationProfile
     public let intent: PacingSessionIntent
     public let requiresTargetPacePicker: Bool
+
+    public var hasPrescribedDrill: Bool {
+        intent.prescribedDrillTitle != nil
+    }
+
+    public var prescribedDrillTitle: String? {
+        intent.prescribedDrillTitle
+    }
+
+    public var targetCadenceFormatted: String? {
+        guard let spm = intent.targetCadenceSPM else { return nil }
+        return "\(spm) SPM"
+    }
+
+    public var durationFormatted: String? {
+        guard let mins = intent.prescribedDurationMinutes else { return nil }
+        return "\(mins) Min"
+    }
 
     public init(
         profile: AthleteCalibrationProfile,
@@ -336,6 +370,33 @@ public enum AthleteCalibrationCore {
         )
     }
 
+    /// Constructs a `PacingSessionIntent` for a structured pre-run drill or interval workout.
+    public static func makeDrillIntent(
+        title: String,
+        drillId: String? = nil,
+        targetCadence: String? = nil,
+        durationMinutes: Int? = nil,
+        day: String,
+        subjectiveDistress: Bool = false
+    ) -> PacingSessionIntent {
+        let cadenceSPM: Int? = {
+            guard let targetCadence else { return nil }
+            let digits = targetCadence.components(separatedBy: CharacterSet.decimalDigits.inverted).joined()
+            return Int(digits)
+        }()
+
+        return PacingSessionIntent(
+            targetPaceSecondsPerKm: nil,
+            intent: .intervals,
+            subjectiveDistress: subjectiveDistress,
+            validForDay: day,
+            prescribedDrillTitle: title,
+            prescribedDrillId: drillId,
+            targetCadenceSPM: cadenceSPM,
+            prescribedDurationMinutes: durationMinutes
+        )
+    }
+
     // MARK: - Pure Date String Helpers
 
     /// Formats a pure date into an ISO-8601 calendar day string ("yyyy-MM-dd") using explicit calendar.
@@ -398,18 +459,23 @@ public enum AthleteCalibrationCore {
         }
 
         if cachedContext.intent.validForDay == currentDayString {
-            // Case 2: Fresh context for today -> Use profile & intent directly, no picker required
+            // Case 2: Fresh context for today -> Use profile & intent directly
             let finalTarget = selectedTargetPaceSecondsPerKm ?? cachedContext.intent.targetPaceSecondsPerKm
             let resolvedIntent = PacingSessionIntent(
                 targetPaceSecondsPerKm: finalTarget,
                 intent: cachedContext.intent.intent,
                 subjectiveDistress: cachedContext.intent.subjectiveDistress,
-                validForDay: cachedContext.intent.validForDay
+                validForDay: cachedContext.intent.validForDay,
+                prescribedDrillTitle: cachedContext.intent.prescribedDrillTitle,
+                prescribedDrillId: cachedContext.intent.prescribedDrillId,
+                targetCadenceSPM: cachedContext.intent.targetCadenceSPM,
+                prescribedDurationMinutes: cachedContext.intent.prescribedDurationMinutes
             )
+            let needsPicker = cachedContext.intent.prescribedDrillTitle == nil && cachedContext.intent.targetPaceSecondsPerKm == nil
             return WatchResolvedSessionConfig(
                 profile: cachedContext.profile,
                 intent: resolvedIntent,
-                requiresTargetPacePicker: false
+                requiresTargetPacePicker: needsPicker
             )
         } else {
             // Case 3: Stale intent from prior day -> Reuse profile, reset to steady intent + require picker

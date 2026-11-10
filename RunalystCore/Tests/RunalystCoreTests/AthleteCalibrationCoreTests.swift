@@ -319,5 +319,37 @@ struct AthleteCalibrationCoreTests {
         #expect(resolved.intent.intent == .steady)
         #expect(resolved.intent.targetPaceSecondsPerKm == nil)
     }
+
+    @Test("makeDrillIntent: maps structured drill prescription to intervals intent with cadence target")
+    func testMakeDrillIntent() {
+        let intent = AthleteCalibrationCore.makeDrillIntent(
+            title: "Cadence Pyramids",
+            drillId: "cadencePyramids",
+            targetCadence: "165 SPM",
+            durationMinutes: 10,
+            day: "2026-11-09"
+        )
+
+        #expect(intent.intent == .intervals)
+        #expect(intent.prescribedDrillTitle == "Cadence Pyramids")
+        #expect(intent.prescribedDrillId == "cadencePyramids")
+        #expect(intent.targetCadenceSPM == 165)
+        #expect(intent.prescribedDurationMinutes == 10)
+        #expect(intent.validForDay == "2026-11-09")
+
+        let profile = AthleteCalibrationProfile(maxHR: 185.0, restingHR: 52.0, isFallback: false)
+        let context = WatchPacingContext(profile: profile, intent: intent)
+
+        let resolved = AthleteCalibrationCore.resolveWatchSession(
+            cachedContext: context,
+            currentDayString: "2026-11-09"
+        )
+
+        #expect(resolved.hasPrescribedDrill == true)
+        #expect(resolved.prescribedDrillTitle == "Cadence Pyramids")
+        #expect(resolved.targetCadenceFormatted == "165 SPM")
+        #expect(resolved.durationFormatted == "10 Min")
+        #expect(resolved.requiresTargetPacePicker == false)
+    }
 }
 

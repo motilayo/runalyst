@@ -16,6 +16,26 @@ struct RunalystWatchApp: App {
         let vm = PacingViewModel()
         if let preview {
             switch preview {
+            case "START_PRESCRIBED_DRILL":
+                let mockProfile = AthleteCalibrationProfile(maxHR: 185.0, restingHR: 52.0, powerToHRTopQuartile: 1.85, isFallback: false)
+                var calendar = Calendar(identifier: .gregorian)
+                calendar.locale = Locale(identifier: "en_US_POSIX")
+                let today = AthleteCalibrationCore.formatDayString(date: Date(), calendar: calendar)
+                let mockIntent = AthleteCalibrationCore.makeDrillIntent(
+                    title: "Cadence Pyramids",
+                    drillId: "cadencePyramids",
+                    targetCadence: "165 SPM",
+                    durationMinutes: 10,
+                    day: today
+                )
+                let context = WatchPacingContext(profile: mockProfile, intent: mockIntent)
+                if let data = try? JSONEncoder().encode(context) {
+                    UserDefaults.standard.set(data, forKey: "cachedWatchPacingContext")
+                    WatchContextStore.shared.reloadPersistedContext()
+                }
+            case "START":
+                UserDefaults.standard.removeObject(forKey: "cachedWatchPacingContext")
+                WatchContextStore.shared.reloadPersistedContext()
             case "GAUGE_ON_TARGET":
                 vm.displayState = PacingDisplayState(
                     state: .tracking,

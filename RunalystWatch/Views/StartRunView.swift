@@ -27,6 +27,41 @@ public struct StartRunView: View {
 
             ScrollView {
                 VStack(spacing: 12) {
+                    // Prescribed Drill Hero Card (if published from iPhone)
+                    if resolvedConfig.hasPrescribedDrill, let title = resolvedConfig.prescribedDrillTitle {
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "figure.run")
+                                    .foregroundStyle(.green)
+                                Text("PRESCRIBED DRILL")
+                                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            Text(title)
+                                .font(.system(.headline, design: .rounded))
+                                .foregroundStyle(.white)
+
+                            HStack(spacing: 8) {
+                                if let cadence = resolvedConfig.targetCadenceFormatted {
+                                    Text(cadence)
+                                        .font(.system(.caption2, design: .rounded))
+                                        .fontWeight(.semibold)
+                                        .foregroundStyle(.green)
+                                }
+                                if let duration = resolvedConfig.durationFormatted {
+                                    Text(duration)
+                                        .font(.system(.caption2, design: .rounded))
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(10)
+                        .background(Color.white.opacity(0.12))
+                        .cornerRadius(12)
+                    }
+
                     // Location Picker
                     Picker("Environment", selection: $selectedLocation) {
                         Text("Outdoor").tag(PacingLocation.outdoor)
@@ -63,7 +98,7 @@ public struct StartRunView: View {
                             isNavigatingToGauge = true
                         }
                     } label: {
-                        Text("Start Run")
+                        Text(resolvedConfig.hasPrescribedDrill ? "Start Drill" : "Start Run")
                             .font(.system(.headline, design: .rounded))
                             .frame(maxWidth: .infinity, minHeight: 44)
                             .background(Color.green)

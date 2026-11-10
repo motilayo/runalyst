@@ -111,6 +111,35 @@ final class WatchCalibrationBridge: NSObject, WCSessionDelegate {
         publish(context: context)
     }
 
+    /// Publishes a structured drill intent directly to Apple Watch for execution in RunalystWatch.
+    func publishDrillIntent(
+        dto: DrillPrescriptionDTO,
+        subjectiveDistress: Bool = false,
+        now: Date = Date()
+    ) {
+        let profile = lastPublishedContext?.profile ?? AthleteCalibrationProfile(maxHR: 190.0, isFallback: true)
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.locale = Locale(identifier: "en_US_POSIX")
+        let dayString = AthleteCalibrationCore.formatDayString(date: now, calendar: calendar)
+
+        let intent = AthleteCalibrationCore.makeDrillIntent(
+            title: dto.title,
+            drillId: dto.preRunDrillId,
+            targetCadence: dto.targetCadence,
+            durationMinutes: dto.durationMinutes,
+            day: dayString,
+            subjectiveDistress: subjectiveDistress
+        )
+
+        let context = WatchPacingContext(
+            schemaVersion: WatchPacingContext.currentSchemaVersion,
+            profile: profile,
+            intent: intent
+        )
+
+        publish(context: context)
+    }
+
     // MARK: - WCSessionDelegate
 
     private func publishPendingContext() {

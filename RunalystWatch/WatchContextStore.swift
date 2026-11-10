@@ -15,7 +15,7 @@ public final class WatchContextStore: NSObject, WCSessionDelegate, @unchecked Se
 
     override private init() {
         super.init()
-        loadPersistedContext()
+        reloadPersistedContext()
         activateSession()
     }
 
@@ -29,8 +29,11 @@ public final class WatchContextStore: NSObject, WCSessionDelegate, @unchecked Se
 
     // MARK: - Persistence
 
-    private func loadPersistedContext() {
-        guard let data = UserDefaults.standard.data(forKey: userDefaultsKey) else { return }
+    public func reloadPersistedContext() {
+        guard let data = UserDefaults.standard.data(forKey: userDefaultsKey) else {
+            self.cachedContext = nil
+            return
+        }
         do {
             let context = try JSONDecoder().decode(WatchPacingContext.self, from: data)
             if context.isSupportedSchema {
