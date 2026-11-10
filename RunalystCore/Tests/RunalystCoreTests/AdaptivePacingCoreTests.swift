@@ -87,7 +87,7 @@ struct AdaptivePacingCoreTests {
                     calibrationCompleteEvent = event
                 case .surge, .recover:
                     adjustments.append(event)
-                case .backOnTarget:
+                case .backOnTarget, .paceDrift:
                     break
                 }
             }
@@ -341,6 +341,174 @@ struct AdaptivePacingCoreTests {
         #expect(recoverDisplay.stateTitle == "Recover")
         #expect(recoverDisplay.accentToken == .vibrantGreen)
         #expect(recoverDisplay.refractoryCountdownFormatted == "0:45")
+    }
+
+    // MARK: - Pace Drift Alert Tests
+
+    @Test("Pace drift alert: triggers after 12 consecutive seconds of .tooSlow and enforces 30s cooldown")
+    func testPaceDriftAlertDebounceAndCooldown() {
+        var core = AdaptivePacingCore(profile: standardProfile, intent: standardIntent, location: .outdoor)
+        // Warm up and calibrate through 600s at target pace 5:00/km (3.333 m/s)
+        for tick in PacingSessionFixtures.makeSteadyEasyRun(durationSeconds: 600) {
+            _ = core.ingest(tick)
+        }
+
+        var driftEvents: [PacingEvent] = []
+        var currentTick = 601
+
+        // 1. Advance until the filtered short window enters .tooSlow (pace < target - tolerance)
+        while currentTick < 650 {
+            let tick = TelemetryTick(
+                elapsedSeconds: TimeInterval(currentTick),
+                heartRateBPM: 145.0,
+                speedMetersPerSecond: 2.50 // ~6:40 /km -> clearly slow
+            )
+            let result = core.ingest(tick)
+            currentTick += 1
+            if result.display.deviation == .tooSlow {
+                // First tick in .tooSlow
+                break
+            }
+        }
+        #expect(driftEvents.isEmpty, "First tick in .tooSlow must not emit alert")
+
+        // 2. Next 10 ticks in .tooSlow (total 11 seconds in .tooSlow; 11s < 12s debounce)
+        for _ in 1...10 {
+            let tick = TelemetryTick(
+                elapsedSeconds: TimeInterval(currentTick),
+                heartRateBPM: 145.0,
+                speedMetersPerSecond: 2.50
+            )
+            let result = core.ingest(tick)
+            currentTick += 1
+            for event in result.events {
+                if case .paceDrift = event {
+                    driftEvents.append(event)
+                }
+            }
+        }
+        #expect(driftEvents.isEmpty, "Debounce duration is 12s; 11s must not trigger a drift alert")
+
+        // 3. 12th consecutive second in .tooSlow -> must emit .paceDrift(.tooSlow)
+        let tick12 = TelemetryTick(
+            elapsedSeconds: TimeInterval(currentTick),
+            heartRateBPM: 145.0,
+            speedMetersPerSecond: 2.50
+        )
+        let res12 = core.ingest(tick12)
+        currentTick += 1
+        for event in res12.events {
+            if case .paceDrift(let deviation, let delta) = event {
+                #expect(deviation == .tooSlow)
+                #expect(delta > 0)
+                driftEvents.append(event)
+            }
+        }
+        #expect(driftEvents.count == 1, "12th consecutive second in .tooSlow must emit exactly one .paceDrift alert")
+
+        // 4. Next 25 ticks continue in .tooSlow. Cooldown is 30s, so alerts must be suppressed
+        for _ in 1...25 {
+            let tick = TelemetryTick(
+                elapsedSeconds: TimeInterval(currentTick),
+                heartRateBPM: 145.0,
+                speedMetersPerSecond: 2.50
+            )
+            let result = core.ingest(tick)
+            currentTick += 1
+            for event in result.events {
+                if case .paceDrift = event {
+                    driftEvents.append(event)
+                }
+            }
+        }
+        #expect(driftEvents.count == 1, "Alert must be suppressed during 30s cooldown interval")
+
+        // 5. Remaining 5 ticks of cooldown (completing 30s cooldown) + next tick fires second alert
+        for _ in 1...5 {
+            let tick = TelemetryTick(
+                elapsedSeconds: TimeInterval(currentTick),
+                heartRateBPM: 145.0,
+                speedMetersPerSecond: 2.50
+            )
+            let result = core.ingest(tick)
+            currentTick += 1
+            for event in result.events {
+                if case .paceDrift = event {
+                    driftEvents.append(event)
+                }
+            }
+        }
+        #expect(driftEvents.count == 2, "After 30s cooldown expires with continuous .tooSlow, a second alert must fire")
+    }
+
+    @Test("Pace drift alert: momentary fluctuation under 12 seconds resets without alert")
+    func testPaceDriftResetOnTarget() {
+        var core = AdaptivePacingCore(profile: standardProfile, intent: standardIntent, location: .outdoor)
+        for tick in PacingSessionFixtures.makeSteadyEasyRun(durationSeconds: 600) {
+            _ = core.ingest(tick)
+        }
+
+        // 6 seconds slow
+        for s in 601...606 {
+            let tick = TelemetryTick(elapsedSeconds: TimeInterval(s), heartRateBPM: 145.0, speedMetersPerSecond: 2.94)
+            let res = core.ingest(tick)
+            #expect(!res.events.contains(where: { if case .paceDrift = $0 { return true }; return false }))
+        }
+
+        // 5 seconds back on target pace (3.33 m/s) -> resets debounce timer
+        for s in 607...611 {
+            let tick = TelemetryTick(elapsedSeconds: TimeInterval(s), heartRateBPM: 145.0, speedMetersPerSecond: 3.33)
+            let res = core.ingest(tick)
+            #expect(!res.events.contains(where: { if case .paceDrift = $0 { return true }; return false }))
+        }
+
+        // Another 6 seconds slow -> total slow time is not consecutive, so zero alerts
+        for s in 612...617 {
+            let tick = TelemetryTick(elapsedSeconds: TimeInterval(s), heartRateBPM: 145.0, speedMetersPerSecond: 2.94)
+            let res = core.ingest(tick)
+            #expect(!res.events.contains(where: { if case .paceDrift = $0 { return true }; return false }))
+        }
+    }
+
+    @Test("Pace drift alert: non-destructive invariance preserves target pace")
+    func testPaceDriftNonDestructiveInvariance() {
+        var core = AdaptivePacingCore(profile: standardProfile, intent: standardIntent, location: .outdoor)
+        for tick in PacingSessionFixtures.makeSteadyEasyRun(durationSeconds: 600) {
+            _ = core.ingest(tick)
+        }
+
+        let originalTarget = core.currentTargetPaceSecondsPerKm
+
+        // Ingest 15 seconds of fast pace (3.80 m/s -> ~4:23 /km)
+        for s in 601...615 {
+            let tick = TelemetryTick(elapsedSeconds: TimeInterval(s), heartRateBPM: 145.0, speedMetersPerSecond: 3.80)
+            let res = core.ingest(tick)
+            if res.events.contains(where: { if case .paceDrift = $0 { return true }; return false }) {
+                #expect(core.currentTargetPaceSecondsPerKm == originalTarget, "Target pace must remain untouched by drift alerts")
+            }
+        }
+        #expect(core.currentTargetPaceSecondsPerKm == originalTarget)
+    }
+
+    @Test("Pace drift feedbackSpec maps .tooSlow and .tooFast to directional haptics and voice cues")
+    func testPaceDriftFeedbackSpec() {
+        let slowEvent = PacingEvent.paceDrift(deviation: .tooSlow, deltaSecondsPerKm: 15)
+        let slowSpec = slowEvent.feedbackSpec
+        #expect(slowSpec.haptic == .directionUp)
+        #expect(slowSpec.voiceCueText == "Pace dropping. Pick up rhythm.")
+        #expect(slowSpec.accentToken == .surgeBlue)
+
+        let fastEvent = PacingEvent.paceDrift(deviation: .tooFast, deltaSecondsPerKm: 12)
+        let fastSpec = fastEvent.feedbackSpec
+        #expect(fastSpec.haptic == .directionDown)
+        #expect(fastSpec.voiceCueText == "Pace high. Ease into rhythm.")
+        #expect(fastSpec.accentToken == .recoverOrange)
+
+        let onTargetEvent = PacingEvent.paceDrift(deviation: .onTarget, deltaSecondsPerKm: 0)
+        let onTargetSpec = onTargetEvent.feedbackSpec
+        #expect(onTargetSpec.haptic == .none)
+        #expect(onTargetSpec.voiceCueText == nil)
+        #expect(onTargetSpec.accentToken == .neutral)
     }
 }
 

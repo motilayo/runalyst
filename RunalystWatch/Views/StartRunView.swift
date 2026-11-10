@@ -11,7 +11,8 @@ public struct StartRunView: View {
     @Environment(WorkoutManager.self) private var workoutManager
     @Environment(PacingViewModel.self) private var pacingViewModel
 
-    @State private var selectedLocation: PacingLocation = .outdoor
+    @State private var selectedLocation: PacingLocation = WatchContextStore.shared.preferredLocation
+    @State private var hasUserManuallySelectedLocation = false
     @State private var selectedPaceOption: WatchTargetPaceOption = .justRun
     @State private var isNavigatingToGauge = false
 
@@ -63,7 +64,13 @@ public struct StartRunView: View {
                     }
 
                     // Location Picker
-                    Picker("Environment", selection: $selectedLocation) {
+                    Picker("Environment", selection: Binding(
+                        get: { selectedLocation },
+                        set: { newLocation in
+                            selectedLocation = newLocation
+                            hasUserManuallySelectedLocation = true
+                        }
+                    )) {
                         Text("Outdoor").tag(PacingLocation.outdoor)
                         Text("Indoor").tag(PacingLocation.indoor)
                     }
@@ -109,6 +116,16 @@ public struct StartRunView: View {
                     .padding(.top, 4)
                 }
                 .padding(.horizontal)
+            }
+        }
+        .onAppear {
+            if !hasUserManuallySelectedLocation {
+                selectedLocation = WatchContextStore.shared.preferredLocation
+            }
+        }
+        .onChange(of: WatchContextStore.shared.preferredLocation) { _, newLocation in
+            if !hasUserManuallySelectedLocation {
+                selectedLocation = newLocation
             }
         }
         .task {

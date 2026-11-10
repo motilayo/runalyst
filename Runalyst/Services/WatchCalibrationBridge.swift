@@ -6,6 +6,8 @@ import WatchConnectivity
 ///
 /// Strictly obeys the Hollow Foundry doctrine: performs zero physiological math or threshold comparisons.
 /// All calibration and intent derivation is performed exclusively by `RunalystCore`.
+typealias WatchConnectivityManager = WatchCalibrationBridge
+
 @MainActor
 final class WatchCalibrationBridge: NSObject, WCSessionDelegate {
     static let shared = WatchCalibrationBridge()
@@ -58,6 +60,36 @@ final class WatchCalibrationBridge: NSObject, WCSessionDelegate {
         }
     }
 
+    /// Sends updated pacing context to Apple Watch, ensuring `isIndoorPreferred` is synchronized immediately.
+    func sendPacingContext(isIndoorPreferred: Bool? = nil) {
+        let indoorPref = isIndoorPreferred ?? UserDefaults.standard.bool(forKey: "preferredWorkoutIsIndoor")
+        if let current = lastPublishedContext {
+            let updated = WatchPacingContext(
+                schemaVersion: current.schemaVersion,
+                profile: current.profile,
+                intent: current.intent,
+                isIndoorPreferred: indoorPref
+            )
+            publish(context: updated)
+        } else {
+            let profile = AthleteCalibrationProfile(maxHR: 190.0, isFallback: true)
+            var calendar = Calendar(identifier: .gregorian)
+            calendar.locale = Locale(identifier: "en_US_POSIX")
+            let dayString = AthleteCalibrationCore.formatDayString(date: Date(), calendar: calendar)
+            let intent = PacingSessionIntent(
+                intent: .steady,
+                validForDay: dayString
+            )
+            let context = WatchPacingContext(
+                schemaVersion: WatchPacingContext.currentSchemaVersion,
+                profile: profile,
+                intent: intent,
+                isIndoorPreferred: indoorPref
+            )
+            publish(context: context)
+        }
+    }
+
     /// Derives athlete calibration profile and session intent via `AthleteCalibrationCore` and publishes to Apple Watch.
     func publishContext(
         runs: [RunRecord],
@@ -66,7 +98,8 @@ final class WatchCalibrationBridge: NSObject, WCSessionDelegate {
         spec: PlannedSessionSpec? = nil,
         subjectiveDistress: Bool = false,
         now: Date = Date(),
-        targetPaceSecondsPerKm: Int? = nil
+        targetPaceSecondsPerKm: Int? = nil,
+        isIndoorPreferred: Bool? = nil
     ) {
         let buckets = runs.map { run in
             TelemetryBucket(
@@ -102,10 +135,12 @@ final class WatchCalibrationBridge: NSObject, WCSessionDelegate {
             targetPaceSecondsPerKm: targetPaceSecondsPerKm
         )
 
+        let indoorPref = isIndoorPreferred ?? UserDefaults.standard.bool(forKey: "preferredWorkoutIsIndoor")
         let context = WatchPacingContext(
             schemaVersion: WatchPacingContext.currentSchemaVersion,
             profile: profile,
-            intent: intent
+            intent: intent,
+            isIndoorPreferred: indoorPref
         )
 
         publish(context: context)
@@ -115,7 +150,8 @@ final class WatchCalibrationBridge: NSObject, WCSessionDelegate {
     func publishDrillIntent(
         dto: DrillPrescriptionDTO,
         subjectiveDistress: Bool = false,
-        now: Date = Date()
+        now: Date = Date(),
+        isIndoorPreferred: Bool? = nil
     ) {
         let profile = lastPublishedContext?.profile ?? AthleteCalibrationProfile(maxHR: 190.0, isFallback: true)
         var calendar = Calendar(identifier: .gregorian)
@@ -131,10 +167,12 @@ final class WatchCalibrationBridge: NSObject, WCSessionDelegate {
             subjectiveDistress: subjectiveDistress
         )
 
+        let indoorPref = isIndoorPreferred ?? dto.isIndoor ?? UserDefaults.standard.bool(forKey: "preferredWorkoutIsIndoor")
         let context = WatchPacingContext(
             schemaVersion: WatchPacingContext.currentSchemaVersion,
             profile: profile,
-            intent: intent
+            intent: intent,
+            isIndoorPreferred: indoorPref
         )
 
         publish(context: context)

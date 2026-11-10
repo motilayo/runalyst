@@ -13,6 +13,15 @@ public final class WatchContextStore: NSObject, WCSessionDelegate, @unchecked Se
     private let userDefaultsKey = "cachedWatchPacingContext"
     public private(set) var cachedContext: WatchPacingContext?
 
+    /// Synchronized preferred pacing location from iOS app context, defaulting to outdoor if unspecified.
+    public var preferredLocation: PacingLocation {
+        if cachedContext?.isIndoorPreferred == true {
+            return .indoor
+        } else {
+            return .outdoor
+        }
+    }
+
     override private init() {
         super.init()
         reloadPersistedContext()

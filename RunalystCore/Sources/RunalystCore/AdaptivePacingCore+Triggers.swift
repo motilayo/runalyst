@@ -48,6 +48,59 @@ extension AdaptivePacingCore {
         return nil
     }
 
+    /// Evaluates real-time pace drift alerts based on short-window filtered speed deviation.
+    ///
+    /// Emits a `.paceDrift` event when the runner continuously deviates from target pace for >= 12 seconds,
+    /// followed by a 30-second refractory cooldown period. This alert is non-destructive and does NOT mutate
+    /// `currentTargetPaceSecondsPerKm` or `originalTargetPaceSecondsPerKm`.
+    internal mutating func evaluatePaceDriftAlert() -> PacingEvent? {
+        // 1. Tick down cooldown if active
+        paceDriftCooldownRemainingSeconds = max(0, paceDriftCooldownRemainingSeconds - 1)
+
+        // 2. Resolve short-window filtered pace
+        let filteredPace: Int? = {
+            if let speedStats = ringBuffer.shortWindowStats(for: .filteredSpeed), speedStats.mean > 0 {
+                return Int((1000.0 / speedStats.mean).rounded())
+            }
+            if let latestSpeed = ringBuffer.latestTick?.speedMetersPerSecond, latestSpeed > 0 {
+                return Int((1000.0 / latestSpeed).rounded())
+            }
+            return nil
+        }()
+
+        // 3. Evaluate deviation against current target pace
+        let currentDeviation = evaluateDeviation(target: currentTargetPaceSecondsPerKm, current: filteredPace)
+
+        switch currentDeviation {
+        case .tooSlow, .tooFast:
+            if currentDeviation == paceDriftDeviation {
+                paceDriftContinuousSeconds += 1.0
+            } else {
+                paceDriftDeviation = currentDeviation
+                paceDriftContinuousSeconds = 1.0
+            }
+
+            if paceDriftContinuousSeconds >= configuration.paceDriftDebounceDurationSeconds && paceDriftCooldownRemainingSeconds == 0 {
+                paceDriftCooldownRemainingSeconds = Int(configuration.paceDriftCooldownSeconds)
+                paceDriftContinuousSeconds = 0.0
+                let target = currentTargetPaceSecondsPerKm ?? 0
+                let pace = filteredPace ?? 0
+                let delta = abs(pace - target)
+                return .paceDrift(deviation: currentDeviation, deltaSecondsPerKm: delta)
+            }
+
+        case .onTarget:
+            paceDriftContinuousSeconds = 0.0
+            paceDriftDeviation = .onTarget
+
+        case .unknown:
+            paceDriftContinuousSeconds = 0.0
+            paceDriftDeviation = .unknown
+        }
+
+        return nil
+    }
+
     // MARK: - Private Trigger Implementations
 
     private mutating func evaluateRecover(filteredHR: Double?) -> PacingEvent? {

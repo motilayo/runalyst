@@ -112,6 +112,9 @@ struct WorkoutsView: View {
             } message: {
                 Text(watchExportSuccessMessage ?? "Workout sent to Apple Watch.")
             }
+            .onChange(of: preferredWorkoutIsIndoor) { _, newIndoor in
+                WatchCalibrationBridge.shared.sendPacingContext(isIndoorPreferred: newIndoor)
+            }
         }
     }
 

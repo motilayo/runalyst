@@ -22,8 +22,10 @@ public struct PacingGaugeView: View {
 
     private var accentColor: Color {
         switch displayState.accentToken {
-        case .electricBlue:
+        case .electricBlue, .surgeBlue:
             return Color(red: 0.0, green: 0.8, blue: 1.0)
+        case .recoverOrange:
+            return Color(red: 1.0, green: 0.58, blue: 0.0)
         case .neonPink:
             return Color(red: 1.0, green: 0.18, blue: 0.58)
         case .vibrantGreen:
