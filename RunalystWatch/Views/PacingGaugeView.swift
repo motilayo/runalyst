@@ -20,16 +20,20 @@ public struct PacingGaugeView: View {
         pacingViewModel.displayState
     }
 
+    private let electricBlue = Color(red: 0.0, green: 0.8, blue: 1.0)
+    private let neonPink = Color(red: 1.0, green: 0.18, blue: 0.58)
+    private let vibrantGreen = Color(red: 0.18, green: 0.85, blue: 0.35)
+
     private var accentColor: Color {
         switch displayState.accentToken {
         case .electricBlue, .surgeBlue:
-            return Color(red: 0.0, green: 0.8, blue: 1.0)
+            return electricBlue
         case .recoverOrange:
             return Color(red: 1.0, green: 0.58, blue: 0.0)
         case .neonPink:
-            return Color(red: 1.0, green: 0.18, blue: 0.58)
+            return neonPink
         case .vibrantGreen:
-            return Color(red: 0.2, green: 0.88, blue: 0.38)
+            return vibrantGreen
         case .neutral:
             return .secondary
         }
@@ -68,7 +72,7 @@ public struct PacingGaugeView: View {
                     Text(displayState.filteredPaceFormatted)
                         .font(.system(size: 38, weight: .bold, design: .rounded))
                         .monospacedDigit()
-                        .foregroundStyle(.white)
+                        .foregroundStyle(electricBlue)
 
                     Text(displayState.deviationTitle)
                         .font(.system(.caption2, design: .rounded))
@@ -76,29 +80,42 @@ public struct PacingGaugeView: View {
                         .foregroundStyle(accentColor)
                 }
 
-                // Target Pace & Heart Rate strip
-                HStack(spacing: 16) {
+                // Target Pace, Heart Rate & Live Cadence strip
+                HStack(spacing: 8) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("TARGET")
-                            .font(.system(size: 10, weight: .bold, design: .rounded))
+                            .font(.system(size: 9, weight: .bold, design: .rounded))
                             .foregroundStyle(.secondary)
                         Text(displayState.targetPaceFormatted)
                             .font(.system(.callout, design: .rounded))
                             .monospacedDigit()
-                            .foregroundStyle(.white)
+                            .foregroundStyle(electricBlue)
                     }
 
                     Divider()
-                        .frame(height: 24)
+                        .frame(height: 22)
 
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("HEART RATE")
-                            .font(.system(size: 10, weight: .bold, design: .rounded))
+                        Text("HR")
+                            .font(.system(size: 9, weight: .bold, design: .rounded))
                             .foregroundStyle(.secondary)
                         Text(displayState.filteredHeartRateFormatted)
                             .font(.system(.callout, design: .rounded))
                             .monospacedDigit()
-                            .foregroundStyle(.white)
+                            .foregroundStyle(neonPink)
+                    }
+
+                    Divider()
+                        .frame(height: 22)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("CADENCE")
+                            .font(.system(size: 9, weight: .bold, design: .rounded))
+                            .foregroundStyle(.secondary)
+                        Text(displayState.filteredCadenceFormatted)
+                            .font(.system(.callout, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(vibrantGreen)
                     }
                 }
                 .padding(.vertical, 4)

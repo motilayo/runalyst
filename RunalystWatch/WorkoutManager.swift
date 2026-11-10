@@ -40,6 +40,7 @@ public final class WorkoutManager: NSObject {
             HKQuantityType(.runningStrideLength),
             HKQuantityType(.runningGroundContactTime),
             HKQuantityType(.runningVerticalOscillation),
+            HKQuantityType(.distanceWalkingRunning),
             HKCharacteristicType(.dateOfBirth)
         ]
 
@@ -162,7 +163,8 @@ public final class WorkoutManager: NSObject {
                 try? await Task.sleep(nanoseconds: 500_000_000) // 0.5s check interval
                 guard let self, self.sessionState == .running else { continue }
                 let elapsed = builder.elapsedTime
-                await engine.processTick(at: elapsed)
+                let distanceMeters = builder.statistics(for: HKQuantityType(.distanceWalkingRunning))?.sumQuantity()?.doubleValue(for: .meter())
+                await engine.processTick(at: elapsed, distanceMeters: distanceMeters)
             }
         }
     }
@@ -250,6 +252,11 @@ extension WorkoutManager: HKWorkoutSessionDelegate, HKLiveWorkoutBuilderDelegate
             case HKQuantityType(.runningVerticalOscillation):
                 if let cm = statistics?.mostRecentQuantity()?.doubleValue(for: .meterUnit(with: .centi)) {
                     Task { await engine.updateVerticalOscillation(cm, at: elapsed) }
+                }
+
+            case HKQuantityType(.distanceWalkingRunning):
+                if let meters = statistics?.sumQuantity()?.doubleValue(for: .meter()) {
+                    Task { await engine.updateDistance(meters, at: elapsed) }
                 }
 
             default:

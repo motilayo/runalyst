@@ -36,6 +36,10 @@ public struct AdaptivePacingConfiguration: Sendable, Equatable {
     public var backOnTargetToleranceFraction: Double
     public var paceDriftDebounceDurationSeconds: TimeInterval
     public var paceDriftCooldownSeconds: TimeInterval
+    public var cadenceDriftDebounceDurationSeconds: TimeInterval
+    public var cadenceDriftCooldownSeconds: TimeInterval
+    public var cadenceDriftThresholdSPM: Double
+    public var cadenceFloorSPM: Int
 
     public init(
         warmupDurationSeconds: TimeInterval = 300.0,
@@ -63,7 +67,11 @@ public struct AdaptivePacingConfiguration: Sendable, Equatable {
         backOnTargetMinToleranceSecondsPerKm: Int = 5,
         backOnTargetToleranceFraction: Double = 0.02,
         paceDriftDebounceDurationSeconds: TimeInterval = 12.0,
-        paceDriftCooldownSeconds: TimeInterval = 30.0
+        paceDriftCooldownSeconds: TimeInterval = 30.0,
+        cadenceDriftDebounceDurationSeconds: TimeInterval = 12.0,
+        cadenceDriftCooldownSeconds: TimeInterval = 30.0,
+        cadenceDriftThresholdSPM: Double = 6.0,
+        cadenceFloorSPM: Int = 150
     ) {
         self.warmupDurationSeconds = warmupDurationSeconds
         self.baselineDurationSeconds = baselineDurationSeconds
@@ -91,6 +99,10 @@ public struct AdaptivePacingConfiguration: Sendable, Equatable {
         self.backOnTargetToleranceFraction = backOnTargetToleranceFraction
         self.paceDriftDebounceDurationSeconds = paceDriftDebounceDurationSeconds
         self.paceDriftCooldownSeconds = paceDriftCooldownSeconds
+        self.cadenceDriftDebounceDurationSeconds = cadenceDriftDebounceDurationSeconds
+        self.cadenceDriftCooldownSeconds = cadenceDriftCooldownSeconds
+        self.cadenceDriftThresholdSPM = cadenceDriftThresholdSPM
+        self.cadenceFloorSPM = cadenceFloorSPM
     }
 
     /// Standard production configuration with sports science parameters.
@@ -123,6 +135,8 @@ public enum PacingEvent: Sendable, Equatable {
     case recover(deltaSecondsPerKm: Int, newTargetSecondsPerKm: Int, reason: PacingReason)
     case backOnTarget
     case paceDrift(deviation: PaceDeviation, deltaSecondsPerKm: Int)
+    case cadenceDrift(currentCadenceSPM: Int, targetCadenceSPM: Int, deltaSPM: Int)
+    case splitMilestone(splitIndex: Int, splitPaceSecondsPerKm: Int)
 }
 
 /// Real-time deviation category of current pace against target.
@@ -155,6 +169,7 @@ public struct AdaptivePacingCore: Sendable {
     internal var adjustmentsEnabled: Bool
     internal var currentTargetPaceSecondsPerKm: Int?
     internal var originalTargetPaceSecondsPerKm: Int?
+    public internal(set) var currentTargetCadenceSPM: Int?
     internal var lastReason: PacingReason?
     internal var refractorySecondsRemaining: Int
     internal var refractoryState: PacingState?
@@ -165,6 +180,8 @@ public struct AdaptivePacingCore: Sendable {
     internal var paceDriftDeviation: PaceDeviation = .onTarget
     internal var paceDriftContinuousSeconds: Double = 0.0
     internal var paceDriftCooldownRemainingSeconds: Int = 0
+    internal var cadenceDriftContinuousSeconds: Double = 0.0
+    internal var cadenceDriftCooldownRemainingSeconds: Int = 0
 
     public init(
         profile: AthleteCalibrationProfile,
@@ -188,6 +205,7 @@ public struct AdaptivePacingCore: Sendable {
         self.adjustmentsEnabled = true
         self.currentTargetPaceSecondsPerKm = intent.targetPaceSecondsPerKm
         self.originalTargetPaceSecondsPerKm = intent.targetPaceSecondsPerKm
+        self.currentTargetCadenceSPM = intent.targetCadenceSPM
         self.lastReason = nil
         self.refractorySecondsRemaining = 0
         self.refractoryState = nil
@@ -198,6 +216,8 @@ public struct AdaptivePacingCore: Sendable {
         self.paceDriftDeviation = .onTarget
         self.paceDriftContinuousSeconds = 0.0
         self.paceDriftCooldownRemainingSeconds = 0
+        self.cadenceDriftContinuousSeconds = 0.0
+        self.cadenceDriftCooldownRemainingSeconds = 0
     }
 
     /// Resets runtime state for a new session or calibration restart.
@@ -213,6 +233,7 @@ public struct AdaptivePacingCore: Sendable {
         self.adjustmentsEnabled = true
         self.currentTargetPaceSecondsPerKm = intent.targetPaceSecondsPerKm
         self.originalTargetPaceSecondsPerKm = intent.targetPaceSecondsPerKm
+        self.currentTargetCadenceSPM = intent.targetCadenceSPM
         self.lastReason = nil
         self.refractorySecondsRemaining = 0
         self.refractoryState = nil
@@ -223,6 +244,8 @@ public struct AdaptivePacingCore: Sendable {
         self.paceDriftDeviation = .onTarget
         self.paceDriftContinuousSeconds = 0.0
         self.paceDriftCooldownRemainingSeconds = 0
+        self.cadenceDriftContinuousSeconds = 0.0
+        self.cadenceDriftCooldownRemainingSeconds = 0
     }
 
     /// Ingests a 1 Hz telemetry tick and advances the closed-loop state machine.
@@ -321,6 +344,16 @@ public struct AdaptivePacingCore: Sendable {
                     target = Int((1000.0 / speedStats.mean).rounded())
                 }
 
+                if let explicitCadence = intent.targetCadenceSPM {
+                    currentTargetCadenceSPM = explicitCadence
+                } else if let cadenceStats = ringBuffer.stats(
+                    for: .cadence,
+                    in: baselineInterval,
+                    minCoverage: configuration.minCoverageFraction
+                ), cadenceStats.mean > 0 {
+                    currentTargetCadenceSPM = max(configuration.cadenceFloorSPM, Int(cadenceStats.mean.rounded()))
+                }
+
                 originalTargetPaceSecondsPerKm = target
                 currentTargetPaceSecondsPerKm = target
                 adjustmentsEnabled = (intent.intent != .intervals)
@@ -372,6 +405,11 @@ public struct AdaptivePacingCore: Sendable {
             emittedEvents.append(driftEvent)
         }
 
+        // Real-time cadence drift alert evaluated on every tick
+        if let cadenceEvent = evaluateCadenceDriftAlert() {
+            emittedEvents.append(cadenceEvent)
+        }
+
         // Periodic 10 s evaluation
         guard let latestTick = ringBuffer.latestTick else { return }
         if adjustmentsEnabled && (latestTick.elapsedSeconds - lastEvaluationElapsedSeconds >= configuration.evaluationIntervalSeconds) {
@@ -382,57 +420,7 @@ public struct AdaptivePacingCore: Sendable {
         }
     }
 
-    // MARK: - Display State Builder
-
-    private func buildDisplayState(speedEstimate: Double?, hrEstimate: Double?) -> PacingDisplayState {
-        let filteredPace: Int? = {
-            if let shortSpeed = ringBuffer.shortWindowStats(for: .filteredSpeed)?.mean, shortSpeed > 0 {
-                return Int((1000.0 / shortSpeed).rounded())
-            }
-            if let current = speedEstimate, current > 0 {
-                return Int((1000.0 / current).rounded())
-            }
-            return nil
-        }()
-
-        let filteredHR: Int? = hrEstimate.map { Int($0.rounded()) }
-        let deviation = evaluateDeviation(target: currentTargetPaceSecondsPerKm, current: filteredPace)
-
-        let calProgress: Double? = {
-            if case .calibrating(let p) = state { return p }
-            return nil
-        }()
-
-        let calProgressStr: String = {
-            if let p = calProgress {
-                return "\(Int((p * 100.0).rounded()))%"
-            }
-            return "--"
-        }()
-
-        let refractoryProg: Double = {
-            guard configuration.refractoryDurationSeconds > 0 else { return 0.0 }
-            return Double(refractorySecondsRemaining) / configuration.refractoryDurationSeconds
-        }()
-
-        return PacingDisplayState(
-            state: state,
-            targetPaceSecondsPerKm: currentTargetPaceSecondsPerKm,
-            filteredPaceSecondsPerKm: filteredPace,
-            filteredHeartRateBPM: filteredHR,
-            deviation: deviation,
-            refractorySecondsRemaining: refractorySecondsRemaining,
-            lastReason: lastReason,
-            adjustmentsEnabled: adjustmentsEnabled,
-            targetPaceFormatted: formatPace(secondsPerKm: currentTargetPaceSecondsPerKm),
-            filteredPaceFormatted: formatPace(secondsPerKm: filteredPace),
-            filteredHeartRateFormatted: filteredHR.map { "\($0) BPM" } ?? "--",
-            deviationTitle: deviationTitle(for: deviation),
-            calibrationProgress: calProgress,
-            calibrationProgressFormatted: calProgressStr,
-            refractoryProgress: refractoryProg
-        )
-    }
+    // MARK: - Deviation Evaluation
 
     internal func evaluateDeviation(target: Int?, current: Int?) -> PaceDeviation {
         guard let target, let current else { return .unknown }
@@ -443,22 +431,6 @@ public struct AdaptivePacingCore: Sendable {
             return .tooSlow
         } else {
             return .onTarget
-        }
-    }
-
-    private func formatPace(secondsPerKm: Int?) -> String {
-        guard let seconds = secondsPerKm, seconds > 0 else { return "--:--" }
-        let mins = seconds / 60
-        let secs = seconds % 60
-        return String(format: "%d:%02d /km", mins, secs)
-    }
-
-    private func deviationTitle(for deviation: PaceDeviation) -> String {
-        switch deviation {
-        case .onTarget: return "On Target"
-        case .tooFast: return "Too Fast"
-        case .tooSlow: return "Too Slow"
-        case .unknown: return "--"
         }
     }
 }
