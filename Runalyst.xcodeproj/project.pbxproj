@@ -1217,6 +1217,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.runalyzer.Runalyzer.watchkitapp;
 				PRODUCT_NAME = RunalystWatch;
 				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
 				SUPPORTED_PLATFORMS = "watchos watchsimulator";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 6.0;
@@ -1247,6 +1248,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.runalyzer.Runalyzer.watchkitapp;
 				PRODUCT_NAME = RunalystWatch;
 				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
 				SUPPORTED_PLATFORMS = "watchos watchsimulator";
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 6.0;
