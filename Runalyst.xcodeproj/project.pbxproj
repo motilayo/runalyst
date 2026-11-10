@@ -161,6 +161,7 @@
 		W1110018D4E5F60718293A18 /* Views/StartRunView.swift in Sources */ = {isa = PBXBuildFile; fileRef = W1110008D4E5F60718293A08 /* Views/StartRunView.swift */; };
 		W1110019D4E5F60718293A19 /* Views/PacingGaugeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = W1110009D4E5F60718293A09 /* Views/PacingGaugeView.swift */; };
 		W111001AD4E5F60718293A1A /* RunalystCore in Frameworks */ = {isa = PBXBuildFile; productRef = D4E5F60718293A0100000002 /* RunalystCore */; };
+		W1110023D4E5F60718293A23 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = W111000CD4E5F60718293A0C /* Assets.xcassets */; };
 		WCB10002D4E5F60718293A02 /* Runalyst/Services/WatchCalibrationBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = WCB10001D4E5F60718293A01 /* Runalyst/Services/WatchCalibrationBridge.swift */; };
 		Z2X3C4V5B6N7M8L9K0J1H2G3 /* Runalyst/Views/RunDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = Q1W2E3R4T5Y6U7I8O9P0A1S2 /* Runalyst/Views/RunDetailView.swift */; };
 		W1110061D4E5F60718293A61 /* RunalystWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = W1110000D4E5F60718293A00 /* RunalystWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -341,6 +342,7 @@
 		W1110009D4E5F60718293A09 /* Views/PacingGaugeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/PacingGaugeView.swift; sourceTree = "<group>"; };
 		W111000AD4E5F60718293A0A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		W111000BD4E5F60718293A0B /* RunalystWatch.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = RunalystWatch.entitlements; sourceTree = "<group>"; };
+		W111000CD4E5F60718293A0C /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		WCB10001D4E5F60718293A01 /* Runalyst/Services/WatchCalibrationBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Services/WatchCalibrationBridge.swift; sourceTree = SOURCE_ROOT; };
 		Z1X2C3V4B5N6M7L8K9J0H1G2 /* Runalyst/CoachingEngine/CoachingEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/CoachingEngine/CoachingEngine.swift; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
@@ -654,6 +656,7 @@
 				W1110009D4E5F60718293A09 /* Views/PacingGaugeView.swift */,
 				W111000AD4E5F60718293A0A /* Info.plist */,
 				W111000BD4E5F60718293A0B /* RunalystWatch.entitlements */,
+				W111000CD4E5F60718293A0C /* Assets.xcassets */,
 			);
 			path = RunalystWatch;
 			sourceTree = "<group>";
@@ -783,6 +786,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				W1110023D4E5F60718293A23 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1193,6 +1197,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ENABLE_MODULES = YES;
 				CLANG_ENABLE_OBJC_ARC = YES;
@@ -1222,6 +1227,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ENABLE_MODULES = YES;
 				CLANG_ENABLE_OBJC_ARC = YES;
