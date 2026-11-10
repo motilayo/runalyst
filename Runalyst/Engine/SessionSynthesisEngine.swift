@@ -580,6 +580,7 @@ enum SessionSynthesisEngine {
             let microcycle = generateMicrocycle(
                 activeGoal: activeGoal,
                 now: now,
+                runRecords: runRecords,
                 useMetric: useMetric,
                 isRecoveryWindow: true,
                 startsAfterTomorrow: false,
@@ -828,6 +829,7 @@ enum SessionSynthesisEngine {
         let microcycle = generateMicrocycle(
             activeGoal: activeGoal,
             now: now,
+            runRecords: runRecords,
             useMetric: useMetric,
             isRecoveryWindow: isRecovery,
             recoveryHoursRemaining: recoveryTimeline.readyForHard ? 0 : (recoveryTimeline.requiredHours - (recoveryTimeline.hoursSinceLastHard ?? 0)),
@@ -1486,7 +1488,8 @@ enum SessionSynthesisEngine {
             context: context,
             isTomorrowRecovery: !startsAfterTomorrow && isRecoveryWindow,
             isTomorrowRest: !startsAfterTomorrow && isTomorrowRest,
-            hasRecentLongRun: hasRecentLongRun
+            hasRecentLongRun: hasRecentLongRun,
+            recoveryHoursRemaining: recoveryHoursRemaining
         )
 
         return horizon.enumerated().map { index, day in
