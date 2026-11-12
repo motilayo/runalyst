@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 import RunalystCore
 import WatchConnectivity
 
@@ -9,11 +10,18 @@ import WatchConnectivity
 typealias WatchConnectivityManager = WatchCalibrationBridge
 
 @MainActor
+@Observable
 final class WatchCalibrationBridge: NSObject, WCSessionDelegate {
     static let shared = WatchCalibrationBridge()
 
-    private var pendingContext: WatchPacingContext?
-    private var lastPublishedContext: WatchPacingContext?
+    public private(set) var isWatchPaired: Bool = false
+    public private(set) var isWatchAppInstalled: Bool = false
+    public private(set) var isWatchReachable: Bool = false
+    public private(set) var latestWatchSnapshot: WatchLiveRunSnapshot?
+    public private(set) var latestCompletedDebrief: WatchRunDebrief?
+
+    @ObservationIgnored private var pendingContext: WatchPacingContext?
+    @ObservationIgnored private var lastPublishedContext: WatchPacingContext?
 
     override private init() {
         super.init()
@@ -25,6 +33,22 @@ final class WatchCalibrationBridge: NSObject, WCSessionDelegate {
         let session = WCSession.default
         session.delegate = self
         session.activate()
+        refreshSessionState(session)
+    }
+
+    private func refreshSessionState(_ session: WCSession) {
+        guard WCSession.isSupported() else { return }
+        self.isWatchPaired = session.isPaired
+        self.isWatchAppInstalled = session.isWatchAppInstalled
+        self.isWatchReachable = session.isReachable
+    }
+
+    private var defaultMetricPreference: Bool {
+        UserDefaults.standard.object(forKey: "useMetricSystem") as? Bool ?? (Locale.current.measurementSystem == .metric)
+    }
+
+    private var defaultVoiceCuesPreference: Bool {
+        UserDefaults.standard.object(forKey: "watchVoiceCuesEnabled") as? Bool ?? true
     }
 
     // MARK: - Publishing API
@@ -34,8 +58,24 @@ final class WatchCalibrationBridge: NSObject, WCSessionDelegate {
         guard WCSession.isSupported() else { return }
         let session = WCSession.default
 
+        let resolvedContext: WatchPacingContext
+        if context.useMetricSystem == nil || context.watchVoiceCuesEnabled == nil {
+            resolvedContext = WatchPacingContext(
+                schemaVersion: context.schemaVersion,
+                profile: context.profile,
+                intent: context.intent,
+                isIndoorPreferred: context.isIndoorPreferred,
+                useMetricSystem: context.useMetricSystem ?? defaultMetricPreference,
+                watchVoiceCuesEnabled: context.watchVoiceCuesEnabled ?? defaultVoiceCuesPreference
+            )
+        } else {
+            resolvedContext = context
+        }
+
+        refreshSessionState(session)
+
         guard session.activationState == .activated else {
-            self.pendingContext = context
+            self.pendingContext = resolvedContext
             if session.activationState == .notActivated {
                 session.activate()
             }
@@ -45,30 +85,38 @@ final class WatchCalibrationBridge: NSObject, WCSessionDelegate {
         // Silent exit if watch is not paired or watch app not installed
         guard session.isPaired, session.isWatchAppInstalled else { return }
 
-        // Skip redundant transfers if unchanged
-        if let last = lastPublishedContext, last == context {
+        // Skip redundant transfers if unchanged, unless watch is reachable
+        if let last = lastPublishedContext, last == resolvedContext, !isWatchReachable {
             return
         }
 
         do {
-            let data = try JSONEncoder().encode(context)
+            let data = try JSONEncoder().encode(resolvedContext)
             try session.updateApplicationContext(["pacingContext": data])
-            self.lastPublishedContext = context
+            if isWatchReachable {
+                session.sendMessage(["pacingContext": data], replyHandler: nil, errorHandler: nil)
+            }
+            self.lastPublishedContext = resolvedContext
             self.pendingContext = nil
         } catch {
             // Silently handle transport failure with zero user disruption
         }
     }
 
-    /// Sends updated pacing context to Apple Watch, ensuring `isIndoorPreferred` is synchronized immediately.
+    /// Sends updated pacing context to Apple Watch, ensuring `isIndoorPreferred`, `useMetricSystem`, and `watchVoiceCuesEnabled` are synchronized immediately.
     func sendPacingContext(isIndoorPreferred: Bool? = nil) {
         let indoorPref = isIndoorPreferred ?? UserDefaults.standard.bool(forKey: "preferredWorkoutIsIndoor")
+        let metricPref = defaultMetricPreference
+        let voicePref = defaultVoiceCuesPreference
+
         if let current = lastPublishedContext {
             let updated = WatchPacingContext(
                 schemaVersion: current.schemaVersion,
                 profile: current.profile,
                 intent: current.intent,
-                isIndoorPreferred: indoorPref
+                isIndoorPreferred: indoorPref,
+                useMetricSystem: metricPref,
+                watchVoiceCuesEnabled: voicePref
             )
             publish(context: updated)
         } else {
@@ -84,7 +132,9 @@ final class WatchCalibrationBridge: NSObject, WCSessionDelegate {
                 schemaVersion: WatchPacingContext.currentSchemaVersion,
                 profile: profile,
                 intent: intent,
-                isIndoorPreferred: indoorPref
+                isIndoorPreferred: indoorPref,
+                useMetricSystem: metricPref,
+                watchVoiceCuesEnabled: voicePref
             )
             publish(context: context)
         }
@@ -140,7 +190,9 @@ final class WatchCalibrationBridge: NSObject, WCSessionDelegate {
             schemaVersion: WatchPacingContext.currentSchemaVersion,
             profile: profile,
             intent: intent,
-            isIndoorPreferred: indoorPref
+            isIndoorPreferred: indoorPref,
+            useMetricSystem: defaultMetricPreference,
+            watchVoiceCuesEnabled: defaultVoiceCuesPreference
         )
 
         publish(context: context)
@@ -172,10 +224,46 @@ final class WatchCalibrationBridge: NSObject, WCSessionDelegate {
             schemaVersion: WatchPacingContext.currentSchemaVersion,
             profile: profile,
             intent: intent,
-            isIndoorPreferred: indoorPref
+            isIndoorPreferred: indoorPref,
+            useMetricSystem: defaultMetricPreference,
+            watchVoiceCuesEnabled: defaultVoiceCuesPreference
         )
 
         publish(context: context)
+    }
+
+    // MARK: - Remote Control Commands & Snapshot Reception
+
+    /// Sends a remote control command (pause, resume, end) to the active workout on Apple Watch.
+    func sendRemoteCommand(_ command: WatchRemoteCommand) {
+        guard WCSession.isSupported() else { return }
+        let session = WCSession.default
+        refreshSessionState(session)
+        guard session.activationState == .activated, isWatchReachable else { return }
+        session.sendMessage(["remoteCommand": command.rawValue], replyHandler: nil, errorHandler: nil)
+    }
+
+    /// Dismisses the completed workout debrief banner.
+    func dismissCompletedDebrief() {
+        self.latestCompletedDebrief = nil
+        if self.latestWatchSnapshot?.phase == .completed {
+            self.latestWatchSnapshot = nil
+        }
+    }
+
+    /// Processes an incoming raw `WatchLiveRunSnapshot` JSON payload from Apple Watch.
+    func handleReceivedLiveSnapshotData(_ data: Data) {
+        guard let snapshot = try? JSONDecoder().decode(WatchLiveRunSnapshot.self, from: data) else {
+            return
+        }
+        guard snapshot.isSupportedSchema else { return }
+        if let existing = latestWatchSnapshot, snapshot.updatedAtEpochSeconds < existing.updatedAtEpochSeconds {
+            return
+        }
+        self.latestWatchSnapshot = snapshot
+        if snapshot.phase == .completed, let debrief = snapshot.completedDebrief {
+            self.latestCompletedDebrief = debrief
+        }
     }
 
     // MARK: - WCSessionDelegate
@@ -192,7 +280,60 @@ final class WatchCalibrationBridge: NSObject, WCSessionDelegate {
     ) {
         guard activationState == .activated else { return }
         Task { @MainActor in
+            self.refreshSessionState(WCSession.default)
             self.publishPendingContext()
+        }
+    }
+
+    nonisolated func sessionReachabilityDidChange(_ session: WCSession) {
+        Task { @MainActor in
+            self.refreshSessionState(WCSession.default)
+        }
+    }
+
+    nonisolated func sessionWatchStateDidChange(_ session: WCSession) {
+        Task { @MainActor in
+            self.refreshSessionState(WCSession.default)
+        }
+    }
+
+    nonisolated func session(
+        _ session: WCSession,
+        didReceiveApplicationContext applicationContext: [String: Any]
+    ) {
+        let snapshotData = applicationContext["watchLiveSnapshot"] as? Data
+        Task { @MainActor in
+            if let snapshotData {
+                self.handleReceivedLiveSnapshotData(snapshotData)
+            }
+        }
+    }
+
+    nonisolated func session(
+        _ session: WCSession,
+        didReceiveUserInfo userInfo: [String: Any] = [:]
+    ) {
+        let snapshotData = userInfo["watchLiveSnapshot"] as? Data
+        Task { @MainActor in
+            if let snapshotData {
+                self.handleReceivedLiveSnapshotData(snapshotData)
+            }
+        }
+    }
+
+    nonisolated func session(
+        _ session: WCSession,
+        didReceiveMessage message: [String: Any]
+    ) {
+        let snapshotData = message["watchLiveSnapshot"] as? Data
+        let remoteCommandString = message["remoteCommand"] as? String
+        Task { @MainActor in
+            if let snapshotData {
+                self.handleReceivedLiveSnapshotData(snapshotData)
+            }
+            if remoteCommandString == WatchRemoteCommand.requestContextSync.rawValue {
+                self.sendPacingContext()
+            }
         }
     }
 
@@ -201,15 +342,35 @@ final class WatchCalibrationBridge: NSObject, WCSessionDelegate {
         didReceiveMessage message: [String: Any],
         replyHandler: @escaping ([String: Any]) -> Void
     ) {
-        guard let text = message["voiceCueText"] as? String else {
-            replyHandler(["spoken": false])
-            return
-        }
-        let language = message["voiceCueLanguage"] as? String
+        let snapshotData = message["watchLiveSnapshot"] as? Data
+        let remoteCommandString = message["remoteCommand"] as? String
+        let voiceCueText = message["voiceCueText"] as? String
+        let voiceCueLanguage = message["voiceCueLanguage"] as? String
         let replyBox = UncheckedReplyBox(send: replyHandler)
+
         Task { @MainActor in
-            let spoken = CompanionVoiceRelay.shared.speakIfHeadphonesConnected(text: text, language: language)
-            replyBox.send(["spoken": spoken])
+            if let snapshotData {
+                self.handleReceivedLiveSnapshotData(snapshotData)
+            }
+
+            if let text = voiceCueText {
+                let spoken = CompanionVoiceRelay.shared.speakIfHeadphonesConnected(text: text, language: voiceCueLanguage)
+                replyBox.send(["spoken": spoken])
+                return
+            }
+
+            if remoteCommandString == WatchRemoteCommand.requestContextSync.rawValue {
+                self.sendPacingContext()
+                var reply: [String: Any] = ["status": "ok"]
+                if let ctx = self.lastPublishedContext,
+                   let data = try? JSONEncoder().encode(ctx) {
+                    reply["pacingContext"] = data
+                }
+                replyBox.send(reply)
+                return
+            }
+
+            replyBox.send([:])
         }
     }
 

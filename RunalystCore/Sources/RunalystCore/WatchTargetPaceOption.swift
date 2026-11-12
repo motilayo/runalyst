@@ -14,17 +14,25 @@ public struct WatchPacingContext: Sendable, Codable, Equatable {
     public let intent: PacingSessionIntent
     /// Persisted environment preference from iOS app (indoor vs outdoor).
     public let isIndoorPreferred: Bool?
+    /// Preferred unit system: metric (true) vs imperial (false).
+    public let useMetricSystem: Bool?
+    /// Whether spoken pacing audio cues are enabled on watch.
+    public let watchVoiceCuesEnabled: Bool?
 
     public init(
         schemaVersion: Int = WatchPacingContext.currentSchemaVersion,
         profile: AthleteCalibrationProfile,
         intent: PacingSessionIntent,
-        isIndoorPreferred: Bool? = nil
+        isIndoorPreferred: Bool? = nil,
+        useMetricSystem: Bool? = nil,
+        watchVoiceCuesEnabled: Bool? = nil
     ) {
         self.schemaVersion = schemaVersion
         self.profile = profile
         self.intent = intent
         self.isIndoorPreferred = isIndoorPreferred
+        self.useMetricSystem = useMetricSystem
+        self.watchVoiceCuesEnabled = watchVoiceCuesEnabled
     }
 
     /// Whether the watch app's compiled runtime supports this schema version.

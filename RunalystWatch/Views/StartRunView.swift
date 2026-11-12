@@ -143,6 +143,7 @@ public struct StartRunView: View {
             if !hasUserManuallySelectedLocation {
                 selectedLocation = WatchContextStore.shared.preferredLocation
             }
+            WatchContextStore.shared.requestLatestContextIfNeeded()
         }
         .onChange(of: WatchContextStore.shared.preferredLocation) { _, newLocation in
             if !hasUserManuallySelectedLocation {

@@ -778,6 +778,11 @@ struct DashboardView: View {
                         // 1. Pinned Filter Controls (Locked to top beneath header)
                         filterControlsSection
 
+                        WatchLiveCompanionBannerView(bridge: WatchCalibrationBridge.shared) {
+                            Task { await onSync?(false) }
+                        }
+                        .padding(.horizontal)
+
                         // 2. AI Coach Directive / 30-Day Trends Card
                         if !timeRangeRuns.isEmpty {
                             aiInsightCard
@@ -966,6 +971,11 @@ struct DashboardView: View {
                 cachedBodyAllTime = ""
                 fetchInsight()
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
+            }
+            .onChange(of: WatchCalibrationBridge.shared.latestCompletedDebrief) { _, newValue in
+                if newValue != nil && !isSyncing {
+                    Task { await onSync?(false) }
+                }
             }
             .background(Color(UIColor.systemGroupedBackground).ignoresSafeArea())
             .navigationTitle("Dashboard")

@@ -89,6 +89,7 @@
 		B1110044D4E5F60718293A44 /* Runalyst/Views/DataManagementSectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110044D4E5F60718293A44 /* Runalyst/Views/DataManagementSectionView.swift */; };
 		B1110045D4E5F60718293A45 /* Runalyst/Views/PreviewRouterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110045D4E5F60718293A45 /* Runalyst/Views/PreviewRouterView.swift */; };
 		B1110046D4E5F60718293A46 /* Runalyst/Views/SyncProgressBannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110046D4E5F60718293A46 /* Runalyst/Views/SyncProgressBannerView.swift */; };
+		WCB10006D4E5F60718293A06 /* Runalyst/Views/WatchLiveCompanionBannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = WCB10005D4E5F60718293A05 /* Runalyst/Views/WatchLiveCompanionBannerView.swift */; };
 		B1110047D4E5F60718293A47 /* Runalyst/Engine/PreRunDrill+Formatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110047D4E5F60718293A47 /* Runalyst/Engine/PreRunDrill+Formatting.swift */; };
 		B1110048D4E5F60718293A48 /* Runalyst/Engine/PreRunDrill+WorkoutPlan.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110048D4E5F60718293A48 /* Runalyst/Engine/PreRunDrill+WorkoutPlan.swift */; };
 		B1110050D4E5F60718293A50 /* Runalyst/Engine/SessionSynthesisEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110050D4E5F60718293A50 /* Runalyst/Engine/SessionSynthesisEngine.swift */; };
@@ -256,6 +257,7 @@
 		A1110044D4E5F60718293A44 /* Runalyst/Views/DataManagementSectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/DataManagementSectionView.swift; sourceTree = SOURCE_ROOT; };
 		A1110045D4E5F60718293A45 /* Runalyst/Views/PreviewRouterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/PreviewRouterView.swift; sourceTree = SOURCE_ROOT; };
 		A1110046D4E5F60718293A46 /* Runalyst/Views/SyncProgressBannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/SyncProgressBannerView.swift; sourceTree = SOURCE_ROOT; };
+		WCB10005D4E5F60718293A05 /* Runalyst/Views/WatchLiveCompanionBannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/WatchLiveCompanionBannerView.swift; sourceTree = SOURCE_ROOT; };
 		A1110047D4E5F60718293A47 /* Runalyst/Engine/PreRunDrill+Formatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Runalyst/Engine/PreRunDrill+Formatting.swift"; sourceTree = SOURCE_ROOT; };
 		A1110048D4E5F60718293A48 /* Runalyst/Engine/PreRunDrill+WorkoutPlan.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Runalyst/Engine/PreRunDrill+WorkoutPlan.swift"; sourceTree = SOURCE_ROOT; };
 		A1110050D4E5F60718293A50 /* Runalyst/Engine/SessionSynthesisEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Engine/SessionSynthesisEngine.swift; sourceTree = SOURCE_ROOT; };
@@ -585,6 +587,7 @@
 				A1110044D4E5F60718293A44 /* Runalyst/Views/DataManagementSectionView.swift */,
 				A1110045D4E5F60718293A45 /* Runalyst/Views/PreviewRouterView.swift */,
 				A1110046D4E5F60718293A46 /* Runalyst/Views/SyncProgressBannerView.swift */,
+				WCB10005D4E5F60718293A05 /* Runalyst/Views/WatchLiveCompanionBannerView.swift */,
 				A1110047D4E5F60718293A47 /* Runalyst/Engine/PreRunDrill+Formatting.swift */,
 				A1110048D4E5F60718293A48 /* Runalyst/Engine/PreRunDrill+WorkoutPlan.swift */,
 				A1110DTS001F60718293A001 /* Runalyst/Engine/DailyTrainingStateStore.swift */,
@@ -903,6 +906,7 @@
 				B1110044D4E5F60718293A44 /* Runalyst/Views/DataManagementSectionView.swift in Sources */,
 				B1110045D4E5F60718293A45 /* Runalyst/Views/PreviewRouterView.swift in Sources */,
 				B1110046D4E5F60718293A46 /* Runalyst/Views/SyncProgressBannerView.swift in Sources */,
+				WCB10006D4E5F60718293A06 /* Runalyst/Views/WatchLiveCompanionBannerView.swift in Sources */,
 				B1110047D4E5F60718293A47 /* Runalyst/Engine/PreRunDrill+Formatting.swift in Sources */,
 				B1110048D4E5F60718293A48 /* Runalyst/Engine/PreRunDrill+WorkoutPlan.swift in Sources */,
 				B1110DTS001F60718293A001 /* Runalyst/Engine/DailyTrainingStateStore.swift in Sources */,

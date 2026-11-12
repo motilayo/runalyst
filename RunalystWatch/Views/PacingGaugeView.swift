@@ -107,6 +107,11 @@ public struct PacingGaugeView: View {
                 dismiss()
             }
         }
+        .onChange(of: pacingViewModel.completedDebrief) { _, newDebrief in
+            if let newDebrief, debriefPresentation == nil {
+                debriefPresentation = DebriefPresentation(debrief: newDebrief)
+            }
+        }
     }
 
     // MARK: - Calibration Layout
