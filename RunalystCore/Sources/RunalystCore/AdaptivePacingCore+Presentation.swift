@@ -16,6 +16,12 @@ public enum PacingAccentToken: String, Sendable, Codable, CaseIterable, Equatabl
     case recoverOrange
     /// Neutral / baseline accent.
     case neutral
+    /// Zero-friction watch companion calibration edge aura.
+    case calibratingBlue
+    /// High-efficiency surge edge glow.
+    case surgeTeal
+    /// Cardiac drift / recovery protection edge glow.
+    case recoverAmber
 }
 
 /// Abstract haptic semantic categories mapped to watchOS haptic playback.
@@ -25,6 +31,10 @@ public enum PacingHapticSemantic: String, Sendable, Codable, CaseIterable, Equat
     case retry
     case success
     case none
+    case ascendingDoublePulse
+    case threeQuickLightTaps
+    case descendingDoublePulse
+    case subtleConfirmation
 }
 
 /// Backward-compatible alias for deterministic pacing event feedback specification.
@@ -46,38 +56,83 @@ public struct PacingEventFeedbackSpec: Sendable, Equatable {
         self.accentToken = accentToken
     }
 
-    public init(for event: PacingEvent) {
+    public init(for event: PacingEvent, useMetricSystem: Bool = true) {
         switch event {
-        case .surge:
+        case .calibrationStarted:
             self.init(
-                haptic: .directionUp,
-                voiceCueText: "Target pace up. Quicken your steps.",
+                haptic: .none,
+                voiceCueText: "Find a comfortable rhythm. Reading your baseline.",
+                accentToken: .calibratingBlue
+            )
+        case .calibrationComplete(let target, _):
+            let paceStr: String
+            let unitName: String
+            if useMetricSystem {
+                let mins = target / 60
+                let secs = target % 60
+                paceStr = String(format: "%d:%02d", mins, secs)
+                unitName = "kilometer"
+            } else {
+                let targetMile = Int((Double(target) * 1.609344).rounded())
+                let mins = targetMile / 60
+                let secs = targetMile % 60
+                paceStr = String(format: "%d:%02d", mins, secs)
+                unitName = "mile"
+            }
+            self.init(
+                haptic: .success,
+                voiceCueText: "Baseline locked. Target pace: \(paceStr) per \(unitName). Let's roll.",
                 accentToken: .electricBlue
             )
-        case .recover(_, _, let reason):
-            switch reason {
-            case .formBreakdown:
-                self.init(
-                    haptic: .retry,
-                    voiceCueText: "Cadence dropping. Short, quick steps.",
-                    accentToken: .vibrantGreen
-                )
-            case .efficiencyDrift, .heartRateCeiling, .compound, .reservesAvailable:
-                self.init(
-                    haptic: .directionDown,
-                    voiceCueText: "Heart rate drifting. Ease the pace.",
-                    accentToken: .neonPink
-                )
+        case .surge(_, let newTarget):
+            let paceStr: String
+            if useMetricSystem {
+                let mins = newTarget / 60
+                let secs = newTarget % 60
+                paceStr = String(format: "%d:%02d", mins, secs)
+            } else {
+                let targetMile = Int((Double(newTarget) * 1.609344).rounded())
+                let mins = targetMile / 60
+                let secs = targetMile % 60
+                paceStr = String(format: "%d:%02d", mins, secs)
             }
+            self.init(
+                haptic: .ascendingDoublePulse,
+                voiceCueText: "Efficiency is high—you've got reserves. Nudging target pace to \(paceStr).",
+                accentToken: .surgeTeal
+            )
+        case .surgeLockedIn:
+            self.init(
+                haptic: .subtleConfirmation,
+                voiceCueText: nil,
+                accentToken: .surgeTeal
+            )
+        case .formCheck:
+            self.init(
+                haptic: .threeQuickLightTaps,
+                voiceCueText: "Form check. Quick, light steps—bring your cadence up.",
+                accentToken: .recoverAmber
+            )
+        case .recover(_, let newTarget, _):
+            let paceStr: String
+            if useMetricSystem {
+                let mins = newTarget / 60
+                let secs = newTarget % 60
+                paceStr = String(format: "%d:%02d", mins, secs)
+            } else {
+                let targetMile = Int((Double(newTarget) * 1.609344).rounded())
+                let mins = targetMile / 60
+                let secs = targetMile % 60
+                paceStr = String(format: "%d:%02d", mins, secs)
+            }
+            self.init(
+                haptic: .descendingDoublePulse,
+                voiceCueText: "Cardiac drift detected. Dialing target back to \(paceStr) to protect your aerobic zone.",
+                accentToken: .recoverAmber
+            )
         case .backOnTarget:
             self.init(
                 haptic: .success,
-                voiceCueText: nil,
-                accentToken: .neutral
-            )
-        case .calibrationComplete:
-            self.init(
-                haptic: .none,
                 voiceCueText: nil,
                 accentToken: .neutral
             )
@@ -112,19 +167,29 @@ public struct PacingEventFeedbackSpec: Sendable, Equatable {
             let mins = pace / 60
             let secs = pace % 60
             let paceText = String(format: "%d:%02d", mins, secs)
+            let unitStr = useMetricSystem ? "Kilometer" : "Mile"
             self.init(
                 haptic: .success,
-                voiceCueText: "Kilometer \(index). \(paceText) pace.",
+                voiceCueText: "\(unitStr) \(index). \(paceText) pace.",
                 accentToken: .electricBlue
             )
         }
     }
+
+    public init(for event: PacingEvent) {
+        self.init(for: event, useMetricSystem: true)
+    }
 }
 
 extension PacingEvent {
+    /// Deterministic unit-aware feedback specification (haptic, voice cue, accent token) for this event.
+    public func feedbackSpec(useMetricSystem: Bool) -> PacingEventFeedbackSpec {
+        PacingEventFeedbackSpec(for: self, useMetricSystem: useMetricSystem)
+    }
+
     /// Deterministic feedback specification (haptic, voice cue, accent token) for this event.
     public var feedbackSpec: PacingEventFeedbackSpec {
-        PacingEventFeedbackSpec(for: self)
+        feedbackSpec(useMetricSystem: true)
     }
 }
 
@@ -158,6 +223,15 @@ public struct PacingDisplayState: Sendable, Equatable {
     public let calibrationProgressFormatted: String
     public let refractoryProgress: Double
 
+    // Watch Companion Dynamic Gauge & Biometrics
+    public let isCalibrating: Bool
+    public let elapsedTimeFormatted: String
+    public let paceGaugeNormalizedPosition: Double
+    public let targetBandLowerNormalized: Double
+    public let targetBandUpperNormalized: Double
+    public let biometricStatusToken: PacingAccentToken
+    public let biometricStatusLabel: String
+
     public init(
         state: PacingState,
         targetPaceSecondsPerKm: Int?,
@@ -177,7 +251,14 @@ public struct PacingDisplayState: Sendable, Equatable {
         filteredCadenceSPM: Int? = nil,
         filteredCadenceFormatted: String = "--",
         targetCadenceSPM: Int? = nil,
-        targetCadenceFormatted: String = "--"
+        targetCadenceFormatted: String = "--",
+        isCalibrating: Bool = false,
+        elapsedTimeFormatted: String = "0:00",
+        paceGaugeNormalizedPosition: Double = 0.5,
+        targetBandLowerNormalized: Double = 0.42,
+        targetBandUpperNormalized: Double = 0.58,
+        biometricStatusToken: PacingAccentToken = .neutral,
+        biometricStatusLabel: String = ""
     ) {
         self.state = state
         self.targetPaceSecondsPerKm = targetPaceSecondsPerKm
@@ -198,6 +279,13 @@ public struct PacingDisplayState: Sendable, Equatable {
         self.filteredCadenceFormatted = filteredCadenceFormatted
         self.targetCadenceSPM = targetCadenceSPM
         self.targetCadenceFormatted = targetCadenceFormatted
+        self.isCalibrating = isCalibrating
+        self.elapsedTimeFormatted = elapsedTimeFormatted
+        self.paceGaugeNormalizedPosition = paceGaugeNormalizedPosition
+        self.targetBandLowerNormalized = targetBandLowerNormalized
+        self.targetBandUpperNormalized = targetBandUpperNormalized
+        self.biometricStatusToken = biometricStatusToken
+        self.biometricStatusLabel = biometricStatusLabel
     }
 }
 
@@ -277,7 +365,14 @@ extension PacingDisplayState {
             filteredCadenceSPM: nil,
             filteredCadenceFormatted: "--",
             targetCadenceSPM: targetCadenceSPM,
-            targetCadenceFormatted: targetCadFormatted
+            targetCadenceFormatted: targetCadFormatted,
+            isCalibrating: true,
+            elapsedTimeFormatted: "0:00",
+            paceGaugeNormalizedPosition: 0.5,
+            targetBandLowerNormalized: 0.42,
+            targetBandUpperNormalized: 0.58,
+            biometricStatusToken: .calibratingBlue,
+            biometricStatusLabel: "Calibrating"
         )
     }
 }
@@ -329,6 +424,70 @@ extension AdaptivePacingCore {
         let filteredCadFormatted: String = filteredCadence.map { "\($0) SPM" } ?? "--"
         let targetCadFormatted: String = currentTargetCadenceSPM.map { "\($0) SPM" } ?? "--"
 
+        let isCalibrating: Bool = {
+            if case .calibrating = state { return true }
+            return false
+        }()
+
+        let elapsedSecs = ringBuffer.latestTick?.elapsedSeconds ?? 0.0
+        let totalElapsedSeconds = Int(elapsedSecs.rounded())
+        let elapsedMinutes = totalElapsedSeconds / 60
+        let elapsedRemainingSeconds = totalElapsedSeconds % 60
+        let elapsedHours = elapsedMinutes / 60
+        let elapsedTimeFormatted = (elapsedHours > 0)
+            ? String(format: "%d:%02d:%02d", elapsedHours, elapsedMinutes % 60, elapsedRemainingSeconds)
+            : String(format: "%d:%02d", elapsedMinutes, elapsedRemainingSeconds)
+
+        let gaugePosition: Double = {
+            guard let target = currentTargetPaceSecondsPerKm, target > 0,
+                  let current = filteredPace, current > 0 else {
+                return 0.5
+            }
+            let delta = Double(target - current)
+            let halfSpan = Double(target) * 0.25
+            let normalized = 0.5 + (delta / (halfSpan * 2.0))
+            return min(1.0, max(0.0, normalized))
+        }()
+
+        let (lowerBand, upperBand): (Double, Double) = {
+            guard let target = currentTargetPaceSecondsPerKm, target > 0 else {
+                return (0.42, 0.58)
+            }
+            let tolerance = max(
+                configuration.backOnTargetMinToleranceSecondsPerKm,
+                Int((Double(target) * configuration.backOnTargetToleranceFraction).rounded())
+            )
+            let halfSpan = Double(target) * 0.25
+            let offset = min(0.40, Double(tolerance) / (halfSpan * 2.0))
+            return (0.5 - offset, 0.5 + offset)
+        }()
+
+        let bioToken: PacingAccentToken = {
+            switch state {
+            case .calibrating:
+                return .calibratingBlue
+            case .tracking:
+                return .electricBlue
+            case .surge:
+                return .surgeTeal
+            case .recover:
+                return .recoverAmber
+            }
+        }()
+
+        let bioLabel: String = {
+            switch state {
+            case .calibrating:
+                return "Calibrating"
+            case .tracking:
+                return "Locked In"
+            case .surge:
+                return "Surge Zone"
+            case .recover:
+                return "Protecting Zone"
+            }
+        }()
+
         return PacingDisplayState(
             state: state,
             targetPaceSecondsPerKm: currentTargetPaceSecondsPerKm,
@@ -348,7 +507,14 @@ extension AdaptivePacingCore {
             filteredCadenceSPM: filteredCadence,
             filteredCadenceFormatted: filteredCadFormatted,
             targetCadenceSPM: currentTargetCadenceSPM,
-            targetCadenceFormatted: targetCadFormatted
+            targetCadenceFormatted: targetCadFormatted,
+            isCalibrating: isCalibrating,
+            elapsedTimeFormatted: elapsedTimeFormatted,
+            paceGaugeNormalizedPosition: gaugePosition,
+            targetBandLowerNormalized: lowerBand,
+            targetBandUpperNormalized: upperBand,
+            biometricStatusToken: bioToken,
+            biometricStatusLabel: bioLabel
         )
     }
 

@@ -14,11 +14,17 @@ public final class WorkoutManager: NSObject {
     public private(set) var sessionState: HKWorkoutSessionState = .notStarted
     public private(set) var currentLocation: PacingLocation = .outdoor
 
+    private var activeLocation: PacingLocation = .outdoor
+    private var activeIntent: WatchRunIntent = .adaptiveBase
+    private var activePrescribedTitle: String?
+    private var lastBroadcastPhase: WatchCompanionPhase?
+
     private let healthStore = HKHealthStore()
     private var session: HKWorkoutSession?
     private var builder: HKLiveWorkoutBuilder?
     private var telemetryEngine: TelemetryEngine?
     private var tickTask: Task<Void, Never>?
+    private weak var pacingViewModel: PacingViewModel?
 
     override private init() {
         super.init()
@@ -26,14 +32,17 @@ public final class WorkoutManager: NSObject {
 
     // MARK: - Permissions
 
-    public func requestAuthorization() async -> Bool {
-        guard HKHealthStore.isHealthDataAvailable() else { return false }
+    private var hasVerifiedAuthorization = false
 
-        let typesToShare: Set<HKSampleType> = [
+    private var typesToShare: Set<HKSampleType> {
+        [
             HKObjectType.workoutType()
         ]
+    }
 
-        let typesToRead: Set<HKObjectType> = [
+    private var typesToRead: Set<HKObjectType> {
+        [
+            HKObjectType.workoutType(),
             HKQuantityType(.heartRate),
             HKQuantityType(.runningSpeed),
             HKQuantityType(.runningPower),
@@ -43,9 +52,34 @@ public final class WorkoutManager: NSObject {
             HKQuantityType(.distanceWalkingRunning),
             HKCharacteristicType(.dateOfBirth)
         ]
+    }
+
+    public func requestAuthorizationIfNeeded() async -> Bool {
+        guard !hasVerifiedAuthorization, HKHealthStore.isHealthDataAvailable() else {
+            return HKHealthStore.isHealthDataAvailable()
+        }
+        hasVerifiedAuthorization = true
 
         do {
-            try await healthStore.requestAuthorization(toShare: typesToShare, read: typesToRead)
+            let status = try await healthStore.statusForAuthorizationRequest(toShare: typesToShare, read: typesToRead)
+            if status == .shouldRequest {
+                try await healthStore.requestAuthorization(toShare: typesToShare, read: typesToRead)
+            }
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    public func requestAuthorization() async -> Bool {
+        guard HKHealthStore.isHealthDataAvailable() else { return false }
+
+        do {
+            let status = try await healthStore.statusForAuthorizationRequest(toShare: typesToShare, read: typesToRead)
+            if status == .shouldRequest {
+                try await healthStore.requestAuthorization(toShare: typesToShare, read: typesToRead)
+            }
+            hasVerifiedAuthorization = true
             return true
         } catch {
             return false
@@ -56,21 +90,27 @@ public final class WorkoutManager: NSObject {
 
     public func startWorkout(
         location: PacingLocation,
-        targetPaceSecondsPerKm: Int?,
+        intent: WatchRunIntent = .adaptiveBase,
+        targetPaceSecondsPerKm: Int? = nil,
         viewModel: PacingViewModel
     ) async {
         self.currentLocation = location
+        self.activeLocation = location
+        self.activeIntent = intent
+        self.pacingViewModel = viewModel
 
         let resolved = WatchContextStore.shared.resolveSession(
+            runIntent: intent,
             selectedPace: targetPaceSecondsPerKm,
             fallbackAge: athleteAge()
         )
+        self.activePrescribedTitle = resolved.prescribedDrillTitle
 
         let engine = TelemetryEngine(
             profile: resolved.profile,
             intent: resolved.intent,
             location: location,
-            configuration: .standard,
+            watchIntent: intent,
             viewModel: viewModel
         )
         self.telemetryEngine = engine
@@ -102,6 +142,7 @@ public final class WorkoutManager: NSObject {
 
             startTickLoop(engine: engine, builder: builder)
             self.sessionState = .running
+            broadcastLiveSnapshot(forceImmediate: true)
         } catch {
             // Failed to start session
         }
@@ -115,6 +156,7 @@ public final class WorkoutManager: NSObject {
             await telemetryEngine?.setPaused(true)
         }
         self.sessionState = .paused
+        broadcastLiveSnapshot(forceImmediate: true)
     }
 
     public func resumeWorkout() {
@@ -131,12 +173,26 @@ public final class WorkoutManager: NSObject {
             await telemetryEngine?.setPaused(false)
         }
         self.sessionState = .running
+        broadcastLiveSnapshot(forceImmediate: true)
     }
 
-    public func endWorkout() async {
-        guard let session, let builder else { return }
+    @discardableResult
+    public func endWorkout() async -> WatchRunDebrief? {
+        guard let session, let builder else { return nil }
         tickTask?.cancel()
         tickTask = nil
+
+        let elapsed = builder.elapsedTime
+        let totalDistance = builder.statistics(for: HKQuantityType(.distanceWalkingRunning))?.sumQuantity()?.doubleValue(for: .meter())
+        let useMetric = UserDefaults.standard.object(forKey: "useMetricSystem") as? Bool ?? true
+
+        let debrief = await telemetryEngine?.buildRunDebrief(
+            elapsedSeconds: elapsed,
+            totalDistanceMeters: totalDistance,
+            useMetricSystem: useMetric
+        )
+
+        pacingViewModel?.setCompletedDebrief(debrief)
 
         MotionStreamService.shared.stopStreaming()
         session.end()
@@ -152,6 +208,58 @@ public final class WorkoutManager: NSObject {
         self.builder = nil
         self.telemetryEngine = nil
         self.sessionState = .ended
+
+        broadcastLiveSnapshot(forceImmediate: true, isCompleted: true, completedDebrief: debrief)
+
+        return debrief
+    }
+
+    // MARK: - Live Companion Streaming
+
+    private func broadcastLiveSnapshot(
+        forceImmediate: Bool = false,
+        isCompleted: Bool = false,
+        completedDebrief: WatchRunDebrief? = nil
+    ) {
+        guard let displayState = pacingViewModel?.displayState else { return }
+        let isPaused = (sessionState == .paused)
+        let snapshot = displayState.makeLiveSnapshot(
+            location: activeLocation,
+            runIntent: activeIntent,
+            prescribedDrillTitle: activePrescribedTitle,
+            isPaused: isPaused,
+            isCompleted: isCompleted,
+            completedDebrief: completedDebrief,
+            updatedAtEpochSeconds: Date().timeIntervalSince1970
+        )
+        let shouldForce = forceImmediate || (snapshot.phase != lastBroadcastPhase)
+        WatchContextStore.shared.publishLiveSnapshot(snapshot, forceImmediate: shouldForce)
+        lastBroadcastPhase = snapshot.phase
+    }
+
+    // MARK: - Remote Companion Commands
+
+    public func handleRemoteCommand(_ commandString: String) {
+        guard let command = WatchRemoteCommand(rawValue: commandString) else { return }
+        handleRemoteCommand(command)
+    }
+
+    public func handleRemoteCommand(_ command: WatchRemoteCommand) {
+        switch command {
+        case .pauseWorkout:
+            pauseWorkout()
+        case .resumeWorkout:
+            resumeWorkout()
+        case .endWorkout:
+            Task { @MainActor in
+                _ = await self.endWorkout()
+            }
+        case .toggleVoiceCues:
+            let current = UserDefaults.standard.object(forKey: "watchVoiceCuesEnabled") as? Bool ?? true
+            UserDefaults.standard.set(!current, forKey: "watchVoiceCuesEnabled")
+        case .requestContextSync:
+            break
+        }
     }
 
     // MARK: - 1 Hz Tick Loop
@@ -165,6 +273,7 @@ public final class WorkoutManager: NSObject {
                 let elapsed = builder.elapsedTime
                 let distanceMeters = builder.statistics(for: HKQuantityType(.distanceWalkingRunning))?.sumQuantity()?.doubleValue(for: .meter())
                 await engine.processTick(at: elapsed, distanceMeters: distanceMeters)
+                self.broadcastLiveSnapshot()
             }
         }
     }

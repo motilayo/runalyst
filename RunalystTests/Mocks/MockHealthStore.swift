@@ -11,6 +11,8 @@ final class MockHealthStore: @unchecked Sendable, HKHealthStoreProtocol {
     var authorizationStatusCalled = false
     var authorizationStatusToReturn: HKAuthorizationStatus = .notDetermined
 
+    var statusForAuthorizationRequestToReturn: HKAuthorizationRequestStatus = .shouldRequest
+
     var enableBackgroundDeliveryCalled = false
     var enabledBackgroundDeliveryType: HKObjectType?
     var enableBackgroundDeliveryError: Error?
@@ -33,7 +35,7 @@ final class MockHealthStore: @unchecked Sendable, HKHealthStoreProtocol {
     }
 
     func statusForAuthorizationRequest(toShare typesToShare: Set<HKSampleType>, read typesToRead: Set<HKObjectType>) async throws -> HKAuthorizationRequestStatus {
-        return .shouldRequest
+        return statusForAuthorizationRequestToReturn
     }
 
     func enableBackgroundDelivery(for type: HKObjectType, frequency: HKUpdateFrequency) async throws {

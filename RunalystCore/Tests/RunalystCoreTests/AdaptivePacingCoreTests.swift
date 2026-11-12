@@ -87,7 +87,7 @@ struct AdaptivePacingCoreTests {
                     calibrationCompleteEvent = event
                 case .surge, .recover:
                     adjustments.append(event)
-                case .backOnTarget, .paceDrift, .cadenceDrift, .splitMilestone:
+                default:
                     break
                 }
             }
@@ -266,21 +266,21 @@ struct AdaptivePacingCoreTests {
     func testFeedbackSpecs() {
         let surge = PacingEvent.surge(deltaSecondsPerKm: 5, newTargetSecondsPerKm: 295)
         let surgeSpec = surge.feedbackSpec
-        #expect(surgeSpec.haptic == .directionUp)
-        #expect(surgeSpec.voiceCueText == "Target pace up. Quicken your steps.")
-        #expect(surgeSpec.accentToken == .electricBlue)
+        #expect(surgeSpec.haptic == .ascendingDoublePulse)
+        #expect(surgeSpec.voiceCueText == "Efficiency is high—you've got reserves. Nudging target pace to 4:55.")
+        #expect(surgeSpec.accentToken == .surgeTeal)
 
         let recoverForm = PacingEvent.recover(deltaSecondsPerKm: 9, newTargetSecondsPerKm: 309, reason: .formBreakdown)
         let formSpec = recoverForm.feedbackSpec
-        #expect(formSpec.haptic == .retry)
-        #expect(formSpec.voiceCueText == "Cadence dropping. Short, quick steps.")
-        #expect(formSpec.accentToken == .vibrantGreen)
+        #expect(formSpec.haptic == .descendingDoublePulse)
+        #expect(formSpec.voiceCueText == "Cardiac drift detected. Dialing target back to 5:09 to protect your aerobic zone.")
+        #expect(formSpec.accentToken == .recoverAmber)
 
         let recoverHR = PacingEvent.recover(deltaSecondsPerKm: 10, newTargetSecondsPerKm: 310, reason: .heartRateCeiling)
         let hrSpec = recoverHR.feedbackSpec
-        #expect(hrSpec.haptic == .directionDown)
-        #expect(hrSpec.voiceCueText == "Heart rate drifting. Ease the pace.")
-        #expect(hrSpec.accentToken == .neonPink)
+        #expect(hrSpec.haptic == .descendingDoublePulse)
+        #expect(hrSpec.voiceCueText == "Cardiac drift detected. Dialing target back to 5:10 to protect your aerobic zone.")
+        #expect(hrSpec.accentToken == .recoverAmber)
 
         let backOnTarget = PacingEvent.backOnTarget
         let botSpec = backOnTarget.feedbackSpec

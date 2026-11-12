@@ -77,6 +77,32 @@ final class HealthKitManagerTests: XCTestCase {
         XCTAssertFalse(mockStore.enableBackgroundDeliveryCalled)
     }
 
+    func testRequestAuthorizationIfNeeded_WhenUnnecessary_DoesNotCallRequestAuthorization() async throws {
+        // Arrange
+        sut = HealthKitManager(healthStore: mockStore, isHealthDataAvailable: { true })
+        mockStore.statusForAuthorizationRequestToReturn = .unnecessary
+
+        // Act
+        try await sut.requestAuthorizationIfNeeded()
+
+        // Assert
+        XCTAssertFalse(mockStore.requestAuthorizationCalled)
+        XCTAssertTrue(sut.isAuthorized)
+        XCTAssertTrue(mockStore.enableBackgroundDeliveryCalled)
+    }
+
+    func testRequestAuthorizationIfNeeded_WhenShouldRequest_CallsRequestAuthorization() async throws {
+        // Arrange
+        sut = HealthKitManager(healthStore: mockStore, isHealthDataAvailable: { true })
+        mockStore.statusForAuthorizationRequestToReturn = .shouldRequest
+
+        // Act
+        try await sut.requestAuthorizationIfNeeded()
+
+        // Assert
+        XCTAssertTrue(mockStore.requestAuthorizationCalled)
+    }
+
     func testRefreshWorkoutMetrics_WhenWorkoutNotFound_ThrowsNoData() async throws {
         // Arrange
         sut = HealthKitManager(healthStore: mockStore, isHealthDataAvailable: { true })

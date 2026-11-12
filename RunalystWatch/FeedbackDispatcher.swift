@@ -1,6 +1,7 @@
 import AVFoundation
 import Foundation
 import RunalystCore
+import WatchConnectivity
 import WatchKit
 
 // MARK: - Feedback Dispatcher
@@ -13,24 +14,29 @@ public final class FeedbackDispatcher: NSObject, AVSpeechSynthesizerDelegate {
     public private(set) var latestAccentToken: PacingAccentToken = .neutral
 
     private let speechSynthesizer = AVSpeechSynthesizer()
+    private var activeUtteranceID: ObjectIdentifier?
     private var lastHapticTime: TimeInterval = 0.0
     private let minHapticInterval: TimeInterval = 1.5
 
     override private init() {
         super.init()
         speechSynthesizer.delegate = self
+        speechSynthesizer.usesApplicationAudioSession = true
     }
 
     /// Dispatches multimodal feedback for emitted pacing events.
     public func dispatch(events: [PacingEvent]) {
         guard !events.isEmpty else { return }
 
+        let useMetric = UserDefaults.standard.object(forKey: "useMetricSystem") as? Bool ?? true
+        let voiceCuesEnabled = UserDefaults.standard.object(forKey: "watchVoiceCuesEnabled") as? Bool ?? true
+
         for event in events {
-            let spec = event.feedbackSpec
+            let spec = event.feedbackSpec(useMetricSystem: useMetric)
             self.latestAccentToken = spec.accentToken
             playHaptic(spec.haptic)
 
-            if UserDefaults.standard.bool(forKey: "watchVoiceCuesEnabled"),
+            if voiceCuesEnabled,
                let cueText = spec.voiceCueText {
                 playVoiceCue(cueText)
             }
@@ -40,27 +46,45 @@ public final class FeedbackDispatcher: NSObject, AVSpeechSynthesizerDelegate {
     // MARK: - Haptics
 
     private func playHaptic(_ semantic: PacingHapticSemantic) {
+        guard semantic != .none else { return }
         let now = ProcessInfo.processInfo.systemUptime
         guard now - lastHapticTime >= minHapticInterval else { return }
+        lastHapticTime = now
 
-        let hapticType: WKHapticType? = {
-            switch semantic {
-            case .directionUp:
-                return .directionUp
-            case .directionDown:
-                return .directionDown
-            case .retry:
-                return .retry
-            case .success:
-                return .success
-            case .none:
-                return nil
+        let device = WKInterfaceDevice.current()
+        switch semantic {
+        case .none:
+            break
+        case .directionUp:
+            device.play(.directionUp)
+        case .directionDown:
+            device.play(.directionDown)
+        case .retry:
+            device.play(.retry)
+        case .success:
+            device.play(.success)
+        case .subtleConfirmation:
+            device.play(.click)
+        case .ascendingDoublePulse:
+            device.play(.directionUp)
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 140_000_000)
+                device.play(.directionUp)
             }
-        }()
-
-        if let hapticType {
-            WKInterfaceDevice.current().play(hapticType)
-            lastHapticTime = now
+        case .threeQuickLightTaps:
+            device.play(.click)
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 110_000_000)
+                device.play(.click)
+                try? await Task.sleep(nanoseconds: 110_000_000)
+                device.play(.click)
+            }
+        case .descendingDoublePulse:
+            device.play(.directionDown)
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 160_000_000)
+                device.play(.directionDown)
+            }
         }
     }
 
@@ -68,16 +92,68 @@ public final class FeedbackDispatcher: NSObject, AVSpeechSynthesizerDelegate {
 
     private func playVoiceCue(_ text: String) {
         let localizedText = String(localized: String.LocalizationValue(text))
+        let languageCode = Locale.current.language.languageCode?.identifier ?? "en-US"
+
+        let audioSession = AVAudioSession.sharedInstance()
+        try? audioSession.setCategory(
+            .playback,
+            mode: .spokenAudio,
+            options: [.duckOthers, .interruptSpokenAudioAndMixWithOthers]
+        )
+
+        let hasBluetoothHeadphoneRoute = audioSession.currentRoute.outputs.contains {
+            [.bluetoothA2DP, .bluetoothHFP, .bluetoothLE, .headphones].contains($0.portType)
+        }
+
+        let isCompanionReachable = WCSession.isSupported()
+            && WCSession.default.activationState == .activated
+            && WCSession.default.isReachable
+
+        let target = WatchVoiceDeliveryTarget.resolve(
+            watchHasBluetoothHeadphoneRoute: hasBluetoothHeadphoneRoute,
+            isCompanionReachable: isCompanionReachable
+        )
+
+        switch target {
+        case .companionRelayWithLocalFallback:
+            WCSession.default.sendMessage(
+                ["voiceCueText": localizedText, "voiceCueLanguage": languageCode],
+                replyHandler: { reply in
+                    let spoken = (reply["spoken"] as? Bool) ?? false
+                    if !spoken {
+                        Task { @MainActor [weak self] in
+                            self?.speakLocally(localizedText, language: languageCode)
+                        }
+                    }
+                },
+                errorHandler: { _ in
+                    Task { @MainActor [weak self] in
+                        self?.speakLocally(localizedText, language: languageCode)
+                    }
+                }
+            )
+        case .watchLocal:
+            speakLocally(localizedText, language: languageCode)
+        }
+    }
+
+    private func speakLocally(_ localizedText: String, language languageCode: String) {
         let audioSession = AVAudioSession.sharedInstance()
         do {
-            try audioSession.setCategory(.playback, mode: .voicePrompt, options: [.duckOthers])
-            try audioSession.setActive(true)
+            try audioSession.setCategory(
+                .playback,
+                mode: .spokenAudio,
+                options: [.duckOthers, .interruptSpokenAudioAndMixWithOthers]
+            )
+            try audioSession.setActive(true, options: [])
         } catch {
             // Audio session setup failed; safely proceed without crash
         }
 
         let utterance = AVSpeechUtterance(string: localizedText)
-        utterance.voice = AVSpeechSynthesisVoice(language: Locale.current.language.languageCode?.identifier ?? "en-US")
+        utterance.voice = AVSpeechSynthesisVoice(language: languageCode)
+
+        activeUtteranceID = ObjectIdentifier(utterance)
 
         if speechSynthesizer.isSpeaking {
             speechSynthesizer.stopSpeaking(at: .immediate)
@@ -88,11 +164,27 @@ public final class FeedbackDispatcher: NSObject, AVSpeechSynthesizerDelegate {
 
     // MARK: - AVSpeechSynthesizerDelegate
 
-    nonisolated public func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+    nonisolated public func speechSynthesizer(
+        _ synthesizer: AVSpeechSynthesizer,
+        didFinish utterance: AVSpeechUtterance
+    ) {
+        let utteranceID = ObjectIdentifier(utterance)
+        Task { @MainActor [weak self] in
+            guard let self, self.activeUtteranceID == utteranceID else { return }
+            self.activeUtteranceID = nil
+            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        }
     }
 
-    nonisolated public func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+    nonisolated public func speechSynthesizer(
+        _ synthesizer: AVSpeechSynthesizer,
+        didCancel utterance: AVSpeechUtterance
+    ) {
+        let utteranceID = ObjectIdentifier(utterance)
+        Task { @MainActor [weak self] in
+            guard let self, self.activeUtteranceID == utteranceID else { return }
+            self.activeUtteranceID = nil
+            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        }
     }
 }

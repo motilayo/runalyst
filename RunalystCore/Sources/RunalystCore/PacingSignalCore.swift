@@ -26,6 +26,8 @@ public struct TelemetryTick: Sendable, Equatable {
     public let strideLengthMeters: Double?
     /// Incline fraction (e.g. 0.04 for +4% grade), or `nil` if unavailable.
     public let gradeFraction: Double?
+    /// Cumulative distance in meters from session start, if available.
+    public let totalDistanceMeters: Double?
 
     public init(
         elapsedSeconds: TimeInterval,
@@ -37,7 +39,8 @@ public struct TelemetryTick: Sendable, Equatable {
         groundContactTimeMs: Double? = nil,
         verticalOscillationCm: Double? = nil,
         strideLengthMeters: Double? = nil,
-        gradeFraction: Double? = nil
+        gradeFraction: Double? = nil,
+        totalDistanceMeters: Double? = nil
     ) {
         self.elapsedSeconds = elapsedSeconds
         self.heartRateBPM = heartRateBPM
@@ -49,6 +52,7 @@ public struct TelemetryTick: Sendable, Equatable {
         self.verticalOscillationCm = verticalOscillationCm
         self.strideLengthMeters = strideLengthMeters
         self.gradeFraction = gradeFraction
+        self.totalDistanceMeters = totalDistanceMeters
     }
 
     /// Effective cadence, preferring the primary sensor over IMU fallback.

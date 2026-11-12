@@ -33,6 +33,7 @@ struct DashboardView: View {
 
     @AppStorage("lastInsightFingerprint") private var lastInsightFingerprint: String = ""
 
+    @State private var hasCheckedHealthAuthorization = false
     @State private var isFetchingInsight = false
     @State private var showingTrendsExplainer = false
 
@@ -778,6 +779,11 @@ struct DashboardView: View {
                         // 1. Pinned Filter Controls (Locked to top beneath header)
                         filterControlsSection
 
+                        WatchLiveCompanionBannerView(bridge: WatchCalibrationBridge.shared) {
+                            Task { await onSync?(false) }
+                        }
+                        .padding(.horizontal)
+
                         // 2. AI Coach Directive / 30-Day Trends Card
                         if !timeRangeRuns.isEmpty {
                             aiInsightCard
@@ -922,7 +928,10 @@ struct DashboardView: View {
                 }
                 if ProcessInfo.processInfo.environment["RUNALYST_PREVIEW_SCREEN"] == nil {
                     do {
-                        try await HealthKitManager.shared.requestAuthorization()
+                        if !hasCheckedHealthAuthorization {
+                            hasCheckedHealthAuthorization = true
+                            try await HealthKitManager.shared.requestAuthorizationIfNeeded()
+                        }
                         if let vo2s = try? await HealthKitManager.shared.fetchRecentGlobalVO2Maxes(limit: 1), !vo2s.isEmpty {
                             globalVO2Max = vo2s[0]
                         }
@@ -966,6 +975,11 @@ struct DashboardView: View {
                 cachedBodyAllTime = ""
                 fetchInsight()
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
+            }
+            .onChange(of: WatchCalibrationBridge.shared.latestCompletedDebrief) { _, newValue in
+                if newValue != nil && !isSyncing {
+                    Task { await onSync?(false) }
+                }
             }
             .background(Color(UIColor.systemGroupedBackground).ignoresSafeArea())
             .navigationTitle("Dashboard")

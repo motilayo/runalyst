@@ -107,6 +107,32 @@ public struct AdaptivePacingConfiguration: Sendable, Equatable {
 
     /// Standard production configuration with sports science parameters.
     public static let standard = AdaptivePacingConfiguration()
+
+    /// Watch companion configuration tuned for zero-friction runs with 5-minute calibration lock-in.
+    public static func forWatchCompanion(intent: WatchRunIntent) -> AdaptivePacingConfiguration {
+        var config = AdaptivePacingConfiguration(
+            warmupDurationSeconds: 120.0,
+            baselineDurationSeconds: 180.0,
+            maxCalibrationDurationSeconds: 420.0,
+            refractoryDurationSeconds: 90.0
+        )
+        switch intent {
+        case .adaptiveBase:
+            config.hrCeilingFraction = 0.92
+            config.hrSurgeCeilingFraction = 0.82
+            config.recoverEfficiencyDriftThreshold = -0.06
+        case .pushPerformance:
+            config.hrCeilingFraction = 0.95
+            config.hrSurgeCeilingFraction = 0.88
+            config.recoverEfficiencyDriftThreshold = -0.08
+            config.surgeMagnitudeFraction = 0.04
+        case .recovery:
+            config.hrCeilingFraction = 0.78
+            config.hrCeilingDurationSeconds = 20.0
+            config.recoverEfficiencyDriftThreshold = -0.04
+        }
+        return config
+    }
 }
 
 // MARK: - State Machine Types
@@ -130,9 +156,12 @@ public enum PacingReason: String, Sendable, Codable {
 
 /// Discrete event emitted to the Foundry layer when pacing state shifts.
 public enum PacingEvent: Sendable, Equatable {
+    case calibrationStarted
     case calibrationComplete(originalTargetSecondsPerKm: Int, adjustmentsEnabled: Bool)
     case surge(deltaSecondsPerKm: Int, newTargetSecondsPerKm: Int)
+    case surgeLockedIn(targetPaceSecondsPerKm: Int)
     case recover(deltaSecondsPerKm: Int, newTargetSecondsPerKm: Int, reason: PacingReason)
+    case formCheck(currentCadenceSPM: Int, targetCadenceSPM: Int?)
     case backOnTarget
     case paceDrift(deviation: PaceDeviation, deltaSecondsPerKm: Int)
     case cadenceDrift(currentCadenceSPM: Int, targetCadenceSPM: Int, deltaSPM: Int)
@@ -183,6 +212,25 @@ public struct AdaptivePacingCore: Sendable {
     internal var cadenceDriftContinuousSeconds: Double = 0.0
     internal var cadenceDriftCooldownRemainingSeconds: Int = 0
 
+    // Lifecycle & Surge Lock-in
+    private var hasEmittedCalibrationStart: Bool = false
+    public internal(set) var awaitingSurgeLockInTargetSecondsPerKm: Int?
+
+    // Debrief Accumulators
+    public internal(set) var surgeCount: Int = 0
+    public internal(set) var peakSurgeDeltaSecondsPerKm: Int = 0
+    public internal(set) var recoveryAdjustmentCount: Int = 0
+    public internal(set) var firstDriftElapsedSeconds: TimeInterval?
+    public internal(set) var cadenceBaselineSPM: Int?
+    public internal(set) var solidCadenceUntilDistanceMeters: Double?
+    public internal(set) var latestTotalDistanceMeters: Double?
+    public internal(set) var totalPaceSumSecondsPerKm: Double = 0.0
+    public internal(set) var paceSampleCount: Int = 0
+    public internal(set) var totalHRSum: Double = 0.0
+    public internal(set) var hrSampleCount: Int = 0
+    public internal(set) var totalCadenceSum: Double = 0.0
+    public internal(set) var cadenceSampleCount: Int = 0
+
     public init(
         profile: AthleteCalibrationProfile,
         intent: PacingSessionIntent,
@@ -218,6 +266,22 @@ public struct AdaptivePacingCore: Sendable {
         self.paceDriftCooldownRemainingSeconds = 0
         self.cadenceDriftContinuousSeconds = 0.0
         self.cadenceDriftCooldownRemainingSeconds = 0
+
+        self.hasEmittedCalibrationStart = false
+        self.awaitingSurgeLockInTargetSecondsPerKm = nil
+        self.surgeCount = 0
+        self.peakSurgeDeltaSecondsPerKm = 0
+        self.recoveryAdjustmentCount = 0
+        self.firstDriftElapsedSeconds = nil
+        self.cadenceBaselineSPM = nil
+        self.solidCadenceUntilDistanceMeters = nil
+        self.latestTotalDistanceMeters = nil
+        self.totalPaceSumSecondsPerKm = 0.0
+        self.paceSampleCount = 0
+        self.totalHRSum = 0.0
+        self.hrSampleCount = 0
+        self.totalCadenceSum = 0.0
+        self.cadenceSampleCount = 0
     }
 
     /// Resets runtime state for a new session or calibration restart.
@@ -246,13 +310,51 @@ public struct AdaptivePacingCore: Sendable {
         self.paceDriftCooldownRemainingSeconds = 0
         self.cadenceDriftContinuousSeconds = 0.0
         self.cadenceDriftCooldownRemainingSeconds = 0
+
+        self.hasEmittedCalibrationStart = false
+        self.awaitingSurgeLockInTargetSecondsPerKm = nil
+        self.surgeCount = 0
+        self.peakSurgeDeltaSecondsPerKm = 0
+        self.recoveryAdjustmentCount = 0
+        self.firstDriftElapsedSeconds = nil
+        self.cadenceBaselineSPM = nil
+        self.solidCadenceUntilDistanceMeters = nil
+        self.latestTotalDistanceMeters = nil
+        self.totalPaceSumSecondsPerKm = 0.0
+        self.paceSampleCount = 0
+        self.totalHRSum = 0.0
+        self.hrSampleCount = 0
+        self.totalCadenceSum = 0.0
+        self.cadenceSampleCount = 0
     }
 
     /// Ingests a 1 Hz telemetry tick and advances the closed-loop state machine.
-    public mutating func ingest(_ tick: TelemetryTick) -> (events: [PacingEvent], display: PacingDisplayState) {
+    public mutating func ingest(
+        _ tick: TelemetryTick,
+        totalDistanceMeters: Double? = nil
+    ) -> (events: [PacingEvent], display: PacingDisplayState) {
+        if let dist = totalDistanceMeters ?? tick.totalDistanceMeters {
+            latestTotalDistanceMeters = dist
+        }
+
         // 1. Condition sensor inputs via Kalman filters
         let hrResult = kalmanHR.step(tick.heartRateBPM)
         let speedResult = kalmanSpeed.step(tick.speedMetersPerSecond)
+
+        // Rolling sums for average metrics
+        if let speed = speedResult.estimate, speed > 0.5 {
+            let pace = 1000.0 / speed
+            totalPaceSumSecondsPerKm += pace
+            paceSampleCount += 1
+        }
+        if let hr = hrResult.estimate, hr > 0 {
+            totalHRSum += hr
+            hrSampleCount += 1
+        }
+        if let cadence = tick.effectiveCadenceSPM, cadence > 0 {
+            totalCadenceSum += cadence
+            cadenceSampleCount += 1
+        }
 
         let conditioned = ConditionedTelemetryTick(
             elapsedSeconds: tick.elapsedSeconds,
@@ -309,6 +411,11 @@ public struct AdaptivePacingCore: Sendable {
         speedEstimate: Double?,
         emittedEvents: inout [PacingEvent]
     ) {
+        if !hasEmittedCalibrationStart {
+            hasEmittedCalibrationStart = true
+            emittedEvents.append(.calibrationStarted)
+        }
+
         if tick.elapsedSeconds >= calibrationTargetSeconds {
             let baselineStart = calibrationTargetSeconds - configuration.baselineDurationSeconds
             let baselineInterval = baselineStart...calibrationTargetSeconds
@@ -356,6 +463,7 @@ public struct AdaptivePacingCore: Sendable {
 
                 originalTargetPaceSecondsPerKm = target
                 currentTargetPaceSecondsPerKm = target
+                cadenceBaselineSPM = currentTargetCadenceSPM
                 adjustmentsEnabled = (intent.intent != .intervals)
                 state = .tracking
                 lastEvaluationElapsedSeconds = tick.elapsedSeconds
@@ -398,6 +506,11 @@ public struct AdaptivePacingCore: Sendable {
         // Back-on-target check evaluated on every tick
         if let backEvent = evaluateBackOnTarget() {
             emittedEvents.append(backEvent)
+        }
+
+        // Surge lock-in check evaluated on every tick
+        if let lockInEvent = evaluateSurgeLockIn() {
+            emittedEvents.append(lockInEvent)
         }
 
         // Real-time pace drift alert evaluated on every tick

@@ -107,6 +107,9 @@ struct SettingsView: View {
         .onChange(of: preferredWorkoutIsIndoor) { _, newIndoor in
             WatchCalibrationBridge.shared.sendPacingContext(isIndoorPreferred: newIndoor)
         }
+        .onChange(of: useMetricSystem) { _, _ in
+            WatchCalibrationBridge.shared.sendPacingContext()
+        }
         .sheet(isPresented: $showWalkthroughSheet) {
             OnboardingView(isReplay: true, onComplete: {
                 showWalkthroughSheet = false
