@@ -116,25 +116,38 @@ public final class FeedbackDispatcher: NSObject, AVSpeechSynthesizerDelegate {
 
         switch target {
         case .companionRelayWithLocalFallback:
-            WCSession.default.sendMessage(
-                ["voiceCueText": localizedText, "voiceCueLanguage": languageCode],
-                replyHandler: { reply in
-                    let spoken = (reply["spoken"] as? Bool) ?? false
-                    if !spoken {
-                        Task { @MainActor [weak self] in
-                            self?.speakLocally(localizedText, language: languageCode)
-                        }
-                    }
-                },
-                errorHandler: { _ in
-                    Task { @MainActor [weak self] in
-                        self?.speakLocally(localizedText, language: languageCode)
-                    }
+            Self.sendVoiceCueRelay(
+                to: WCSession.default,
+                text: localizedText,
+                language: languageCode
+            ) {
+                Task { @MainActor [weak self] in
+                    self?.speakLocally(localizedText, language: languageCode)
                 }
-            )
+            }
         case .watchLocal:
             speakLocally(localizedText, language: languageCode)
         }
+    }
+
+    nonisolated private static func sendVoiceCueRelay(
+        to session: WCSession,
+        text: String,
+        language: String,
+        onFallback: @escaping @Sendable () -> Void
+    ) {
+        session.sendMessage(
+            ["voiceCueText": text, "voiceCueLanguage": language],
+            replyHandler: { reply in
+                let spoken = (reply["spoken"] as? Bool) ?? false
+                if !spoken {
+                    onFallback()
+                }
+            },
+            errorHandler: { _ in
+                onFallback()
+            }
+        )
     }
 
     private func speakLocally(_ localizedText: String, language languageCode: String) {

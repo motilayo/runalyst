@@ -103,13 +103,22 @@ public final class WatchContextStore: NSObject, WCSessionDelegate {
         let session = WCSession.default
         guard session.activationState == .activated && session.isReachable else { return }
 
+        Self.sendContextSyncMessage(to: session) { data in
+            Task { @MainActor in
+                self.processContextData(data)
+            }
+        }
+    }
+
+    nonisolated private static func sendContextSyncMessage(
+        to session: WCSession,
+        onData: @escaping @Sendable (Data) -> Void
+    ) {
         session.sendMessage(
             ["remoteCommand": WatchRemoteCommand.requestContextSync.rawValue],
             replyHandler: { reply in
                 guard let data = reply["pacingContext"] as? Data else { return }
-                Task { @MainActor in
-                    self.processContextData(data)
-                }
+                onData(data)
             },
             errorHandler: nil
         )
