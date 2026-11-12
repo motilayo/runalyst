@@ -413,11 +413,14 @@ final class WorkoutBridge {
 
     /// Translates a DTO into a scheduled WorkoutKit plan for Apple Watch.
     func scheduleDrill(dto: DrillPrescriptionDTO) async throws {
-        if await WorkoutScheduler.shared.authorizationState != .authorized {
+        let authState = await WorkoutScheduler.shared.authorizationState
+        if authState == .notDetermined {
             let status = await WorkoutScheduler.shared.requestAuthorization()
             guard status == .authorized else {
                 throw NSError(domain: "WorkoutBridge", code: 1, userInfo: [NSLocalizedDescriptionKey: "WorkoutKit authorization denied."])
             }
+        } else if authState != .authorized {
+            throw NSError(domain: "WorkoutBridge", code: 1, userInfo: [NSLocalizedDescriptionKey: "WorkoutKit authorization denied."])
         }
 
         let preRunId = PreRunDrillId(rawValue: dto.preRunDrillId ?? "") ?? .strides

@@ -152,7 +152,7 @@ public struct StartRunView: View {
         }
         .task {
             if ProcessInfo.processInfo.environment["RUNALYST_PREVIEW_SCREEN"] == nil {
-                _ = await workoutManager.requestAuthorization()
+                _ = await workoutManager.requestAuthorizationIfNeeded()
             }
         }
         .navigationDestination(isPresented: $isNavigatingToGauge) {

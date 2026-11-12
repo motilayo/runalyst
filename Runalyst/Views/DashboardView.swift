@@ -33,6 +33,7 @@ struct DashboardView: View {
 
     @AppStorage("lastInsightFingerprint") private var lastInsightFingerprint: String = ""
 
+    @State private var hasCheckedHealthAuthorization = false
     @State private var isFetchingInsight = false
     @State private var showingTrendsExplainer = false
 
@@ -927,7 +928,10 @@ struct DashboardView: View {
                 }
                 if ProcessInfo.processInfo.environment["RUNALYST_PREVIEW_SCREEN"] == nil {
                     do {
-                        try await HealthKitManager.shared.requestAuthorization()
+                        if !hasCheckedHealthAuthorization {
+                            hasCheckedHealthAuthorization = true
+                            try await HealthKitManager.shared.requestAuthorizationIfNeeded()
+                        }
                         if let vo2s = try? await HealthKitManager.shared.fetchRecentGlobalVO2Maxes(limit: 1), !vo2s.isEmpty {
                             globalVO2Max = vo2s[0]
                         }

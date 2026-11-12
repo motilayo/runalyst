@@ -32,14 +32,17 @@ public final class WorkoutManager: NSObject {
 
     // MARK: - Permissions
 
-    public func requestAuthorization() async -> Bool {
-        guard HKHealthStore.isHealthDataAvailable() else { return false }
+    private var hasVerifiedAuthorization = false
 
-        let typesToShare: Set<HKSampleType> = [
+    private var typesToShare: Set<HKSampleType> {
+        [
             HKObjectType.workoutType()
         ]
+    }
 
-        let typesToRead: Set<HKObjectType> = [
+    private var typesToRead: Set<HKObjectType> {
+        [
+            HKObjectType.workoutType(),
             HKQuantityType(.heartRate),
             HKQuantityType(.runningSpeed),
             HKQuantityType(.runningPower),
@@ -49,9 +52,34 @@ public final class WorkoutManager: NSObject {
             HKQuantityType(.distanceWalkingRunning),
             HKCharacteristicType(.dateOfBirth)
         ]
+    }
+
+    public func requestAuthorizationIfNeeded() async -> Bool {
+        guard !hasVerifiedAuthorization, HKHealthStore.isHealthDataAvailable() else {
+            return HKHealthStore.isHealthDataAvailable()
+        }
+        hasVerifiedAuthorization = true
 
         do {
-            try await healthStore.requestAuthorization(toShare: typesToShare, read: typesToRead)
+            let status = try await healthStore.statusForAuthorizationRequest(toShare: typesToShare, read: typesToRead)
+            if status == .shouldRequest {
+                try await healthStore.requestAuthorization(toShare: typesToShare, read: typesToRead)
+            }
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    public func requestAuthorization() async -> Bool {
+        guard HKHealthStore.isHealthDataAvailable() else { return false }
+
+        do {
+            let status = try await healthStore.statusForAuthorizationRequest(toShare: typesToShare, read: typesToRead)
+            if status == .shouldRequest {
+                try await healthStore.requestAuthorization(toShare: typesToShare, read: typesToRead)
+            }
+            hasVerifiedAuthorization = true
             return true
         } catch {
             return false

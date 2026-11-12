@@ -33,6 +33,7 @@ class HealthKitManager: ObservableObject {
     var workoutFetcher: ((UUID) async throws -> HKWorkout?)?
     var runRecordExtractor: ((HKWorkout, FramboiseEngine, [RunBaselineData]) async throws -> RunRecordDTO)?
     private var observerQuery: HKObserverQuery?
+    private var hasVerifiedAuthorizationThisLaunch = false
 
     init(
         healthStore: HKHealthStoreProtocol? = nil,
@@ -80,6 +81,23 @@ class HealthKitManager: ObservableObject {
         self.isAuthorized = true
 
         try await enableBackgroundDelivery()
+    }
+
+    func requestAuthorizationIfNeeded() async throws {
+        guard isHealthDataAvailable() else {
+            throw HKError(.errorHealthDataUnavailable)
+        }
+        guard !hasVerifiedAuthorizationThisLaunch else { return }
+
+        let status = try await getRequestStatusForAuthorization()
+        if status == .shouldRequest {
+            try await requestAuthorization()
+            hasVerifiedAuthorizationThisLaunch = true
+        } else if status == .unnecessary {
+            self.isAuthorized = true
+            try? await enableBackgroundDelivery()
+            hasVerifiedAuthorizationThisLaunch = true
+        }
     }
 
     func enableBackgroundDelivery() async throws {
