@@ -93,12 +93,80 @@ public struct WatchResolvedSessionConfig: Sendable, Equatable {
     public init(
         profile: AthleteCalibrationProfile,
         intent: PacingSessionIntent,
-        requiresTargetPacePicker: Bool,
+        requiresTargetPacePicker: Bool? = nil,
         isIndoorPreferred: Bool = false
     ) {
         self.profile = profile
         self.intent = intent
-        self.requiresTargetPacePicker = requiresTargetPacePicker
+        self.requiresTargetPacePicker = requiresTargetPacePicker ?? false
         self.isIndoorPreferred = isIndoorPreferred
+    }
+
+    /// Derives a session configuration tailored to a user-selected running intent.
+    ///
+    /// Prescribed drills take precedence and remain intact; non-drill sessions adopt
+    /// the intent's pacing category and clear the target pace picker requirement.
+    public func applying(runIntent: WatchRunIntent) -> WatchResolvedSessionConfig {
+        guard !hasPrescribedDrill else { return self }
+        let modifiedIntent = PacingSessionIntent(
+            targetPaceSecondsPerKm: intent.targetPaceSecondsPerKm,
+            intent: runIntent.pacingIntentKind,
+            subjectiveDistress: intent.subjectiveDistress,
+            validForDay: intent.validForDay,
+            prescribedDrillTitle: intent.prescribedDrillTitle,
+            prescribedDrillId: intent.prescribedDrillId,
+            targetCadenceSPM: intent.targetCadenceSPM,
+            prescribedDurationMinutes: intent.prescribedDurationMinutes
+        )
+        return WatchResolvedSessionConfig(
+            profile: profile,
+            intent: modifiedIntent,
+            requiresTargetPacePicker: false,
+            isIndoorPreferred: isIndoorPreferred
+        )
+    }
+}
+
+// MARK: - Watch Run Intent
+
+/// High-level zero-friction running intent selected on Apple Watch.
+public enum WatchRunIntent: String, Sendable, Codable, CaseIterable, Identifiable, Equatable {
+    case adaptiveBase
+    case pushPerformance
+    case recovery
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .adaptiveBase:
+            return "Adaptive Base"
+        case .pushPerformance:
+            return "Push / Performance"
+        case .recovery:
+            return "Recovery"
+        }
+    }
+
+    public var subtitle: String {
+        switch self {
+        case .adaptiveBase:
+            return "Balanced aerobic run"
+        case .pushPerformance:
+            return "Find my ceiling today"
+        case .recovery:
+            return "Keep me honest and easy"
+        }
+    }
+
+    public var pacingIntentKind: PacingIntentKind {
+        switch self {
+        case .adaptiveBase:
+            return .steady
+        case .pushPerformance:
+            return .tempo
+        case .recovery:
+            return .recovery
+        }
     }
 }

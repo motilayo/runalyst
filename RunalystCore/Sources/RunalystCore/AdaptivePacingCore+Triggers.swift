@@ -48,6 +48,31 @@ extension AdaptivePacingCore {
         return nil
     }
 
+    /// Evaluates whether filtered pace has entered .onTarget for a pending surge target pace.
+    internal mutating func evaluateSurgeLockIn() -> PacingEvent? {
+        guard let target = awaitingSurgeLockInTargetSecondsPerKm else {
+            return nil
+        }
+
+        let filteredPace: Int? = {
+            if let speedStats = ringBuffer.shortWindowStats(for: .filteredSpeed), speedStats.mean > 0 {
+                return Int((1000.0 / speedStats.mean).rounded())
+            }
+            if let latestSpeed = ringBuffer.latestTick?.speedMetersPerSecond, latestSpeed > 0 {
+                return Int((1000.0 / latestSpeed).rounded())
+            }
+            return nil
+        }()
+
+        let deviation = evaluateDeviation(target: target, current: filteredPace)
+        if deviation == .onTarget {
+            awaitingSurgeLockInTargetSecondsPerKm = nil
+            return .surgeLockedIn(targetPaceSecondsPerKm: target)
+        }
+
+        return nil
+    }
+
     /// Evaluates real-time pace drift alerts based on short-window filtered speed deviation.
     ///
     /// Emits a `.paceDrift` event when the runner continuously deviates from target pace for >= 12 seconds,
@@ -133,6 +158,10 @@ extension AdaptivePacingCore {
         if isBelowThreshold || isBelowFloor {
             cadenceDriftContinuousSeconds += 1.0
 
+            if solidCadenceUntilDistanceMeters == nil {
+                solidCadenceUntilDistanceMeters = latestTotalDistanceMeters
+            }
+
             if cadenceDriftContinuousSeconds >= configuration.cadenceDriftDebounceDurationSeconds && cadenceDriftCooldownRemainingSeconds == 0 {
                 cadenceDriftCooldownRemainingSeconds = Int(configuration.cadenceDriftCooldownSeconds)
                 cadenceDriftContinuousSeconds = 0.0
@@ -162,6 +191,10 @@ extension AdaptivePacingCore {
         let triggerEF = deltaEF.map { $0 <= configuration.recoverEfficiencyDriftThreshold } ?? false
         let triggerHR = (hrCeilingExceededContinuousSeconds > configuration.hrCeilingDurationSeconds)
 
+        if (triggerEF || triggerHR) && firstDriftElapsedSeconds == nil {
+            firstDriftElapsedSeconds = ringBuffer.latestTick?.elapsedSeconds
+        }
+
         let bdiAssessment = bdiTracker.evaluate(
             from: ringBuffer,
             gctDeltaThreshold: configuration.formGCTDeltaFractionThreshold,
@@ -170,6 +203,9 @@ extension AdaptivePacingCore {
         )
         if let bdiAssessment, bdiAssessment.formBreakdown {
             consecutiveFormBreakdowns += 1
+            if solidCadenceUntilDistanceMeters == nil {
+                solidCadenceUntilDistanceMeters = latestTotalDistanceMeters
+            }
         } else {
             consecutiveFormBreakdowns = 0
         }
@@ -180,7 +216,20 @@ extension AdaptivePacingCore {
         if triggerHR { activeReasons.append(.heartRateCeiling) }
         if triggerForm { activeReasons.append(.formBreakdown) }
 
-        guard !activeReasons.isEmpty else {
+        if activeReasons.isEmpty {
+            // First-tier non-destructive form check nudge on first degradation without dial-back
+            if consecutiveFormBreakdowns == 1 {
+                let currentCadence: Int = {
+                    if let shortCadence = ringBuffer.shortWindowStats(for: .cadence), shortCadence.mean > 0 {
+                        return Int(shortCadence.mean.rounded())
+                    }
+                    if let latest = ringBuffer.latestTick?.cadenceSPM, latest > 0 {
+                        return Int(latest.rounded())
+                    }
+                    return currentTargetCadenceSPM ?? 160
+                }()
+                return .formCheck(currentCadenceSPM: currentCadence, targetCadenceSPM: currentTargetCadenceSPM)
+            }
             return nil
         }
 
@@ -228,6 +277,8 @@ extension AdaptivePacingCore {
         pendingBackOnTarget = true
         consecutiveFormBreakdowns = 0
         hrCeilingExceededContinuousSeconds = 0.0
+
+        recoveryAdjustmentCount += 1
 
         return .recover(deltaSecondsPerKm: stepDelta, newTargetSecondsPerKm: newTarget, reason: reason)
     }
@@ -305,6 +356,10 @@ extension AdaptivePacingCore {
         refractoryState = .surge
         refractorySecondsRemaining = Int(configuration.refractoryDurationSeconds)
         pendingBackOnTarget = true
+        awaitingSurgeLockInTargetSecondsPerKm = newTarget
+
+        surgeCount += 1
+        peakSurgeDeltaSecondsPerKm = max(peakSurgeDeltaSecondsPerKm, stepDelta)
 
         return .surge(deltaSecondsPerKm: -stepDelta, newTargetSecondsPerKm: newTarget)
     }

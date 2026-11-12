@@ -11,12 +11,18 @@ public final class PacingViewModel {
     public var displayState: PacingDisplayState
     public var latestEvents: [PacingEvent] = []
     public var isPaused: Bool = false
+    public var completedDebrief: WatchRunDebrief?
 
     public init(targetPaceSecondsPerKm: Int? = nil, adjustmentsEnabled: Bool = true) {
         self.displayState = .initial(
             targetPaceSecondsPerKm: targetPaceSecondsPerKm,
             adjustmentsEnabled: adjustmentsEnabled
         )
+        self.completedDebrief = nil
+    }
+
+    public func setCompletedDebrief(_ debrief: WatchRunDebrief?) {
+        self.completedDebrief = debrief
     }
 
     /// Receives new core output, updates presentation state, and triggers multimodal feedback.
@@ -34,5 +40,6 @@ public final class PacingViewModel {
         )
         self.latestEvents = []
         self.isPaused = false
+        self.completedDebrief = nil
     }
 }

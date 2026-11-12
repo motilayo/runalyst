@@ -19,6 +19,7 @@ public final class WorkoutManager: NSObject {
     private var builder: HKLiveWorkoutBuilder?
     private var telemetryEngine: TelemetryEngine?
     private var tickTask: Task<Void, Never>?
+    private weak var pacingViewModel: PacingViewModel?
 
     override private init() {
         super.init()
@@ -56,12 +57,15 @@ public final class WorkoutManager: NSObject {
 
     public func startWorkout(
         location: PacingLocation,
-        targetPaceSecondsPerKm: Int?,
+        intent: WatchRunIntent = .adaptiveBase,
+        targetPaceSecondsPerKm: Int? = nil,
         viewModel: PacingViewModel
     ) async {
         self.currentLocation = location
+        self.pacingViewModel = viewModel
 
         let resolved = WatchContextStore.shared.resolveSession(
+            runIntent: intent,
             selectedPace: targetPaceSecondsPerKm,
             fallbackAge: athleteAge()
         )
@@ -70,7 +74,7 @@ public final class WorkoutManager: NSObject {
             profile: resolved.profile,
             intent: resolved.intent,
             location: location,
-            configuration: .standard,
+            watchIntent: intent,
             viewModel: viewModel
         )
         self.telemetryEngine = engine
@@ -133,10 +137,23 @@ public final class WorkoutManager: NSObject {
         self.sessionState = .running
     }
 
-    public func endWorkout() async {
-        guard let session, let builder else { return }
+    @discardableResult
+    public func endWorkout() async -> WatchRunDebrief? {
+        guard let session, let builder else { return nil }
         tickTask?.cancel()
         tickTask = nil
+
+        let elapsed = builder.elapsedTime
+        let totalDistance = builder.statistics(for: HKQuantityType(.distanceWalkingRunning))?.sumQuantity()?.doubleValue(for: .meter())
+        let useMetric = UserDefaults.standard.object(forKey: "useMetricSystem") as? Bool ?? true
+
+        let debrief = await telemetryEngine?.buildRunDebrief(
+            elapsedSeconds: elapsed,
+            totalDistanceMeters: totalDistance,
+            useMetricSystem: useMetric
+        )
+
+        pacingViewModel?.setCompletedDebrief(debrief)
 
         MotionStreamService.shared.stopStreaming()
         session.end()
@@ -152,6 +169,8 @@ public final class WorkoutManager: NSObject {
         self.builder = nil
         self.telemetryEngine = nil
         self.sessionState = .ended
+
+        return debrief
     }
 
     // MARK: - 1 Hz Tick Loop

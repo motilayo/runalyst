@@ -5,21 +5,25 @@ import SwiftUI
 
 /// Hollow configuration view for starting a watch workout session.
 ///
-/// Binds exclusively to `WatchTargetPaceOption` presets and displays the target pace picker
-/// only when today's prescription requires manual selection. Zero inline math.
+/// Binds exclusively to `WatchRunIntent` and `WatchResolvedSessionConfig`.
+/// Zero inline domain math.
 public struct StartRunView: View {
     @Environment(WorkoutManager.self) private var workoutManager
     @Environment(PacingViewModel.self) private var pacingViewModel
 
     @State private var selectedLocation: PacingLocation = WatchContextStore.shared.preferredLocation
     @State private var hasUserManuallySelectedLocation = false
+    @State private var selectedIntent: WatchRunIntent = .adaptiveBase
     @State private var selectedPaceOption: WatchTargetPaceOption = .justRun
     @State private var isNavigatingToGauge = false
 
     public init() {}
 
     private var resolvedConfig: WatchResolvedSessionConfig {
-        WatchContextStore.shared.resolveSession(selectedPace: selectedPaceOption.paceSecondsPerKm)
+        WatchContextStore.shared.resolveSession(
+            runIntent: selectedIntent,
+            selectedPace: selectedPaceOption.paceSecondsPerKm
+        )
     }
 
     public var body: some View {
@@ -60,24 +64,39 @@ public struct StartRunView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(10)
                         .background(Color.white.opacity(0.12))
-                        .cornerRadius(12)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
                     }
 
-                    // Location Picker
-                    Picker("Environment", selection: Binding(
-                        get: { selectedLocation },
-                        set: { newLocation in
-                            selectedLocation = newLocation
-                            hasUserManuallySelectedLocation = true
+                    // High-contrast Outdoor / Indoor Selector (44pt+ height)
+                    HStack(spacing: 8) {
+                        locationButton(
+                            title: "Outdoor",
+                            icon: "sun.max.fill",
+                            location: .outdoor
+                        )
+
+                        locationButton(
+                            title: "Indoor",
+                            icon: "figure.run.square.stack.fill",
+                            location: .indoor
+                        )
+                    }
+
+                    // 3-Option Run Intent Picker
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("RUN INTENT")
+                            .font(.system(size: 10, weight: .bold, design: .rounded))
+                            .foregroundStyle(.secondary)
+                            .padding(.leading, 2)
+
+                        VStack(spacing: 6) {
+                            ForEach(WatchRunIntent.allCases) { intent in
+                                intentRow(intent)
+                            }
                         }
-                    )) {
-                        Text("Outdoor").tag(PacingLocation.outdoor)
-                        Text("Indoor").tag(PacingLocation.indoor)
                     }
-                    .pickerStyle(.wheel)
-                    .frame(height: 50)
 
-                    // Target Pace Picker (shown only when required)
+                    // Target Pace Picker (shown only when required by prescription)
                     if resolvedConfig.requiresTargetPacePicker {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Target Pace")
@@ -97,9 +116,11 @@ public struct StartRunView: View {
                     // Start Button (minimum 44x44pt hit target)
                     Button {
                         Task {
+                            let targetPace = resolvedConfig.requiresTargetPacePicker ? selectedPaceOption.paceSecondsPerKm : nil
                             await workoutManager.startWorkout(
                                 location: selectedLocation,
-                                targetPaceSecondsPerKm: selectedPaceOption.paceSecondsPerKm,
+                                intent: selectedIntent,
+                                targetPaceSecondsPerKm: targetPace,
                                 viewModel: pacingViewModel
                             )
                             isNavigatingToGauge = true
@@ -110,7 +131,7 @@ public struct StartRunView: View {
                             .frame(maxWidth: .infinity, minHeight: 44)
                             .background(Color.green)
                             .foregroundColor(.black)
-                            .cornerRadius(22)
+                            .clipShape(RoundedRectangle(cornerRadius: 22))
                     }
                     .buttonStyle(.plain)
                     .padding(.top, 4)
@@ -136,5 +157,62 @@ public struct StartRunView: View {
         .navigationDestination(isPresented: $isNavigatingToGauge) {
             PacingGaugeView()
         }
+    }
+
+    private func locationButton(title: String, icon: String, location: PacingLocation) -> some View {
+        Button {
+            selectedLocation = location
+            hasUserManuallySelectedLocation = true
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.caption2)
+                Text(title)
+                    .font(.system(.subheadline, design: .rounded))
+                    .fontWeight(.semibold)
+            }
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .background(selectedLocation == location ? Color.blue.opacity(0.35) : Color.white.opacity(0.1))
+            .foregroundStyle(selectedLocation == location ? .white : .secondary)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(selectedLocation == location ? Color.cyan : Color.clear, lineWidth: 1.5)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func intentRow(_ intent: WatchRunIntent) -> some View {
+        Button {
+            selectedIntent = intent
+        } label: {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(intent.title)
+                        .font(.system(.subheadline, design: .rounded))
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.white)
+                    Text(intent.subtitle)
+                        .font(.system(size: 11, design: .rounded))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                if selectedIntent == intent {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                        .font(.body)
+                }
+            }
+            .padding(.horizontal, 10)
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .background(selectedIntent == intent ? Color.white.opacity(0.18) : Color.white.opacity(0.08))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(selectedIntent == intent ? Color.green : Color.white.opacity(0.1), lineWidth: selectedIntent == intent ? 1.5 : 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+        }
+        .buttonStyle(.plain)
     }
 }

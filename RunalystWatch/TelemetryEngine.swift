@@ -32,19 +32,31 @@ public actor TelemetryEngine {
     private var lastCompletedKilometer: Int = 0
     private var cumulativeDistanceMeters: Double = 0.0
     private var lastSplitElapsed: TimeInterval = 0.0
+    private var latestElapsedSeconds: TimeInterval = 0.0
+    private var latestDistanceMeters: Double?
 
     public init(
         profile: AthleteCalibrationProfile,
         intent: PacingSessionIntent,
         location: PacingLocation,
-        configuration: AdaptivePacingConfiguration = .standard,
+        configuration: AdaptivePacingConfiguration? = nil,
+        watchIntent: WatchRunIntent = .adaptiveBase,
         viewModel: PacingViewModel? = nil
     ) {
+        let resolvedConfig: AdaptivePacingConfiguration = {
+            if let configuration {
+                return configuration
+            }
+            if intent.intent != .intervals && intent.prescribedDrillId == nil {
+                return .forWatchCompanion(intent: watchIntent)
+            }
+            return .standard
+        }()
         self.core = AdaptivePacingCore(
             profile: profile,
             intent: intent,
             location: location,
-            configuration: configuration
+            configuration: resolvedConfig
         )
         self.viewModel = viewModel
     }
@@ -61,19 +73,31 @@ public actor TelemetryEngine {
         profile: AthleteCalibrationProfile,
         intent: PacingSessionIntent,
         location: PacingLocation,
-        configuration: AdaptivePacingConfiguration = .standard
+        configuration: AdaptivePacingConfiguration? = nil,
+        watchIntent: WatchRunIntent = .adaptiveBase
     ) {
+        let resolvedConfig: AdaptivePacingConfiguration = {
+            if let configuration {
+                return configuration
+            }
+            if intent.intent != .intervals && intent.prescribedDrillId == nil {
+                return .forWatchCompanion(intent: watchIntent)
+            }
+            return .standard
+        }()
         self.core = AdaptivePacingCore(
             profile: profile,
             intent: intent,
             location: location,
-            configuration: configuration
+            configuration: resolvedConfig
         )
         self.lastEmittedSecond = -1
         self.isPaused = false
         self.lastCompletedKilometer = 0
         self.cumulativeDistanceMeters = 0.0
         self.lastSplitElapsed = 0.0
+        self.latestElapsedSeconds = 0.0
+        self.latestDistanceMeters = nil
         self.resetSamples()
     }
 
@@ -135,6 +159,8 @@ public actor TelemetryEngine {
 
     public func updateDistance(_ meters: Double, at elapsed: TimeInterval) {
         cumulativeDistanceMeters = max(cumulativeDistanceMeters, meters)
+        latestDistanceMeters = cumulativeDistanceMeters
+        latestElapsedSeconds = max(latestElapsedSeconds, elapsed)
     }
 
     // MARK: - 1 Hz Tick Generation
@@ -152,9 +178,11 @@ public actor TelemetryEngine {
         let currentSecond = Int(elapsed)
         guard currentSecond > lastEmittedSecond, currentSecond >= 0 else { return nil }
         lastEmittedSecond = currentSecond
+        latestElapsedSeconds = elapsed
 
         if let distanceMeters {
             cumulativeDistanceMeters = max(cumulativeDistanceMeters, distanceMeters)
+            latestDistanceMeters = cumulativeDistanceMeters
         }
 
         let tick = TelemetryTick(
@@ -203,7 +231,8 @@ public actor TelemetryEngine {
                 gradeFraction.value,
                 sampleTimestamp: gradeFraction.timestamp,
                 currentElapsed: elapsed
-            )
+            ),
+            totalDistanceMeters: distanceMeters
         )
 
         let result = core.ingest(tick)
@@ -225,5 +254,22 @@ public actor TelemetryEngine {
             await vm.update(events: finalEvents, display: result.display)
         }
         return (events: finalEvents, display: result.display)
+    }
+
+    // MARK: - Post-Run Debrief
+
+    /// Builds a deterministic, unit-aware post-run debrief summary from the core engine.
+    public func buildRunDebrief(
+        elapsedSeconds: TimeInterval,
+        totalDistanceMeters: Double?,
+        useMetricSystem: Bool
+    ) -> WatchRunDebrief {
+        let finalElapsed = elapsedSeconds > 0 ? elapsedSeconds : latestElapsedSeconds
+        let finalDistance = totalDistanceMeters ?? latestDistanceMeters ?? cumulativeDistanceMeters
+        return core.buildRunDebrief(
+            elapsedSeconds: finalElapsed,
+            totalDistanceMeters: finalDistance,
+            useMetricSystem: useMetricSystem
+        )
     }
 }

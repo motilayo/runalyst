@@ -160,6 +160,7 @@
 		W1110017D4E5F60718293A17 /* WatchContextStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = W1110007D4E5F60718293A07 /* WatchContextStore.swift */; };
 		W1110018D4E5F60718293A18 /* Views/StartRunView.swift in Sources */ = {isa = PBXBuildFile; fileRef = W1110008D4E5F60718293A08 /* Views/StartRunView.swift */; };
 		W1110019D4E5F60718293A19 /* Views/PacingGaugeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = W1110009D4E5F60718293A09 /* Views/PacingGaugeView.swift */; };
+		W111001BD4E5F60718293A1B /* Views/RunSummaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = W111000DD4E5F60718293A0D /* Views/RunSummaryView.swift */; };
 		W111001AD4E5F60718293A1A /* RunalystCore in Frameworks */ = {isa = PBXBuildFile; productRef = D4E5F60718293A0100000002 /* RunalystCore */; };
 		W1110023D4E5F60718293A23 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = W111000CD4E5F60718293A0C /* Assets.xcassets */; };
 		WCB10002D4E5F60718293A02 /* Runalyst/Services/WatchCalibrationBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = WCB10001D4E5F60718293A01 /* Runalyst/Services/WatchCalibrationBridge.swift */; };
@@ -340,6 +341,7 @@
 		W1110007D4E5F60718293A07 /* WatchContextStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchContextStore.swift; sourceTree = "<group>"; };
 		W1110008D4E5F60718293A08 /* Views/StartRunView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/StartRunView.swift; sourceTree = "<group>"; };
 		W1110009D4E5F60718293A09 /* Views/PacingGaugeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/PacingGaugeView.swift; sourceTree = "<group>"; };
+		W111000DD4E5F60718293A0D /* Views/RunSummaryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/RunSummaryView.swift; sourceTree = "<group>"; };
 		W111000AD4E5F60718293A0A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		W111000BD4E5F60718293A0B /* RunalystWatch.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = RunalystWatch.entitlements; sourceTree = "<group>"; };
 		W111000CD4E5F60718293A0C /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -654,6 +656,7 @@
 				W1110007D4E5F60718293A07 /* WatchContextStore.swift */,
 				W1110008D4E5F60718293A08 /* Views/StartRunView.swift */,
 				W1110009D4E5F60718293A09 /* Views/PacingGaugeView.swift */,
+				W111000DD4E5F60718293A0D /* Views/RunSummaryView.swift */,
 				W111000AD4E5F60718293A0A /* Info.plist */,
 				W111000BD4E5F60718293A0B /* RunalystWatch.entitlements */,
 				W111000CD4E5F60718293A0C /* Assets.xcassets */,
@@ -960,6 +963,7 @@
 				W1110017D4E5F60718293A17 /* WatchContextStore.swift in Sources */,
 				W1110018D4E5F60718293A18 /* Views/StartRunView.swift in Sources */,
 				W1110019D4E5F60718293A19 /* Views/PacingGaugeView.swift in Sources */,
+				W111001BD4E5F60718293A1B /* Views/RunSummaryView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

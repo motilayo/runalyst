@@ -25,12 +25,15 @@ public final class FeedbackDispatcher: NSObject, AVSpeechSynthesizerDelegate {
     public func dispatch(events: [PacingEvent]) {
         guard !events.isEmpty else { return }
 
+        let useMetric = UserDefaults.standard.object(forKey: "useMetricSystem") as? Bool ?? true
+        let voiceCuesEnabled = UserDefaults.standard.object(forKey: "watchVoiceCuesEnabled") as? Bool ?? true
+
         for event in events {
-            let spec = event.feedbackSpec
+            let spec = event.feedbackSpec(useMetricSystem: useMetric)
             self.latestAccentToken = spec.accentToken
             playHaptic(spec.haptic)
 
-            if UserDefaults.standard.bool(forKey: "watchVoiceCuesEnabled"),
+            if voiceCuesEnabled,
                let cueText = spec.voiceCueText {
                 playVoiceCue(cueText)
             }
@@ -40,27 +43,45 @@ public final class FeedbackDispatcher: NSObject, AVSpeechSynthesizerDelegate {
     // MARK: - Haptics
 
     private func playHaptic(_ semantic: PacingHapticSemantic) {
+        guard semantic != .none else { return }
         let now = ProcessInfo.processInfo.systemUptime
         guard now - lastHapticTime >= minHapticInterval else { return }
+        lastHapticTime = now
 
-        let hapticType: WKHapticType? = {
-            switch semantic {
-            case .directionUp:
-                return .directionUp
-            case .directionDown:
-                return .directionDown
-            case .retry:
-                return .retry
-            case .success:
-                return .success
-            case .none:
-                return nil
+        let device = WKInterfaceDevice.current()
+        switch semantic {
+        case .none:
+            break
+        case .directionUp:
+            device.play(.directionUp)
+        case .directionDown:
+            device.play(.directionDown)
+        case .retry:
+            device.play(.retry)
+        case .success:
+            device.play(.success)
+        case .subtleConfirmation:
+            device.play(.click)
+        case .ascendingDoublePulse:
+            device.play(.directionUp)
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 140_000_000)
+                device.play(.directionUp)
             }
-        }()
-
-        if let hapticType {
-            WKInterfaceDevice.current().play(hapticType)
-            lastHapticTime = now
+        case .threeQuickLightTaps:
+            device.play(.click)
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 110_000_000)
+                device.play(.click)
+                try? await Task.sleep(nanoseconds: 110_000_000)
+                device.play(.click)
+            }
+        case .descendingDoublePulse:
+            device.play(.directionDown)
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 160_000_000)
+                device.play(.directionDown)
+            }
         }
     }
 
