@@ -164,6 +164,7 @@
 		W111001AD4E5F60718293A1A /* RunalystCore in Frameworks */ = {isa = PBXBuildFile; productRef = D4E5F60718293A0100000002 /* RunalystCore */; };
 		W1110023D4E5F60718293A23 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = W111000CD4E5F60718293A0C /* Assets.xcassets */; };
 		WCB10002D4E5F60718293A02 /* Runalyst/Services/WatchCalibrationBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = WCB10001D4E5F60718293A01 /* Runalyst/Services/WatchCalibrationBridge.swift */; };
+		WCB10004D4E5F60718293A04 /* Runalyst/Services/CompanionVoiceRelay.swift in Sources */ = {isa = PBXBuildFile; fileRef = WCB10003D4E5F60718293A03 /* Runalyst/Services/CompanionVoiceRelay.swift */; };
 		Z2X3C4V5B6N7M8L9K0J1H2G3 /* Runalyst/Views/RunDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = Q1W2E3R4T5Y6U7I8O9P0A1S2 /* Runalyst/Views/RunDetailView.swift */; };
 		W1110061D4E5F60718293A61 /* RunalystWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = W1110000D4E5F60718293A00 /* RunalystWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
@@ -346,6 +347,7 @@
 		W111000BD4E5F60718293A0B /* RunalystWatch.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = RunalystWatch.entitlements; sourceTree = "<group>"; };
 		W111000CD4E5F60718293A0C /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		WCB10001D4E5F60718293A01 /* Runalyst/Services/WatchCalibrationBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Services/WatchCalibrationBridge.swift; sourceTree = SOURCE_ROOT; };
+		WCB10003D4E5F60718293A03 /* Runalyst/Services/CompanionVoiceRelay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Services/CompanionVoiceRelay.swift; sourceTree = SOURCE_ROOT; };
 		Z1X2C3V4B5N6M7L8K9J0H1G2 /* Runalyst/CoachingEngine/CoachingEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/CoachingEngine/CoachingEngine.swift; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
@@ -556,6 +558,7 @@
 				A1110097D4E5F60718293A97 /* Runalyst/Intents/RunalystShortcuts.swift */,
 				A1110098D4E5F60718293A98 /* Runalyst/Views/Components/ChartAudioGraphDescriptors.swift */,
 				WCB10001D4E5F60718293A01 /* Runalyst/Services/WatchCalibrationBridge.swift */,
+				WCB10003D4E5F60718293A03 /* Runalyst/Services/CompanionVoiceRelay.swift */,
 				A2220098D4E5F60718293A98 /* Runalyst/Views/Components/MilestoneAwardDetailSheet.swift */,
 				A1110022D4E5F60718293A22 /* Runalyst/Views/StatBox.swift */,
 				A1110023D4E5F60718293A23 /* Runalyst/Views/DrillExecutionScorecard.swift */,
@@ -819,6 +822,7 @@
 				B1110097D4E5F60718293A97 /* Runalyst/Intents/RunalystShortcuts.swift in Sources */,
 				B1110098D4E5F60718293A98 /* Runalyst/Views/Components/ChartAudioGraphDescriptors.swift in Sources */,
 				WCB10002D4E5F60718293A02 /* Runalyst/Services/WatchCalibrationBridge.swift in Sources */,
+				WCB10004D4E5F60718293A04 /* Runalyst/Services/CompanionVoiceRelay.swift in Sources */,
 				554433221100FFEEDDCCBBAA /* Runalyst/Views/AnimatedLoadingView.swift in Sources */,
 				E1A2B3C4D5E6F708192A3B4C /* Runalyst/Views/WorkoutPhaseTimelineView.swift in Sources */,
 				F1A1B1C1D1E1F10111213142 /* Runalyst/Models/DrillReadout.swift in Sources */,

@@ -7,6 +7,10 @@ private let logger = Logger(subsystem: "com.runalyzer.Runalyzer", category: "Swi
 @main
 struct RunalystApp: App {
 
+    init() {
+        _ = WatchCalibrationBridge.shared
+    }
+
     let container: ModelContainer = {
         logger.info("Starting ModelContainer initialization with RunalystMigrationPlan")
         let schema = Schema(versionedSchema: RunalystSchemaV1.self)

@@ -170,3 +170,27 @@ public enum WatchRunIntent: String, Sendable, Codable, CaseIterable, Identifiabl
         }
     }
 }
+
+// MARK: - Watch Voice Delivery Target
+
+/// Destination target for synthesized pacing audio cues initiated on Apple Watch.
+public enum WatchVoiceDeliveryTarget: String, Sendable, Equatable {
+    case watchLocal
+    case companionRelayWithLocalFallback
+
+    /// Resolves whether a voice cue should speak directly through Apple Watch audio hardware
+    /// or be routed through the paired iPhone companion session (e.g. runner's AirPods are connected to phone).
+    public static func resolve(
+        watchHasBluetoothHeadphoneRoute: Bool,
+        isCompanionReachable: Bool
+    ) -> WatchVoiceDeliveryTarget {
+        if watchHasBluetoothHeadphoneRoute {
+            return .watchLocal
+        } else if isCompanionReachable {
+            return .companionRelayWithLocalFallback
+        } else {
+            return .watchLocal
+        }
+    }
+}
+

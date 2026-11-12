@@ -593,4 +593,39 @@ struct AdaptivePacingCoreWatchCompanionTests {
         #expect(imperial.distanceFormatted == "3.73 mi")
         #expect(imperial.averagePaceFormatted == "8:03 /mi")
     }
+
+    // MARK: - 6. Watch Voice Delivery Target Resolution
+
+    @Test("WatchVoiceDeliveryTarget: resolves routing based on bluetooth headphones and companion reachability")
+    func testWatchVoiceDeliveryTargetResolutionTruthTable() {
+        // 1. Bluetooth headphones connected to Watch -> always .watchLocal
+        #expect(
+            WatchVoiceDeliveryTarget.resolve(
+                watchHasBluetoothHeadphoneRoute: true,
+                isCompanionReachable: true
+            ) == .watchLocal
+        )
+        #expect(
+            WatchVoiceDeliveryTarget.resolve(
+                watchHasBluetoothHeadphoneRoute: true,
+                isCompanionReachable: false
+            ) == .watchLocal
+        )
+
+        // 2. No Bluetooth headphones on Watch, companion phone reachable -> relay
+        #expect(
+            WatchVoiceDeliveryTarget.resolve(
+                watchHasBluetoothHeadphoneRoute: false,
+                isCompanionReachable: true
+            ) == .companionRelayWithLocalFallback
+        )
+
+        // 3. No Bluetooth headphones on Watch, companion phone not reachable -> fallback to .watchLocal
+        #expect(
+            WatchVoiceDeliveryTarget.resolve(
+                watchHasBluetoothHeadphoneRoute: false,
+                isCompanionReachable: false
+            ) == .watchLocal
+        )
+    }
 }

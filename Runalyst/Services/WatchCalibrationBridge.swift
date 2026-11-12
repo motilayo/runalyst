@@ -196,10 +196,31 @@ final class WatchCalibrationBridge: NSObject, WCSessionDelegate {
         }
     }
 
+    nonisolated func session(
+        _ session: WCSession,
+        didReceiveMessage message: [String: Any],
+        replyHandler: @escaping ([String: Any]) -> Void
+    ) {
+        guard let text = message["voiceCueText"] as? String else {
+            replyHandler(["spoken": false])
+            return
+        }
+        let language = message["voiceCueLanguage"] as? String
+        let replyBox = UncheckedReplyBox(send: replyHandler)
+        Task { @MainActor in
+            let spoken = CompanionVoiceRelay.shared.speakIfHeadphonesConnected(text: text, language: language)
+            replyBox.send(["spoken": spoken])
+        }
+    }
+
     nonisolated func sessionDidBecomeInactive(_ session: WCSession) {}
 
     nonisolated func sessionDidDeactivate(_ session: WCSession) {
         // Reactivate for multi-watch switching
         WCSession.default.activate()
     }
+}
+
+private struct UncheckedReplyBox: @unchecked Sendable {
+    let send: ([String: Any]) -> Void
 }
