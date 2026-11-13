@@ -186,7 +186,7 @@ struct AdaptivePacingCoreWatchCompanionTests {
 
         let startSpec = res1.events[0].feedbackSpec(useMetricSystem: true)
         #expect(startSpec.haptic == .none)
-        #expect(startSpec.voiceCueText == "Find a comfortable rhythm. Reading your baseline.")
+        #expect(startSpec.voiceCueText == nil)
         #expect(startSpec.accentToken == .calibratingBlue)
 
         // Ticks 2..299: Zero nagging events, valid normalized display state
@@ -244,13 +244,13 @@ struct AdaptivePacingCoreWatchCompanionTests {
         let metricSpec = completeEvent.feedbackSpec(useMetricSystem: true)
         #expect(metricSpec.haptic == .success)
         #expect(metricSpec.accentToken == .electricBlue)
-        #expect(metricSpec.voiceCueText == "Baseline locked. Target pace: 5:00 per kilometer. Let's roll.")
+        #expect(metricSpec.voiceCueText == "Target 5:00.")
 
         // Imperial voice cue (300 s/km * 1.609344 = 482.8 -> 483 s/mi = 8:03)
         let imperialSpec = completeEvent.feedbackSpec(useMetricSystem: false)
         #expect(imperialSpec.haptic == .success)
         #expect(imperialSpec.accentToken == .electricBlue)
-        #expect(imperialSpec.voiceCueText == "Baseline locked. Target pace: 8:03 per mile. Let's roll.")
+        #expect(imperialSpec.voiceCueText == "Target 8:03.")
 
         // Post-calibration display state at tick 301
         let res301 = core.ingest(makeTick(second: 301))
@@ -309,10 +309,10 @@ struct AdaptivePacingCoreWatchCompanionTests {
         let metricSurgeSpec = surge.feedbackSpec(useMetricSystem: true)
         #expect(metricSurgeSpec.haptic == .ascendingDoublePulse)
         #expect(metricSurgeSpec.accentToken == .surgeTeal)
-        #expect(metricSurgeSpec.voiceCueText == "Efficiency is high—you've got reserves. Nudging target pace to 4:50.")
+        #expect(metricSurgeSpec.voiceCueText == "Surge 4:50.")
 
         let imperialSurgeSpec = surge.feedbackSpec(useMetricSystem: false)
-        #expect(imperialSurgeSpec.voiceCueText == "Efficiency is high—you've got reserves. Nudging target pace to 7:47.")
+        #expect(imperialSurgeSpec.voiceCueText == "Surge 7:47.")
 
         #expect(core.awaitingSurgeLockInTargetSecondsPerKm == 290)
         #expect(core.refractorySecondsRemaining == 90)
@@ -394,7 +394,7 @@ struct AdaptivePacingCoreWatchCompanionTests {
         let spec = fc.feedbackSpec(useMetricSystem: true)
         #expect(spec.haptic == .threeQuickLightTaps)
         #expect(spec.accentToken == .recoverAmber)
-        #expect(spec.voiceCueText == "Form check. Quick, light steps—bring your cadence up.")
+        #expect(spec.voiceCueText == "Quick steps.")
 
         // Non-destructive: target pace MUST NOT be slowed by first form check
         #expect(core.currentTargetPaceSecondsPerKm == 300)
@@ -440,10 +440,10 @@ struct AdaptivePacingCoreWatchCompanionTests {
         let metricSpec = rec.feedbackSpec(useMetricSystem: true)
         #expect(metricSpec.haptic == .descendingDoublePulse)
         #expect(metricSpec.accentToken == .recoverAmber)
-        #expect(metricSpec.voiceCueText == "Cardiac drift detected. Dialing target back to 5:09 to protect your aerobic zone.")
+        #expect(metricSpec.voiceCueText == "Ease to 5:09.")
 
         let imperialSpec = rec.feedbackSpec(useMetricSystem: false)
-        #expect(imperialSpec.voiceCueText == "Cardiac drift detected. Dialing target back to 8:17 to protect your aerobic zone.")
+        #expect(imperialSpec.voiceCueText == "Ease to 8:17.")
     }
 
     @Test("Fatigue Catch: sustained cardiac drift triggers recover with descending double-pulse")

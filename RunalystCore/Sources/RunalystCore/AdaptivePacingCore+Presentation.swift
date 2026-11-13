@@ -61,27 +61,24 @@ public struct PacingEventFeedbackSpec: Sendable, Equatable {
         case .calibrationStarted:
             self.init(
                 haptic: .none,
-                voiceCueText: "Find a comfortable rhythm. Reading your baseline.",
+                voiceCueText: nil,
                 accentToken: .calibratingBlue
             )
         case .calibrationComplete(let target, _):
             let paceStr: String
-            let unitName: String
             if useMetricSystem {
                 let mins = target / 60
                 let secs = target % 60
                 paceStr = String(format: "%d:%02d", mins, secs)
-                unitName = "kilometer"
             } else {
                 let targetMile = Int((Double(target) * 1.609344).rounded())
                 let mins = targetMile / 60
                 let secs = targetMile % 60
                 paceStr = String(format: "%d:%02d", mins, secs)
-                unitName = "mile"
             }
             self.init(
                 haptic: .success,
-                voiceCueText: "Baseline locked. Target pace: \(paceStr) per \(unitName). Let's roll.",
+                voiceCueText: "Target \(paceStr).",
                 accentToken: .electricBlue
             )
         case .surge(_, let newTarget):
@@ -98,7 +95,7 @@ public struct PacingEventFeedbackSpec: Sendable, Equatable {
             }
             self.init(
                 haptic: .ascendingDoublePulse,
-                voiceCueText: "Efficiency is high—you've got reserves. Nudging target pace to \(paceStr).",
+                voiceCueText: "Surge \(paceStr).",
                 accentToken: .surgeTeal
             )
         case .surgeLockedIn:
@@ -110,7 +107,7 @@ public struct PacingEventFeedbackSpec: Sendable, Equatable {
         case .formCheck:
             self.init(
                 haptic: .threeQuickLightTaps,
-                voiceCueText: "Form check. Quick, light steps—bring your cadence up.",
+                voiceCueText: "Quick steps.",
                 accentToken: .recoverAmber
             )
         case .recover(_, let newTarget, _):
@@ -127,7 +124,7 @@ public struct PacingEventFeedbackSpec: Sendable, Equatable {
             }
             self.init(
                 haptic: .descendingDoublePulse,
-                voiceCueText: "Cardiac drift detected. Dialing target back to \(paceStr) to protect your aerobic zone.",
+                voiceCueText: "Ease to \(paceStr).",
                 accentToken: .recoverAmber
             )
         case .backOnTarget:
@@ -141,13 +138,13 @@ public struct PacingEventFeedbackSpec: Sendable, Equatable {
             case .tooSlow:
                 self.init(
                     haptic: .directionUp,
-                    voiceCueText: "Pace dropping. Pick up rhythm.",
+                    voiceCueText: nil,
                     accentToken: .surgeBlue
                 )
             case .tooFast:
                 self.init(
                     haptic: .directionDown,
-                    voiceCueText: "Pace high. Ease into rhythm.",
+                    voiceCueText: nil,
                     accentToken: .recoverOrange
                 )
             case .onTarget, .unknown:
@@ -160,7 +157,7 @@ public struct PacingEventFeedbackSpec: Sendable, Equatable {
         case .cadenceDrift:
             self.init(
                 haptic: .retry,
-                voiceCueText: "Cadence dropping. Quicken your steps.",
+                voiceCueText: nil,
                 accentToken: .vibrantGreen
             )
         case .splitMilestone(let index, let pace):
@@ -170,7 +167,7 @@ public struct PacingEventFeedbackSpec: Sendable, Equatable {
             let unitStr = useMetricSystem ? "Kilometer" : "Mile"
             self.init(
                 haptic: .success,
-                voiceCueText: "\(unitStr) \(index). \(paceText) pace.",
+                voiceCueText: "\(unitStr) \(index), \(paceText).",
                 accentToken: .electricBlue
             )
         }
