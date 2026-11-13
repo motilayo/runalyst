@@ -267,7 +267,7 @@ struct AdaptivePacingCoreTests {
         let surge = PacingEvent.surge(deltaSecondsPerKm: 5, newTargetSecondsPerKm: 295)
         let surgeSpec = surge.feedbackSpec
         #expect(surgeSpec.haptic == .ascendingDoublePulse)
-        #expect(surgeSpec.voiceCueText == "Surge: 4:55.")
+        #expect(surgeSpec.voiceCueText == "Surge 4:55.")
         #expect(surgeSpec.accentToken == .surgeTeal)
 
         let recoverForm = PacingEvent.recover(deltaSecondsPerKm: 9, newTargetSecondsPerKm: 309, reason: .formBreakdown)
@@ -495,13 +495,13 @@ struct AdaptivePacingCoreTests {
         let slowEvent = PacingEvent.paceDrift(deviation: .tooSlow, deltaSecondsPerKm: 15)
         let slowSpec = slowEvent.feedbackSpec
         #expect(slowSpec.haptic == .directionUp)
-        #expect(slowSpec.voiceCueText == "Pick up pace.")
+        #expect(slowSpec.voiceCueText == nil)
         #expect(slowSpec.accentToken == .surgeBlue)
 
         let fastEvent = PacingEvent.paceDrift(deviation: .tooFast, deltaSecondsPerKm: 12)
         let fastSpec = fastEvent.feedbackSpec
         #expect(fastSpec.haptic == .directionDown)
-        #expect(fastSpec.voiceCueText == "Ease pace.")
+        #expect(fastSpec.voiceCueText == nil)
         #expect(fastSpec.accentToken == .recoverOrange)
 
         let onTargetEvent = PacingEvent.paceDrift(deviation: .onTarget, deltaSecondsPerKm: 0)

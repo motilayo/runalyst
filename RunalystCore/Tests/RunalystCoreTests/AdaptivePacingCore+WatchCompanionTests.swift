@@ -186,7 +186,7 @@ struct AdaptivePacingCoreWatchCompanionTests {
 
         let startSpec = res1.events[0].feedbackSpec(useMetricSystem: true)
         #expect(startSpec.haptic == .none)
-        #expect(startSpec.voiceCueText == "Reading baseline.")
+        #expect(startSpec.voiceCueText == nil)
         #expect(startSpec.accentToken == .calibratingBlue)
 
         // Ticks 2..299: Zero nagging events, valid normalized display state
@@ -244,13 +244,13 @@ struct AdaptivePacingCoreWatchCompanionTests {
         let metricSpec = completeEvent.feedbackSpec(useMetricSystem: true)
         #expect(metricSpec.haptic == .success)
         #expect(metricSpec.accentToken == .electricBlue)
-        #expect(metricSpec.voiceCueText == "Target: 5:00 per kilometer.")
+        #expect(metricSpec.voiceCueText == "Target 5:00.")
 
         // Imperial voice cue (300 s/km * 1.609344 = 482.8 -> 483 s/mi = 8:03)
         let imperialSpec = completeEvent.feedbackSpec(useMetricSystem: false)
         #expect(imperialSpec.haptic == .success)
         #expect(imperialSpec.accentToken == .electricBlue)
-        #expect(imperialSpec.voiceCueText == "Target: 8:03 per mile.")
+        #expect(imperialSpec.voiceCueText == "Target 8:03.")
 
         // Post-calibration display state at tick 301
         let res301 = core.ingest(makeTick(second: 301))
@@ -309,10 +309,10 @@ struct AdaptivePacingCoreWatchCompanionTests {
         let metricSurgeSpec = surge.feedbackSpec(useMetricSystem: true)
         #expect(metricSurgeSpec.haptic == .ascendingDoublePulse)
         #expect(metricSurgeSpec.accentToken == .surgeTeal)
-        #expect(metricSurgeSpec.voiceCueText == "Surge: 4:50.")
+        #expect(metricSurgeSpec.voiceCueText == "Surge 4:50.")
 
         let imperialSurgeSpec = surge.feedbackSpec(useMetricSystem: false)
-        #expect(imperialSurgeSpec.voiceCueText == "Surge: 7:47.")
+        #expect(imperialSurgeSpec.voiceCueText == "Surge 7:47.")
 
         #expect(core.awaitingSurgeLockInTargetSecondsPerKm == 290)
         #expect(core.refractorySecondsRemaining == 90)
@@ -394,7 +394,7 @@ struct AdaptivePacingCoreWatchCompanionTests {
         let spec = fc.feedbackSpec(useMetricSystem: true)
         #expect(spec.haptic == .threeQuickLightTaps)
         #expect(spec.accentToken == .recoverAmber)
-        #expect(spec.voiceCueText == "Quick steps. Cadence up.")
+        #expect(spec.voiceCueText == "Quick steps.")
 
         // Non-destructive: target pace MUST NOT be slowed by first form check
         #expect(core.currentTargetPaceSecondsPerKm == 300)
