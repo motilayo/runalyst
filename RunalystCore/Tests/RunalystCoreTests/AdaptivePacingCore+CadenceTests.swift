@@ -300,7 +300,7 @@ struct AdaptivePacingCadenceTests {
         let cadenceEvent = PacingEvent.cadenceDrift(currentCadenceSPM: 158, targetCadenceSPM: 168, deltaSPM: 10)
         let cadenceSpec = cadenceEvent.feedbackSpec
         #expect(cadenceSpec.haptic == .retry)
-        #expect(cadenceSpec.voiceCueText == nil)
+        #expect(cadenceSpec.voiceCueText == "Cadence up.")
         #expect(cadenceSpec.accentToken == .vibrantGreen)
 
         let splitEvent = PacingEvent.splitMilestone(splitIndex: 5, splitPaceSecondsPerKm: 285)

@@ -61,7 +61,7 @@ public struct PacingEventFeedbackSpec: Sendable, Equatable {
         case .calibrationStarted:
             self.init(
                 haptic: .none,
-                voiceCueText: nil,
+                voiceCueText: "Reading baseline.",
                 accentToken: .calibratingBlue
             )
         case .calibrationComplete(let target, _):
@@ -138,13 +138,13 @@ public struct PacingEventFeedbackSpec: Sendable, Equatable {
             case .tooSlow:
                 self.init(
                     haptic: .directionUp,
-                    voiceCueText: nil,
+                    voiceCueText: "Pick up pace.",
                     accentToken: .surgeBlue
                 )
             case .tooFast:
                 self.init(
                     haptic: .directionDown,
-                    voiceCueText: nil,
+                    voiceCueText: "Ease pace.",
                     accentToken: .recoverOrange
                 )
             case .onTarget, .unknown:
@@ -157,7 +157,7 @@ public struct PacingEventFeedbackSpec: Sendable, Equatable {
         case .cadenceDrift:
             self.init(
                 haptic: .retry,
-                voiceCueText: nil,
+                voiceCueText: "Cadence up.",
                 accentToken: .vibrantGreen
             )
         case .splitMilestone(let index, let pace):

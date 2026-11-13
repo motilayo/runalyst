@@ -186,7 +186,7 @@ struct AdaptivePacingCoreWatchCompanionTests {
 
         let startSpec = res1.events[0].feedbackSpec(useMetricSystem: true)
         #expect(startSpec.haptic == .none)
-        #expect(startSpec.voiceCueText == nil)
+        #expect(startSpec.voiceCueText == "Reading baseline.")
         #expect(startSpec.accentToken == .calibratingBlue)
 
         // Ticks 2..299: Zero nagging events, valid normalized display state

@@ -495,13 +495,13 @@ struct AdaptivePacingCoreTests {
         let slowEvent = PacingEvent.paceDrift(deviation: .tooSlow, deltaSecondsPerKm: 15)
         let slowSpec = slowEvent.feedbackSpec
         #expect(slowSpec.haptic == .directionUp)
-        #expect(slowSpec.voiceCueText == nil)
+        #expect(slowSpec.voiceCueText == "Pick up pace.")
         #expect(slowSpec.accentToken == .surgeBlue)
 
         let fastEvent = PacingEvent.paceDrift(deviation: .tooFast, deltaSecondsPerKm: 12)
         let fastSpec = fastEvent.feedbackSpec
         #expect(fastSpec.haptic == .directionDown)
-        #expect(fastSpec.voiceCueText == nil)
+        #expect(fastSpec.voiceCueText == "Ease pace.")
         #expect(fastSpec.accentToken == .recoverOrange)
 
         let onTargetEvent = PacingEvent.paceDrift(deviation: .onTarget, deltaSecondsPerKm: 0)
