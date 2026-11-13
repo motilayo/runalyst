@@ -460,13 +460,15 @@ struct DrillInterstitialReadoutView: View {
         scheduleError = nil
 
         Task {
+            var dtoToSchedule = prescriptionDTO
+            dtoToSchedule.isIndoor = preferredWorkoutIsIndoor
+            await MainActor.run {
+                WatchCalibrationBridge.shared.publishDrillIntent(dto: dtoToSchedule)
+            }
             if #available(iOS 17.0, *) {
                 do {
-                    var dtoToSchedule = prescriptionDTO
-                    dtoToSchedule.isIndoor = preferredWorkoutIsIndoor
                     let bridge = WorkoutBridge()
                     try await bridge.scheduleDrill(dto: dtoToSchedule)
-                    WatchCalibrationBridge.shared.publishDrillIntent(dto: dtoToSchedule)
                     await MainActor.run {
                         self.isScheduling = false
                         self.scheduleSuccess = true

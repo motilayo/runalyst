@@ -278,11 +278,13 @@ struct DrillsLibraryView: View {
 
     private func scheduleDrillToWatch(dto: DrillPrescriptionDTO) {
         Task {
+            await MainActor.run {
+                WatchCalibrationBridge.shared.publishDrillIntent(dto: dto)
+            }
             if #available(iOS 17.0, *) {
                 do {
                     let bridge = WorkoutBridge()
                     try await bridge.scheduleDrill(dto: dto)
-                    WatchCalibrationBridge.shared.publishDrillIntent(dto: dto)
                     await MainActor.run {
                         self.lastExportedDrillId = dto.preRunDrillId ?? ""
                         self.lastWatchExportTimestamp = Date().timeIntervalSince1970

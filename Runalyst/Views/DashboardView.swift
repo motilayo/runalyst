@@ -638,11 +638,13 @@ struct DashboardView: View {
                 targetCadence: computedTarget,
                 previousCadence: baseCadence
             )
+            await MainActor.run {
+                WatchCalibrationBridge.shared.publishDrillIntent(dto: dto)
+            }
             do {
                 let bridge = WorkoutBridge()
                 await WorkoutScheduler.shared.removeAllWorkouts()
                 try await bridge.scheduleDrill(dto: dto)
-                WatchCalibrationBridge.shared.publishDrillIntent(dto: dto)
                 await MainActor.run {
                     self.lastWatchExportTimestamp = Date().timeIntervalSince1970
                 }
