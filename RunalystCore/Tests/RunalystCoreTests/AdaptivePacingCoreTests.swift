@@ -267,19 +267,19 @@ struct AdaptivePacingCoreTests {
         let surge = PacingEvent.surge(deltaSecondsPerKm: 5, newTargetSecondsPerKm: 295)
         let surgeSpec = surge.feedbackSpec
         #expect(surgeSpec.haptic == .ascendingDoublePulse)
-        #expect(surgeSpec.voiceCueText == "Efficiency is high—you've got reserves. Nudging target pace to 4:55.")
+        #expect(surgeSpec.voiceCueText == "Surge: 4:55.")
         #expect(surgeSpec.accentToken == .surgeTeal)
 
         let recoverForm = PacingEvent.recover(deltaSecondsPerKm: 9, newTargetSecondsPerKm: 309, reason: .formBreakdown)
         let formSpec = recoverForm.feedbackSpec
         #expect(formSpec.haptic == .descendingDoublePulse)
-        #expect(formSpec.voiceCueText == "Cardiac drift detected. Dialing target back to 5:09 to protect your aerobic zone.")
+        #expect(formSpec.voiceCueText == "Ease to 5:09.")
         #expect(formSpec.accentToken == .recoverAmber)
 
         let recoverHR = PacingEvent.recover(deltaSecondsPerKm: 10, newTargetSecondsPerKm: 310, reason: .heartRateCeiling)
         let hrSpec = recoverHR.feedbackSpec
         #expect(hrSpec.haptic == .descendingDoublePulse)
-        #expect(hrSpec.voiceCueText == "Cardiac drift detected. Dialing target back to 5:10 to protect your aerobic zone.")
+        #expect(hrSpec.voiceCueText == "Ease to 5:10.")
         #expect(hrSpec.accentToken == .recoverAmber)
 
         let backOnTarget = PacingEvent.backOnTarget
@@ -495,13 +495,13 @@ struct AdaptivePacingCoreTests {
         let slowEvent = PacingEvent.paceDrift(deviation: .tooSlow, deltaSecondsPerKm: 15)
         let slowSpec = slowEvent.feedbackSpec
         #expect(slowSpec.haptic == .directionUp)
-        #expect(slowSpec.voiceCueText == "Pace dropping. Pick up rhythm.")
+        #expect(slowSpec.voiceCueText == "Pick up pace.")
         #expect(slowSpec.accentToken == .surgeBlue)
 
         let fastEvent = PacingEvent.paceDrift(deviation: .tooFast, deltaSecondsPerKm: 12)
         let fastSpec = fastEvent.feedbackSpec
         #expect(fastSpec.haptic == .directionDown)
-        #expect(fastSpec.voiceCueText == "Pace high. Ease into rhythm.")
+        #expect(fastSpec.voiceCueText == "Ease pace.")
         #expect(fastSpec.accentToken == .recoverOrange)
 
         let onTargetEvent = PacingEvent.paceDrift(deviation: .onTarget, deltaSecondsPerKm: 0)
