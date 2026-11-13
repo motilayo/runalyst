@@ -8,6 +8,8 @@ import RunalystCore
 @MainActor
 @Observable
 public final class PacingViewModel {
+    public static let shared = PacingViewModel()
+
     public var displayState: PacingDisplayState
     public var latestEvents: [PacingEvent] = []
     public var isPaused: Bool = false

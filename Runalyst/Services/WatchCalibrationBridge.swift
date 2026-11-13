@@ -1,4 +1,5 @@
 import Foundation
+import HealthKit
 import Observation
 import RunalystCore
 import WatchConnectivity
@@ -230,6 +231,25 @@ final class WatchCalibrationBridge: NSObject, WCSessionDelegate {
         )
 
         publish(context: context)
+    }
+
+    // MARK: - Watch Workout Handoff
+
+    /// Launches the active companion workout on Apple Watch via HealthKit handoff.
+    func launchWatchWorkout(isIndoor: Bool? = nil) async {
+        guard HKHealthStore.isHealthDataAvailable() else { return }
+        let indoorPref = isIndoor ?? UserDefaults.standard.bool(forKey: "preferredWorkoutIsIndoor")
+        let configuration = HKWorkoutConfiguration()
+        configuration.activityType = .running
+        configuration.locationType = indoorPref ? .indoor : .outdoor
+
+        sendPacingContext(isIndoorPreferred: indoorPref)
+
+        await withCheckedContinuation { continuation in
+            HKHealthStore().startWatchApp(with: configuration) { _, _ in
+                continuation.resume()
+            }
+        }
     }
 
     // MARK: - Remote Control Commands & Snapshot Reception

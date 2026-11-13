@@ -157,9 +157,12 @@ extension AdaptivePacingCore {
 
         if isBelowThreshold || isBelowFloor {
             cadenceDriftContinuousSeconds += 1.0
+            healthyCadenceContinuousSeconds = 0.0
 
-            if solidCadenceUntilDistanceMeters == nil {
-                solidCadenceUntilDistanceMeters = latestTotalDistanceMeters
+            if hasEstablishedSolidCadence && solidCadenceUntilDistanceMeters == nil {
+                if cadenceDriftContinuousSeconds >= configuration.cadenceDriftDebounceDurationSeconds {
+                    solidCadenceUntilDistanceMeters = latestTotalDistanceMeters
+                }
             }
 
             if cadenceDriftContinuousSeconds >= configuration.cadenceDriftDebounceDurationSeconds && cadenceDriftCooldownRemainingSeconds == 0 {
@@ -175,6 +178,10 @@ extension AdaptivePacingCore {
         } else {
             // Cadence is healthy / within target
             cadenceDriftContinuousSeconds = 0.0
+            healthyCadenceContinuousSeconds += 1.0
+            if healthyCadenceContinuousSeconds >= 30.0 {
+                hasEstablishedSolidCadence = true
+            }
         }
 
         return nil
@@ -203,7 +210,7 @@ extension AdaptivePacingCore {
         )
         if let bdiAssessment, bdiAssessment.formBreakdown {
             consecutiveFormBreakdowns += 1
-            if solidCadenceUntilDistanceMeters == nil {
+            if hasEstablishedSolidCadence && solidCadenceUntilDistanceMeters == nil && consecutiveFormBreakdowns >= 2 {
                 solidCadenceUntilDistanceMeters = latestTotalDistanceMeters
             }
         } else {

@@ -141,7 +141,7 @@ public struct PacingGaugeView: View {
             // Elapsed time (large monospaced)
             VStack(spacing: 1) {
                 Text(displayState.elapsedTimeFormatted)
-                    .font(.system(size: 34, weight: .bold, design: .rounded))
+                    .font(.system(size: 38, weight: .bold, design: .rounded))
                     .monospacedDigit()
                     .foregroundStyle(calibratingBlue)
 
@@ -170,43 +170,43 @@ public struct PacingGaugeView: View {
             HStack(spacing: 4) {
                 VStack(alignment: .center, spacing: 1) {
                     Text("PACE")
-                        .font(.system(size: 8, weight: .bold, design: .rounded))
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
                         .foregroundStyle(.secondary)
                     Text(displayState.filteredPaceFormatted)
-                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .font(.system(size: 19, weight: .bold, design: .rounded))
                         .monospacedDigit()
                         .lineLimit(1)
-                        .minimumScaleFactor(0.62)
+                        .minimumScaleFactor(0.75)
                         .foregroundStyle(electricBlue)
                 }
                 .frame(maxWidth: .infinity)
 
-                Divider().frame(height: 14)
+                Divider().frame(height: 18)
 
                 VStack(alignment: .center, spacing: 1) {
                     Text("HR")
-                        .font(.system(size: 8, weight: .bold, design: .rounded))
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
                         .foregroundStyle(.secondary)
                     Text(displayState.filteredHeartRateFormatted)
-                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .font(.system(size: 19, weight: .bold, design: .rounded))
                         .monospacedDigit()
                         .lineLimit(1)
-                        .minimumScaleFactor(0.62)
+                        .minimumScaleFactor(0.75)
                         .foregroundStyle(neonPink)
                 }
                 .frame(maxWidth: .infinity)
 
-                Divider().frame(height: 14)
+                Divider().frame(height: 18)
 
                 VStack(alignment: .center, spacing: 1) {
                     Text("CADENCE")
-                        .font(.system(size: 8, weight: .bold, design: .rounded))
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
                         .foregroundStyle(.secondary)
                     Text(displayState.filteredCadenceFormatted)
-                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .font(.system(size: 19, weight: .bold, design: .rounded))
                         .monospacedDigit()
                         .lineLimit(1)
-                        .minimumScaleFactor(0.62)
+                        .minimumScaleFactor(0.75)
                         .foregroundStyle(vibrantGreen)
                 }
                 .frame(maxWidth: .infinity)
@@ -216,7 +216,7 @@ public struct PacingGaugeView: View {
             // Controls
             controlsRow
         }
-        .padding(.top, 16)
+        .padding(.top, 8)
         .padding(.horizontal, 10)
     }
 
@@ -269,7 +269,7 @@ public struct PacingGaugeView: View {
             // 3. Primary Metrics: Pace & deviation
             VStack(spacing: 1) {
                 Text(displayState.filteredPaceFormatted)
-                    .font(.system(size: 34, weight: .bold, design: .rounded))
+                    .font(.system(size: 38, weight: .bold, design: .rounded))
                     .monospacedDigit()
                     .foregroundStyle(electricBlue)
 
@@ -284,43 +284,43 @@ public struct PacingGaugeView: View {
             HStack(spacing: 4) {
                 VStack(alignment: .center, spacing: 1) {
                     Text("HR")
-                        .font(.system(size: 8, weight: .bold, design: .rounded))
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
                         .foregroundStyle(.secondary)
                     Text(displayState.filteredHeartRateFormatted)
-                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .font(.system(size: 19, weight: .bold, design: .rounded))
                         .monospacedDigit()
                         .lineLimit(1)
-                        .minimumScaleFactor(0.62)
+                        .minimumScaleFactor(0.75)
                         .foregroundStyle(neonPink)
                 }
                 .frame(maxWidth: .infinity)
 
-                Divider().frame(height: 14)
+                Divider().frame(height: 18)
 
                 VStack(alignment: .center, spacing: 1) {
                     Text("CADENCE")
-                        .font(.system(size: 8, weight: .bold, design: .rounded))
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
                         .foregroundStyle(.secondary)
                     Text(displayState.filteredCadenceFormatted)
-                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .font(.system(size: 19, weight: .bold, design: .rounded))
                         .monospacedDigit()
                         .lineLimit(1)
-                        .minimumScaleFactor(0.62)
+                        .minimumScaleFactor(0.75)
                         .foregroundStyle(vibrantGreen)
                 }
                 .frame(maxWidth: .infinity)
 
-                Divider().frame(height: 14)
+                Divider().frame(height: 18)
 
                 VStack(alignment: .center, spacing: 1) {
                     Text("TARGET")
-                        .font(.system(size: 8, weight: .bold, design: .rounded))
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
                         .foregroundStyle(.secondary)
                     Text(displayState.targetPaceFormatted)
-                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .font(.system(size: 19, weight: .bold, design: .rounded))
                         .monospacedDigit()
                         .lineLimit(1)
-                        .minimumScaleFactor(0.62)
+                        .minimumScaleFactor(0.75)
                         .foregroundStyle(electricBlue)
                 }
                 .frame(maxWidth: .infinity)
@@ -330,7 +330,7 @@ public struct PacingGaugeView: View {
             // Controls
             controlsRow
         }
-        .padding(.top, 16)
+        .padding(.top, 8)
         .padding(.horizontal, 10)
     }
 

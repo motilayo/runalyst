@@ -13,6 +13,7 @@ public final class WorkoutManager: NSObject {
 
     public private(set) var sessionState: HKWorkoutSessionState = .notStarted
     public private(set) var currentLocation: PacingLocation = .outdoor
+    public var isNavigatingToGauge: Bool = false
 
     private var activeLocation: PacingLocation = .outdoor
     private var activeIntent: WatchRunIntent = .adaptiveBase
@@ -36,7 +37,8 @@ public final class WorkoutManager: NSObject {
 
     private var typesToShare: Set<HKSampleType> {
         [
-            HKObjectType.workoutType()
+            HKObjectType.workoutType(),
+            HKQuantityType(.activeEnergyBurned)
         ]
     }
 
@@ -50,6 +52,7 @@ public final class WorkoutManager: NSObject {
             HKQuantityType(.runningGroundContactTime),
             HKQuantityType(.runningVerticalOscillation),
             HKQuantityType(.distanceWalkingRunning),
+            HKQuantityType(.activeEnergyBurned),
             HKCharacteristicType(.dateOfBirth)
         ]
     }
@@ -142,6 +145,7 @@ public final class WorkoutManager: NSObject {
 
             startTickLoop(engine: engine, builder: builder)
             self.sessionState = .running
+            self.isNavigatingToGauge = true
             broadcastLiveSnapshot(forceImmediate: true)
         } catch {
             // Failed to start session
@@ -208,6 +212,7 @@ public final class WorkoutManager: NSObject {
         self.builder = nil
         self.telemetryEngine = nil
         self.sessionState = .ended
+        self.isNavigatingToGauge = false
 
         broadcastLiveSnapshot(forceImmediate: true, isCompleted: true, completedDebrief: debrief)
 
