@@ -594,6 +594,229 @@ struct AdaptivePacingCoreWatchCompanionTests {
         #expect(imperial.averagePaceFormatted == "8:03 /mi")
     }
 
+    @Test("WatchRunDebrief: prioritizes true elapsed/distance average pace over unweighted sample sum")
+    func testWatchRunDebriefPrioritizesTrueElapsedDistanceAveragePace() {
+        var core = AdaptivePacingCore(
+            profile: standardProfile,
+            intent: standardIntent,
+            location: .outdoor,
+            configuration: .forWatchCompanion(intent: .adaptiveBase)
+        )
+
+        // Skewed instantaneous pace samples: arithmetic mean = 514 s/km (8:34 /km)
+        core.totalPaceSumSecondsPerKm = 514.0 * 1800.0
+        core.paceSampleCount = 1800
+
+        // True elapsed time = 2568s, true distance = 5150.0m -> 2568 / 5.15 = 498.64 s/km (8:19 /km)
+        let metric = core.buildRunDebrief(
+            elapsedSeconds: 2568,
+            totalDistanceMeters: 5150.0,
+            useMetricSystem: true
+        )
+        // Must reflect true elapsed/distance pace (8:19 /km), NOT unweighted sample mean (8:34 /km)
+        #expect(metric.averagePaceFormatted == "8:19 /km")
+
+        let imperial = core.buildRunDebrief(
+            elapsedSeconds: 2568,
+            totalDistanceMeters: 5150.0,
+            useMetricSystem: false
+        )
+        // 498.64 * 1.609344 = 802.48 -> 802s -> 13:22 /mi
+        #expect(imperial.averagePaceFormatted == "13:22 /mi")
+
+        // Fallback when distance <= 0: uses unweighted sample average (8:34 /km)
+        let fallbackMetric = core.buildRunDebrief(
+            elapsedSeconds: 2568,
+            totalDistanceMeters: 0.0,
+            useMetricSystem: true
+        )
+        #expect(fallbackMetric.averagePaceFormatted == "8:34 /km")
+
+        // Fallback when neither is available
+        core.paceSampleCount = 0
+        let emptyDebrief = core.buildRunDebrief(
+            elapsedSeconds: 0,
+            totalDistanceMeters: 0.0,
+            useMetricSystem: true
+        )
+        #expect(emptyDebrief.averagePaceFormatted == "--:--")
+    }
+
+    @Test("WatchRunDebrief: warmup at low cadence followed by solid cadence produces across the run insight")
+    func testWatchRunDebriefWarmupThenSolidCadence() {
+        var core = AdaptivePacingCore(
+            profile: standardProfile,
+            intent: PacingSessionIntent(
+                targetPaceSecondsPerKm: 300,
+                intent: .steady,
+                subjectiveDistress: false,
+                validForDay: "2026-11-12",
+                targetCadenceSPM: 150
+            ),
+            location: .outdoor,
+            configuration: .forWatchCompanion(intent: .adaptiveBase)
+        )
+        core.state = .tracking
+        core.cadenceBaselineSPM = 150
+
+        // Warmup: 40 seconds at 135 SPM (below 150 floor)
+        var currentDist = 0.0
+        for s in 1...40 {
+            currentDist += 3.33
+            let tick = TelemetryTick(
+                elapsedSeconds: TimeInterval(s),
+                heartRateBPM: 140.0,
+                speedMetersPerSecond: 3.33,
+                cadenceSPM: 135.0
+            )
+            _ = core.ingest(tick, totalDistanceMeters: currentDist)
+        }
+
+        // Must NOT record solidCadenceUntilDistanceMeters during initial warmup before solid cadence was established
+        #expect(core.solidCadenceUntilDistanceMeters == nil)
+        #expect(!core.hasEstablishedSolidCadence)
+
+        // Solid running: settles into 150 SPM for remainder of the run (100 ticks)
+        for s in 41...140 {
+            currentDist += 3.33
+            let tick = TelemetryTick(
+                elapsedSeconds: TimeInterval(s),
+                heartRateBPM: 145.0,
+                speedMetersPerSecond: 3.33,
+                cadenceSPM: 150.0
+            )
+            _ = core.ingest(tick, totalDistanceMeters: currentDist)
+        }
+
+        #expect(core.hasEstablishedSolidCadence)
+        #expect(core.solidCadenceUntilDistanceMeters == nil)
+
+        let debrief = core.buildRunDebrief(
+            elapsedSeconds: 140,
+            totalDistanceMeters: 5150.0,
+            useMetricSystem: true
+        )
+        // Must NOT emit "until kilometer 1." — must report across the run
+        #expect(debrief.formInsightBullet == "Cadence stayed rock-solid at 150 spm across the run.")
+    }
+
+    @Test("WatchRunDebrief: solid cadence drop after establishment records distance only after debounce")
+    func testWatchRunDebriefSolidCadenceDropAfterEstablishment() {
+        var core = AdaptivePacingCore(
+            profile: standardProfile,
+            intent: PacingSessionIntent(
+                targetPaceSecondsPerKm: 300,
+                intent: .steady,
+                subjectiveDistress: false,
+                validForDay: "2026-11-12",
+                targetCadenceSPM: 168
+            ),
+            location: .outdoor,
+            configuration: .forWatchCompanion(intent: .adaptiveBase)
+        )
+        core.state = .tracking
+        core.cadenceBaselineSPM = 168
+
+        // Establish solid cadence in tracking (35 seconds of healthy 168 SPM)
+        var currentDist = 0.0
+        for s in 1...35 {
+            currentDist += 3.33
+            let tick = TelemetryTick(
+                elapsedSeconds: TimeInterval(s),
+                heartRateBPM: 145.0,
+                speedMetersPerSecond: 3.33,
+                cadenceSPM: 168.0
+            )
+            _ = core.ingest(tick, totalDistanceMeters: currentDist)
+        }
+        #expect(core.hasEstablishedSolidCadence)
+        #expect(core.solidCadenceUntilDistanceMeters == nil)
+
+        // Now drop cadence to 140 SPM.
+        // Advance until the 30-second rolling window drops below threshold (168 - 6 = 162 SPM)
+        var currentTick = 36
+        currentDist = 4000.0
+        while currentTick < 100 {
+            currentDist += 3.33
+            let tick = TelemetryTick(
+                elapsedSeconds: TimeInterval(currentTick),
+                heartRateBPM: 145.0,
+                speedMetersPerSecond: 3.33,
+                cadenceSPM: 140.0
+            )
+            _ = core.ingest(tick, totalDistanceMeters: currentDist)
+            currentTick += 1
+            if let shortCadence = core.ringBuffer.shortWindowStats(for: .cadence),
+               Double(Int(shortCadence.mean.rounded())) < Double(168) - core.configuration.cadenceDriftThresholdSPM {
+                break
+            }
+        }
+
+        // Next 10 ticks in drop (total 11s < 12s debounce)
+        for _ in 1...10 {
+            currentDist += 3.33
+            let tick = TelemetryTick(
+                elapsedSeconds: TimeInterval(currentTick),
+                heartRateBPM: 145.0,
+                speedMetersPerSecond: 3.33,
+                cadenceSPM: 140.0
+            )
+            _ = core.ingest(tick, totalDistanceMeters: currentDist)
+            currentTick += 1
+        }
+        #expect(core.solidCadenceUntilDistanceMeters == nil, "11s of drift must not set solidCadenceUntilDistanceMeters")
+
+        // 12th tick triggers debounce threshold
+        currentDist += 3.33
+        let tick12 = TelemetryTick(
+            elapsedSeconds: TimeInterval(currentTick),
+            heartRateBPM: 145.0,
+            speedMetersPerSecond: 3.33,
+            cadenceSPM: 140.0
+        )
+        _ = core.ingest(tick12, totalDistanceMeters: currentDist)
+        currentTick += 1
+        #expect(core.solidCadenceUntilDistanceMeters != nil)
+
+        let debrief = core.buildRunDebrief(
+            elapsedSeconds: TimeInterval(currentTick),
+            totalDistanceMeters: 5000.0,
+            useMetricSystem: true
+        )
+        #expect(debrief.formInsightBullet == "Cadence stayed rock-solid at 168 spm until kilometer 4.")
+    }
+
+    @Test("WatchRunDebrief: sub-1km solid cadence distance falls back to across the run")
+    func testWatchRunDebriefSub1KmFallback() {
+        var core = AdaptivePacingCore(
+            profile: standardProfile,
+            intent: standardIntent,
+            location: .outdoor,
+            configuration: .forWatchCompanion(intent: .adaptiveBase)
+        )
+        core.cadenceBaselineSPM = 168
+
+        // Metric: < 1000m falls back to "across the run"
+        core.solidCadenceUntilDistanceMeters = 850.0
+        let metric = core.buildRunDebrief(elapsedSeconds: 600, totalDistanceMeters: 2000.0, useMetricSystem: true)
+        #expect(metric.formInsightBullet == "Cadence stayed rock-solid at 168 spm across the run.")
+
+        // Metric: >= 1000m emits "until kilometer"
+        core.solidCadenceUntilDistanceMeters = 1000.0
+        let metricAt1Km = core.buildRunDebrief(elapsedSeconds: 600, totalDistanceMeters: 2000.0, useMetricSystem: true)
+        #expect(metricAt1Km.formInsightBullet == "Cadence stayed rock-solid at 168 spm until kilometer 1.")
+
+        // Imperial: < 1609.344m falls back to "across the run"
+        core.solidCadenceUntilDistanceMeters = 1500.0
+        let imperialSubMile = core.buildRunDebrief(elapsedSeconds: 600, totalDistanceMeters: 2000.0, useMetricSystem: false)
+        #expect(imperialSubMile.formInsightBullet == "Cadence stayed rock-solid at 168 spm across the run.")
+
+        // Imperial: >= 1609.344m emits "until mile"
+        core.solidCadenceUntilDistanceMeters = 1610.0
+        let imperialAt1Mile = core.buildRunDebrief(elapsedSeconds: 600, totalDistanceMeters: 2000.0, useMetricSystem: false)
+        #expect(imperialAt1Mile.formInsightBullet == "Cadence stayed rock-solid at 168 spm until mile 1.")
+    }
+
     // MARK: - 6. Watch Voice Delivery Target Resolution
 
     @Test("WatchVoiceDeliveryTarget: resolves routing based on bluetooth headphones and companion reachability")

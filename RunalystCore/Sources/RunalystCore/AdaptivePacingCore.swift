@@ -223,6 +223,8 @@ public struct AdaptivePacingCore: Sendable {
     public internal(set) var firstDriftElapsedSeconds: TimeInterval?
     public internal(set) var cadenceBaselineSPM: Int?
     public internal(set) var solidCadenceUntilDistanceMeters: Double?
+    public internal(set) var hasEstablishedSolidCadence: Bool = false
+    internal var healthyCadenceContinuousSeconds: Double = 0.0
     public internal(set) var latestTotalDistanceMeters: Double?
     public internal(set) var totalPaceSumSecondsPerKm: Double = 0.0
     public internal(set) var paceSampleCount: Int = 0
@@ -275,6 +277,8 @@ public struct AdaptivePacingCore: Sendable {
         self.firstDriftElapsedSeconds = nil
         self.cadenceBaselineSPM = nil
         self.solidCadenceUntilDistanceMeters = nil
+        self.hasEstablishedSolidCadence = false
+        self.healthyCadenceContinuousSeconds = 0.0
         self.latestTotalDistanceMeters = nil
         self.totalPaceSumSecondsPerKm = 0.0
         self.paceSampleCount = 0
@@ -319,6 +323,8 @@ public struct AdaptivePacingCore: Sendable {
         self.firstDriftElapsedSeconds = nil
         self.cadenceBaselineSPM = nil
         self.solidCadenceUntilDistanceMeters = nil
+        self.hasEstablishedSolidCadence = false
+        self.healthyCadenceContinuousSeconds = 0.0
         self.latestTotalDistanceMeters = nil
         self.totalPaceSumSecondsPerKm = 0.0
         self.paceSampleCount = 0
@@ -466,6 +472,10 @@ public struct AdaptivePacingCore: Sendable {
                 cadenceBaselineSPM = currentTargetCadenceSPM
                 adjustmentsEnabled = (intent.intent != .intervals)
                 state = .tracking
+                hasEstablishedSolidCadence = false
+                healthyCadenceContinuousSeconds = 0.0
+                cadenceDriftContinuousSeconds = 0.0
+                solidCadenceUntilDistanceMeters = nil
                 lastEvaluationElapsedSeconds = tick.elapsedSeconds
 
                 emittedEvents.append(.calibrationComplete(

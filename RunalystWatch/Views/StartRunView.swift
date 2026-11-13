@@ -15,7 +15,6 @@ public struct StartRunView: View {
     @State private var hasUserManuallySelectedLocation = false
     @State private var selectedIntent: WatchRunIntent = .adaptiveBase
     @State private var selectedPaceOption: WatchTargetPaceOption = .justRun
-    @State private var isNavigatingToGauge = false
 
     public init() {}
 
@@ -123,7 +122,7 @@ public struct StartRunView: View {
                                 targetPaceSecondsPerKm: targetPace,
                                 viewModel: pacingViewModel
                             )
-                            isNavigatingToGauge = true
+                            workoutManager.isNavigatingToGauge = true
                         }
                     } label: {
                         Text(resolvedConfig.hasPrescribedDrill ? "Start Drill" : "Start Run")
@@ -140,6 +139,9 @@ public struct StartRunView: View {
             }
         }
         .onAppear {
+            if workoutManager.sessionState == .running || workoutManager.sessionState == .paused {
+                workoutManager.isNavigatingToGauge = true
+            }
             if !hasUserManuallySelectedLocation {
                 selectedLocation = WatchContextStore.shared.preferredLocation
             }
@@ -155,7 +157,10 @@ public struct StartRunView: View {
                 _ = await workoutManager.requestAuthorizationIfNeeded()
             }
         }
-        .navigationDestination(isPresented: $isNavigatingToGauge) {
+        .navigationDestination(isPresented: Binding(
+            get: { workoutManager.isNavigatingToGauge },
+            set: { workoutManager.isNavigatingToGauge = $0 }
+        )) {
             PacingGaugeView()
         }
     }

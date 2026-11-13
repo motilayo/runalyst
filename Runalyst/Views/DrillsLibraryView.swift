@@ -285,6 +285,7 @@ struct DrillsLibraryView: View {
                 do {
                     let bridge = WorkoutBridge()
                     try await bridge.scheduleDrill(dto: dto)
+                    await WatchCalibrationBridge.shared.launchWatchWorkout(isIndoor: dto.isIndoor ?? preferredWorkoutIsIndoor)
                     await MainActor.run {
                         self.lastExportedDrillId = dto.preRunDrillId ?? ""
                         self.lastWatchExportTimestamp = Date().timeIntervalSince1970

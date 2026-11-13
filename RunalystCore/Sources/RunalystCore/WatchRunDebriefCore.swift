@@ -78,23 +78,22 @@ extension AdaptivePacingCore {
 
         // Average pace formatting
         let averagePaceFormatted: String
-        if paceSampleCount > 0 {
+        if distance > 0 && elapsedSeconds > 0 {
+            let secPerKm = elapsedSeconds / (distance / 1000.0)
+            if useMetricSystem {
+                let paceInt = max(0, Int(secPerKm.rounded()))
+                averagePaceFormatted = String(format: "%d:%02d /km", paceInt / 60, paceInt % 60)
+            } else {
+                let paceMile = max(0, Int((secPerKm * 1.609344).rounded()))
+                averagePaceFormatted = String(format: "%d:%02d /mi", paceMile / 60, paceMile % 60)
+            }
+        } else if paceSampleCount > 0 {
             let avgSecsPerKm = totalPaceSumSecondsPerKm / Double(paceSampleCount)
             if useMetricSystem {
                 let paceInt = max(0, Int(avgSecsPerKm.rounded()))
                 averagePaceFormatted = String(format: "%d:%02d /km", paceInt / 60, paceInt % 60)
             } else {
                 let paceMile = max(0, Int((avgSecsPerKm * 1.609344).rounded()))
-                averagePaceFormatted = String(format: "%d:%02d /mi", paceMile / 60, paceMile % 60)
-            }
-        } else if distance > 0 && elapsedSeconds > 0 {
-            let speedMps = distance / elapsedSeconds
-            let secPerKm = 1000.0 / speedMps
-            if useMetricSystem {
-                let paceInt = max(0, Int(secPerKm.rounded()))
-                averagePaceFormatted = String(format: "%d:%02d /km", paceInt / 60, paceInt % 60)
-            } else {
-                let paceMile = max(0, Int((secPerKm * 1.609344).rounded()))
                 averagePaceFormatted = String(format: "%d:%02d /mi", paceMile / 60, paceMile % 60)
             }
         } else {
@@ -154,7 +153,8 @@ extension AdaptivePacingCore {
                 ? Int((totalCadenceSum / Double(cadenceSampleCount)).rounded())
                 : (currentTargetCadenceSPM ?? 170))
 
-        if let solidDist = solidCadenceUntilDistanceMeters {
+        if let solidDist = solidCadenceUntilDistanceMeters,
+           (useMetricSystem ? solidDist >= 1000.0 : solidDist >= 1609.344) {
             if useMetricSystem {
                 let km = max(1, Int((solidDist / 1000.0).rounded()))
                 formInsightBullet = "Cadence stayed rock-solid at \(cadenceValue) spm until kilometer \(km)."

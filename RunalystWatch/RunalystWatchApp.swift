@@ -1,12 +1,15 @@
+import HealthKit
 import RunalystCore
 import SwiftUI
+import WatchKit
 
 // MARK: - Watch App Entry Point
 
 @main
 struct RunalystWatchApp: App {
+    @WKApplicationDelegateAdaptor(RunalystWatchAppDelegate.self) private var appDelegate
     @State private var workoutManager = WorkoutManager.shared
-    @State private var pacingViewModel: PacingViewModel
+    @State private var pacingViewModel = PacingViewModel.shared
 
     init() {
         // Register default preference so voice cues default to ON
@@ -16,7 +19,7 @@ struct RunalystWatchApp: App {
         _ = WatchContextStore.shared
 
         let preview = ProcessInfo.processInfo.environment["RUNALYST_PREVIEW_SCREEN"]
-        let vm = PacingViewModel()
+        let vm = PacingViewModel.shared
         if let preview {
             switch preview {
             case "START_PRESCRIBED_DRILL":
@@ -187,6 +190,29 @@ struct RunalystWatchApp: App {
             }
             .environment(workoutManager)
             .environment(pacingViewModel)
+        }
+    }
+}
+
+// MARK: - Watch Application Delegate
+
+final class RunalystWatchAppDelegate: NSObject, WKApplicationDelegate {
+    func handle(_ workoutConfiguration: HKWorkoutConfiguration) {
+        Task { @MainActor in
+            let location: PacingLocation = (workoutConfiguration.locationType == .indoor) ? .indoor : .outdoor
+            let resolved = WatchContextStore.shared.resolveSession()
+            let intent: WatchRunIntent = .adaptiveBase
+            let targetPace = resolved.requiresTargetPacePicker ? resolved.intent.targetPaceSecondsPerKm : nil
+
+            WorkoutManager.shared.isNavigatingToGauge = true
+            guard WorkoutManager.shared.sessionState != .running else { return }
+
+            await WorkoutManager.shared.startWorkout(
+                location: location,
+                intent: intent,
+                targetPaceSecondsPerKm: targetPace,
+                viewModel: PacingViewModel.shared
+            )
         }
     }
 }
