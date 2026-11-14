@@ -87,7 +87,7 @@ public final class WatchContextStore: NSObject, WCSessionDelegate {
             currentDayString: currentDay,
             selectedTargetPaceSecondsPerKm: selectedPace,
             fallbackAge: fallbackAge
-        ).applying(runIntent: runIntent)
+        ).applying(runIntent: runIntent, selectedPace: selectedPace)
     }
 
     private func todayDayString() -> String {
