@@ -5,7 +5,6 @@ import SwiftUI
 // MARK: - Pacing Gauge View
 
 /// Hollow workout gauge rendering real-time adaptive pacing state on watchOS.
-///
 /// Binds strictly to `PacingDisplayState`. Zero inline domain thresholds or calculations.
 public struct PacingGaugeView: View {
     @Environment(WorkoutManager.self) private var workoutManager
@@ -13,23 +12,16 @@ public struct PacingGaugeView: View {
     @Environment(\.dismiss) private var dismiss
 
     @AppStorage("watchVoiceCuesEnabled") private var voiceCuesEnabled = true
+    @AppStorage("useMetricSystem") private var useMetricSystem: Bool = Locale.current.measurementSystem == .metric
 
     @State private var debriefPresentation: DebriefPresentation?
-    @State private var isPulsing = false
+    @State private var isConfirmingEndWorkout = false
 
     public init() {}
 
     private var displayState: PacingDisplayState {
         pacingViewModel.displayState
     }
-
-    private let electricBlue = Color(red: 0.0, green: 0.8, blue: 1.0)
-    private let neonPink = Color(red: 1.0, green: 0.18, blue: 0.58)
-    private let vibrantGreen = Color(red: 0.18, green: 0.85, blue: 0.35)
-    private let surgeTeal = Color(red: 0.0, green: 0.9, blue: 0.75)
-    private let recoverAmber = Color(red: 1.0, green: 0.65, blue: 0.1)
-    private let recoverOrange = Color(red: 1.0, green: 0.58, blue: 0.0)
-    private let calibratingBlue = Color(red: 0.2, green: 0.6, blue: 1.0)
 
     private var activeAuraToken: PacingAccentToken {
         if displayState.isCalibrating {
@@ -44,19 +36,19 @@ public struct PacingGaugeView: View {
     private var accentColor: Color {
         switch displayState.accentToken {
         case .electricBlue, .surgeBlue:
-            return electricBlue
+            return WatchColor.pace
         case .recoverOrange:
-            return recoverOrange
+            return WatchColor.recoverOrange
         case .neonPink:
-            return neonPink
+            return WatchColor.heartRate
         case .vibrantGreen:
-            return vibrantGreen
+            return WatchColor.cadence
         case .calibratingBlue:
-            return calibratingBlue
+            return WatchColor.calibratingBlue
         case .surgeTeal:
-            return surgeTeal
+            return WatchColor.surgeTeal
         case .recoverAmber:
-            return recoverAmber
+            return WatchColor.recoverAmber
         case .neutral:
             return .secondary
         }
@@ -65,21 +57,39 @@ public struct PacingGaugeView: View {
     private func auraColor(for token: PacingAccentToken) -> Color {
         switch token {
         case .calibratingBlue:
-            return calibratingBlue
+            return WatchColor.calibratingBlue
         case .electricBlue, .surgeBlue:
-            return electricBlue
+            return WatchColor.pace
         case .surgeTeal:
-            return surgeTeal
+            return WatchColor.surgeTeal
         case .vibrantGreen:
-            return vibrantGreen
+            return WatchColor.cadence
         case .recoverAmber:
-            return recoverAmber
+            return WatchColor.recoverAmber
         case .recoverOrange:
-            return recoverOrange
+            return WatchColor.recoverOrange
         case .neonPink:
-            return neonPink
+            return WatchColor.heartRate
         case .neutral:
-            return electricBlue.opacity(0.3)
+            return WatchColor.pace.opacity(0.3)
+        }
+    }
+
+    private var stateColor: Color {
+        auraColor(for: activeAuraToken)
+    }
+
+    private var stateIconName: String {
+        if displayState.isCalibrating {
+            return "waveform.path.ecg"
+        }
+        switch displayState.state {
+        case .surge:
+            return "bolt.fill"
+        case .recover:
+            return "heart.fill"
+        default:
+            return WatchIcon.pace
         }
     }
 
@@ -87,19 +97,32 @@ public struct PacingGaugeView: View {
         ZStack {
             Color.black.ignoresSafeArea()
 
-            if displayState.isCalibrating {
-                calibrationBody
-            } else {
-                flowBody
-            }
+            VStack(spacing: 7) {
+                if displayState.isCalibrating {
+                    calibrationHeroCard
+                } else {
+                    flowHeroCard
+                }
 
-            biometricEdgeAura
+                controlsRow
+            }
+            .padding(.horizontal, 8)
+
+            splitProgressBezel
         }
         .navigationBarBackButtonHidden(true)
-        .onAppear {
-            withAnimation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true)) {
-                isPulsing = true
+        .confirmationDialog("End Run?", isPresented: $isConfirmingEndWorkout, titleVisibility: .visible) {
+            Button("End Run", role: .destructive) {
+                Task {
+                    let debrief = await workoutManager.endWorkout() ?? pacingViewModel.completedDebrief
+                    if let debrief {
+                        debriefPresentation = DebriefPresentation(debrief: debrief)
+                    } else {
+                        dismiss()
+                    }
+                }
             }
+            Button("Cancel", role: .cancel) {}
         }
         .fullScreenCover(item: $debriefPresentation) { item in
             RunSummaryView(debrief: item.debrief) {
@@ -114,224 +137,215 @@ public struct PacingGaugeView: View {
         }
     }
 
-    // MARK: - Calibration Layout
+    // MARK: - Hero Cards
 
-    private var calibrationBody: some View {
-        VStack(spacing: 4) {
-            // Top status
-            HStack {
-                Text(displayState.biometricStatusLabel.isEmpty ? "Calibrating" : displayState.biometricStatusLabel)
-                    .font(.system(.caption2, design: .rounded))
-                    .fontWeight(.semibold)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(calibratingBlue.opacity(0.2))
-                    .foregroundStyle(calibratingBlue)
-                    .clipShape(Capsule())
-
-                Spacer()
-
-                Text(displayState.calibrationProgressFormatted)
-                    .font(.system(.caption2, design: .rounded))
-                    .monospacedDigit()
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.horizontal, 4)
-
-            // Elapsed time (large monospaced)
-            VStack(spacing: 1) {
-                Text(displayState.elapsedTimeFormatted)
-                    .font(.system(size: 38, weight: .bold, design: .rounded))
-                    .monospacedDigit()
-                    .foregroundStyle(calibratingBlue)
-
-                Text("READING BASELINE")
-                    .font(.system(size: 9, weight: .bold, design: .rounded))
-                    .foregroundStyle(.secondary)
-            }
-
-            // Smooth calibration progress bar
-            GeometryReader { geo in
-                let progress = min(max(displayState.calibrationProgress ?? 0.0, 0.0), 1.0)
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(Color.white.opacity(0.12))
-                        .frame(height: 5)
-
-                    Capsule()
-                        .fill(calibratingBlue)
-                        .frame(width: geo.size.width * CGFloat(progress), height: 5)
-                }
-            }
-            .frame(height: 5)
-            .padding(.horizontal, 4)
-
-            // Secondary metrics strip (PACE, HR, CADENCE)
-            HStack(spacing: 4) {
-                VStack(alignment: .center, spacing: 1) {
-                    Text("PACE")
-                        .font(.system(size: 10, weight: .bold, design: .rounded))
-                        .foregroundStyle(.secondary)
-                    Text(displayState.compactFilteredPaceValue)
-                        .font(.system(size: 19, weight: .bold, design: .rounded))
-                        .monospacedDigit()
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.75)
-                        .foregroundStyle(electricBlue)
-                }
-                .frame(maxWidth: .infinity)
-
-                Divider().frame(height: 18)
-
-                VStack(alignment: .center, spacing: 1) {
-                    Text("HR")
-                        .font(.system(size: 10, weight: .bold, design: .rounded))
-                        .foregroundStyle(.secondary)
-                    Text(displayState.compactHeartRateValue)
-                        .font(.system(size: 19, weight: .bold, design: .rounded))
-                        .monospacedDigit()
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.75)
-                        .foregroundStyle(neonPink)
-                }
-                .frame(maxWidth: .infinity)
-
-                Divider().frame(height: 18)
-
-                VStack(alignment: .center, spacing: 1) {
-                    Text("CADENCE")
-                        .font(.system(size: 10, weight: .bold, design: .rounded))
-                        .foregroundStyle(.secondary)
-                    Text(displayState.compactCadenceValue)
-                        .font(.system(size: 19, weight: .bold, design: .rounded))
-                        .monospacedDigit()
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.75)
-                        .foregroundStyle(vibrantGreen)
-                }
-                .frame(maxWidth: .infinity)
-            }
-            .padding(.horizontal, 2)
-
-            // Controls
-            controlsRow
-        }
-        .padding(.top, 8)
-        .padding(.horizontal, 10)
-    }
-
-    // MARK: - In The Flow Layout
-
-    private var flowBody: some View {
-        VStack(spacing: 4) {
-            // 1. Top pill row
-            HStack {
-                if !displayState.biometricStatusLabel.isEmpty {
-                    Text(displayState.biometricStatusLabel)
-                        .font(.system(.caption2, design: .rounded))
-                        .fontWeight(.semibold)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(auraColor(for: activeAuraToken).opacity(0.2))
-                        .foregroundStyle(auraColor(for: activeAuraToken))
-                        .clipShape(Capsule())
-                } else {
-                    Text(displayState.stateTitle)
-                        .font(.system(.caption2, design: .rounded))
-                        .fontWeight(.semibold)
-                        .foregroundStyle(accentColor)
-                }
-
-                Spacer()
-
+    private var flowHeroCard: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            heroHeaderRow {
                 if !displayState.refractoryCountdownFormatted.isEmpty {
-                    Text(displayState.refractoryCountdownFormatted)
-                        .font(.system(.caption2, design: .rounded))
-                        .monospacedDigit()
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Color.white.opacity(0.12))
-                        .foregroundStyle(.secondary)
-                        .clipShape(Capsule())
+                    HStack(spacing: 4) {
+                        Text(displayState.refractoryCountdownFormatted)
+                            .font(.system(size: 9, weight: .bold, design: .rounded))
+                            .monospacedDigit()
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.white.opacity(0.12))
+                            .foregroundStyle(.secondary)
+                            .clipShape(Capsule())
+
+                        Text(displayState.elapsedTimeFormatted)
+                            .font(.system(size: 10, weight: .bold, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                    }
                 } else {
                     Text(displayState.elapsedTimeFormatted)
-                        .font(.system(.caption2, design: .rounded))
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
                         .monospacedDigit()
                         .foregroundStyle(.secondary)
                 }
             }
-            .padding(.horizontal, 4)
 
-            // 2. Dynamic Pace Gauge
-            dynamicPaceGauge
-                .padding(.vertical, 1)
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text(displayState.compactFilteredPaceValue(useMetric: useMetricSystem))
+                        .font(.system(size: 32, weight: .bold, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(.white)
 
-            // 3. Primary Metrics: Pace & deviation
-            VStack(spacing: 1) {
-                Text(displayState.filteredPaceFormatted)
-                    .font(.system(size: 38, weight: .bold, design: .rounded))
-                    .monospacedDigit()
-                    .foregroundStyle(electricBlue)
+                    Text(displayState.paceUnitLabel(useMetric: useMetricSystem))
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .foregroundStyle(.secondary)
 
-                if !displayState.deviationTitle.isEmpty {
-                    Text(displayState.deviationTitle)
-                        .font(.system(size: 11, weight: .medium, design: .rounded))
-                        .foregroundStyle(accentColor)
+                    Spacer(minLength: 4)
+
+                    if !displayState.deviationTitle.isEmpty {
+                        Text(displayState.deviationTitle.uppercased())
+                            .font(.system(size: 9, weight: .bold, design: .rounded))
+                            .foregroundStyle(accentColor)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
+                    }
                 }
+
+                dynamicPaceGauge
             }
 
-            // HR, Cadence, Target strip
-            HStack(spacing: 4) {
-                VStack(alignment: .center, spacing: 1) {
-                    Text("HR")
-                        .font(.system(size: 10, weight: .bold, design: .rounded))
-                        .foregroundStyle(.secondary)
-                    Text(displayState.compactHeartRateValue)
-                        .font(.system(size: 19, weight: .bold, design: .rounded))
-                        .monospacedDigit()
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.75)
-                        .foregroundStyle(neonPink)
-                }
-                .frame(maxWidth: .infinity)
-
-                Divider().frame(height: 18)
-
-                VStack(alignment: .center, spacing: 1) {
-                    Text("CADENCE")
-                        .font(.system(size: 10, weight: .bold, design: .rounded))
-                        .foregroundStyle(.secondary)
-                    Text(displayState.compactCadenceValue)
-                        .font(.system(size: 19, weight: .bold, design: .rounded))
-                        .monospacedDigit()
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.75)
-                        .foregroundStyle(vibrantGreen)
-                }
-                .frame(maxWidth: .infinity)
-
-                Divider().frame(height: 18)
-
-                VStack(alignment: .center, spacing: 1) {
-                    Text("TARGET")
-                        .font(.system(size: 10, weight: .bold, design: .rounded))
-                        .foregroundStyle(.secondary)
-                    Text(displayState.compactTargetPaceValue)
-                        .font(.system(size: 19, weight: .bold, design: .rounded))
-                        .monospacedDigit()
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.75)
-                        .foregroundStyle(electricBlue)
-                }
-                .frame(maxWidth: .infinity)
+            insetStatBar {
+                heroStatColumn(
+                    icon: WatchIcon.heartRate,
+                    label: "HR",
+                    value: displayState.filteredHeartRateFormatted,
+                    iconColor: WatchColor.heartRate
+                )
+                Divider().frame(height: 18).opacity(0.25)
+                heroStatColumn(
+                    icon: WatchIcon.cadence,
+                    label: "CADENCE",
+                    value: displayState.filteredCadenceFormatted,
+                    iconColor: WatchColor.cadence
+                )
+                Divider().frame(height: 18).opacity(0.25)
+                heroStatColumn(
+                    icon: WatchIcon.pace,
+                    label: "TARGET",
+                    value: displayState.targetPaceFormatted(useMetric: useMetricSystem),
+                    iconColor: WatchColor.pace
+                )
             }
-            .padding(.horizontal, 2)
-
-            // Controls
-            controlsRow
         }
-        .padding(.top, 8)
-        .padding(.horizontal, 10)
+        .padding(10)
+        .watchLiquidGlass(accent: stateColor, cornerRadius: 14, isProminent: true)
+    }
+
+    private var calibrationHeroCard: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            heroHeaderRow {
+                Text(displayState.calibrationProgressFormatted)
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
+
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(displayState.elapsedTimeFormatted)
+                        .font(.system(size: 32, weight: .bold, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(.white)
+
+                    Text("BASELINE")
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .foregroundStyle(.secondary)
+
+                    Spacer()
+                }
+
+                calibrationProgressBar
+            }
+
+            insetStatBar {
+                heroStatColumn(
+                    icon: WatchIcon.pace,
+                    label: "PACE",
+                    value: displayState.filteredPaceFormatted(useMetric: useMetricSystem),
+                    iconColor: WatchColor.pace
+                )
+                Divider().frame(height: 18).opacity(0.25)
+                heroStatColumn(
+                    icon: WatchIcon.heartRate,
+                    label: "HR",
+                    value: displayState.filteredHeartRateFormatted,
+                    iconColor: WatchColor.heartRate
+                )
+                Divider().frame(height: 18).opacity(0.25)
+                heroStatColumn(
+                    icon: WatchIcon.cadence,
+                    label: "CADENCE",
+                    value: displayState.filteredCadenceFormatted,
+                    iconColor: WatchColor.cadence
+                )
+            }
+        }
+        .padding(10)
+        .watchLiquidGlass(accent: stateColor, cornerRadius: 14, isProminent: true)
+    }
+
+    // MARK: - Subviews & Helpers
+
+    private func insetStatBar<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        HStack(spacing: 0) {
+            content()
+        }
+        .padding(.vertical, 6)
+        .padding(.horizontal, 4)
+        .background(Color.white.opacity(0.05))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(Color.white.opacity(0.08), lineWidth: 0.5)
+        )
+        .padding(.top, 2)
+    }
+
+    private func heroHeaderRow<Trailing: View>(@ViewBuilder trailing: () -> Trailing) -> some View {
+        HStack(spacing: 6) {
+            ZStack {
+                Circle()
+                    .fill(stateColor.opacity(0.15))
+                    .frame(width: 20, height: 20)
+                Image(systemName: stateIconName)
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(stateColor)
+            }
+
+            let statusTitle = displayState.biometricStatusLabel.isEmpty
+                ? displayState.stateTitle
+                : displayState.biometricStatusLabel
+            Text(statusTitle.uppercased())
+                .font(.system(size: 9, weight: .bold, design: .rounded))
+                .foregroundStyle(stateColor)
+
+            Spacer()
+
+            trailing()
+        }
+    }
+
+    private func heroStatColumn(icon: String, label: String, value: String, iconColor: Color) -> some View {
+        VStack(spacing: 2) {
+            HStack(spacing: 2) {
+                Image(systemName: icon)
+                    .font(.system(size: 7, weight: .bold))
+                    .foregroundStyle(iconColor)
+                Text(label)
+                    .font(.system(size: 8, weight: .bold, design: .rounded))
+                    .foregroundStyle(.secondary)
+            }
+            Text(value)
+                .font(.system(size: 11, weight: .bold, design: .rounded))
+                .monospacedDigit()
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.65)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var calibrationProgressBar: some View {
+        GeometryReader { geo in
+            let progress = min(max(displayState.calibrationProgress ?? 0.0, 0.0), 1.0)
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(Color.white.opacity(0.12))
+                    .frame(height: 4)
+
+                Capsule()
+                    .fill(WatchColor.calibratingBlue)
+                    .frame(width: geo.size.width * CGFloat(progress), height: 4)
+            }
+        }
+        .frame(height: 4)
     }
 
     // MARK: - Dynamic Pace Gauge Track
@@ -346,78 +360,78 @@ public struct PacingGaugeView: View {
             let markerX = min(max(displayState.paceGaugeNormalizedPosition, 0.0), 1.0) * width
 
             ZStack(alignment: .leading) {
-                // Background track
                 Capsule()
-                    .fill(Color.white.opacity(0.12))
-                    .frame(height: 5)
+                    .fill(Color.white.opacity(0.14))
+                    .frame(height: 4)
 
-                // Sweet-spot green band
                 Capsule()
-                    .fill(vibrantGreen.opacity(0.45))
-                    .frame(width: bandWidth, height: 5)
+                    .fill(WatchColor.cadence.opacity(0.40))
+                    .frame(width: bandWidth, height: 4)
                     .offset(x: bandStart)
 
-                // Center target tick mark
                 Rectangle()
                     .fill(Color.white.opacity(0.6))
-                    .frame(width: 2, height: 9)
-                    .offset(x: width * 0.5 - 1)
+                    .frame(width: 1, height: 8)
+                    .offset(x: width * 0.5 - 0.5)
 
-                // Live marker dot (Electric Blue with glow)
                 Circle()
-                    .fill(electricBlue)
-                    .frame(width: 11, height: 11)
-                    .shadow(color: electricBlue.opacity(0.85), radius: 3)
-                    .offset(x: markerX - 5.5)
+                    .fill(.white)
+                    .frame(width: 8, height: 8)
+                    .overlay(Circle().stroke(WatchColor.pace, lineWidth: 1.5))
+                    .offset(x: max(0, min(width - 8, markerX - 4)))
             }
         }
-        .frame(height: 11)
-        .padding(.horizontal, 4)
+        .frame(height: 8)
     }
 
-    // MARK: - Biometric Edge Aura
+    // MARK: - Peripheral Split-Progress Bezel
 
-    private var biometricEdgeAura: some View {
+    private var splitProgressBezel: some View {
         let token = activeAuraToken
         let color = auraColor(for: token)
-        let isCalibrating = displayState.isCalibrating || token == .calibratingBlue
-        let strokeOpacity: Double = {
-            if isCalibrating {
-                return isPulsing ? 0.95 : 0.4
-            }
-            switch token {
-            case .surgeTeal, .vibrantGreen, .recoverAmber, .recoverOrange:
-                return 0.85
-            case .electricBlue, .surgeBlue:
-                return 0.6
-            default:
-                return 0.25
-            }
-        }()
-        let shadowRadius: CGFloat = {
-            if isCalibrating {
-                return isPulsing ? 8 : 4
-            }
-            switch token {
-            case .surgeTeal, .vibrantGreen, .recoverAmber, .recoverOrange:
-                return 6
-            default:
-                return 3
-            }
-        }()
+        let progress = displayState.splitProgressFraction(useMetric: useMetricSystem)
 
-        return RoundedRectangle(cornerRadius: 38)
-            .strokeBorder(color.opacity(strokeOpacity), lineWidth: 3.5)
-            .shadow(color: color.opacity(strokeOpacity * 0.7), radius: shadowRadius)
-            .ignoresSafeArea()
-            .allowsHitTesting(false)
+        return GeometryReader { geo in
+            let dot = PacingDisplayState.bezelPerimeterPoint(
+                progress: progress,
+                width: Double(geo.size.width),
+                height: Double(geo.size.height),
+                cornerRadius: 38.0,
+                inset: 2.5
+            )
+            ZStack {
+                WatchBezelTrackShape(cornerRadius: 38, inset: 2.5)
+                    .stroke(Color.white.opacity(0.08), lineWidth: 1.5)
+
+                if progress > 0 {
+                    WatchBezelTrackShape(cornerRadius: 38, inset: 2.5)
+                        .trim(from: 0, to: CGFloat(progress))
+                        .stroke(
+                            color.opacity(0.55),
+                            style: StrokeStyle(lineWidth: 2.0, lineCap: .round)
+                        )
+                }
+
+                ZStack {
+                    Circle()
+                        .fill(color.opacity(0.35))
+                        .frame(width: 9, height: 9)
+                    Circle()
+                        .fill(.white)
+                        .frame(width: 4.5, height: 4.5)
+                        .overlay(Circle().stroke(color, lineWidth: 1.5))
+                }
+                .position(x: dot.x, y: dot.y)
+            }
+        }
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
     }
 
     // MARK: - Primary Controls
 
     private var controlsRow: some View {
-        HStack(spacing: 12) {
-            // Pause / Resume
+        HStack(spacing: 6) {
             Button {
                 if workoutManager.sessionState == .running {
                     workoutManager.pauseWorkout()
@@ -425,48 +439,43 @@ public struct PacingGaugeView: View {
                     workoutManager.resumeWorkout()
                 }
             } label: {
-                Image(systemName: workoutManager.sessionState == .paused ? "play.fill" : "pause.fill")
-                    .font(.title3)
-                    .frame(minWidth: 44, minHeight: 44)
-                    .background(Color.yellow.opacity(0.3))
-                    .foregroundStyle(.yellow)
-                    .clipShape(Circle())
+                controlTile(
+                    icon: workoutManager.sessionState == .paused ? "play.fill" : "pause.fill",
+                    tint: .orange
+                )
             }
             .buttonStyle(.plain)
 
-            // End Session
             Button {
-                Task {
-                    let debrief = await workoutManager.endWorkout() ?? pacingViewModel.completedDebrief
-                    if let debrief {
-                        debriefPresentation = DebriefPresentation(debrief: debrief)
-                    } else {
-                        dismiss()
-                    }
-                }
+                isConfirmingEndWorkout = true
             } label: {
-                Image(systemName: "xmark")
-                    .font(.title3)
-                    .frame(minWidth: 44, minHeight: 44)
-                    .background(Color.red.opacity(0.3))
-                    .foregroundStyle(.red)
-                    .clipShape(Circle())
+                controlTile(icon: "xmark", tint: .red)
             }
             .buttonStyle(.plain)
 
-            // Voice Cues Toggle
             Button {
                 voiceCuesEnabled.toggle()
             } label: {
-                Image(systemName: voiceCuesEnabled ? "speaker.wave.2.fill" : "speaker.slash.fill")
-                    .font(.body)
-                    .frame(minWidth: 44, minHeight: 44)
-                    .background(Color.gray.opacity(0.3))
-                    .foregroundStyle(voiceCuesEnabled ? .green : .secondary)
-                    .clipShape(Circle())
+                controlTile(
+                    icon: voiceCuesEnabled ? "speaker.wave.2.fill" : "speaker.slash.fill",
+                    tint: voiceCuesEnabled ? .white : .secondary
+                )
             }
             .buttonStyle(.plain)
         }
+    }
+
+    private func controlTile(icon: String, tint: Color) -> some View {
+        Image(systemName: icon)
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundStyle(tint)
+            .frame(maxWidth: .infinity, minHeight: 38)
+            .background(Color.white.opacity(0.07))
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(Color.white.opacity(0.10), lineWidth: 0.75)
+            )
     }
 }
 

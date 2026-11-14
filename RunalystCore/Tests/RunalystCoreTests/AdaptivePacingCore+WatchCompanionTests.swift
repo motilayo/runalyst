@@ -523,8 +523,8 @@ struct AdaptivePacingCoreWatchCompanionTests {
             useMetricSystem: true
         )
         #expect(metricDebrief.adaptationsBullet == "Held steady baseline pacing throughout.")
-        #expect(metricDebrief.efficiencyScoreBullet == "Held baseline efficiency for all 30 minutes.")
-        #expect(metricDebrief.formInsightBullet == "Cadence stayed rock-solid at 168 spm across the run.")
+        #expect(metricDebrief.efficiencyScoreBullet == "Stayed in live aerobic band for all 30 minutes.")
+        #expect(metricDebrief.formInsightBullet == "Held steady 168 SPM turnover across the run.")
         #expect(metricDebrief.elapsedFormatted == "30:00")
         #expect(metricDebrief.distanceFormatted == "6.00 km")
         #expect(metricDebrief.averagePaceFormatted == "5:00 /km")
@@ -572,8 +572,8 @@ struct AdaptivePacingCoreWatchCompanionTests {
             useMetricSystem: true
         )
         #expect(metric.adaptationsBullet == "2 surges (+6s/km peak), 1 recovery adjustment.")
-        #expect(metric.efficiencyScoreBullet == "Held baseline efficiency for 20 minutes before cardiac drift.")
-        #expect(metric.formInsightBullet == "Cadence stayed rock-solid at 168 spm until kilometer 4.")
+        #expect(metric.efficiencyScoreBullet == "Stayed in live aerobic band for 20 minutes before recovery shift.")
+        #expect(metric.formInsightBullet == "Held steady 168 SPM turnover until kilometer 4.")
         #expect(metric.distanceFormatted == "6.00 km")
         #expect(metric.averagePaceFormatted == "5:00 /km")
         #expect(metric.averageHeartRateFormatted == "152 BPM")
@@ -587,9 +587,9 @@ struct AdaptivePacingCoreWatchCompanionTests {
         )
         // 6 s/km * 1.609344 = 9.65 -> 10 s/mi
         #expect(imperial.adaptationsBullet == "2 surges (+10s/mi peak), 1 recovery adjustment.")
-        #expect(imperial.efficiencyScoreBullet == "Held baseline efficiency for 20 minutes before cardiac drift.")
+        #expect(imperial.efficiencyScoreBullet == "Stayed in live aerobic band for 20 minutes before recovery shift.")
         // 4000 m / 1609.344 = 2.485 -> 2 mi
-        #expect(imperial.formInsightBullet == "Cadence stayed rock-solid at 168 spm until mile 2.")
+        #expect(imperial.formInsightBullet == "Held steady 168 SPM turnover until mile 2.")
         #expect(imperial.distanceFormatted == "3.73 mi")
         #expect(imperial.averagePaceFormatted == "8:03 /mi")
     }
@@ -642,7 +642,7 @@ struct AdaptivePacingCoreWatchCompanionTests {
         #expect(emptyDebrief.averagePaceFormatted == "--:--")
     }
 
-    @Test("WatchRunDebrief: 5-second 0.00 km run with 1 spm noise filters out noise and debriefs accurately")
+    @Test("WatchRunDebrief: 5-second 0.00 km run with 1 SPM noise filters out noise and debriefs accurately")
     func testWatchRunDebriefShortRunNoiseCadence() {
         var core = AdaptivePacingCore(
             profile: standardProfile,
@@ -737,7 +737,7 @@ struct AdaptivePacingCoreWatchCompanionTests {
             totalDistanceMeters: 1000.0,
             useMetricSystem: true
         )
-        #expect(debrief.efficiencyScoreBullet == "Held baseline efficiency for 1 minute before cardiac drift.")
+        #expect(debrief.efficiencyScoreBullet == "Stayed in live aerobic band for 1 minute before recovery shift.")
     }
 
     @Test("WatchRunDebrief: warmup at low cadence followed by solid cadence produces across the run insight")
@@ -795,7 +795,7 @@ struct AdaptivePacingCoreWatchCompanionTests {
             useMetricSystem: true
         )
         // Must NOT emit "until kilometer 1." — must report across the run
-        #expect(debrief.formInsightBullet == "Cadence stayed rock-solid at 150 spm across the run.")
+        #expect(debrief.formInsightBullet == "Held steady 150 SPM turnover across the run.")
     }
 
     @Test("WatchRunDebrief: solid cadence drop after establishment records distance only after debounce")
@@ -881,7 +881,7 @@ struct AdaptivePacingCoreWatchCompanionTests {
             totalDistanceMeters: 5000.0,
             useMetricSystem: true
         )
-        #expect(debrief.formInsightBullet == "Cadence stayed rock-solid at 168 spm until kilometer 4.")
+        #expect(debrief.formInsightBullet == "Held steady 168 SPM turnover until kilometer 4.")
     }
 
     @Test("WatchRunDebrief: sub-1km solid cadence distance falls back to across the run")
@@ -897,22 +897,22 @@ struct AdaptivePacingCoreWatchCompanionTests {
         // Metric: < 1000m falls back to "across the run"
         core.solidCadenceUntilDistanceMeters = 850.0
         let metric = core.buildRunDebrief(elapsedSeconds: 600, totalDistanceMeters: 2000.0, useMetricSystem: true)
-        #expect(metric.formInsightBullet == "Cadence stayed rock-solid at 168 spm across the run.")
+        #expect(metric.formInsightBullet == "Held steady 168 SPM turnover across the run.")
 
         // Metric: >= 1000m emits "until kilometer"
         core.solidCadenceUntilDistanceMeters = 1000.0
         let metricAt1Km = core.buildRunDebrief(elapsedSeconds: 600, totalDistanceMeters: 2000.0, useMetricSystem: true)
-        #expect(metricAt1Km.formInsightBullet == "Cadence stayed rock-solid at 168 spm until kilometer 1.")
+        #expect(metricAt1Km.formInsightBullet == "Held steady 168 SPM turnover until kilometer 1.")
 
         // Imperial: < 1609.344m falls back to "across the run"
         core.solidCadenceUntilDistanceMeters = 1500.0
         let imperialSubMile = core.buildRunDebrief(elapsedSeconds: 600, totalDistanceMeters: 2000.0, useMetricSystem: false)
-        #expect(imperialSubMile.formInsightBullet == "Cadence stayed rock-solid at 168 spm across the run.")
+        #expect(imperialSubMile.formInsightBullet == "Held steady 168 SPM turnover across the run.")
 
         // Imperial: >= 1609.344m emits "until mile"
         core.solidCadenceUntilDistanceMeters = 1610.0
         let imperialAt1Mile = core.buildRunDebrief(elapsedSeconds: 600, totalDistanceMeters: 2000.0, useMetricSystem: false)
-        #expect(imperialAt1Mile.formInsightBullet == "Cadence stayed rock-solid at 168 spm until mile 1.")
+        #expect(imperialAt1Mile.formInsightBullet == "Held steady 168 SPM turnover until mile 1.")
     }
 
     // MARK: - 6. Watch Voice Delivery Target Resolution

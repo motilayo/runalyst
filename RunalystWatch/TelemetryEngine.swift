@@ -29,7 +29,7 @@ public actor TelemetryEngine {
 
     private var lastEmittedSecond: Int = -1
     private var isPaused: Bool = false
-    private var lastCompletedKilometer: Int = 0
+    private var lastCompletedSplit: Int = 0
     private var cumulativeDistanceMeters: Double = 0.0
     private var lastSplitElapsed: TimeInterval = 0.0
     private var latestElapsedSeconds: TimeInterval = 0.0
@@ -93,7 +93,7 @@ public actor TelemetryEngine {
         )
         self.lastEmittedSecond = -1
         self.isPaused = false
-        self.lastCompletedKilometer = 0
+        self.lastCompletedSplit = 0
         self.cumulativeDistanceMeters = 0.0
         self.lastSplitElapsed = 0.0
         self.latestElapsedSeconds = 0.0
@@ -238,13 +238,20 @@ public actor TelemetryEngine {
         let result = core.ingest(tick)
         var finalEvents = result.events
 
-        while cumulativeDistanceMeters >= Double(lastCompletedKilometer + 1) * 1000.0 {
-            lastCompletedKilometer += 1
+        let useMetric = UserDefaults.standard.object(forKey: "useMetricSystem") as? Bool
+            ?? (Locale.current.measurementSystem == .metric)
+        let splitUnitMeters = useMetric ? 1000.0 : 1609.344
+        while cumulativeDistanceMeters >= Double(lastCompletedSplit + 1) * splitUnitMeters {
+            lastCompletedSplit += 1
             let splitDuration = elapsed - lastSplitElapsed
-            let splitPace = splitDuration > 0 ? Int(splitDuration) : (result.display.filteredPaceSecondsPerKm ?? 300)
+            let fallbackKmPace = result.display.filteredPaceSecondsPerKm ?? 300
+            let fallbackSplitPace = useMetric
+                ? fallbackKmPace
+                : Int((Double(fallbackKmPace) * 1.609344).rounded())
+            let splitPace = splitDuration > 0 ? Int(splitDuration) : fallbackSplitPace
             lastSplitElapsed = elapsed
             let splitEvent = PacingEvent.splitMilestone(
-                splitIndex: lastCompletedKilometer,
+                splitIndex: lastCompletedSplit,
                 splitPaceSecondsPerKm: splitPace
             )
             finalEvents.append(splitEvent)

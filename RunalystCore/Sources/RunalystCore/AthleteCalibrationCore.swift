@@ -361,7 +361,8 @@ public enum AthleteCalibrationCore {
                 profile: fallbackProfile,
                 intent: intent,
                 requiresTargetPacePicker: true,
-                isIndoorPreferred: false
+                isIndoorPreferred: false,
+                isPhoneSessionSynced: false
             )
         }
 
@@ -383,7 +384,8 @@ public enum AthleteCalibrationCore {
                 profile: cachedContext.profile,
                 intent: resolvedIntent,
                 requiresTargetPacePicker: needsPicker,
-                isIndoorPreferred: cachedContext.isIndoorPreferred ?? false
+                isIndoorPreferred: cachedContext.isIndoorPreferred ?? false,
+                isPhoneSessionSynced: true
             )
         } else {
             // Case 3: Stale intent from prior day -> Reuse profile, reset to steady intent + require picker
@@ -397,13 +399,13 @@ public enum AthleteCalibrationCore {
                 profile: cachedContext.profile,
                 intent: intent,
                 requiresTargetPacePicker: true,
-                isIndoorPreferred: cachedContext.isIndoorPreferred ?? false
+                isIndoorPreferred: cachedContext.isIndoorPreferred ?? false,
+                isPhoneSessionSynced: false
             )
         }
     }
 
     // MARK: - Private Helpers
-
 
     private static func parseTargetPace(from paceBand: String?) -> Int? {
         guard let paceBand else { return nil }

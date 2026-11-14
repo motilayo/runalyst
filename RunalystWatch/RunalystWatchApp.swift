@@ -92,7 +92,8 @@ struct RunalystWatchApp: App {
                     targetBandLowerNormalized: 0.42,
                     targetBandUpperNormalized: 0.58,
                     biometricStatusToken: .electricBlue,
-                    biometricStatusLabel: "Locked In"
+                    biometricStatusLabel: "Locked In",
+                    totalDistanceMeters: 620.0
                 )
             case "GAUGE_SURGE":
                 vm.displayState = PacingDisplayState(
@@ -119,7 +120,8 @@ struct RunalystWatchApp: App {
                     targetBandLowerNormalized: 0.42,
                     targetBandUpperNormalized: 0.58,
                     biometricStatusToken: .surgeTeal,
-                    biometricStatusLabel: "Surge Zone"
+                    biometricStatusLabel: "Surge",
+                    totalDistanceMeters: 340.0
                 )
             case "GAUGE_RECOVER":
                 vm.displayState = PacingDisplayState(
@@ -146,7 +148,8 @@ struct RunalystWatchApp: App {
                     targetBandLowerNormalized: 0.42,
                     targetBandUpperNormalized: 0.58,
                     biometricStatusToken: .recoverAmber,
-                    biometricStatusLabel: "Protecting Zone"
+                    biometricStatusLabel: "Recover",
+                    totalDistanceMeters: 820.0
                 )
             case "SUMMARY_DEBRIEF":
                 break
@@ -169,12 +172,12 @@ struct RunalystWatchApp: App {
                         RunSummaryView(
                             debrief: WatchRunDebrief(
                                 adaptationsBullet: "2 surges (+10s/km peak), 1 recovery adjustment.",
-                                efficiencyScoreBullet: "Held baseline efficiency for 28 minutes before cardiac drift.",
-                                formInsightBullet: "Cadence stayed rock-solid at 172 spm across the run.",
+                                efficiencyScoreBullet: "Stayed in live aerobic band for 28 minutes before recovery shift.",
+                                formInsightBullet: "Held steady 172 SPM turnover across the run.",
                                 elapsedFormatted: "32:45",
                                 distanceFormatted: "6.20 km",
                                 averagePaceFormatted: "5:17 /km",
-                                averageHeartRateFormatted: "152 bpm",
+                                averageHeartRateFormatted: "152 BPM",
                                 averageCadenceFormatted: "172 SPM"
                             ),
                             onDone: {}

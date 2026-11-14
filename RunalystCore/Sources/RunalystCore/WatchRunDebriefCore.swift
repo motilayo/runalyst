@@ -18,6 +18,44 @@ public struct WatchRunDebrief: Sendable, Equatable, Codable {
     public let averageHeartRateFormatted: String
     public let averageCadenceFormatted: String
 
+    /// Companion handoff badge indicating the completed session was saved.
+    public var companionSyncBadgeText: String { "RUN COMPLETE" }
+    /// Companion handoff subtitle informing the runner that the session is saved to Apple Health.
+    public var companionSyncSubtitle: String { "Saved to Apple Health" }
+
+    // MARK: - Compact Hero Presentation Formatters
+
+    private func token(at index: Int, in formatted: String) -> String? {
+        let tokens = formatted.split(separator: " ")
+        guard index >= 0 && index < tokens.count else { return nil }
+        return String(tokens[index])
+    }
+
+    /// Leading numerical token of formatted distance (e.g. `"6.20"` from `"6.20 km"`).
+    public var primaryDistanceValue: String {
+        token(at: 0, in: distanceFormatted) ?? distanceFormatted
+    }
+
+    /// Uppercased unit token of formatted distance (e.g. `"KM"` or `"MI"`), or empty if absent.
+    public var distanceUnitLabel: String {
+        token(at: 1, in: distanceFormatted)?.uppercased() ?? ""
+    }
+
+    /// Compact representation of average pace (e.g. `"5:17"` or `"--:--"`).
+    public var compactPaceValue: String {
+        token(at: 0, in: averagePaceFormatted) ?? averagePaceFormatted
+    }
+
+    /// Compact representation of average heart rate (e.g. `"152"` or `"--"`).
+    public var compactHeartRateValue: String {
+        token(at: 0, in: averageHeartRateFormatted) ?? averageHeartRateFormatted
+    }
+
+    /// Compact representation of average cadence (e.g. `"172"` or `"--"`).
+    public var compactCadenceValue: String {
+        token(at: 0, in: averageCadenceFormatted) ?? averageCadenceFormatted
+    }
+
     public init(
         adaptationsBullet: String,
         efficiencyScoreBullet: String,
@@ -148,12 +186,12 @@ extension AdaptivePacingCore {
         if let driftSec = firstDriftElapsedSeconds {
             let driftMinutes = max(1, Int((driftSec / 60.0).rounded()))
             let driftUnit = (driftMinutes == 1) ? "minute" : "minutes"
-            efficiencyScoreBullet = "Held baseline efficiency for \(driftMinutes) \(driftUnit) before cardiac drift."
+            efficiencyScoreBullet = "Stayed in live aerobic band for \(driftMinutes) \(driftUnit) before recovery shift."
         } else if elapsedSeconds < 60 || isCalibrating {
             efficiencyScoreBullet = "Ended before baseline calibration completed."
         } else {
             let minuteNoun = (totalElapsedMinutes == 1) ? "1 minute" : "\(totalElapsedMinutes) minutes"
-            efficiencyScoreBullet = "Held baseline efficiency for all \(minuteNoun)."
+            efficiencyScoreBullet = "Stayed in live aerobic band for all \(minuteNoun)."
         }
 
         // 3. Form insight bullet
@@ -164,17 +202,17 @@ extension AdaptivePacingCore {
                 : nil)
 
         if let cadenceValue = resolvedCadence, cadenceValue >= 80 {
-            if let solidDist = solidCadenceUntilDistanceMeters,
-               (useMetricSystem ? solidDist >= 1000.0 : solidDist >= 1609.344) {
+            let thresholdMeters = useMetricSystem ? 1000.0 : 1609.344
+            if let solidDist = solidCadenceUntilDistanceMeters, solidDist >= thresholdMeters {
                 if useMetricSystem {
                     let km = max(1, Int((solidDist / 1000.0).rounded()))
-                    formInsightBullet = "Cadence stayed rock-solid at \(cadenceValue) spm until kilometer \(km)."
+                    formInsightBullet = "Held steady \(cadenceValue) SPM turnover until kilometer \(km)."
                 } else {
                     let mi = max(1, Int((solidDist / 1609.344).rounded()))
-                    formInsightBullet = "Cadence stayed rock-solid at \(cadenceValue) spm until mile \(mi)."
+                    formInsightBullet = "Held steady \(cadenceValue) SPM turnover until mile \(mi)."
                 }
             } else {
-                formInsightBullet = "Cadence stayed rock-solid at \(cadenceValue) spm across the run."
+                formInsightBullet = "Held steady \(cadenceValue) SPM turnover across the run."
             }
         } else {
             formInsightBullet = "Insufficient cadence data recorded."

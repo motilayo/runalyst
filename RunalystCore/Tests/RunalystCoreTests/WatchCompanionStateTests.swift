@@ -276,7 +276,7 @@ struct WatchCompanionStateTests {
         #expect(snapshot.phase == .completed)
         #expect(snapshot.isActiveWorkout == false)
         #expect(snapshot.stateTitle == "Completed")
-        #expect(snapshot.headerTitle == "Coach's Takeaway")
+        #expect(snapshot.headerTitle == "Run Debrief")
 
         let debrief = snapshot.completedDebrief
         #expect(debrief != nil)
@@ -315,7 +315,7 @@ struct WatchCompanionStateTests {
         )
         #expect(pausedSnapshot.headerTitle == "Apple Watch Paused")
 
-        // Completed run -> surfaces Coach's Takeaway
+        // Completed run -> surfaces Run Debrief
         let completedSnapshot = WatchLiveRunSnapshot.from(
             displayState: display,
             location: .outdoor,
@@ -326,7 +326,7 @@ struct WatchCompanionStateTests {
             completedDebrief: sampleDebrief,
             updatedAtEpochSeconds: 12.0
         )
-        #expect(completedSnapshot.headerTitle == "Coach's Takeaway")
+        #expect(completedSnapshot.headerTitle == "Run Debrief")
     }
 
     @Test("PacingDisplayState makeLiveSnapshot extension matches static factory output")
@@ -382,7 +382,7 @@ struct WatchCompanionStateTests {
         #expect(decoded.location == .outdoor)
         #expect(decoded.runIntent == .adaptiveBase)
         #expect(decoded.prescribedDrillTitle == "Cadence Pyramids")
-        #expect(decoded.headerTitle == "Coach's Takeaway")
+        #expect(decoded.headerTitle == "Run Debrief")
         #expect(decoded.intentAndLocationSubtitle == "Adaptive Base • Outdoor")
         #expect(decoded.completedDebrief?.formInsightBullet == sampleDebrief.formInsightBullet)
         #expect(decoded.updatedAtEpochSeconds == 1731420000.0)
