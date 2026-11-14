@@ -460,7 +460,7 @@ struct WatchCompanionStateTests {
 
     // MARK: - 5. WatchLiveRunSnapshot Freshness & Staleness
 
-    @Test("WatchLiveRunSnapshot: isStale detects stale telemetry for active runs but never for paused or completed")
+    @Test("WatchLiveRunSnapshot: isStale detects stale telemetry for active runs and expires paused or completed runs after 4 hours")
     func testWatchLiveRunSnapshotStaleness() {
         let activeSnapshot = WatchLiveRunSnapshot.from(
             displayState: makeDisplayState(state: .tracking),
@@ -485,6 +485,9 @@ struct WatchCompanionStateTests {
         #expect(pausedSnapshot.phase == .paused)
         #expect(pausedSnapshot.isPaused == true)
         #expect(pausedSnapshot.isStale(at: 2000.0) == false)
+        #expect(pausedSnapshot.isStale(at: 15_400.0) == false)
+        #expect(pausedSnapshot.isStale(at: 15_401.0) == true)
+        #expect(pausedSnapshot.isStale(at: 16_000.0) == true)
 
         let completedSnapshot = WatchLiveRunSnapshot.from(
             displayState: makeDisplayState(state: .tracking),
@@ -496,5 +499,8 @@ struct WatchCompanionStateTests {
         #expect(completedSnapshot.phase == .completed)
         #expect(completedSnapshot.isPaused == false)
         #expect(completedSnapshot.isStale(at: 2000.0) == false)
+        #expect(completedSnapshot.isStale(at: 15_400.0) == false)
+        #expect(completedSnapshot.isStale(at: 15_401.0) == true)
+        #expect(completedSnapshot.isStale(at: 16_000.0) == true)
     }
 }

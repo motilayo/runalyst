@@ -14,6 +14,7 @@ public final class WorkoutManager: NSObject {
     public private(set) var sessionState: HKWorkoutSessionState = .notStarted
     public private(set) var currentLocation: PacingLocation = .outdoor
     public var isNavigatingToGauge: Bool = false
+    public var lastStartError: String?
 
     private var activeLocation: PacingLocation = .outdoor
     private var activeIntent: WatchRunIntent = .adaptiveBase
@@ -38,7 +39,14 @@ public final class WorkoutManager: NSObject {
     private var typesToShare: Set<HKSampleType> {
         [
             HKObjectType.workoutType(),
-            HKQuantityType(.activeEnergyBurned)
+            HKQuantityType(.activeEnergyBurned),
+            HKQuantityType(.distanceWalkingRunning),
+            HKQuantityType(.heartRate),
+            HKQuantityType(.runningSpeed),
+            HKQuantityType(.runningPower),
+            HKQuantityType(.runningStrideLength),
+            HKQuantityType(.runningGroundContactTime),
+            HKQuantityType(.runningVerticalOscillation)
         ]
     }
 
@@ -98,6 +106,7 @@ public final class WorkoutManager: NSObject {
         viewModel: PacingViewModel
     ) async {
         guard sessionState != .running && sessionState != .paused else { return }
+        self.lastStartError = nil
         viewModel.reset(targetPaceSecondsPerKm: targetPaceSecondsPerKm)
 
         self.currentLocation = location
@@ -152,8 +161,53 @@ public final class WorkoutManager: NSObject {
             self.isNavigatingToGauge = true
             broadcastLiveSnapshot(forceImmediate: true)
         } catch {
-            // Failed to start session
+            self.lastStartError = "Unable to start workout. Check Health permissions."
         }
+    }
+
+    public func recoverActiveWorkoutIfNeeded(viewModel: PacingViewModel) async {
+        guard sessionState != .running && sessionState != .paused else { return }
+        guard let recoveredSession = try? await healthStore.recoverActiveWorkoutSession() else { return }
+
+        let builder = recoveredSession.associatedWorkoutBuilder()
+        recoveredSession.delegate = self
+        builder.delegate = self
+        builder.dataSource = HKLiveWorkoutDataSource(healthStore: healthStore, workoutConfiguration: recoveredSession.workoutConfiguration)
+
+        self.session = recoveredSession
+        self.builder = builder
+
+        let location: PacingLocation = (recoveredSession.workoutConfiguration.locationType == .indoor) ? .indoor : .outdoor
+        self.currentLocation = location
+        self.activeLocation = location
+
+        let resolved = WatchContextStore.shared.resolveSession(fallbackAge: athleteAge())
+        let effectiveIntent = WatchRunIntent.matching(intentKind: resolved.intent.intent)
+        self.activeIntent = effectiveIntent
+        self.pacingViewModel = viewModel
+        self.activePrescribedTitle = resolved.prescribedDrillTitle
+
+        let engine = TelemetryEngine(
+            profile: resolved.profile,
+            intent: resolved.intent,
+            location: location,
+            watchIntent: effectiveIntent,
+            viewModel: viewModel
+        )
+        self.telemetryEngine = engine
+
+        startTickLoop(engine: engine, builder: builder)
+        if let startDate = recoveredSession.startDate {
+            MotionStreamService.shared.startStreaming(
+                location: location,
+                telemetryEngine: engine,
+                startTime: startDate
+            )
+        }
+
+        self.sessionState = (recoveredSession.state == .paused) ? .paused : .running
+        self.isNavigatingToGauge = true
+        broadcastLiveSnapshot(forceImmediate: true)
     }
 
     public func pauseWorkout() {

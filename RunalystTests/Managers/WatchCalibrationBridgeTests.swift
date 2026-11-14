@@ -177,6 +177,116 @@ final class WatchCalibrationBridgeTests: XCTestCase {
         XCTAssertNil(bridge.latestWatchSnapshot)
     }
 
+    func testDismissCompletedDebrief_PreventsZombieResurrection_AndAcceptsNewerDebrief() {
+        let bridge = WatchCalibrationBridge.shared
+        defer {
+            bridge.dismissCompletedDebrief()
+            UserDefaults.standard.removeObject(forKey: "lastDismissedWatchSnapshotEpoch")
+        }
+
+        let now = Date().timeIntervalSince1970
+        let debrief1 = WatchRunDebrief(
+            adaptationsBullet: "Paced within +/- 4 sec/km of prescribed target.",
+            efficiencyScoreBullet: "Stayed in live aerobic band for 28 minutes before recovery shift.",
+            formInsightBullet: "Held steady 172 SPM turnover across the run.",
+            elapsedFormatted: "32:45",
+            distanceFormatted: "6.20 KM",
+            averagePaceFormatted: "5:17 /km",
+            averageHeartRateFormatted: "152 BPM",
+            averageCadenceFormatted: "172 SPM"
+        )
+
+        let snapshot1 = WatchLiveRunSnapshot(
+            schemaVersion: 1,
+            phase: .completed,
+            location: .outdoor,
+            runIntent: .adaptiveBase,
+            prescribedDrillTitle: nil,
+            stateTitle: "Run Complete",
+            biometricStatusLabel: "Saved to Health",
+            biometricStatusToken: .vibrantGreen,
+            filteredPaceFormatted: "5:17 /km",
+            targetPaceFormatted: "5:15 /km",
+            filteredHeartRateFormatted: "152 BPM",
+            filteredCadenceFormatted: "172 SPM",
+            elapsedTimeFormatted: "32:45",
+            deviationTitle: "On Pace",
+            paceGaugeNormalizedPosition: 0.5,
+            targetBandLowerNormalized: 0.45,
+            targetBandUpperNormalized: 0.55,
+            calibrationProgress: nil,
+            completedDebrief: debrief1,
+            updatedAtEpochSeconds: now - 10.0
+        )
+
+        guard let data1 = try? JSONEncoder().encode(snapshot1) else {
+            XCTFail("Failed to encode snapshot1")
+            return
+        }
+
+        // Receive completed snapshot
+        bridge.handleReceivedLiveSnapshotData(data1)
+        XCTAssertEqual(bridge.latestWatchSnapshot?.phase, .completed)
+        XCTAssertEqual(bridge.latestCompletedDebrief?.distanceFormatted, "6.20 KM")
+
+        // Dismiss completed debrief
+        bridge.dismissCompletedDebrief()
+        XCTAssertNil(bridge.latestCompletedDebrief)
+        XCTAssertNil(bridge.latestWatchSnapshot)
+        XCTAssertEqual(
+            UserDefaults.standard.double(forKey: "lastDismissedWatchSnapshotEpoch"),
+            snapshot1.updatedAtEpochSeconds
+        )
+
+        // Re-delivery of the same or older completed snapshot should be ignored
+        bridge.handleReceivedLiveSnapshotData(data1)
+        XCTAssertNil(bridge.latestCompletedDebrief, "Zombie debrief should NOT be resurrected")
+        XCTAssertNil(bridge.latestWatchSnapshot)
+
+        // However, a newer completed snapshot (> lastDismissedEpoch) should be accepted
+        let debrief2 = WatchRunDebrief(
+            adaptationsBullet: "Paced within +/- 4 sec/km of prescribed target.",
+            efficiencyScoreBullet: "Stayed in live aerobic band for 32 minutes before recovery shift.",
+            formInsightBullet: "Held steady 174 SPM turnover across the run.",
+            elapsedFormatted: "36:10",
+            distanceFormatted: "7.00 KM",
+            averagePaceFormatted: "5:10 /km",
+            averageHeartRateFormatted: "155 BPM",
+            averageCadenceFormatted: "174 SPM"
+        )
+
+        let snapshot2 = WatchLiveRunSnapshot(
+            schemaVersion: 1,
+            phase: .completed,
+            location: .outdoor,
+            runIntent: .adaptiveBase,
+            prescribedDrillTitle: nil,
+            stateTitle: "Run Complete",
+            biometricStatusLabel: "Saved to Health",
+            biometricStatusToken: .vibrantGreen,
+            filteredPaceFormatted: "5:10 /km",
+            targetPaceFormatted: "5:15 /km",
+            filteredHeartRateFormatted: "155 BPM",
+            filteredCadenceFormatted: "174 SPM",
+            elapsedTimeFormatted: "36:10",
+            deviationTitle: "On Pace",
+            paceGaugeNormalizedPosition: 0.5,
+            targetBandLowerNormalized: 0.45,
+            targetBandUpperNormalized: 0.55,
+            calibrationProgress: nil,
+            completedDebrief: debrief2,
+            updatedAtEpochSeconds: now + 5.0
+        )
+        guard let data2 = try? JSONEncoder().encode(snapshot2) else {
+            XCTFail("Failed to encode snapshot2")
+            return
+        }
+
+        bridge.handleReceivedLiveSnapshotData(data2)
+        XCTAssertEqual(bridge.latestWatchSnapshot?.elapsedTimeFormatted, "36:10")
+        XCTAssertEqual(bridge.latestCompletedDebrief?.distanceFormatted, "7.00 KM")
+    }
+
     func testCompanionVoiceRelayCancelSafety() {
         let relay = CompanionVoiceRelay.shared
         let dummyUtterance = AVSpeechUtterance(string: "Test speech")

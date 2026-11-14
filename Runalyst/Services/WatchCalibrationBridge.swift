@@ -291,6 +291,13 @@ final class WatchCalibrationBridge: NSObject, WCSessionDelegate {
 
     /// Dismisses the completed workout debrief banner.
     func dismissCompletedDebrief() {
+        let existing = UserDefaults.standard.double(forKey: "lastDismissedWatchSnapshotEpoch")
+        if let current = latestWatchSnapshot, current.phase == .completed {
+            UserDefaults.standard.set(max(existing, current.updatedAtEpochSeconds), forKey: "lastDismissedWatchSnapshotEpoch")
+        } else if latestCompletedDebrief != nil {
+            UserDefaults.standard.set(max(existing, Date().timeIntervalSince1970), forKey: "lastDismissedWatchSnapshotEpoch")
+        }
+
         self.latestCompletedDebrief = nil
         if self.latestWatchSnapshot?.phase == .completed {
             self.latestWatchSnapshot = nil
@@ -337,6 +344,11 @@ final class WatchCalibrationBridge: NSObject, WCSessionDelegate {
         }
         guard snapshot.isSupportedSchema else { return }
         if snapshot.isStale(at: Date().timeIntervalSince1970) {
+            return
+        }
+        if snapshot.phase == .completed,
+           let lastDismissed = UserDefaults.standard.object(forKey: "lastDismissedWatchSnapshotEpoch") as? TimeInterval,
+           snapshot.updatedAtEpochSeconds <= lastDismissed {
             return
         }
         if let existing = latestWatchSnapshot, snapshot.updatedAtEpochSeconds < existing.updatedAtEpochSeconds {
