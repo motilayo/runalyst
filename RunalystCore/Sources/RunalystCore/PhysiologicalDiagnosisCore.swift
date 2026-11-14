@@ -290,6 +290,8 @@ public struct PhysiologicalDiagnosisInput: Sendable, Equatable {
     public var ambientTemperatureC: Double?
     public var ambientHumidity: Double?
     public var environmentalModifier: EnvironmentalModifier?
+    public let calibratedZone2CeilingBPM: Double?
+    public let calibratedRecoveryCeilingBPM: Double?
 
     public init(
         workingCadence: Int,
@@ -309,7 +311,9 @@ public struct PhysiologicalDiagnosisInput: Sendable, Equatable {
         avgHeartRate: Int,
         ambientTemperatureC: Double? = nil,
         ambientHumidity: Double? = nil,
-        environmentalModifier: EnvironmentalModifier? = nil
+        environmentalModifier: EnvironmentalModifier? = nil,
+        calibratedZone2CeilingBPM: Double? = nil,
+        calibratedRecoveryCeilingBPM: Double? = nil
     ) {
         self.workingCadence = workingCadence
         self.heightAdjustedCadenceFloor = heightAdjustedCadenceFloor
@@ -329,8 +333,12 @@ public struct PhysiologicalDiagnosisInput: Sendable, Equatable {
         self.ambientTemperatureC = ambientTemperatureC
         self.ambientHumidity = ambientHumidity
         self.environmentalModifier = environmentalModifier
+        self.calibratedZone2CeilingBPM = calibratedZone2CeilingBPM
+        self.calibratedRecoveryCeilingBPM = calibratedRecoveryCeilingBPM
     }
 }
+
+public typealias PhysiologicalDiagnosisInputCore = PhysiologicalDiagnosisInput
 
 public enum PhysiologicalDiagnosisCore {
     public static func evaluate(_ input: PhysiologicalDiagnosisInput) -> PhysiologicalVerdicts {

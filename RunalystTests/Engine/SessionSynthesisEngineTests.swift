@@ -1402,4 +1402,133 @@ final class SessionSynthesisEngineTests: XCTestCase {
             XCTAssertEqual(twoDaysLaterPlanned.minutesHigh, expected.minutesHigh)
         }
     }
+
+    @MainActor
+    func testEvaluateDailyStateDerivesCalibratedHRCapFromSustained30sBuckets() {
+        defer {
+            UserDefaults.standard.removeObject(forKey: "runnerAge")
+            UserDefaults.standard.removeObject(forKey: "cachedRestingHRSamples")
+        }
+        UserDefaults.standard.set(30, forKey: "runnerAge")
+        UserDefaults.standard.set([50.0, 52.0, 48.0], forKey: "cachedRestingHRSamples")
+
+        let now = Date()
+        let yesterday = now.addingTimeInterval(-86400)
+
+        // Two adjacent 30-second slices sustaining 195 BPM peak heart rate
+        let slice1 = BucketData(
+            startTime: yesterday,
+            distanceMeters: 125.0,
+            durationSeconds: 30.0,
+            meanPaceSecPerKm: 240.0,
+            meanCadence: 175.0,
+            meanHR: 195.0
+        )
+        let slice2 = BucketData(
+            startTime: yesterday.addingTimeInterval(30),
+            distanceMeters: 125.0,
+            durationSeconds: 30.0,
+            meanPaceSecPerKm: 240.0,
+            meanCadence: 176.0,
+            meanHR: 195.0
+        )
+
+        let historicalRun = RunRecord(
+            id: UUID(),
+            hkWorkoutID: UUID(),
+            date: yesterday,
+            totalDistanceMeters: 5000.0,
+            duration: 1800.0,
+            rawAvgPace: 360.0,
+            rawAvgHeartRate: 155.0,
+            rawAvgCadence: 168.0,
+            workingAvgPace: 360.0,
+            workingAvgCadence: 168.0,
+            workingAvgHeartRate: 155.0,
+            paceCV: 0.05,
+            paceSlope: 0.0,
+            percentZone4: 0.1,
+            detectedTypeRaw: "Steady Effort",
+            buckets: [slice1, slice2]
+        )
+
+        let state = SessionSynthesisEngine.evaluateDailyState(
+            runRecords: [historicalRun],
+            activeGoal: "Base Building",
+            experienceLevel: "Intermediate",
+            useMetric: true,
+            userHeightCm: 175.0,
+            now: now
+        )
+
+        guard case .preRun(let session) = state else {
+            XCTFail("Expected .preRun state")
+            return
+        }
+
+        XCTAssertEqual(session.hrCap, "HR: < 163 BPM")
+    }
+
+    @MainActor
+    func testEvaluateDailyStateDerivesCalibratedHRCapFromPersistedRunSignatureWithoutBuckets() {
+        defer {
+            UserDefaults.standard.removeObject(forKey: "runnerAge")
+            UserDefaults.standard.removeObject(forKey: "cachedRestingHRSamples")
+        }
+        UserDefaults.standard.set(30, forKey: "runnerAge")
+        UserDefaults.standard.set([50.0, 52.0, 48.0], forKey: "cachedRestingHRSamples")
+
+        let now = Date()
+        let yesterday = now.addingTimeInterval(-86400)
+
+        let signature = RunSignature(
+            classification: "Steady Effort",
+            confidence: 0.95,
+            probabilities: ["Steady Effort": 0.95],
+            anomalies: [],
+            cadenceFloor: 160.0,
+            phaseSegments: [],
+            dataSource: "wrist",
+            isIndoor: false,
+            needsInclineReview: false,
+            splits: [],
+            peakHeartRateBPM: 195.0
+        )
+
+        let historicalRun = RunRecord(
+            id: UUID(),
+            hkWorkoutID: UUID(),
+            date: yesterday,
+            totalDistanceMeters: 5000.0,
+            duration: 1800.0,
+            rawAvgPace: 360.0,
+            rawAvgHeartRate: 155.0,
+            rawAvgCadence: 168.0,
+            workingAvgPace: 360.0,
+            workingAvgCadence: 168.0,
+            workingAvgHeartRate: 155.0,
+            paceCV: 0.05,
+            paceSlope: 0.0,
+            percentZone4: 0.1,
+            detectedTypeRaw: "Steady Effort",
+            buckets: []
+        )
+        historicalRun.signature = signature
+
+        let state = SessionSynthesisEngine.evaluateDailyState(
+            runRecords: [historicalRun],
+            activeGoal: "Base Building",
+            experienceLevel: "Intermediate",
+            useMetric: true,
+            userHeightCm: 175.0,
+            now: now
+        )
+
+        guard case .preRun(let session) = state else {
+            XCTFail("Expected .preRun state")
+            return
+        }
+
+        XCTAssertEqual(session.hrCap, "HR: < 163 BPM")
+    }
 }

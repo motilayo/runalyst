@@ -314,6 +314,34 @@ enum SessionSynthesisEngine {
         )
     }
 
+    /// Derives calibrated heart rate zone ceilings from bucketed telemetry in historical runs.
+    /// Strictly obeys the Reverse Air-Gap: returns nil when only fallback thresholds are available.
+    public static func calibratedCeilings(from runRecords: [RunRecord], now: Date = Date()) -> CalibratedZoneCeilings? {
+        let buckets = runRecords.filter { !$0.isDeleted }.flatMap { $0.subRunCalibrationBuckets() }
+        guard !buckets.isEmpty else { return nil }
+        let cachedRHR = UserDefaults.standard.array(forKey: "cachedRestingHRSamples") as? [Double] ?? []
+        let cachedAge = UserDefaults.standard.integer(forKey: "runnerAge")
+        let profile = AthleteCalibrationCore.makeProfile(
+            buckets: buckets,
+            restingHRSamples: cachedRHR,
+            age: cachedAge > 0 ? cachedAge : nil,
+            windowEnd: now
+        )
+        guard !profile.isFallback && profile.maxHR >= 170.0 else { return nil }
+        return profile.zoneCeilings()
+    }
+
+    /// Derives calibrated heart rate zone ceilings for a single run record by querying historical runs from its ModelContext.
+    @MainActor
+    public static func calibratedCeilings(for runRecord: RunRecord, now: Date = Date()) -> CalibratedZoneCeilings? {
+        if let context = runRecord.modelContext {
+            let descriptor = FetchDescriptor<RunRecord>()
+            let runs = (try? context.fetch(descriptor)) ?? [runRecord]
+            return calibratedCeilings(from: runs, now: now)
+        }
+        return calibratedCeilings(from: [runRecord], now: now)
+    }
+
     /// Determines whether a workout recorded today is strictly a short pre-run primer drill
     /// rather than the day's main aerobic or quality run.
     @MainActor
@@ -440,6 +468,7 @@ enum SessionSynthesisEngine {
         let baseCadence = weightedBase.cadence
 
         let calibratedCadenceFloor = SessionSynthesisCore.heightAdjustedCadenceFloor(heightCm: userHeightCm)
+        let ceilings = calibratedCeilings(from: runRecords, now: now)
 
         let recentRun = runRecords.first(where: { !$0.isDeleted && $0.date < now })
         var hadCardiacDrift = readiness.triggers.contains(.cardiacDrift)
@@ -632,7 +661,7 @@ enum SessionSynthesisEngine {
             mainRunDurationMinutes = 20
             mainSessionTemplateId = .recoveryJog
             paceBand = zones.zone1Recovery.formatted(useMetric: useMetric)
-            hrCap = "HR: < 135 BPM"
+            hrCap = "HR: < \(ceilings?.zone1RecoveryBPM ?? 135) BPM"
             cadenceFloor = max(140, calibratedCadenceFloor - 6)
 
             let recentName = recentRun?.detectedTypeRaw ?? "workout"
@@ -661,7 +690,7 @@ enum SessionSynthesisEngine {
             mainRunDurationMinutes = 30
             mainSessionTemplateId = .zone2Run
             paceBand = zones.zone2AerobicBase.formatted(useMetric: useMetric)
-            hrCap = "HR: < 150 BPM"
+            hrCap = "HR: < \(ceilings?.zone2BaseBPM ?? 150) BPM"
             cadenceFloor = calibratedCadenceFloor
 
             rationale = "Deload phase in progress. Mileage is reduced to clear accumulated fatigue while maintaining sharp leg turnover."
@@ -681,7 +710,7 @@ enum SessionSynthesisEngine {
                 mainRunDurationMinutes = 30
                 mainSessionTemplateId = .rhythmIntervals
                 paceBand = zones.zone5Interval.formatted(useMetric: useMetric)
-                hrCap = "HR: < 168 BPM"
+                hrCap = "HR: < \(ceilings?.zone5IntervalBPM ?? 168) BPM"
                 cadenceFloor = max(160, calibratedCadenceFloor)
                 rationale = "Cleared for quality work. Today targets your 5K race pace turnover with crisp aerobic interval reps."
 
@@ -694,7 +723,7 @@ enum SessionSynthesisEngine {
                 mainRunDurationMinutes = 35
                 mainSessionTemplateId = .tempoSurges
                 paceBand = zones.zone4Threshold.formatted(useMetric: useMetric)
-                hrCap = "HR: < 165 BPM"
+                hrCap = "HR: < \(ceilings?.zone4TempoBPM ?? 165) BPM"
                 cadenceFloor = max(155, calibratedCadenceFloor)
                 rationale = "Cleared for quality work. Today targets lactate threshold resistance with controlled tempo surges."
 
@@ -708,7 +737,7 @@ enum SessionSynthesisEngine {
                     mainRunDurationMinutes = 35
                     mainSessionTemplateId = .tempoSurges
                     paceBand = zones.zone4Threshold.formatted(useMetric: useMetric)
-                    hrCap = "HR: < 162 BPM"
+                    hrCap = "HR: < \(ceilings?.zone4TempoBPM ?? 162) BPM"
                     cadenceFloor = calibratedCadenceFloor
                     rationale = "Cleared for quality work. Today introduces threshold surges to elevate metabolic efficiency toward \(activeGoal)."
 
@@ -723,7 +752,7 @@ enum SessionSynthesisEngine {
                     mainRunDurationMinutes = mins
                     mainSessionTemplateId = .zone2Run
                     paceBand = zones.zone2AerobicBase.formatted(useMetric: useMetric)
-                    hrCap = "HR: < 152 BPM"
+                    hrCap = "HR: < \(ceilings?.zone2BaseBPM ?? 152) BPM"
                     cadenceFloor = calibratedCadenceFloor
                     rationale = "Quality stimulus already banked for the week. Today maintains polarized aerobic development at conversational pace toward \(activeGoal)."
 
@@ -739,7 +768,7 @@ enum SessionSynthesisEngine {
                 mainRunDurationMinutes = mins
                 mainSessionTemplateId = .zone2Run
                 paceBand = zones.zone2AerobicBase.formatted(useMetric: useMetric)
-                hrCap = "HR: < 152 BPM"
+                hrCap = "HR: < \(ceilings?.zone2BaseBPM ?? 152) BPM"
                 cadenceFloor = calibratedCadenceFloor
                 var baseRationale = "Aerobic foundation primed. Build continuous capillary density and fat oxidation capacity toward \(activeGoal)."
                 if recentHadExcessiveBounce {
@@ -780,7 +809,7 @@ enum SessionSynthesisEngine {
 
             mainSessionTemplateId = .zone2Run
             paceBand = zones.zone2AerobicBase.formatted(useMetric: useMetric)
-            hrCap = "HR: < 152 BPM"
+            hrCap = "HR: < \(ceilings?.zone2BaseBPM ?? 152) BPM"
             cadenceFloor = calibratedCadenceFloor
             var polarizedRationale = hadRecentQualityStimulus
                 ? "Quality stimulus already banked recently. Today maintains 80/20 polarized aerobic balance to consolidate fitness without overloading your nervous system."
@@ -920,6 +949,7 @@ enum SessionSynthesisEngine {
         let rollingBaseCadence = weightedBase.cadence
 
         let calibratedCadenceFloor = SessionSynthesisCore.heightAdjustedCadenceFloor(heightCm: context.userHeightCm)
+        let ceilings = calibratedCeilings(from: runRecords, now: context.now)
 
         let basePace = rollingBasePace
         let baseCadence = rollingBaseCadence
@@ -1018,7 +1048,7 @@ enum SessionSynthesisEngine {
         let paceBand = wasHardSession
             ? zones.zone1Recovery.formatted(useMetric: context.useMetric)
             : zones.zone2AerobicBase.formatted(useMetric: context.useMetric)
-        let hrCap = wasHardSession ? "HR: < 135 BPM" : "HR: < 150 BPM"
+        let hrCap = wasHardSession ? "HR: < \(ceilings?.zone1RecoveryBPM ?? 135) BPM" : "HR: < \(ceilings?.zone2BaseBPM ?? 150) BPM"
         let cadenceFloor = wasHardSession ? max(140, calibratedCadenceFloor - 6) : calibratedCadenceFloor
         let tomorrowIntent: DailySessionIntent = wasHardSession ? .recoveryFlush : .train
 
@@ -1198,6 +1228,7 @@ enum SessionSynthesisEngine {
         calendar: Calendar = Calendar(identifier: .gregorian)
     ) -> PlannedSession {
         let effectiveProfile = profile ?? RunnerProfile.compute(from: runRecords, trainingGoal: activeGoal, now: now)
+        let ceilings = calibratedCeilings(from: runRecords, now: now)
         let targetDay = calendar.startOfDay(for: targetDate)
         let today = calendar.startOfDay(for: now)
         let tomorrow = calendar.date(byAdding: .day, value: 1, to: today) ?? today
@@ -1228,7 +1259,7 @@ enum SessionSynthesisEngine {
                     minutesLow: durMins,
                     minutesHigh: durMins,
                     paceBand: nil,
-                    hrCap: "< 152 BPM",
+                    hrCap: "< \(ceilings?.zone2BaseBPM ?? 152) BPM",
                     cadenceFloor: effectiveProfile.heightAdjustedCadenceFloor,
                     primerTitle: nil,
                     adjustmentTriggers: ["completed_today"],
@@ -1288,7 +1319,7 @@ enum SessionSynthesisEngine {
                     minutesLow: minsLow,
                     minutesHigh: minsHigh,
                     paceBand: resolvedPaceBand,
-                    hrCap: isRest ? "HR: Rest / < 125 BPM" : (tomorrowIntent == .recoveryFlush ? "HR: < 135 BPM" : (template.hrCap ?? "HR: < 150 BPM")),
+                    hrCap: isRest ? "HR: Rest / < 125 BPM" : (tomorrowIntent == .recoveryFlush ? "HR: < \(ceilings?.zone1RecoveryBPM ?? 135) BPM" : (template.hrCap ?? "HR: < \(ceilings?.zone2BaseBPM ?? 150) BPM")),
                     cadenceFloor: isRest ? nil : (template.cadenceFloor ?? effectiveProfile.heightAdjustedCadenceFloor),
                     primerTitle: isRest ? nil : template.primerTitle,
                     adjustmentTriggers: todaySession.isTrimmed ? ["recovery_window"] : [],
@@ -1480,6 +1511,7 @@ enum SessionSynthesisEngine {
         )
 
         let samples = runRecords.map { $0.toSynthesisSample() }
+        let ceilings = calibratedCeilings(from: runRecords, now: now)
 
         let horizon = SessionHorizonCore.synthesizeHorizon(
             startDate: startDate,
@@ -1489,7 +1521,11 @@ enum SessionSynthesisEngine {
             isTomorrowRecovery: !startsAfterTomorrow && isRecoveryWindow,
             isTomorrowRest: !startsAfterTomorrow && isTomorrowRest,
             hasRecentLongRun: hasRecentLongRun,
-            recoveryHoursRemaining: recoveryHoursRemaining
+            recoveryHoursRemaining: recoveryHoursRemaining,
+            zone1Ceiling: ceilings?.zone1RecoveryBPM ?? 135,
+            zone2Ceiling: ceilings?.zone2BaseBPM ?? 148,
+            zone3Ceiling: ceilings?.zone4TempoBPM ?? 158,
+            zone4Ceiling: ceilings?.zone5IntervalBPM ?? 168
         )
 
         return horizon.enumerated().map { index, day in

@@ -1157,4 +1157,153 @@ struct AthleteCalibrationCoreTests {
         #expect(abs(leftPoint.x - inset) < 0.001)
         #expect(abs(leftPoint.y - (squareSize / 2.0)) < 0.001)
     }
+
+    @Test("makeIntent preserves cadence floor and duration when non-rest, and clears when rest or nil")
+    func testMakeIntentCadenceFloorAndDurationMapping() {
+        // 1. Non-rest spec with cadenceFloor and minutesHigh
+        let runSpec = PlannedSessionSpec(
+            kind: "run",
+            title: "Aerobic Threshold",
+            minutesLow: 40,
+            minutesHigh: 50,
+            cadenceFloor: 168
+        )
+        let intent = AthleteCalibrationCore.makeIntent(spec: runSpec, day: "2026-11-14")
+        #expect(intent.targetCadenceSPM == 168)
+        #expect(intent.prescribedDurationMinutes == 50)
+
+        // 2. Non-rest spec with only minutesLow
+        let shortSpec = PlannedSessionSpec(
+            kind: "run",
+            title: "Short Recovery",
+            minutesLow: 25,
+            minutesHigh: 0,
+            cadenceFloor: 0
+        )
+        let shortIntent = AthleteCalibrationCore.makeIntent(spec: shortSpec, day: "2026-11-14")
+        #expect(shortIntent.targetCadenceSPM == nil)
+        #expect(shortIntent.prescribedDurationMinutes == 25)
+
+        // 3. Rest spec -> nil cadence and nil duration
+        let restSpec = PlannedSessionSpec(
+            kind: "rest",
+            title: "Full Rest",
+            minutesLow: 0,
+            minutesHigh: 0,
+            cadenceFloor: 160
+        )
+        let restIntent = AthleteCalibrationCore.makeIntent(spec: restSpec, day: "2026-11-14")
+        #expect(restIntent.targetCadenceSPM == nil)
+        #expect(restIntent.prescribedDurationMinutes == nil)
+
+        // 4. Nil spec -> nil cadence and nil duration
+        let nilIntent = AthleteCalibrationCore.makeIntent(spec: nil, day: "2026-11-14")
+        #expect(nilIntent.targetCadenceSPM == nil)
+        #expect(nilIntent.prescribedDurationMinutes == nil)
+    }
+
+    @Test("AthleteCalibrationProfile.zoneCeilings computes Karvonen HRR and Max HR fallback")
+    func testZoneCeilingsCalculations() {
+        // Karvonen HRR: maxHR = 190, restingHR = 50 -> HRR = 140
+        // zone1: 50 + 0.70 * 140 = 148
+        // zone2: 50 + 0.78 * 140 = 159.2 -> 159
+        // zone3: 50 + 0.83 * 140 = 166.2 -> 166
+        // zone4: 50 + 0.88 * 140 = 173.2 -> 173
+        // zone5: 50 + 0.92 * 140 = 178.8 -> 179
+        let profileHRR = AthleteCalibrationProfile(maxHR: 190.0, restingHR: 50.0, isFallback: false)
+        let ceilingsHRR = profileHRR.zoneCeilings()
+        #expect(ceilingsHRR.zone1RecoveryBPM == 148)
+        #expect(ceilingsHRR.zone2BaseBPM == 159)
+        #expect(ceilingsHRR.zone3SteadyBPM == 166)
+        #expect(ceilingsHRR.zone4TempoBPM == 173)
+        #expect(ceilingsHRR.zone5IntervalBPM == 179)
+
+        // Max HR fallback: maxHR = 190, restingHR = nil
+        // zone1: 190 * 0.72 = 136.8 -> 137
+        // zone2: 190 * 0.78 = 148.2 -> 148
+        // zone3: 190 * 0.83 = 157.7 -> 158
+        // zone4: 190 * 0.90 = 171.0 -> 171
+        // zone5: 190 * 0.93 = 176.7 -> 177
+        let profileMaxHR = AthleteCalibrationProfile(maxHR: 190.0, restingHR: nil, isFallback: true)
+        let ceilingsMaxHR = profileMaxHR.zoneCeilings()
+        #expect(ceilingsMaxHR.zone1RecoveryBPM == 137)
+        #expect(ceilingsMaxHR.zone2BaseBPM == 148)
+        #expect(ceilingsMaxHR.zone3SteadyBPM == 158)
+        #expect(ceilingsMaxHR.zone4TempoBPM == 171)
+        #expect(ceilingsMaxHR.zone5IntervalBPM == 177)
+    }
+
+    @Test("DrillAdherenceCore and PhysiologicalDiagnosisCore respect custom calibrated ceilings and preserve defaults")
+    func testDrillAdherenceAndPhysiologicalDiagnosisCalibratedCeilings() {
+        // 1. DrillAdherenceCore with default ceiling (144)
+        let defaultInput = DrillAdherenceInputCore(
+            drillIdentifier: "aerobicBuild",
+            actualCadence: 160,
+            actualHeartRate: 145, // 145 > 144
+            baselineCadence: 160,
+            targetHeartRateZone: 2,
+            percentZone4: 0.04,
+            isHeartRateTargeted: true
+        )
+        let defaultResult = DrillAdherenceCore.evaluateAdherence(input: defaultInput)
+        // 145 > 144 but <= 152 -> .partiallyMet
+        #expect(defaultResult.tier == .partiallyMet)
+
+        // With custom calibratedZone2CeilingBPM = 150 -> 145 <= 150 -> .met
+        let calibratedInput = DrillAdherenceInputCore(
+            drillIdentifier: "aerobicBuild",
+            actualCadence: 160,
+            actualHeartRate: 145,
+            baselineCadence: 160,
+            targetHeartRateZone: 2,
+            percentZone4: 0.04,
+            isHeartRateTargeted: true,
+            calibratedZone2CeilingBPM: 150
+        )
+        let calibratedResult = DrillAdherenceCore.evaluateAdherence(input: calibratedInput)
+        #expect(calibratedResult.tier == .met)
+
+        // 2. AerobicStrainEvaluation with default vs calibrated ceilings
+        // Default recovery ceiling is 135; 138 > 135 -> isCeilingExceeded = true
+        let defaultStrain = AerobicStrainEvaluation.evaluate(
+            workingAvgHeartRate: 138,
+            percentZone4: 0.0,
+            zone2Ceiling: 144,
+            isRecoveryPrescription: true
+        )
+        #expect(defaultStrain.isCeilingExceeded == true)
+
+        // With calibrated recovery ceiling 140; 138 <= 140 -> isCeilingExceeded = false
+        let calibratedStrain = AerobicStrainEvaluation.evaluate(
+            workingAvgHeartRate: 138,
+            percentZone4: 0.0,
+            zone2Ceiling: 144,
+            isRecoveryPrescription: true,
+            recoveryCeiling: 140
+        )
+        #expect(calibratedStrain.isCeilingExceeded == false)
+
+        // 3. RunTakeawaySummary / PhysiologicalDiagnosisCore forwarder with calibrated ceilings
+        let takeawayDefault = PhysiologicalDiagnosisCore.evaluate(
+            detectedTypeRaw: "Recovery Run",
+            workingAvgCadence: 160,
+            workingAvgHeartRate: 138,
+            percentZone4: 0.0,
+            heightAdjustedCadenceFloor: 150
+        )
+        // 138 > 135 (default recovery ceiling) triggers ceiling exceeded bullet
+        #expect(takeawayDefault.bullets.contains { $0.contains("135 BPM") })
+
+        let takeawayCalibrated = PhysiologicalDiagnosisCore.evaluate(
+            detectedTypeRaw: "Recovery Run",
+            workingAvgCadence: 160,
+            workingAvgHeartRate: 138,
+            percentZone4: 0.0,
+            heightAdjustedCadenceFloor: 150,
+            calibratedZone2CeilingBPM: 155,
+            calibratedRecoveryCeilingBPM: 140
+        )
+        // 138 <= 140 -> does not exceed 140 BPM ceiling
+        #expect(!takeawayCalibrated.bullets.contains { $0.contains("drifting above your") })
+    }
 }

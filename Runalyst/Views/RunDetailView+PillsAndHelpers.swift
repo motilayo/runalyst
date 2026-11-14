@@ -214,6 +214,7 @@ extension RunDetailView {
         )
         let hasDrift = context.hasCardiacDrift
         let driftMag = context.cardiacDriftMagnitudeBPM
+        let ceilings = SessionSynthesisEngine.calibratedCeilings(for: runRecord)
 
         return RunTakeawaySummary.evaluate(
             detectedTypeRaw: runRecord.detectedTypeRaw,
@@ -227,7 +228,9 @@ extension RunDetailView {
             prescribedDrillName: prescribedDrillName,
             drillAdherence: drillAdherenceContext,
             intervalSummary: intervalContext,
-            cachedInsightHeadline: runRecord.insight?.headline
+            cachedInsightHeadline: runRecord.insight?.headline,
+            calibratedZone2CeilingBPM: ceilings.map { Double($0.zone2BaseBPM) },
+            calibratedRecoveryCeilingBPM: ceilings.map { Double($0.zone1RecoveryBPM) }
         )
     }
 

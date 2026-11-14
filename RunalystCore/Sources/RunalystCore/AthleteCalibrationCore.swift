@@ -206,13 +206,24 @@ public enum AthleteCalibrationCore {
         day: String,
         targetPaceSecondsPerKm: Int? = nil
     ) -> PacingSessionIntent {
+        let (targetCadenceSPM, prescribedDurationMinutes): (Int?, Int?) = {
+            guard let spec, spec.kind != "rest" else {
+                return (nil, nil)
+            }
+            let cadence = (spec.cadenceFloor ?? 0) > 0 ? spec.cadenceFloor : nil
+            let duration = spec.minutesHigh > 0 ? spec.minutesHigh : (spec.minutesLow > 0 ? spec.minutesLow : nil)
+            return (cadence, duration)
+        }()
+
         // Protection Mandate: Subjective distress forces recovery intent and overrides race goals
         if subjectiveDistress {
             return PacingSessionIntent(
                 targetPaceSecondsPerKm: targetPaceSecondsPerKm ?? parseTargetPace(from: spec?.paceBand),
                 intent: .recovery,
                 subjectiveDistress: true,
-                validForDay: day
+                validForDay: day,
+                targetCadenceSPM: targetCadenceSPM,
+                prescribedDurationMinutes: prescribedDurationMinutes
             )
         }
 
@@ -221,7 +232,9 @@ public enum AthleteCalibrationCore {
                 targetPaceSecondsPerKm: targetPaceSecondsPerKm,
                 intent: .steady,
                 subjectiveDistress: false,
-                validForDay: day
+                validForDay: day,
+                targetCadenceSPM: nil,
+                prescribedDurationMinutes: nil
             )
         }
 
@@ -257,7 +270,9 @@ public enum AthleteCalibrationCore {
             targetPaceSecondsPerKm: resolvedPace,
             intent: resolvedIntent,
             subjectiveDistress: false,
-            validForDay: day
+            validForDay: day,
+            targetCadenceSPM: targetCadenceSPM,
+            prescribedDurationMinutes: prescribedDurationMinutes
         )
     }
 
