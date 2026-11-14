@@ -89,13 +89,33 @@ extension WatchResolvedSessionConfig {
         targetCadenceFormatted ?? "Adaptive"
     }
 
-    /// Display pill text for the Karvonen (or max-HR percentage fallback) 78% aerobic heart rate ceiling.
+    /// Display pill text for the intent-aware Karvonen HRR (or max-HR percentage fallback) heart rate ceiling.
     public var aerobicCeilingPillText: String {
+        let hrrFraction: Double
+        let fallbackFraction: Double
+
+        if hasPrescribedDrill {
+            hrrFraction = 0.78
+            fallbackFraction = 0.78
+        } else {
+            switch intent.intent {
+            case .recovery:
+                hrrFraction = 0.70
+                fallbackFraction = 0.72
+            case .easyAerobic, .steady:
+                hrrFraction = 0.78
+                fallbackFraction = 0.78
+            case .tempo, .progression, .intervals:
+                hrrFraction = 0.88
+                fallbackFraction = 0.90
+            }
+        }
+
         let cap: Int
         if let resting = profile.restingHR, resting > 0, profile.maxHR > resting {
-            cap = Int((resting + 0.78 * (profile.maxHR - resting)).rounded())
+            cap = Int((resting + hrrFraction * (profile.maxHR - resting)).rounded())
         } else {
-            cap = Int((profile.maxHR * 0.78).rounded())
+            cap = Int((profile.maxHR * fallbackFraction).rounded())
         }
         return "<\(cap) BPM"
     }

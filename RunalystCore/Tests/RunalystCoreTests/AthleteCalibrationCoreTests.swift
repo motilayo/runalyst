@@ -772,6 +772,64 @@ struct AthleteCalibrationCoreTests {
         )
         #expect(negativePaceConfig.targetPaceFormatted(useMetric: false) == "Adaptive")
         #expect(negativePaceConfig.aerobicCeilingPillText == "<140 BPM")
+
+        // Intent-aware aerobic ceiling pills:
+        // .recovery (70% HRR / 72% maxHR fallback):
+        // 50 + 0.70 * (190 - 50) = 50 + 98 = 148 -> <148 BPM
+        let recoveryWithResting = WatchResolvedSessionConfig(
+            profile: profileWithResting,
+            intent: PacingSessionIntent(targetPaceSecondsPerKm: 330, intent: .recovery, validForDay: "2026-11-14")
+        )
+        #expect(recoveryWithResting.aerobicCeilingPillText == "<148 BPM")
+
+        // 190 * 0.72 = 136.8 -> 137 -> <137 BPM
+        let recoveryWithoutResting = WatchResolvedSessionConfig(
+            profile: profileWithoutResting,
+            intent: PacingSessionIntent(targetPaceSecondsPerKm: 330, intent: .recovery, validForDay: "2026-11-14")
+        )
+        #expect(recoveryWithoutResting.aerobicCeilingPillText == "<137 BPM")
+
+        // .tempo (88% HRR / 90% maxHR fallback):
+        // 50 + 0.88 * (190 - 50) = 50 + 123.2 = 173.2 -> 173 -> <173 BPM
+        let tempoWithResting = WatchResolvedSessionConfig(
+            profile: profileWithResting,
+            intent: PacingSessionIntent(targetPaceSecondsPerKm: 270, intent: .tempo, validForDay: "2026-11-14")
+        )
+        #expect(tempoWithResting.aerobicCeilingPillText == "<173 BPM")
+
+        // 190 * 0.90 = 171.0 -> 171 -> <171 BPM
+        let tempoWithoutResting = WatchResolvedSessionConfig(
+            profile: profileWithoutResting,
+            intent: PacingSessionIntent(targetPaceSecondsPerKm: 270, intent: .tempo, validForDay: "2026-11-14")
+        )
+        #expect(tempoWithoutResting.aerobicCeilingPillText == "<171 BPM")
+
+        // Prescribed drills (hasPrescribedDrill == true, .intervals) retain standard aerobic ceiling (<159 BPM on 190/50)
+        let drillIntent = AthleteCalibrationCore.makeDrillIntent(
+            title: "Rhythm Intervals",
+            drillId: "rhythmIntervals",
+            targetCadence: "174 SPM",
+            durationMinutes: 12,
+            day: "2026-11-14"
+        )
+        let drillConfig = WatchResolvedSessionConfig(
+            profile: profileWithResting,
+            intent: drillIntent,
+            isPhoneSessionSynced: true
+        )
+        #expect(drillConfig.hasPrescribedDrill == true)
+        #expect(drillConfig.aerobicCeilingPillText == "<159 BPM")
+
+        // Overriding a synced 185/52 session to .pushPerformance yields <169 BPM
+        // 52 + 0.88 * (185 - 52) = 52 + 117.04 = 169.04 -> 169
+        let runnerProfile = AthleteCalibrationProfile(maxHR: 185.0, restingHR: 52.0, isFallback: false)
+        let syncedSteady = WatchResolvedSessionConfig(
+            profile: runnerProfile,
+            intent: PacingSessionIntent(targetPaceSecondsPerKm: 300, intent: .steady, validForDay: "2026-11-14"),
+            isPhoneSessionSynced: true
+        )
+        let overriddenToPush = syncedSteady.applying(runIntent: .pushPerformance)
+        #expect(overriddenToPush.aerobicCeilingPillText == "<169 BPM")
     }
 
     @Test("WatchRunDebrief exposes companion sync badge and subtitle")
