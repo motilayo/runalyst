@@ -69,6 +69,18 @@ struct AdaptivePacingCoreWatchCompanionTests {
         #expect(recoveryConfig.hrCeilingFraction == 0.78)
         #expect(recoveryConfig.hrCeilingDurationSeconds == 20.0)
         #expect(recoveryConfig.recoverEfficiencyDriftThreshold == -0.04)
+
+        // Title and matching
+        #expect(WatchRunIntent.adaptiveBase.title == "Aerobic Base")
+        #expect(WatchRunIntent.pushPerformance.title == "Push / Performance")
+        #expect(WatchRunIntent.recovery.title == "Recovery")
+
+        #expect(WatchRunIntent.matching(intentKind: .recovery) == .recovery)
+        #expect(WatchRunIntent.matching(intentKind: .tempo) == .pushPerformance)
+        #expect(WatchRunIntent.matching(intentKind: .progression) == .pushPerformance)
+        #expect(WatchRunIntent.matching(intentKind: .intervals) == .pushPerformance)
+        #expect(WatchRunIntent.matching(intentKind: .steady) == .adaptiveBase)
+        #expect(WatchRunIntent.matching(intentKind: .easyAerobic) == .adaptiveBase)
     }
 
     @Test("WatchRunIntent.recovery: suppresses surge and triggers recover at conservative HR ceiling")

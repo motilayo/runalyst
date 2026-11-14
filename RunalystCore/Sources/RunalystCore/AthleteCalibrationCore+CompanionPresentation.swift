@@ -20,6 +20,9 @@ extension WatchResolvedSessionConfig {
         if hasPrescribedDrill {
             return "PRESCRIBED DRILL"
         }
+        if isUserIntentOverride {
+            return "CUSTOM INTENT"
+        }
         return isPhoneSessionSynced ? "TODAY'S SESSION" : "ADAPTIVE RUN"
     }
 
@@ -27,6 +30,9 @@ extension WatchResolvedSessionConfig {
     public var sessionTitle: String {
         if hasPrescribedDrill {
             return prescribedDrillTitle ?? "Prescribed Drill"
+        }
+        if isUserIntentOverride {
+            return WatchRunIntent.matching(intentKind: intent.intent).title
         }
         switch intent.intent {
         case .recovery:

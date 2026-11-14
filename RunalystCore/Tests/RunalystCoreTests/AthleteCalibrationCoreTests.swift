@@ -442,8 +442,102 @@ struct AthleteCalibrationCoreTests {
         #expect(fresh.isPhoneSessionSynced == true)
         let freshApplied = fresh.applying(runIntent: .pushPerformance)
         #expect(freshApplied.isPhoneSessionSynced == true)
+        #expect(freshApplied.isUserIntentOverride == true)
         #expect(freshApplied.intent.intent == .tempo)
         #expect(freshApplied.requiresTargetPacePicker == false)
+    }
+
+    @Test("WatchResolvedSessionConfig: applying(runIntent:) handles nil, matching intent, custom override, and drill override")
+    func testApplyingRunIntentOverrideBehavior() {
+        let calibratedProfile = AthleteCalibrationProfile(maxHR: 185.0, restingHR: 52.0, isFallback: false)
+        let steadyIntent = PacingSessionIntent(targetPaceSecondsPerKm: 300, intent: .steady, validForDay: "2026-11-14")
+        let syncedSession = WatchResolvedSessionConfig(
+            profile: calibratedProfile,
+            intent: steadyIntent,
+            isPhoneSessionSynced: true
+        )
+
+        // 1. Initial state without override
+        #expect(syncedSession.isUserIntentOverride == false)
+        #expect(syncedSession.defaultRunIntentSelection == .adaptiveBase)
+        #expect(syncedSession.sessionHeaderBadgeText == "TODAY'S SESSION")
+        #expect(syncedSession.sessionTitle == "Aerobic Base")
+
+        // 2. applying(runIntent: nil) preserves configuration
+        let unadjusted = syncedSession.applying(runIntent: nil)
+        #expect(unadjusted.isUserIntentOverride == false)
+        #expect(unadjusted.sessionHeaderBadgeText == "TODAY'S SESSION")
+        #expect(unadjusted.sessionTitle == "Aerobic Base")
+
+        // 3. applying matching intent (.adaptiveBase -> .steady) preserves without override
+        let matchingApplied = syncedSession.applying(runIntent: .adaptiveBase)
+        #expect(matchingApplied.isUserIntentOverride == false)
+        #expect(matchingApplied.sessionHeaderBadgeText == "TODAY'S SESSION")
+        #expect(matchingApplied.sessionTitle == "Aerobic Base")
+
+        // 4. applying different intent (.pushPerformance -> .tempo) marks user override
+        let overridden = syncedSession.applying(runIntent: .pushPerformance)
+        #expect(overridden.isUserIntentOverride == true)
+        #expect(overridden.sessionHeaderBadgeText == "CUSTOM INTENT")
+        #expect(overridden.sessionTitle == "Push / Performance")
+        #expect(overridden.intent.intent == .tempo)
+        #expect(overridden.intent.targetPaceSecondsPerKm == 300)
+        #expect(overridden.requiresTargetPacePicker == false)
+
+        // 5. applying different intent (.recovery)
+        let recoveryOverridden = syncedSession.applying(runIntent: .recovery)
+        #expect(recoveryOverridden.isUserIntentOverride == true)
+        #expect(recoveryOverridden.sessionHeaderBadgeText == "CUSTOM INTENT")
+        #expect(recoveryOverridden.sessionTitle == "Recovery")
+        #expect(recoveryOverridden.intent.intent == .recovery)
+
+        // 6. Prescribed drill default selection is nil
+        let drillIntent = AthleteCalibrationCore.makeDrillIntent(
+            title: "Rhythm Intervals",
+            drillId: "rhythmIntervals",
+            targetCadence: "174 SPM",
+            durationMinutes: 12,
+            day: "2026-11-14"
+        )
+        let drillConfig = WatchResolvedSessionConfig(
+            profile: calibratedProfile,
+            intent: drillIntent,
+            isPhoneSessionSynced: true
+        )
+        #expect(drillConfig.hasPrescribedDrill == true)
+        #expect(drillConfig.defaultRunIntentSelection == nil)
+        #expect(drillConfig.sessionHeaderBadgeText == "PRESCRIBED DRILL")
+        #expect(drillConfig.sessionTitle == "Rhythm Intervals")
+
+        // 7. applying(runIntent: nil) on drill preserves drill
+        let drillPreserved = drillConfig.applying(runIntent: nil)
+        #expect(drillPreserved.hasPrescribedDrill == true)
+        #expect(drillPreserved.isUserIntentOverride == false)
+        #expect(drillPreserved.sessionHeaderBadgeText == "PRESCRIBED DRILL")
+        #expect(drillPreserved.sessionTitle == "Rhythm Intervals")
+
+        // 8. Overriding drill clears drill fields and sets CUSTOM INTENT
+        let drillOverridden = drillConfig.applying(runIntent: .adaptiveBase)
+        #expect(drillOverridden.hasPrescribedDrill == false)
+        #expect(drillOverridden.isUserIntentOverride == true)
+        #expect(drillOverridden.sessionHeaderBadgeText == "CUSTOM INTENT")
+        #expect(drillOverridden.sessionTitle == "Aerobic Base")
+        #expect(drillOverridden.intent.intent == .steady)
+        #expect(drillOverridden.intent.prescribedDrillTitle == nil)
+        #expect(drillOverridden.intent.targetCadenceSPM == nil)
+        #expect(drillOverridden.intent.targetPaceSecondsPerKm == nil)
+        #expect(drillOverridden.requiresTargetPacePicker == true)
+
+        // 9. Standalone unsynced session override does NOT flag isUserIntentOverride (it was not synced)
+        let standaloneSession = WatchResolvedSessionConfig(
+            profile: calibratedProfile,
+            intent: steadyIntent,
+            isPhoneSessionSynced: false
+        )
+        let standaloneOverridden = standaloneSession.applying(runIntent: .pushPerformance)
+        #expect(standaloneOverridden.isUserIntentOverride == false)
+        #expect(standaloneOverridden.sessionHeaderBadgeText == "ADAPTIVE RUN")
+        #expect(standaloneOverridden.sessionTitle == "Tempo & Performance")
     }
 
     @Test("WatchResolvedSessionConfig badges and CTA reflect synced, calibrated, standalone fallback, and drill states")

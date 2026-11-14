@@ -207,12 +207,11 @@ final class RunalystWatchAppDelegate: NSObject, WKApplicationDelegate {
 
             let location: PacingLocation = (workoutConfiguration.locationType == .indoor) ? .indoor : .outdoor
             let resolved = WatchContextStore.shared.resolveSession()
-            let intent: WatchRunIntent = .adaptiveBase
             let targetPace = resolved.requiresTargetPacePicker ? resolved.intent.targetPaceSecondsPerKm : nil
 
             await WorkoutManager.shared.startWorkout(
                 location: location,
-                intent: intent,
+                intent: nil,
                 targetPaceSecondsPerKm: targetPace,
                 viewModel: PacingViewModel.shared
             )
