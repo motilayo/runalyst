@@ -22,18 +22,29 @@ struct RunalystWatchApp: App {
         let vm = PacingViewModel.shared
         if let preview {
             switch preview {
-            case "START_PRESCRIBED_DRILL":
+            case "START_PRESCRIBED_DRILL", "START_SYNCED_SESSION", "START_CUSTOM_OVERRIDE":
                 let mockProfile = AthleteCalibrationProfile(maxHR: 185.0, restingHR: 52.0, powerToHRTopQuartile: 1.85, isFallback: false)
                 var calendar = Calendar(identifier: .gregorian)
                 calendar.locale = Locale(identifier: "en_US_POSIX")
                 let today = AthleteCalibrationCore.formatDayString(date: Date(), calendar: calendar)
-                let mockIntent = AthleteCalibrationCore.makeDrillIntent(
-                    title: "Cadence Pyramids",
-                    drillId: "cadencePyramids",
-                    targetCadence: "165 SPM",
-                    durationMinutes: 10,
-                    day: today
-                )
+                let mockIntent: PacingSessionIntent
+                if preview == "START_PRESCRIBED_DRILL" {
+                    mockIntent = AthleteCalibrationCore.makeDrillIntent(
+                        title: "Cadence Pyramids",
+                        drillId: "cadencePyramids",
+                        targetCadence: "165 SPM",
+                        durationMinutes: 10,
+                        day: today
+                    )
+                } else {
+                    UserDefaults.standard.set(true, forKey: "useMetricSystem")
+                    mockIntent = PacingSessionIntent(
+                        targetPaceSecondsPerKm: 315,
+                        intent: .steady,
+                        subjectiveDistress: false,
+                        validForDay: today
+                    )
+                }
                 let context = WatchPacingContext(profile: mockProfile, intent: mockIntent)
                 if let data = try? JSONEncoder().encode(context) {
                     UserDefaults.standard.set(data, forKey: "cachedWatchPacingContext")

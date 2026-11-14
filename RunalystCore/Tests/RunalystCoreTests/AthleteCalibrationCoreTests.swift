@@ -444,7 +444,8 @@ struct AthleteCalibrationCoreTests {
         #expect(freshApplied.isPhoneSessionSynced == true)
         #expect(freshApplied.isUserIntentOverride == true)
         #expect(freshApplied.intent.intent == .tempo)
-        #expect(freshApplied.requiresTargetPacePicker == false)
+        #expect(freshApplied.intent.targetPaceSecondsPerKm == nil)
+        #expect(freshApplied.requiresTargetPacePicker == true)
     }
 
     @Test("WatchResolvedSessionConfig: applying(runIntent:) handles nil, matching intent, custom override, and drill override")
@@ -475,14 +476,21 @@ struct AthleteCalibrationCoreTests {
         #expect(matchingApplied.sessionHeaderBadgeText == "TODAY'S SESSION")
         #expect(matchingApplied.sessionTitle == "Aerobic Base")
 
-        // 4. applying different intent (.pushPerformance -> .tempo) marks user override
+        // 4. applying different intent (.pushPerformance -> .tempo) clears locked pace and keeps picker enabled
         let overridden = syncedSession.applying(runIntent: .pushPerformance)
         #expect(overridden.isUserIntentOverride == true)
         #expect(overridden.sessionHeaderBadgeText == "CUSTOM INTENT")
         #expect(overridden.sessionTitle == "Push / Performance")
         #expect(overridden.intent.intent == .tempo)
-        #expect(overridden.intent.targetPaceSecondsPerKm == 300)
-        #expect(overridden.requiresTargetPacePicker == false)
+        #expect(overridden.intent.targetPaceSecondsPerKm == nil)
+        #expect(overridden.requiresTargetPacePicker == true)
+
+        // 4b. applying different intent with explicit selectedPace sets target pace and keeps picker enabled
+        let overriddenWithPace = syncedSession.applying(runIntent: .pushPerformance, selectedPace: 285)
+        #expect(overriddenWithPace.isUserIntentOverride == true)
+        #expect(overriddenWithPace.intent.intent == .tempo)
+        #expect(overriddenWithPace.intent.targetPaceSecondsPerKm == 285)
+        #expect(overriddenWithPace.requiresTargetPacePicker == true)
 
         // 5. applying different intent (.recovery)
         let recoveryOverridden = syncedSession.applying(runIntent: .recovery)
@@ -490,6 +498,8 @@ struct AthleteCalibrationCoreTests {
         #expect(recoveryOverridden.sessionHeaderBadgeText == "CUSTOM INTENT")
         #expect(recoveryOverridden.sessionTitle == "Recovery")
         #expect(recoveryOverridden.intent.intent == .recovery)
+        #expect(recoveryOverridden.intent.targetPaceSecondsPerKm == nil)
+        #expect(recoveryOverridden.requiresTargetPacePicker == true)
 
         // 6. Prescribed drill default selection is nil
         let drillIntent = AthleteCalibrationCore.makeDrillIntent(
@@ -528,6 +538,13 @@ struct AthleteCalibrationCoreTests {
         #expect(drillOverridden.intent.targetPaceSecondsPerKm == nil)
         #expect(drillOverridden.requiresTargetPacePicker == true)
 
+        // 8b. Overriding drill with explicit selectedPace sets target pace and keeps picker enabled
+        let drillOverriddenWithPace = drillConfig.applying(runIntent: .adaptiveBase, selectedPace: 285)
+        #expect(drillOverriddenWithPace.hasPrescribedDrill == false)
+        #expect(drillOverriddenWithPace.isUserIntentOverride == true)
+        #expect(drillOverriddenWithPace.intent.targetPaceSecondsPerKm == 285)
+        #expect(drillOverriddenWithPace.requiresTargetPacePicker == true)
+
         // 9. Standalone unsynced session override does NOT flag isUserIntentOverride (it was not synced)
         let standaloneSession = WatchResolvedSessionConfig(
             profile: calibratedProfile,
@@ -538,6 +555,93 @@ struct AthleteCalibrationCoreTests {
         #expect(standaloneOverridden.isUserIntentOverride == false)
         #expect(standaloneOverridden.sessionHeaderBadgeText == "ADAPTIVE RUN")
         #expect(standaloneOverridden.sessionTitle == "Tempo & Performance")
+        #expect(standaloneOverridden.intent.targetPaceSecondsPerKm == 300)
+        #expect(standaloneOverridden.requiresTargetPacePicker == true)
+    }
+
+    @Test("WatchResolvedSessionConfig.defaultRunIntentSelection handles synced, drill, and standalone unsynced intents")
+    func testDefaultRunIntentSelection() {
+        let profile = AthleteCalibrationProfile(maxHR: 185.0, restingHR: 52.0, isFallback: false)
+
+        // Synced 1:1 mapped intents
+        let syncedSteady = WatchResolvedSessionConfig(
+            profile: profile,
+            intent: PacingSessionIntent(targetPaceSecondsPerKm: 300, intent: .steady, validForDay: "2026-11-14"),
+            isPhoneSessionSynced: true
+        )
+        #expect(syncedSteady.defaultRunIntentSelection == .adaptiveBase)
+
+        let syncedTempo = WatchResolvedSessionConfig(
+            profile: profile,
+            intent: PacingSessionIntent(targetPaceSecondsPerKm: 270, intent: .tempo, validForDay: "2026-11-14"),
+            isPhoneSessionSynced: true
+        )
+        #expect(syncedTempo.defaultRunIntentSelection == .pushPerformance)
+
+        let syncedRecovery = WatchResolvedSessionConfig(
+            profile: profile,
+            intent: PacingSessionIntent(targetPaceSecondsPerKm: 340, intent: .recovery, validForDay: "2026-11-14"),
+            isPhoneSessionSynced: true
+        )
+        #expect(syncedRecovery.defaultRunIntentSelection == .recovery)
+
+        // Synced composite intents return nil
+        let syncedEasyAerobic = WatchResolvedSessionConfig(
+            profile: profile,
+            intent: PacingSessionIntent(targetPaceSecondsPerKm: 310, intent: .easyAerobic, validForDay: "2026-11-14"),
+            isPhoneSessionSynced: true
+        )
+        #expect(syncedEasyAerobic.defaultRunIntentSelection == nil)
+
+        let syncedProgression = WatchResolvedSessionConfig(
+            profile: profile,
+            intent: PacingSessionIntent(targetPaceSecondsPerKm: 280, intent: .progression, validForDay: "2026-11-14"),
+            isPhoneSessionSynced: true
+        )
+        #expect(syncedProgression.defaultRunIntentSelection == nil)
+
+        let syncedIntervals = WatchResolvedSessionConfig(
+            profile: profile,
+            intent: PacingSessionIntent(targetPaceSecondsPerKm: 250, intent: .intervals, validForDay: "2026-11-14"),
+            isPhoneSessionSynced: true
+        )
+        #expect(syncedIntervals.defaultRunIntentSelection == nil)
+
+        // Prescribed drills return nil regardless of sync state
+        let drillIntent = AthleteCalibrationCore.makeDrillIntent(
+            title: "Strides",
+            drillId: "strides",
+            targetCadence: "178 SPM",
+            durationMinutes: 10,
+            day: "2026-11-14"
+        )
+        let syncedDrill = WatchResolvedSessionConfig(profile: profile, intent: drillIntent, isPhoneSessionSynced: true)
+        #expect(syncedDrill.defaultRunIntentSelection == nil)
+
+        let unsyncedDrill = WatchResolvedSessionConfig(profile: profile, intent: drillIntent, isPhoneSessionSynced: false)
+        #expect(unsyncedDrill.defaultRunIntentSelection == nil)
+
+        // Standalone unsynced progression still maps via WatchRunIntent.matching
+        let unsyncedProgression = WatchResolvedSessionConfig(
+            profile: profile,
+            intent: PacingSessionIntent(targetPaceSecondsPerKm: 280, intent: .progression, validForDay: "2026-11-14"),
+            isPhoneSessionSynced: false
+        )
+        #expect(unsyncedProgression.defaultRunIntentSelection == .pushPerformance)
+
+        let unsyncedSteady = WatchResolvedSessionConfig(
+            profile: profile,
+            intent: PacingSessionIntent(targetPaceSecondsPerKm: 300, intent: .steady, validForDay: "2026-11-14"),
+            isPhoneSessionSynced: false
+        )
+        #expect(unsyncedSteady.defaultRunIntentSelection == .adaptiveBase)
+
+        let unsyncedRecovery = WatchResolvedSessionConfig(
+            profile: profile,
+            intent: PacingSessionIntent(targetPaceSecondsPerKm: 340, intent: .recovery, validForDay: "2026-11-14"),
+            isPhoneSessionSynced: false
+        )
+        #expect(unsyncedRecovery.defaultRunIntentSelection == .recovery)
     }
 
     @Test("WatchResolvedSessionConfig badges and CTA reflect synced, calibrated, standalone fallback, and drill states")

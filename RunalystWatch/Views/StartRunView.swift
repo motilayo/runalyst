@@ -60,6 +60,10 @@ public struct StartRunView: View {
                 workoutManager.isNavigatingToGauge = true
             }
             if !hasUserManuallySelectedLocation { selectedLocation = WatchContextStore.shared.preferredLocation }
+            if ProcessInfo.processInfo.environment["RUNALYST_PREVIEW_SCREEN"] == "START_CUSTOM_OVERRIDE",
+               selectedIntentOverride == nil {
+                selectedIntentOverride = .pushPerformance
+            }
             if ProcessInfo.processInfo.environment["RUNALYST_PREVIEW_SCREEN"] == nil {
                 WatchContextStore.shared.requestLatestContextIfNeeded()
             }
@@ -206,7 +210,7 @@ public struct StartRunView: View {
                 .padding(.leading, 2)
 
             VStack(spacing: 5) {
-                if baseConfig.hasPrescribedDrill {
+                if baseConfig.isPhoneSessionSynced && baseConfig.defaultRunIntentSelection == nil {
                     intentOptionRow(
                         title: baseConfig.sessionTitle,
                         subtitle: "Scheduled for today",
