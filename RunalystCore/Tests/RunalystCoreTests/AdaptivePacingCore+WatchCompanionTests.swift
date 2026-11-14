@@ -642,6 +642,43 @@ struct AdaptivePacingCoreWatchCompanionTests {
         #expect(emptyDebrief.averagePaceFormatted == "--:--")
     }
 
+    @Test("WatchRunDebrief: 5-second 0.00 km run with 1 spm noise filters out noise and debriefs accurately")
+    func testWatchRunDebriefShortRunNoiseCadence() {
+        var core = AdaptivePacingCore(
+            profile: standardProfile,
+            intent: standardIntent,
+            location: .outdoor,
+            configuration: .forWatchCompanion(intent: .adaptiveBase)
+        )
+
+        // 5 seconds standing still with pedometer noise (1 SPM, 0 m/s speed)
+        for s in 1...5 {
+            let tick = TelemetryTick(
+                elapsedSeconds: TimeInterval(s),
+                heartRateBPM: 78.0,
+                speedMetersPerSecond: 0.0,
+                cadenceSPM: 1.0
+            )
+            _ = core.ingest(tick, totalDistanceMeters: 0.0)
+        }
+
+        #expect(core.cadenceSampleCount == 0, "1 SPM noise must not be accumulated as valid running cadence")
+
+        let debrief = core.buildRunDebrief(
+            elapsedSeconds: 5.0,
+            totalDistanceMeters: 0.0,
+            useMetricSystem: true
+        )
+
+        #expect(debrief.adaptationsBullet == "Ended before baseline pacing lock.")
+        #expect(debrief.efficiencyScoreBullet == "Ended before baseline calibration completed.")
+        #expect(debrief.formInsightBullet == "Insufficient cadence data recorded.")
+        #expect(debrief.elapsedFormatted == "0:05")
+        #expect(debrief.distanceFormatted == "0.00 km")
+        #expect(debrief.averagePaceFormatted == "--:--")
+        #expect(debrief.averageCadenceFormatted == "--")
+    }
+
     @Test("WatchRunDebrief: warmup at low cadence followed by solid cadence produces across the run insight")
     func testWatchRunDebriefWarmupThenSolidCadence() {
         var core = AdaptivePacingCore(
