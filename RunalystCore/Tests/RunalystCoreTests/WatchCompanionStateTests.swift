@@ -457,4 +457,44 @@ struct WatchCompanionStateTests {
             #expect(decoded == command)
         }
     }
+
+    // MARK: - 5. WatchLiveRunSnapshot Freshness & Staleness
+
+    @Test("WatchLiveRunSnapshot: isStale detects stale telemetry for active runs but never for paused or completed")
+    func testWatchLiveRunSnapshotStaleness() {
+        let activeSnapshot = WatchLiveRunSnapshot.from(
+            displayState: makeDisplayState(state: .tracking),
+            location: .outdoor,
+            runIntent: .adaptiveBase,
+            updatedAtEpochSeconds: 1000.0
+        )
+        #expect(activeSnapshot.phase == .running)
+        #expect(activeSnapshot.isPaused == false)
+        #expect(activeSnapshot.isStale(at: 1040.0) == false)
+        #expect(activeSnapshot.isStale(at: 1045.0) == false)
+        #expect(activeSnapshot.isStale(at: 1046.0) == true)
+        #expect(activeSnapshot.isStale(at: 1015.0, maxAgeSeconds: 10.0) == true)
+
+        let pausedSnapshot = WatchLiveRunSnapshot.from(
+            displayState: makeDisplayState(state: .tracking),
+            location: .outdoor,
+            runIntent: .adaptiveBase,
+            isPaused: true,
+            updatedAtEpochSeconds: 1000.0
+        )
+        #expect(pausedSnapshot.phase == .paused)
+        #expect(pausedSnapshot.isPaused == true)
+        #expect(pausedSnapshot.isStale(at: 2000.0) == false)
+
+        let completedSnapshot = WatchLiveRunSnapshot.from(
+            displayState: makeDisplayState(state: .tracking),
+            location: .outdoor,
+            runIntent: .adaptiveBase,
+            isCompleted: true,
+            updatedAtEpochSeconds: 1000.0
+        )
+        #expect(completedSnapshot.phase == .completed)
+        #expect(completedSnapshot.isPaused == false)
+        #expect(completedSnapshot.isStale(at: 2000.0) == false)
+    }
 }

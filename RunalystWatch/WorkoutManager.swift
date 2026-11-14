@@ -97,6 +97,9 @@ public final class WorkoutManager: NSObject {
         targetPaceSecondsPerKm: Int? = nil,
         viewModel: PacingViewModel
     ) async {
+        guard sessionState != .running && sessionState != .paused else { return }
+        viewModel.reset(targetPaceSecondsPerKm: targetPaceSecondsPerKm)
+
         self.currentLocation = location
         self.activeLocation = location
         self.activeIntent = intent
@@ -203,7 +206,11 @@ public final class WorkoutManager: NSObject {
 
         do {
             try await builder.endCollection(at: Date())
-            try await builder.finishWorkout()
+            if elapsed < 10.0 && (totalDistance ?? 0.0) < 10.0 {
+                builder.discardWorkout()
+            } else {
+                try await builder.finishWorkout()
+            }
         } catch {
             // Finish failed safely
         }

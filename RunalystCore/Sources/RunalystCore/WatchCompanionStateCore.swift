@@ -165,6 +165,18 @@ public struct WatchLiveRunSnapshot: Sendable, Codable, Equatable {
         phase.isActiveWorkout
     }
 
+    /// Whether the watch workout is currently in a paused state.
+    public var isPaused: Bool {
+        phase == .paused
+    }
+
+    /// Determines whether the snapshot telemetry has become stale based on elapsed seconds.
+    /// Completed or paused sessions are never considered stale.
+    public func isStale(at nowEpochSeconds: TimeInterval, maxAgeSeconds: TimeInterval = 45.0) -> Bool {
+        guard phase != .completed, !isPaused else { return false }
+        return (nowEpochSeconds - updatedAtEpochSeconds) > maxAgeSeconds
+    }
+
     /// High-level presentation header title (Coach's Takeaway on completion, paused notice, prescribed drill if present, or run intent).
     public var headerTitle: String {
         if phase == .completed {

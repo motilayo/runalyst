@@ -24,6 +24,7 @@
 		554433221100FFEEDDCCBBAA /* Runalyst/Views/AnimatedLoadingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABBCCDDEEFF001122334455 /* Runalyst/Views/AnimatedLoadingView.swift */; };
 		5D7B48CB920BAD17B8EE71E3 /* PersonalizedRunClassifier.mlmodel in Sources */ = {isa = PBXBuildFile; fileRef = E5504BAE8BEC385BDD7F07D0 /* PersonalizedRunClassifier.mlmodel */; };
 		695AB71B15A216F6DE67C683 /* HealthKitManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A819A236B82055B19BD745F /* HealthKitManagerTests.swift */; };
+		WCB20002D4E5F60718293A02 /* WatchCalibrationBridgeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = WCB20001D4E5F60718293A01 /* WatchCalibrationBridgeTests.swift */; };
 		6C236D97ED440DE5060AD662 /* LiveCoachEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8F28AB98675AE6C20EB792B /* LiveCoachEngineTests.swift */; };
 		71A1B2C3D4E5F60718293A41 /* Runalyst/Views/ProgressionChartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72A1B2C3D4E5F60718293A42 /* Runalyst/Views/ProgressionChartView.swift */; };
 		73A1B2C3D4E5F60718293A43 /* Runalyst/Views/LifetimeMilestonesCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74A1B2C3D4E5F60718293A44 /* Runalyst/Views/LifetimeMilestonesCard.swift */; };
@@ -202,6 +203,7 @@
 		5DBD50C2872490EFC601C63C /* WorkoutPlanTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutPlanTests.swift; sourceTree = "<group>"; };
 		63293A7BDA8025D61EF9A34C /* HealthKitManagerSeedingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthKitManagerSeedingTests.swift; sourceTree = "<group>"; };
 		6A819A236B82055B19BD745F /* HealthKitManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthKitManagerTests.swift; sourceTree = "<group>"; };
+		WCB20001D4E5F60718293A01 /* WatchCalibrationBridgeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchCalibrationBridgeTests.swift; sourceTree = "<group>"; };
 		72A1B2C3D4E5F60718293A42 /* Runalyst/Views/ProgressionChartView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/ProgressionChartView.swift; sourceTree = SOURCE_ROOT; };
 		74A1B2C3D4E5F60718293A44 /* Runalyst/Views/LifetimeMilestonesCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/LifetimeMilestonesCard.swift; sourceTree = SOURCE_ROOT; };
 		768372D4E377479C83BEA700 /* Runalyst/Views/SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/SettingsView.swift; sourceTree = SOURCE_ROOT; };
@@ -470,6 +472,7 @@
 			children = (
 				6A819A236B82055B19BD745F /* HealthKitManagerTests.swift */,
 				63293A7BDA8025D61EF9A34C /* HealthKitManagerSeedingTests.swift */,
+				WCB20001D4E5F60718293A01 /* WatchCalibrationBridgeTests.swift */,
 			);
 			path = Managers;
 			sourceTree = "<group>";
@@ -926,6 +929,7 @@
 				19251A19596B5C46911A31D7 /* WorkoutPlanTests.swift in Sources */,
 				F3A3B3C3D3E3F30313233344 /* DrillReadoutTests.swift in Sources */,
 				695AB71B15A216F6DE67C683 /* HealthKitManagerTests.swift in Sources */,
+				WCB20002D4E5F60718293A02 /* WatchCalibrationBridgeTests.swift in Sources */,
 				912022DFB3EE8B3DA99DDB78 /* HealthKitManagerSeedingTests.swift in Sources */,
 				BCCC58D89E55F0E512F2AA77 /* FramboiseEngineTests.swift in Sources */,
 				BB1100019E55F0E512345678 /* ContinuousMillAssayTests.swift in Sources */,
