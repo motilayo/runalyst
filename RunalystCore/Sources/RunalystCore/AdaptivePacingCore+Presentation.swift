@@ -328,6 +328,33 @@ extension PacingDisplayState {
         }
     }
 
+    // MARK: - Compact Metrics
+
+    private func formatCompactPace(_ seconds: Int?) -> String {
+        guard let seconds, seconds > 0 else { return "--:--" }
+        return String(format: "%d:%02d", seconds / 60, seconds % 60)
+    }
+
+    /// Pure compact representation of current filtered pace (e.g. "5:02" or "--:--").
+    public var compactFilteredPaceValue: String {
+        formatCompactPace(filteredPaceSecondsPerKm)
+    }
+
+    /// Pure compact representation of current target pace (e.g. "5:00" or "--:--").
+    public var compactTargetPaceValue: String {
+        formatCompactPace(targetPaceSecondsPerKm)
+    }
+
+    /// Pure compact representation of current filtered heart rate (e.g. "148" or "--").
+    public var compactHeartRateValue: String {
+        filteredHeartRateBPM.map { "\($0)" } ?? "--"
+    }
+
+    /// Pure compact representation of current filtered cadence (e.g. "172" or "--").
+    public var compactCadenceValue: String {
+        filteredCadenceSPM.map { "\($0)" } ?? "--"
+    }
+
     /// Creates an initial ready-to-render display state prior to receiving any telemetry ticks.
     public static func initial(
         targetPaceSecondsPerKm: Int? = nil,

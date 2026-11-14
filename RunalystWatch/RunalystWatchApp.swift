@@ -199,13 +199,13 @@ struct RunalystWatchApp: App {
 final class RunalystWatchAppDelegate: NSObject, WKApplicationDelegate {
     func handle(_ workoutConfiguration: HKWorkoutConfiguration) {
         Task { @MainActor in
+            guard WorkoutManager.shared.sessionState != .running && WorkoutManager.shared.sessionState != .paused else { return }
+            WorkoutManager.shared.isNavigatingToGauge = true
+
             let location: PacingLocation = (workoutConfiguration.locationType == .indoor) ? .indoor : .outdoor
             let resolved = WatchContextStore.shared.resolveSession()
             let intent: WatchRunIntent = .adaptiveBase
             let targetPace = resolved.requiresTargetPacePicker ? resolved.intent.targetPaceSecondsPerKm : nil
-
-            WorkoutManager.shared.isNavigatingToGauge = true
-            guard WorkoutManager.shared.sessionState != .running else { return }
 
             await WorkoutManager.shared.startWorkout(
                 location: location,

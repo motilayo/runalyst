@@ -679,6 +679,67 @@ struct AdaptivePacingCoreWatchCompanionTests {
         #expect(debrief.averageCadenceFormatted == "--")
     }
 
+    @Test("WatchRunDebrief: sub-10m tiny distance or excessive pace duration returns dashed pace without spike")
+    func testWatchRunDebriefTinyDistancePaceSpikeGuard() {
+        var core = AdaptivePacingCore(
+            profile: standardProfile,
+            intent: standardIntent,
+            location: .outdoor,
+            configuration: .forWatchCompanion(intent: .adaptiveBase)
+        )
+
+        // 1. Sub-10m tiny distance (0.5m in 5s) without pace samples -> "--:--"
+        let sub10mDebrief = core.buildRunDebrief(
+            elapsedSeconds: 5.0,
+            totalDistanceMeters: 0.5,
+            useMetricSystem: true
+        )
+        #expect(sub10mDebrief.averagePaceFormatted == "--:--")
+
+        // 2. Sub-10m with elapsed < 5s -> "--:--"
+        let shortElapsedDebrief = core.buildRunDebrief(
+            elapsedSeconds: 4.0,
+            totalDistanceMeters: 0.5,
+            useMetricSystem: true
+        )
+        #expect(shortElapsedDebrief.averagePaceFormatted == "--:--")
+
+        // 3. Distance >= 10m but computed secPerKm > 1800.0 (30:00 /km) -> "--:--"
+        // e.g. 10m in 20s = 20 / 0.01 = 2000 s/km > 1800 s/km
+        let extremeSlowDebrief = core.buildRunDebrief(
+            elapsedSeconds: 20.0,
+            totalDistanceMeters: 10.0,
+            useMetricSystem: true
+        )
+        #expect(extremeSlowDebrief.averagePaceFormatted == "--:--")
+
+        // 4. Valid running distance and pace (100m in 30s = 300 s/km -> 5:00 /km)
+        let validDebrief = core.buildRunDebrief(
+            elapsedSeconds: 30.0,
+            totalDistanceMeters: 100.0,
+            useMetricSystem: true
+        )
+        #expect(validDebrief.averagePaceFormatted == "5:00 /km")
+    }
+
+    @Test("WatchRunDebrief: 1-minute drift onset uses singular minute grammar")
+    func testWatchRunDebriefOneMinuteDriftGrammar() {
+        var core = AdaptivePacingCore(
+            profile: standardProfile,
+            intent: standardIntent,
+            location: .outdoor,
+            configuration: .forWatchCompanion(intent: .adaptiveBase)
+        )
+        core.firstDriftElapsedSeconds = 60.0 // Exactly 1 minute
+
+        let debrief = core.buildRunDebrief(
+            elapsedSeconds: 300.0,
+            totalDistanceMeters: 1000.0,
+            useMetricSystem: true
+        )
+        #expect(debrief.efficiencyScoreBullet == "Held baseline efficiency for 1 minute before cardiac drift.")
+    }
+
     @Test("WatchRunDebrief: warmup at low cadence followed by solid cadence produces across the run insight")
     func testWatchRunDebriefWarmupThenSolidCadence() {
         var core = AdaptivePacingCore(
@@ -887,5 +948,65 @@ struct AdaptivePacingCoreWatchCompanionTests {
                 isCompanionReachable: false
             ) == .watchLocal
         )
+    }
+
+    // MARK: - 7. PacingDisplayState Compact Metric Properties
+
+    @Test("PacingDisplayState: compact metrics format populated values and nil placeholders correctly")
+    func testPacingDisplayStateCompactMetrics() {
+        // 1. Initial / Unpopulated state
+        let initialDisplay = PacingDisplayState.initial()
+        #expect(initialDisplay.compactFilteredPaceValue == "--:--")
+        #expect(initialDisplay.compactTargetPaceValue == "--:--")
+        #expect(initialDisplay.compactHeartRateValue == "--")
+        #expect(initialDisplay.compactCadenceValue == "--")
+
+        // 2. Populated display state
+        let populatedDisplay = PacingDisplayState(
+            state: .tracking,
+            targetPaceSecondsPerKm: 300,
+            filteredPaceSecondsPerKm: 302,
+            filteredHeartRateBPM: 148,
+            deviation: .onTarget,
+            refractorySecondsRemaining: 0,
+            lastReason: nil,
+            adjustmentsEnabled: true,
+            targetPaceFormatted: "5:00 /km",
+            filteredPaceFormatted: "5:02 /km",
+            filteredHeartRateFormatted: "148 BPM",
+            deviationTitle: "On Pace",
+            calibrationProgress: nil,
+            calibrationProgressFormatted: "100%",
+            refractoryProgress: 0.0,
+            filteredCadenceSPM: 172,
+            filteredCadenceFormatted: "172 SPM"
+        )
+        #expect(populatedDisplay.compactFilteredPaceValue == "5:02")
+        #expect(populatedDisplay.compactTargetPaceValue == "5:00")
+        #expect(populatedDisplay.compactHeartRateValue == "148")
+        #expect(populatedDisplay.compactCadenceValue == "172")
+
+        // 3. Negative / Zero pace edge cases fallback to "--:--"
+        let zeroPaceDisplay = PacingDisplayState(
+            state: .tracking,
+            targetPaceSecondsPerKm: 0,
+            filteredPaceSecondsPerKm: -10,
+            filteredHeartRateBPM: nil,
+            deviation: .unknown,
+            refractorySecondsRemaining: 0,
+            lastReason: nil,
+            adjustmentsEnabled: true,
+            targetPaceFormatted: "--:--",
+            filteredPaceFormatted: "--:--",
+            filteredHeartRateFormatted: "--",
+            deviationTitle: "--",
+            calibrationProgress: nil,
+            calibrationProgressFormatted: "--",
+            refractoryProgress: 0.0,
+            filteredCadenceSPM: nil,
+            filteredCadenceFormatted: "--"
+        )
+        #expect(zeroPaceDisplay.compactFilteredPaceValue == "--:--")
+        #expect(zeroPaceDisplay.compactTargetPaceValue == "--:--")
     }
 }

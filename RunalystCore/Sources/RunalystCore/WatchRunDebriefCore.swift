@@ -78,18 +78,22 @@ extension AdaptivePacingCore {
 
         // Average pace formatting
         let averagePaceFormatted: String
-        if distance > 0 && elapsedSeconds > 0 {
+        if distance >= 10.0 && elapsedSeconds >= 5.0 {
             let secPerKm = elapsedSeconds / (distance / 1000.0)
-            if useMetricSystem {
+            if secPerKm > 1800.0 {
+                averagePaceFormatted = "--:--"
+            } else if useMetricSystem {
                 let paceInt = max(0, Int(secPerKm.rounded()))
                 averagePaceFormatted = String(format: "%d:%02d /km", paceInt / 60, paceInt % 60)
             } else {
                 let paceMile = max(0, Int((secPerKm * 1.609344).rounded()))
                 averagePaceFormatted = String(format: "%d:%02d /mi", paceMile / 60, paceMile % 60)
             }
-        } else if paceSampleCount > 0 {
+        } else if paceSampleCount > 0 && elapsedSeconds >= 5.0 {
             let avgSecsPerKm = totalPaceSumSecondsPerKm / Double(paceSampleCount)
-            if useMetricSystem {
+            if avgSecsPerKm > 1800.0 {
+                averagePaceFormatted = "--:--"
+            } else if useMetricSystem {
                 let paceInt = max(0, Int(avgSecsPerKm.rounded()))
                 averagePaceFormatted = String(format: "%d:%02d /km", paceInt / 60, paceInt % 60)
             } else {
@@ -143,8 +147,8 @@ extension AdaptivePacingCore {
         let totalElapsedMinutes = max(1, Int((elapsedSeconds / 60.0).rounded()))
         if let driftSec = firstDriftElapsedSeconds {
             let driftMinutes = max(1, Int((driftSec / 60.0).rounded()))
-            let minuteNoun = (driftMinutes == 1) ? "1 minute" : "\(driftMinutes) minutes"
-            efficiencyScoreBullet = "Held baseline efficiency for \(minuteNoun) before cardiac drift."
+            let driftUnit = (driftMinutes == 1) ? "minute" : "minutes"
+            efficiencyScoreBullet = "Held baseline efficiency for \(driftMinutes) \(driftUnit) before cardiac drift."
         } else if elapsedSeconds < 60 || isCalibrating {
             efficiencyScoreBullet = "Ended before baseline calibration completed."
         } else {

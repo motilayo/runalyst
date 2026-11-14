@@ -22,7 +22,8 @@ final class WatchCalibrationBridge: NSObject, WCSessionDelegate {
     public private(set) var latestCompletedDebrief: WatchRunDebrief?
 
     @ObservationIgnored private var pendingContext: WatchPacingContext?
-    @ObservationIgnored private var lastPublishedContext: WatchPacingContext?
+    @ObservationIgnored public private(set) var lastPublishedContext: WatchPacingContext?
+    @ObservationIgnored private var snapshotStalenessTask: Task<Void, Never>?
 
     override private init() {
         super.init()
@@ -56,9 +57,6 @@ final class WatchCalibrationBridge: NSObject, WCSessionDelegate {
 
     /// Publishes a pre-built `WatchPacingContext` to the paired Apple Watch.
     func publish(context: WatchPacingContext) {
-        guard WCSession.isSupported() else { return }
-        let session = WCSession.default
-
         let resolvedContext: WatchPacingContext
         if context.useMetricSystem == nil || context.watchVoiceCuesEnabled == nil {
             resolvedContext = WatchPacingContext(
@@ -72,6 +70,12 @@ final class WatchCalibrationBridge: NSObject, WCSessionDelegate {
         } else {
             resolvedContext = context
         }
+
+        let previousContext = self.lastPublishedContext
+        self.lastPublishedContext = resolvedContext
+
+        guard WCSession.isSupported() else { return }
+        let session = WCSession.default
 
         refreshSessionState(session)
 
@@ -87,7 +91,7 @@ final class WatchCalibrationBridge: NSObject, WCSessionDelegate {
         guard session.isPaired, session.isWatchAppInstalled else { return }
 
         // Skip redundant transfers if unchanged, unless watch is reachable
-        if let last = lastPublishedContext, last == resolvedContext, !isWatchReachable {
+        if let last = previousContext, last == resolvedContext, !isWatchReachable {
             return
         }
 
@@ -97,7 +101,6 @@ final class WatchCalibrationBridge: NSObject, WCSessionDelegate {
             if isWatchReachable {
                 session.sendMessage(["pacingContext": data], replyHandler: nil, errorHandler: nil)
             }
-            self.lastPublishedContext = resolvedContext
             self.pendingContext = nil
         } catch {
             // Silently handle transport failure with zero user disruption
@@ -243,7 +246,19 @@ final class WatchCalibrationBridge: NSObject, WCSessionDelegate {
         configuration.activityType = .running
         configuration.locationType = indoorPref ? .indoor : .outdoor
 
-        sendPacingContext(isIndoorPreferred: indoorPref)
+        if let existing = lastPublishedContext {
+            let updated = WatchPacingContext(
+                schemaVersion: existing.schemaVersion,
+                profile: existing.profile,
+                intent: existing.intent,
+                isIndoorPreferred: indoorPref,
+                useMetricSystem: existing.useMetricSystem,
+                watchVoiceCuesEnabled: existing.watchVoiceCuesEnabled
+            )
+            publish(context: updated)
+        } else {
+            sendPacingContext(isIndoorPreferred: indoorPref)
+        }
 
         await withCheckedContinuation { continuation in
             HKHealthStore().startWatchApp(with: configuration) { _, _ in
@@ -269,6 +284,39 @@ final class WatchCalibrationBridge: NSObject, WCSessionDelegate {
         if self.latestWatchSnapshot?.phase == .completed {
             self.latestWatchSnapshot = nil
         }
+        self.snapshotStalenessTask?.cancel()
+        self.snapshotStalenessTask = nil
+    }
+
+    /// Refreshes snapshot staleness and clears `latestWatchSnapshot` if stale.
+    @discardableResult
+    func refreshStalenessIfNeeded(now: Date = Date()) -> Bool {
+        if let snapshot = latestWatchSnapshot, snapshot.isStale(at: now.timeIntervalSince1970) {
+            latestWatchSnapshot = nil
+            snapshotStalenessTask?.cancel()
+            snapshotStalenessTask = nil
+            return true
+        }
+        return false
+    }
+
+    private func scheduleStalenessTimer(for snapshot: WatchLiveRunSnapshot) {
+        snapshotStalenessTask?.cancel()
+        snapshotStalenessTask = nil
+
+        guard snapshot.phase != .completed && !snapshot.isPaused else {
+            return
+        }
+
+        snapshotStalenessTask = Task { [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: 46_000_000_000)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            self?.refreshStalenessIfNeeded()
+        }
     }
 
     /// Processes an incoming raw `WatchLiveRunSnapshot` JSON payload from Apple Watch.
@@ -277,6 +325,9 @@ final class WatchCalibrationBridge: NSObject, WCSessionDelegate {
             return
         }
         guard snapshot.isSupportedSchema else { return }
+        if snapshot.isStale(at: Date().timeIntervalSince1970) {
+            return
+        }
         if let existing = latestWatchSnapshot, snapshot.updatedAtEpochSeconds < existing.updatedAtEpochSeconds {
             return
         }
@@ -284,6 +335,7 @@ final class WatchCalibrationBridge: NSObject, WCSessionDelegate {
         if snapshot.phase == .completed, let debrief = snapshot.completedDebrief {
             self.latestCompletedDebrief = debrief
         }
+        scheduleStalenessTimer(for: snapshot)
     }
 
     // MARK: - WCSessionDelegate
@@ -352,7 +404,11 @@ final class WatchCalibrationBridge: NSObject, WCSessionDelegate {
                 self.handleReceivedLiveSnapshotData(snapshotData)
             }
             if remoteCommandString == WatchRemoteCommand.requestContextSync.rawValue {
-                self.sendPacingContext()
+                if let existing = self.lastPublishedContext {
+                    self.publish(context: existing)
+                } else {
+                    self.sendPacingContext()
+                }
             }
         }
     }
@@ -380,7 +436,11 @@ final class WatchCalibrationBridge: NSObject, WCSessionDelegate {
             }
 
             if remoteCommandString == WatchRemoteCommand.requestContextSync.rawValue {
-                self.sendPacingContext()
+                if let existing = self.lastPublishedContext {
+                    self.publish(context: existing)
+                } else {
+                    self.sendPacingContext()
+                }
                 var reply: [String: Any] = ["status": "ok"]
                 if let ctx = self.lastPublishedContext,
                    let data = try? JSONEncoder().encode(ctx) {
