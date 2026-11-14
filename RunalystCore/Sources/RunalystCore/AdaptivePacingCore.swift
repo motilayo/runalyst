@@ -194,6 +194,11 @@ public struct AdaptivePacingCore: Sendable {
 
     // State machine dynamics
     internal var state: PacingState
+    public var currentState: PacingState { state }
+    public var isCalibrating: Bool {
+        if case .calibrating = state { return true }
+        return false
+    }
     internal var calibrationTargetSeconds: TimeInterval
     internal var adjustmentsEnabled: Bool
     internal var currentTargetPaceSecondsPerKm: Int?
@@ -357,7 +362,7 @@ public struct AdaptivePacingCore: Sendable {
             totalHRSum += hr
             hrSampleCount += 1
         }
-        if let cadence = tick.effectiveCadenceSPM, cadence > 0 {
+        if let cadence = tick.effectiveCadenceSPM, cadence >= 80 {
             totalCadenceSum += cadence
             cadenceSampleCount += 1
         }

@@ -112,7 +112,9 @@ extension AdaptivePacingCore {
 
         // 1. Adaptations bullet
         let adaptationsBullet: String
-        if surgeCount == 0 && recoveryAdjustmentCount == 0 {
+        if (elapsedSeconds < 60 || isCalibrating) && surgeCount == 0 && recoveryAdjustmentCount == 0 {
+            adaptationsBullet = "Ended before baseline pacing lock."
+        } else if surgeCount == 0 && recoveryAdjustmentCount == 0 {
             adaptationsBullet = "Held steady baseline pacing throughout."
         } else {
             var parts: [String] = []
@@ -141,29 +143,37 @@ extension AdaptivePacingCore {
         let totalElapsedMinutes = max(1, Int((elapsedSeconds / 60.0).rounded()))
         if let driftSec = firstDriftElapsedSeconds {
             let driftMinutes = max(1, Int((driftSec / 60.0).rounded()))
-            efficiencyScoreBullet = "Held baseline efficiency for \(driftMinutes) minutes before cardiac drift."
+            let minuteNoun = (driftMinutes == 1) ? "1 minute" : "\(driftMinutes) minutes"
+            efficiencyScoreBullet = "Held baseline efficiency for \(minuteNoun) before cardiac drift."
+        } else if elapsedSeconds < 60 || isCalibrating {
+            efficiencyScoreBullet = "Ended before baseline calibration completed."
         } else {
-            efficiencyScoreBullet = "Held baseline efficiency for all \(totalElapsedMinutes) minutes."
+            let minuteNoun = (totalElapsedMinutes == 1) ? "1 minute" : "\(totalElapsedMinutes) minutes"
+            efficiencyScoreBullet = "Held baseline efficiency for all \(minuteNoun)."
         }
 
         // 3. Form insight bullet
         let formInsightBullet: String
-        let cadenceValue: Int = cadenceBaselineSPM
+        let resolvedCadence: Int? = cadenceBaselineSPM
             ?? (cadenceSampleCount > 0
                 ? Int((totalCadenceSum / Double(cadenceSampleCount)).rounded())
-                : (currentTargetCadenceSPM ?? 170))
+                : nil)
 
-        if let solidDist = solidCadenceUntilDistanceMeters,
-           (useMetricSystem ? solidDist >= 1000.0 : solidDist >= 1609.344) {
-            if useMetricSystem {
-                let km = max(1, Int((solidDist / 1000.0).rounded()))
-                formInsightBullet = "Cadence stayed rock-solid at \(cadenceValue) spm until kilometer \(km)."
+        if let cadenceValue = resolvedCadence, cadenceValue >= 80 {
+            if let solidDist = solidCadenceUntilDistanceMeters,
+               (useMetricSystem ? solidDist >= 1000.0 : solidDist >= 1609.344) {
+                if useMetricSystem {
+                    let km = max(1, Int((solidDist / 1000.0).rounded()))
+                    formInsightBullet = "Cadence stayed rock-solid at \(cadenceValue) spm until kilometer \(km)."
+                } else {
+                    let mi = max(1, Int((solidDist / 1609.344).rounded()))
+                    formInsightBullet = "Cadence stayed rock-solid at \(cadenceValue) spm until mile \(mi)."
+                }
             } else {
-                let mi = max(1, Int((solidDist / 1609.344).rounded()))
-                formInsightBullet = "Cadence stayed rock-solid at \(cadenceValue) spm until mile \(mi)."
+                formInsightBullet = "Cadence stayed rock-solid at \(cadenceValue) spm across the run."
             }
         } else {
-            formInsightBullet = "Cadence stayed rock-solid at \(cadenceValue) spm across the run."
+            formInsightBullet = "Insufficient cadence data recorded."
         }
 
         return WatchRunDebrief(
