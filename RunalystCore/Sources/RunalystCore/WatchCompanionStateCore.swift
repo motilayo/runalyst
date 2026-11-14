@@ -171,9 +171,16 @@ public struct WatchLiveRunSnapshot: Sendable, Codable, Equatable {
     }
 
     /// Determines whether the snapshot telemetry has become stale based on elapsed seconds.
-    /// Completed or paused sessions are never considered stale.
-    public func isStale(at nowEpochSeconds: TimeInterval, maxAgeSeconds: TimeInterval = 45.0) -> Bool {
-        guard phase != .completed, !isPaused else { return false }
+    /// Active sessions expire after `maxAgeSeconds` (default 45s), while paused or completed
+    /// sessions expire after `maxPausedOrCompletedAgeSeconds` (default 4 hours / 14,400s).
+    public func isStale(
+        at nowEpochSeconds: TimeInterval,
+        maxAgeSeconds: TimeInterval = 45.0,
+        maxPausedOrCompletedAgeSeconds: TimeInterval = 14_400.0
+    ) -> Bool {
+        if phase == .completed || isPaused {
+            return (nowEpochSeconds - updatedAtEpochSeconds) > maxPausedOrCompletedAgeSeconds
+        }
         return (nowEpochSeconds - updatedAtEpochSeconds) > maxAgeSeconds
     }
 

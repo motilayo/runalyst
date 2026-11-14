@@ -42,6 +42,18 @@ public struct StartRunView: View {
 
             ScrollView {
                 VStack(spacing: 8) {
+                    if let startError = workoutManager.lastStartError {
+                        Text(startError)
+                            .font(.system(size: 10, weight: .semibold, design: .rounded))
+                            .foregroundStyle(.red)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 4)
+                            .frame(maxWidth: .infinity)
+                            .background(Color.red.opacity(0.12))
+                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    }
+
                     heroCard
                     startWorkoutCTA
                     locationSelector

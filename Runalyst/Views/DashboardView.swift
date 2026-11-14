@@ -636,7 +636,9 @@ struct DashboardView: View {
                 preRunDrillId: preRunId.rawValue,
                 purpose: template.defaultPurpose,
                 targetCadence: computedTarget,
-                previousCadence: baseCadence
+                previousCadence: baseCadence,
+                durationMinutes: preRunId.defaultDuration.rawValue,
+                isIndoor: UserDefaults.standard.bool(forKey: "preferredWorkoutIsIndoor")
             )
             await MainActor.run {
                 WatchCalibrationBridge.shared.publishDrillIntent(dto: dto)
@@ -645,10 +647,12 @@ struct DashboardView: View {
                 let bridge = WorkoutBridge()
                 await WorkoutScheduler.shared.removeAllWorkouts()
                 try await bridge.scheduleDrill(dto: dto)
-                await MainActor.run {
-                    self.lastWatchExportTimestamp = Date().timeIntervalSince1970
-                }
-            } catch {}
+            } catch {
+                // WorkoutScheduler may fail on simulator or before Watch WorkoutKit authorization while bridge intent was published.
+            }
+            await MainActor.run {
+                self.lastWatchExportTimestamp = Date().timeIntervalSince1970
+            }
         }
     }
 

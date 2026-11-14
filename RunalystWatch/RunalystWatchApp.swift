@@ -211,6 +211,12 @@ struct RunalystWatchApp: App {
 // MARK: - Watch Application Delegate
 
 final class RunalystWatchAppDelegate: NSObject, WKApplicationDelegate {
+    func handleActiveWorkoutRecovery() {
+        Task { @MainActor in
+            await WorkoutManager.shared.recoverActiveWorkoutIfNeeded(viewModel: PacingViewModel.shared)
+        }
+    }
+
     func handle(_ workoutConfiguration: HKWorkoutConfiguration) {
         Task { @MainActor in
             guard WorkoutManager.shared.sessionState != .running && WorkoutManager.shared.sessionState != .paused else { return }
