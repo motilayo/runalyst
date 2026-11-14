@@ -13,14 +13,21 @@ public struct StartRunView: View {
 
     @State private var selectedLocation: PacingLocation = WatchContextStore.shared.preferredLocation
     @State private var hasUserManuallySelectedLocation = false
-    @State private var selectedIntent: WatchRunIntent = .adaptiveBase
+    @State private var selectedIntentOverride: WatchRunIntent?
     @State private var selectedPaceOption: WatchTargetPaceOption = .justRun
 
     public init() {}
 
+    private var baseConfig: WatchResolvedSessionConfig {
+        WatchContextStore.shared.resolveSession(
+            runIntent: nil,
+            selectedPace: selectedPaceOption.paceSecondsPerKm
+        )
+    }
+
     private var resolvedConfig: WatchResolvedSessionConfig {
         WatchContextStore.shared.resolveSession(
-            runIntent: selectedIntent,
+            runIntent: selectedIntentOverride,
             selectedPace: selectedPaceOption.paceSecondsPerKm
         )
     }
@@ -38,9 +45,7 @@ public struct StartRunView: View {
                     heroCard
                     startWorkoutCTA
                     locationSelector
-                    if !resolvedConfig.hasPrescribedDrill {
-                        runIntentSelector
-                    }
+                    runIntentSelector
 
                     if resolvedConfig.requiresTargetPacePicker {
                         targetPacePicker
@@ -150,7 +155,7 @@ public struct StartRunView: View {
                 let targetPace = resolvedConfig.requiresTargetPacePicker ? selectedPaceOption.paceSecondsPerKm : nil
                 await workoutManager.startWorkout(
                     location: selectedLocation,
-                    intent: selectedIntent,
+                    intent: selectedIntentOverride,
                     targetPaceSecondsPerKm: targetPace,
                     viewModel: pacingViewModel
                 )
@@ -201,22 +206,41 @@ public struct StartRunView: View {
                 .padding(.leading, 2)
 
             VStack(spacing: 5) {
+                if baseConfig.hasPrescribedDrill {
+                    intentOptionRow(
+                        title: baseConfig.sessionTitle,
+                        subtitle: "Scheduled for today",
+                        isSelected: selectedIntentOverride == nil
+                    ) {
+                        selectedIntentOverride = nil
+                    }
+                }
+
                 ForEach(WatchRunIntent.allCases) { intent in
-                    intentRow(intent)
+                    let isSelected = (selectedIntentOverride ?? baseConfig.defaultRunIntentSelection) == intent
+                    intentOptionRow(
+                        title: intent.title,
+                        subtitle: intent.subtitle,
+                        isSelected: isSelected
+                    ) {
+                        selectedIntentOverride = (baseConfig.isPhoneSessionSynced && !baseConfig.hasPrescribedDrill && baseConfig.defaultRunIntentSelection == intent) ? nil : intent
+                    }
                 }
             }
         }
     }
 
-    private func intentRow(_ intent: WatchRunIntent) -> some View {
-        let isSelected = selectedIntent == intent
-        return Button {
-            selectedIntent = intent
-        } label: {
+    private func intentOptionRow(
+        title: String,
+        subtitle: String,
+        isSelected: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
             HStack(spacing: 8) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(intent.title).font(.system(.subheadline, design: .rounded)).fontWeight(.semibold).foregroundStyle(.white)
-                    Text(intent.subtitle).font(.system(size: 10, design: .rounded)).foregroundStyle(.secondary).lineLimit(1)
+                    Text(title).font(.system(.subheadline, design: .rounded)).fontWeight(.semibold).foregroundStyle(.white)
+                    Text(subtitle).font(.system(size: 10, design: .rounded)).foregroundStyle(.secondary).lineLimit(1)
                 }
                 Spacer()
                 if isSelected {

@@ -93,7 +93,7 @@ public final class WorkoutManager: NSObject {
 
     public func startWorkout(
         location: PacingLocation,
-        intent: WatchRunIntent = .adaptiveBase,
+        intent: WatchRunIntent? = nil,
         targetPaceSecondsPerKm: Int? = nil,
         viewModel: PacingViewModel
     ) async {
@@ -102,21 +102,22 @@ public final class WorkoutManager: NSObject {
 
         self.currentLocation = location
         self.activeLocation = location
-        self.activeIntent = intent
-        self.pacingViewModel = viewModel
 
         let resolved = WatchContextStore.shared.resolveSession(
             runIntent: intent,
             selectedPace: targetPaceSecondsPerKm,
             fallbackAge: athleteAge()
         )
+        let effectiveIntent = intent ?? WatchRunIntent.matching(intentKind: resolved.intent.intent)
+        self.activeIntent = effectiveIntent
+        self.pacingViewModel = viewModel
         self.activePrescribedTitle = resolved.prescribedDrillTitle
 
         let engine = TelemetryEngine(
             profile: resolved.profile,
             intent: resolved.intent,
             location: location,
-            watchIntent: intent,
+            watchIntent: effectiveIntent,
             viewModel: viewModel
         )
         self.telemetryEngine = engine

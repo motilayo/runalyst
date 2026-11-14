@@ -172,7 +172,7 @@ struct WatchCompanionStateTests {
         #expect(snapshot.phase == WatchCompanionPhase.calibrating)
         #expect(snapshot.isActiveWorkout == true)
         #expect(snapshot.stateTitle == "Calibrating")
-        #expect(snapshot.headerTitle == "Adaptive Base")
+        #expect(snapshot.headerTitle == "Aerobic Base")
         #expect(snapshot.calibrationProgress == 0.45)
         #expect(snapshot.completedDebrief == nil)
     }
@@ -192,7 +192,7 @@ struct WatchCompanionStateTests {
         #expect(snapshot.phase == .running)
         #expect(snapshot.isActiveWorkout == true)
         #expect(snapshot.stateTitle == "Adaptive Pacing")
-        #expect(snapshot.headerTitle == "Adaptive Base")
+        #expect(snapshot.headerTitle == "Aerobic Base")
 
         let monitorDisplay = makeDisplayState(state: .tracking, adjustmentsEnabled: false)
         let monitorSnapshot = WatchLiveRunSnapshot.from(
@@ -383,7 +383,7 @@ struct WatchCompanionStateTests {
         #expect(decoded.runIntent == .adaptiveBase)
         #expect(decoded.prescribedDrillTitle == "Cadence Pyramids")
         #expect(decoded.headerTitle == "Run Debrief")
-        #expect(decoded.intentAndLocationSubtitle == "Adaptive Base • Outdoor")
+        #expect(decoded.intentAndLocationSubtitle == "Aerobic Base • Outdoor")
         #expect(decoded.completedDebrief?.formInsightBullet == sampleDebrief.formInsightBullet)
         #expect(decoded.updatedAtEpochSeconds == 1731420000.0)
     }
@@ -410,8 +410,8 @@ struct WatchCompanionStateTests {
     @Test("intentAndLocationSubtitle formats intent and environment across all variations")
     func testIntentAndLocationSubtitleFormatting() {
         let cases: [(WatchRunIntent, PacingLocation, String)] = [
-            (.adaptiveBase, .outdoor, "Adaptive Base • Outdoor"),
-            (.adaptiveBase, .indoor, "Adaptive Base • Indoor"),
+            (.adaptiveBase, .outdoor, "Aerobic Base • Outdoor"),
+            (.adaptiveBase, .indoor, "Aerobic Base • Indoor"),
             (.pushPerformance, .outdoor, "Push / Performance • Outdoor"),
             (.pushPerformance, .indoor, "Push / Performance • Indoor"),
             (.recovery, .outdoor, "Recovery • Outdoor"),
