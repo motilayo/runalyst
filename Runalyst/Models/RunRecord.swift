@@ -224,6 +224,10 @@ final class RunRecord {
         signature?.splits ?? []
     }
 
+    // MARK: - In-Memory Telemetry Buckets
+    /// In-memory transient telemetry buckets extracted from HealthKit during active session or tests.
+    @Transient var buckets: [BucketData] = []
+
     init(
         id: UUID = UUID(),
         hkWorkoutID: UUID,
@@ -258,7 +262,8 @@ final class RunRecord {
         runSignatureData: Data? = nil,
         ambientTemperatureCelsius: Double? = nil,
         ambientHumidity: Double? = nil,
-        classificationProvenanceRaw: String? = nil
+        classificationProvenanceRaw: String? = nil,
+        buckets: [BucketData] = []
     ) {
         self.id = id
         self.hkWorkoutID = hkWorkoutID
@@ -294,10 +299,75 @@ final class RunRecord {
         self.detectedTypeRaw = detectedTypeRaw
         self.framboiseTags = framboiseTags
         self.insight = insight
+        self.buckets = buckets
     }
 }
 
 extension RunRecord {
+    /// Returns sub-run calibration telemetry buckets for athlete calibration and zone ceiling calculation.
+    /// Prefers in-memory `buckets` if available; otherwise reconstitutes buckets from persisted `RunSignature`.
+    func subRunCalibrationBuckets() -> [TelemetryBucket] {
+        if !buckets.isEmpty {
+            return buckets.map { $0.toTelemetryBucket() }
+        }
+        guard let sig = signature else { return [] }
+        var result: [TelemetryBucket] = []
+        if let peakHR = sig.peakHeartRateBPM, peakHR > 0 {
+            result.append(
+                TelemetryBucket(
+                    timestamp: date,
+                    durationSeconds: 60.0,
+                    distanceMeters: 200.0,
+                    paceSecondsPerKm: workingAvgPace > 0 ? workingAvgPace : rawAvgPace,
+                    cadenceSPM: workingAvgCadence > 0 ? workingAvgCadence : rawAvgCadence,
+                    heartRateBPM: peakHR,
+                    groundContactTimeMs: nil,
+                    verticalOscillationCm: workingAvgVerticalOscillation ?? rawAvgVerticalOscillation,
+                    strideLengthMeters: workingAvgStrideLength ?? rawAvgStrideLength,
+                    elevationGainMeters: nil,
+                    powerWatts: nil
+                )
+            )
+        }
+        let phaseBuckets = sig.phaseSegments
+            .filter { $0.durationSeconds >= 30.0 && $0.avgHR > 0 }
+            .map { segment in
+                TelemetryBucket(
+                    timestamp: date.addingTimeInterval(segment.startSeconds),
+                    durationSeconds: segment.durationSeconds,
+                    distanceMeters: segment.avgPace > 0 ? (segment.durationSeconds / segment.avgPace) * 1000.0 : 0,
+                    paceSecondsPerKm: segment.avgPace,
+                    cadenceSPM: segment.avgCadence,
+                    heartRateBPM: segment.avgHR,
+                    groundContactTimeMs: nil,
+                    verticalOscillationCm: nil,
+                    strideLengthMeters: nil,
+                    elevationGainMeters: nil,
+                    powerWatts: nil
+                )
+            }
+        result.append(contentsOf: phaseBuckets)
+        let splitBuckets = sig.splits
+            .filter { $0.durationSeconds >= 60.0 && $0.avgHeartRate > 0 }
+            .map { split in
+                TelemetryBucket(
+                    timestamp: date.addingTimeInterval(Double(max(0, split.index - 1)) * split.durationSeconds),
+                    durationSeconds: split.durationSeconds,
+                    distanceMeters: split.distanceMeters,
+                    paceSecondsPerKm: split.paceSecondsPerKm,
+                    cadenceSPM: split.avgCadence,
+                    heartRateBPM: split.avgHeartRate,
+                    groundContactTimeMs: nil,
+                    verticalOscillationCm: nil,
+                    strideLengthMeters: nil,
+                    elevationGainMeters: split.elevationGainMeters > 0 ? split.elevationGainMeters : nil,
+                    powerWatts: nil
+                )
+            }
+        result.append(contentsOf: splitBuckets)
+        return result
+    }
+
     /// Computes the duration-weighted 30-day baseline cadence strictly prior to this run's date from a collection of runs.
     func computeHistoricalBaselineCadence(in runs: [RunRecord]) -> Double? {
         SessionSynthesisEngine.computeWeightedBaselineStats(from: runs, priorTo: self.date)?.avgCadence

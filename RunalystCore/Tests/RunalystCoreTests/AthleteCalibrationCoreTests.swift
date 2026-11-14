@@ -442,8 +442,206 @@ struct AthleteCalibrationCoreTests {
         #expect(fresh.isPhoneSessionSynced == true)
         let freshApplied = fresh.applying(runIntent: .pushPerformance)
         #expect(freshApplied.isPhoneSessionSynced == true)
+        #expect(freshApplied.isUserIntentOverride == true)
         #expect(freshApplied.intent.intent == .tempo)
-        #expect(freshApplied.requiresTargetPacePicker == false)
+        #expect(freshApplied.intent.targetPaceSecondsPerKm == nil)
+        #expect(freshApplied.requiresTargetPacePicker == true)
+    }
+
+    @Test("WatchResolvedSessionConfig: applying(runIntent:) handles nil, matching intent, custom override, and drill override")
+    func testApplyingRunIntentOverrideBehavior() {
+        let calibratedProfile = AthleteCalibrationProfile(maxHR: 185.0, restingHR: 52.0, isFallback: false)
+        let steadyIntent = PacingSessionIntent(targetPaceSecondsPerKm: 300, intent: .steady, validForDay: "2026-11-14")
+        let syncedSession = WatchResolvedSessionConfig(
+            profile: calibratedProfile,
+            intent: steadyIntent,
+            isPhoneSessionSynced: true
+        )
+
+        // 1. Initial state without override
+        #expect(syncedSession.isUserIntentOverride == false)
+        #expect(syncedSession.defaultRunIntentSelection == .adaptiveBase)
+        #expect(syncedSession.sessionHeaderBadgeText == "TODAY'S SESSION")
+        #expect(syncedSession.sessionTitle == "Aerobic Base")
+
+        // 2. applying(runIntent: nil) preserves configuration
+        let unadjusted = syncedSession.applying(runIntent: nil)
+        #expect(unadjusted.isUserIntentOverride == false)
+        #expect(unadjusted.sessionHeaderBadgeText == "TODAY'S SESSION")
+        #expect(unadjusted.sessionTitle == "Aerobic Base")
+
+        // 3. applying matching intent (.adaptiveBase -> .steady) preserves without override
+        let matchingApplied = syncedSession.applying(runIntent: .adaptiveBase)
+        #expect(matchingApplied.isUserIntentOverride == false)
+        #expect(matchingApplied.sessionHeaderBadgeText == "TODAY'S SESSION")
+        #expect(matchingApplied.sessionTitle == "Aerobic Base")
+
+        // 4. applying different intent (.pushPerformance -> .tempo) clears locked pace and keeps picker enabled
+        let overridden = syncedSession.applying(runIntent: .pushPerformance)
+        #expect(overridden.isUserIntentOverride == true)
+        #expect(overridden.sessionHeaderBadgeText == "CUSTOM INTENT")
+        #expect(overridden.sessionTitle == "Push / Performance")
+        #expect(overridden.intent.intent == .tempo)
+        #expect(overridden.intent.targetPaceSecondsPerKm == nil)
+        #expect(overridden.requiresTargetPacePicker == true)
+
+        // 4b. applying different intent with explicit selectedPace sets target pace and keeps picker enabled
+        let overriddenWithPace = syncedSession.applying(runIntent: .pushPerformance, selectedPace: 285)
+        #expect(overriddenWithPace.isUserIntentOverride == true)
+        #expect(overriddenWithPace.intent.intent == .tempo)
+        #expect(overriddenWithPace.intent.targetPaceSecondsPerKm == 285)
+        #expect(overriddenWithPace.requiresTargetPacePicker == true)
+
+        // 5. applying different intent (.recovery)
+        let recoveryOverridden = syncedSession.applying(runIntent: .recovery)
+        #expect(recoveryOverridden.isUserIntentOverride == true)
+        #expect(recoveryOverridden.sessionHeaderBadgeText == "CUSTOM INTENT")
+        #expect(recoveryOverridden.sessionTitle == "Recovery")
+        #expect(recoveryOverridden.intent.intent == .recovery)
+        #expect(recoveryOverridden.intent.targetPaceSecondsPerKm == nil)
+        #expect(recoveryOverridden.requiresTargetPacePicker == true)
+
+        // 6. Prescribed drill default selection is nil
+        let drillIntent = AthleteCalibrationCore.makeDrillIntent(
+            title: "Rhythm Intervals",
+            drillId: "rhythmIntervals",
+            targetCadence: "174 SPM",
+            durationMinutes: 12,
+            day: "2026-11-14"
+        )
+        let drillConfig = WatchResolvedSessionConfig(
+            profile: calibratedProfile,
+            intent: drillIntent,
+            isPhoneSessionSynced: true
+        )
+        #expect(drillConfig.hasPrescribedDrill == true)
+        #expect(drillConfig.defaultRunIntentSelection == nil)
+        #expect(drillConfig.sessionHeaderBadgeText == "PRESCRIBED DRILL")
+        #expect(drillConfig.sessionTitle == "Rhythm Intervals")
+
+        // 7. applying(runIntent: nil) on drill preserves drill
+        let drillPreserved = drillConfig.applying(runIntent: nil)
+        #expect(drillPreserved.hasPrescribedDrill == true)
+        #expect(drillPreserved.isUserIntentOverride == false)
+        #expect(drillPreserved.sessionHeaderBadgeText == "PRESCRIBED DRILL")
+        #expect(drillPreserved.sessionTitle == "Rhythm Intervals")
+
+        // 8. Overriding drill clears drill fields and sets CUSTOM INTENT
+        let drillOverridden = drillConfig.applying(runIntent: .adaptiveBase)
+        #expect(drillOverridden.hasPrescribedDrill == false)
+        #expect(drillOverridden.isUserIntentOverride == true)
+        #expect(drillOverridden.sessionHeaderBadgeText == "CUSTOM INTENT")
+        #expect(drillOverridden.sessionTitle == "Aerobic Base")
+        #expect(drillOverridden.intent.intent == .steady)
+        #expect(drillOverridden.intent.prescribedDrillTitle == nil)
+        #expect(drillOverridden.intent.targetCadenceSPM == nil)
+        #expect(drillOverridden.intent.targetPaceSecondsPerKm == nil)
+        #expect(drillOverridden.requiresTargetPacePicker == true)
+
+        // 8b. Overriding drill with explicit selectedPace sets target pace and keeps picker enabled
+        let drillOverriddenWithPace = drillConfig.applying(runIntent: .adaptiveBase, selectedPace: 285)
+        #expect(drillOverriddenWithPace.hasPrescribedDrill == false)
+        #expect(drillOverriddenWithPace.isUserIntentOverride == true)
+        #expect(drillOverriddenWithPace.intent.targetPaceSecondsPerKm == 285)
+        #expect(drillOverriddenWithPace.requiresTargetPacePicker == true)
+
+        // 9. Standalone unsynced session override does NOT flag isUserIntentOverride (it was not synced)
+        let standaloneSession = WatchResolvedSessionConfig(
+            profile: calibratedProfile,
+            intent: steadyIntent,
+            isPhoneSessionSynced: false
+        )
+        let standaloneOverridden = standaloneSession.applying(runIntent: .pushPerformance)
+        #expect(standaloneOverridden.isUserIntentOverride == false)
+        #expect(standaloneOverridden.sessionHeaderBadgeText == "ADAPTIVE RUN")
+        #expect(standaloneOverridden.sessionTitle == "Tempo & Performance")
+        #expect(standaloneOverridden.intent.targetPaceSecondsPerKm == 300)
+        #expect(standaloneOverridden.requiresTargetPacePicker == true)
+    }
+
+    @Test("WatchResolvedSessionConfig.defaultRunIntentSelection handles synced, drill, and standalone unsynced intents")
+    func testDefaultRunIntentSelection() {
+        let profile = AthleteCalibrationProfile(maxHR: 185.0, restingHR: 52.0, isFallback: false)
+
+        // Synced 1:1 mapped intents
+        let syncedSteady = WatchResolvedSessionConfig(
+            profile: profile,
+            intent: PacingSessionIntent(targetPaceSecondsPerKm: 300, intent: .steady, validForDay: "2026-11-14"),
+            isPhoneSessionSynced: true
+        )
+        #expect(syncedSteady.defaultRunIntentSelection == .adaptiveBase)
+
+        let syncedTempo = WatchResolvedSessionConfig(
+            profile: profile,
+            intent: PacingSessionIntent(targetPaceSecondsPerKm: 270, intent: .tempo, validForDay: "2026-11-14"),
+            isPhoneSessionSynced: true
+        )
+        #expect(syncedTempo.defaultRunIntentSelection == .pushPerformance)
+
+        let syncedRecovery = WatchResolvedSessionConfig(
+            profile: profile,
+            intent: PacingSessionIntent(targetPaceSecondsPerKm: 340, intent: .recovery, validForDay: "2026-11-14"),
+            isPhoneSessionSynced: true
+        )
+        #expect(syncedRecovery.defaultRunIntentSelection == .recovery)
+
+        // Synced composite intents return nil
+        let syncedEasyAerobic = WatchResolvedSessionConfig(
+            profile: profile,
+            intent: PacingSessionIntent(targetPaceSecondsPerKm: 310, intent: .easyAerobic, validForDay: "2026-11-14"),
+            isPhoneSessionSynced: true
+        )
+        #expect(syncedEasyAerobic.defaultRunIntentSelection == nil)
+
+        let syncedProgression = WatchResolvedSessionConfig(
+            profile: profile,
+            intent: PacingSessionIntent(targetPaceSecondsPerKm: 280, intent: .progression, validForDay: "2026-11-14"),
+            isPhoneSessionSynced: true
+        )
+        #expect(syncedProgression.defaultRunIntentSelection == nil)
+
+        let syncedIntervals = WatchResolvedSessionConfig(
+            profile: profile,
+            intent: PacingSessionIntent(targetPaceSecondsPerKm: 250, intent: .intervals, validForDay: "2026-11-14"),
+            isPhoneSessionSynced: true
+        )
+        #expect(syncedIntervals.defaultRunIntentSelection == nil)
+
+        // Prescribed drills return nil regardless of sync state
+        let drillIntent = AthleteCalibrationCore.makeDrillIntent(
+            title: "Strides",
+            drillId: "strides",
+            targetCadence: "178 SPM",
+            durationMinutes: 10,
+            day: "2026-11-14"
+        )
+        let syncedDrill = WatchResolvedSessionConfig(profile: profile, intent: drillIntent, isPhoneSessionSynced: true)
+        #expect(syncedDrill.defaultRunIntentSelection == nil)
+
+        let unsyncedDrill = WatchResolvedSessionConfig(profile: profile, intent: drillIntent, isPhoneSessionSynced: false)
+        #expect(unsyncedDrill.defaultRunIntentSelection == nil)
+
+        // Standalone unsynced progression still maps via WatchRunIntent.matching
+        let unsyncedProgression = WatchResolvedSessionConfig(
+            profile: profile,
+            intent: PacingSessionIntent(targetPaceSecondsPerKm: 280, intent: .progression, validForDay: "2026-11-14"),
+            isPhoneSessionSynced: false
+        )
+        #expect(unsyncedProgression.defaultRunIntentSelection == .pushPerformance)
+
+        let unsyncedSteady = WatchResolvedSessionConfig(
+            profile: profile,
+            intent: PacingSessionIntent(targetPaceSecondsPerKm: 300, intent: .steady, validForDay: "2026-11-14"),
+            isPhoneSessionSynced: false
+        )
+        #expect(unsyncedSteady.defaultRunIntentSelection == .adaptiveBase)
+
+        let unsyncedRecovery = WatchResolvedSessionConfig(
+            profile: profile,
+            intent: PacingSessionIntent(targetPaceSecondsPerKm: 340, intent: .recovery, validForDay: "2026-11-14"),
+            isPhoneSessionSynced: false
+        )
+        #expect(unsyncedRecovery.defaultRunIntentSelection == .recovery)
     }
 
     @Test("WatchResolvedSessionConfig badges and CTA reflect synced, calibrated, standalone fallback, and drill states")
@@ -574,6 +772,64 @@ struct AthleteCalibrationCoreTests {
         )
         #expect(negativePaceConfig.targetPaceFormatted(useMetric: false) == "Adaptive")
         #expect(negativePaceConfig.aerobicCeilingPillText == "<140 BPM")
+
+        // Intent-aware aerobic ceiling pills:
+        // .recovery (70% HRR / 72% maxHR fallback):
+        // 50 + 0.70 * (190 - 50) = 50 + 98 = 148 -> <148 BPM
+        let recoveryWithResting = WatchResolvedSessionConfig(
+            profile: profileWithResting,
+            intent: PacingSessionIntent(targetPaceSecondsPerKm: 330, intent: .recovery, validForDay: "2026-11-14")
+        )
+        #expect(recoveryWithResting.aerobicCeilingPillText == "<148 BPM")
+
+        // 190 * 0.72 = 136.8 -> 137 -> <137 BPM
+        let recoveryWithoutResting = WatchResolvedSessionConfig(
+            profile: profileWithoutResting,
+            intent: PacingSessionIntent(targetPaceSecondsPerKm: 330, intent: .recovery, validForDay: "2026-11-14")
+        )
+        #expect(recoveryWithoutResting.aerobicCeilingPillText == "<137 BPM")
+
+        // .tempo (88% HRR / 90% maxHR fallback):
+        // 50 + 0.88 * (190 - 50) = 50 + 123.2 = 173.2 -> 173 -> <173 BPM
+        let tempoWithResting = WatchResolvedSessionConfig(
+            profile: profileWithResting,
+            intent: PacingSessionIntent(targetPaceSecondsPerKm: 270, intent: .tempo, validForDay: "2026-11-14")
+        )
+        #expect(tempoWithResting.aerobicCeilingPillText == "<173 BPM")
+
+        // 190 * 0.90 = 171.0 -> 171 -> <171 BPM
+        let tempoWithoutResting = WatchResolvedSessionConfig(
+            profile: profileWithoutResting,
+            intent: PacingSessionIntent(targetPaceSecondsPerKm: 270, intent: .tempo, validForDay: "2026-11-14")
+        )
+        #expect(tempoWithoutResting.aerobicCeilingPillText == "<171 BPM")
+
+        // Prescribed drills (hasPrescribedDrill == true, .intervals) retain standard aerobic ceiling (<159 BPM on 190/50)
+        let drillIntent = AthleteCalibrationCore.makeDrillIntent(
+            title: "Rhythm Intervals",
+            drillId: "rhythmIntervals",
+            targetCadence: "174 SPM",
+            durationMinutes: 12,
+            day: "2026-11-14"
+        )
+        let drillConfig = WatchResolvedSessionConfig(
+            profile: profileWithResting,
+            intent: drillIntent,
+            isPhoneSessionSynced: true
+        )
+        #expect(drillConfig.hasPrescribedDrill == true)
+        #expect(drillConfig.aerobicCeilingPillText == "<159 BPM")
+
+        // Overriding a synced 185/52 session to .pushPerformance yields <169 BPM
+        // 52 + 0.88 * (185 - 52) = 52 + 117.04 = 169.04 -> 169
+        let runnerProfile = AthleteCalibrationProfile(maxHR: 185.0, restingHR: 52.0, isFallback: false)
+        let syncedSteady = WatchResolvedSessionConfig(
+            profile: runnerProfile,
+            intent: PacingSessionIntent(targetPaceSecondsPerKm: 300, intent: .steady, validForDay: "2026-11-14"),
+            isPhoneSessionSynced: true
+        )
+        let overriddenToPush = syncedSteady.applying(runIntent: .pushPerformance)
+        #expect(overriddenToPush.aerobicCeilingPillText == "<169 BPM")
     }
 
     @Test("WatchRunDebrief exposes companion sync badge and subtitle")
@@ -900,5 +1156,154 @@ struct AthleteCalibrationCoreTests {
         )
         #expect(abs(leftPoint.x - inset) < 0.001)
         #expect(abs(leftPoint.y - (squareSize / 2.0)) < 0.001)
+    }
+
+    @Test("makeIntent preserves cadence floor and duration when non-rest, and clears when rest or nil")
+    func testMakeIntentCadenceFloorAndDurationMapping() {
+        // 1. Non-rest spec with cadenceFloor and minutesHigh
+        let runSpec = PlannedSessionSpec(
+            kind: "run",
+            title: "Aerobic Threshold",
+            minutesLow: 40,
+            minutesHigh: 50,
+            cadenceFloor: 168
+        )
+        let intent = AthleteCalibrationCore.makeIntent(spec: runSpec, day: "2026-11-14")
+        #expect(intent.targetCadenceSPM == 168)
+        #expect(intent.prescribedDurationMinutes == 50)
+
+        // 2. Non-rest spec with only minutesLow
+        let shortSpec = PlannedSessionSpec(
+            kind: "run",
+            title: "Short Recovery",
+            minutesLow: 25,
+            minutesHigh: 0,
+            cadenceFloor: 0
+        )
+        let shortIntent = AthleteCalibrationCore.makeIntent(spec: shortSpec, day: "2026-11-14")
+        #expect(shortIntent.targetCadenceSPM == nil)
+        #expect(shortIntent.prescribedDurationMinutes == 25)
+
+        // 3. Rest spec -> nil cadence and nil duration
+        let restSpec = PlannedSessionSpec(
+            kind: "rest",
+            title: "Full Rest",
+            minutesLow: 0,
+            minutesHigh: 0,
+            cadenceFloor: 160
+        )
+        let restIntent = AthleteCalibrationCore.makeIntent(spec: restSpec, day: "2026-11-14")
+        #expect(restIntent.targetCadenceSPM == nil)
+        #expect(restIntent.prescribedDurationMinutes == nil)
+
+        // 4. Nil spec -> nil cadence and nil duration
+        let nilIntent = AthleteCalibrationCore.makeIntent(spec: nil, day: "2026-11-14")
+        #expect(nilIntent.targetCadenceSPM == nil)
+        #expect(nilIntent.prescribedDurationMinutes == nil)
+    }
+
+    @Test("AthleteCalibrationProfile.zoneCeilings computes Karvonen HRR and Max HR fallback")
+    func testZoneCeilingsCalculations() {
+        // Karvonen HRR: maxHR = 190, restingHR = 50 -> HRR = 140
+        // zone1: 50 + 0.70 * 140 = 148
+        // zone2: 50 + 0.78 * 140 = 159.2 -> 159
+        // zone3: 50 + 0.83 * 140 = 166.2 -> 166
+        // zone4: 50 + 0.88 * 140 = 173.2 -> 173
+        // zone5: 50 + 0.92 * 140 = 178.8 -> 179
+        let profileHRR = AthleteCalibrationProfile(maxHR: 190.0, restingHR: 50.0, isFallback: false)
+        let ceilingsHRR = profileHRR.zoneCeilings()
+        #expect(ceilingsHRR.zone1RecoveryBPM == 148)
+        #expect(ceilingsHRR.zone2BaseBPM == 159)
+        #expect(ceilingsHRR.zone3SteadyBPM == 166)
+        #expect(ceilingsHRR.zone4TempoBPM == 173)
+        #expect(ceilingsHRR.zone5IntervalBPM == 179)
+
+        // Max HR fallback: maxHR = 190, restingHR = nil
+        // zone1: 190 * 0.72 = 136.8 -> 137
+        // zone2: 190 * 0.78 = 148.2 -> 148
+        // zone3: 190 * 0.83 = 157.7 -> 158
+        // zone4: 190 * 0.90 = 171.0 -> 171
+        // zone5: 190 * 0.93 = 176.7 -> 177
+        let profileMaxHR = AthleteCalibrationProfile(maxHR: 190.0, restingHR: nil, isFallback: true)
+        let ceilingsMaxHR = profileMaxHR.zoneCeilings()
+        #expect(ceilingsMaxHR.zone1RecoveryBPM == 137)
+        #expect(ceilingsMaxHR.zone2BaseBPM == 148)
+        #expect(ceilingsMaxHR.zone3SteadyBPM == 158)
+        #expect(ceilingsMaxHR.zone4TempoBPM == 171)
+        #expect(ceilingsMaxHR.zone5IntervalBPM == 177)
+    }
+
+    @Test("DrillAdherenceCore and PhysiologicalDiagnosisCore respect custom calibrated ceilings and preserve defaults")
+    func testDrillAdherenceAndPhysiologicalDiagnosisCalibratedCeilings() {
+        // 1. DrillAdherenceCore with default ceiling (144)
+        let defaultInput = DrillAdherenceInputCore(
+            drillIdentifier: "aerobicBuild",
+            actualCadence: 160,
+            actualHeartRate: 145, // 145 > 144
+            baselineCadence: 160,
+            targetHeartRateZone: 2,
+            percentZone4: 0.04,
+            isHeartRateTargeted: true
+        )
+        let defaultResult = DrillAdherenceCore.evaluateAdherence(input: defaultInput)
+        // 145 > 144 but <= 152 -> .partiallyMet
+        #expect(defaultResult.tier == .partiallyMet)
+
+        // With custom calibratedZone2CeilingBPM = 150 -> 145 <= 150 -> .met
+        let calibratedInput = DrillAdherenceInputCore(
+            drillIdentifier: "aerobicBuild",
+            actualCadence: 160,
+            actualHeartRate: 145,
+            baselineCadence: 160,
+            targetHeartRateZone: 2,
+            percentZone4: 0.04,
+            isHeartRateTargeted: true,
+            calibratedZone2CeilingBPM: 150
+        )
+        let calibratedResult = DrillAdherenceCore.evaluateAdherence(input: calibratedInput)
+        #expect(calibratedResult.tier == .met)
+
+        // 2. AerobicStrainEvaluation with default vs calibrated ceilings
+        // Default recovery ceiling is 135; 138 > 135 -> isCeilingExceeded = true
+        let defaultStrain = AerobicStrainEvaluation.evaluate(
+            workingAvgHeartRate: 138,
+            percentZone4: 0.0,
+            zone2Ceiling: 144,
+            isRecoveryPrescription: true
+        )
+        #expect(defaultStrain.isCeilingExceeded == true)
+
+        // With calibrated recovery ceiling 140; 138 <= 140 -> isCeilingExceeded = false
+        let calibratedStrain = AerobicStrainEvaluation.evaluate(
+            workingAvgHeartRate: 138,
+            percentZone4: 0.0,
+            zone2Ceiling: 144,
+            isRecoveryPrescription: true,
+            recoveryCeiling: 140
+        )
+        #expect(calibratedStrain.isCeilingExceeded == false)
+
+        // 3. RunTakeawaySummary / PhysiologicalDiagnosisCore forwarder with calibrated ceilings
+        let takeawayDefault = PhysiologicalDiagnosisCore.evaluate(
+            detectedTypeRaw: "Recovery Run",
+            workingAvgCadence: 160,
+            workingAvgHeartRate: 138,
+            percentZone4: 0.0,
+            heightAdjustedCadenceFloor: 150
+        )
+        // 138 > 135 (default recovery ceiling) triggers ceiling exceeded bullet
+        #expect(takeawayDefault.bullets.contains { $0.contains("135 BPM") })
+
+        let takeawayCalibrated = PhysiologicalDiagnosisCore.evaluate(
+            detectedTypeRaw: "Recovery Run",
+            workingAvgCadence: 160,
+            workingAvgHeartRate: 138,
+            percentZone4: 0.0,
+            heightAdjustedCadenceFloor: 150,
+            calibratedZone2CeilingBPM: 155,
+            calibratedRecoveryCeilingBPM: 140
+        )
+        // 138 <= 140 -> does not exceed 140 BPM ceiling
+        #expect(!takeawayCalibrated.bullets.contains { $0.contains("drifting above your") })
     }
 }

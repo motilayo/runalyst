@@ -37,6 +37,10 @@ struct AdaptiveWorkoutTelemetryCard: View {
     }
 
     var body: some View {
+        let ceilings = SessionSynthesisEngine.calibratedCeilings(for: runRecord)
+        let z1 = ceilings.map { Double($0.zone1RecoveryBPM) } ?? 135.0
+        let z2 = ceilings.map { Double($0.zone2BaseBPM) } ?? 144.0
+
         Group {
             if selectedModality == .heartRate && canToggle {
                 HeartRateTrajectoryMapView(
@@ -44,6 +48,8 @@ struct AdaptiveWorkoutTelemetryCard: View {
                     workingAvgHeartRate: runRecord.workingAvgHeartRate,
                     workoutDuration: workoutDuration ?? runRecord.duration,
                     workoutType: workoutType ?? runRecord.detectedTypeRaw,
+                    zone1Ceiling: z1,
+                    zone2Ceiling: z2,
                     percentZone4: runRecord.percentZone4,
                     hrCV: runRecord.hrCV,
                     splits: runRecord.signature?.splits ?? [],

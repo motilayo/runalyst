@@ -69,6 +69,18 @@ struct AdaptivePacingCoreWatchCompanionTests {
         #expect(recoveryConfig.hrCeilingFraction == 0.78)
         #expect(recoveryConfig.hrCeilingDurationSeconds == 20.0)
         #expect(recoveryConfig.recoverEfficiencyDriftThreshold == -0.04)
+
+        // Title and matching
+        #expect(WatchRunIntent.adaptiveBase.title == "Aerobic Base")
+        #expect(WatchRunIntent.pushPerformance.title == "Push / Performance")
+        #expect(WatchRunIntent.recovery.title == "Recovery")
+
+        #expect(WatchRunIntent.matching(intentKind: .recovery) == .recovery)
+        #expect(WatchRunIntent.matching(intentKind: .tempo) == .pushPerformance)
+        #expect(WatchRunIntent.matching(intentKind: .progression) == .pushPerformance)
+        #expect(WatchRunIntent.matching(intentKind: .intervals) == .pushPerformance)
+        #expect(WatchRunIntent.matching(intentKind: .steady) == .adaptiveBase)
+        #expect(WatchRunIntent.matching(intentKind: .easyAerobic) == .adaptiveBase)
     }
 
     @Test("WatchRunIntent.recovery: suppresses surge and triggers recover at conservative HR ceiling")
@@ -681,7 +693,7 @@ struct AdaptivePacingCoreWatchCompanionTests {
 
     @Test("WatchRunDebrief: sub-10m tiny distance or excessive pace duration returns dashed pace without spike")
     func testWatchRunDebriefTinyDistancePaceSpikeGuard() {
-        var core = AdaptivePacingCore(
+        let core = AdaptivePacingCore(
             profile: standardProfile,
             intent: standardIntent,
             location: .outdoor,
@@ -810,7 +822,7 @@ struct AdaptivePacingCoreWatchCompanionTests {
                 targetCadenceSPM: 168
             ),
             location: .outdoor,
-            configuration: .forWatchCompanion(intent: .adaptiveBase)
+            configuration: .forWatchCompanion(intent: .adaptiveBase, cadenceFloorSPM: 140)
         )
         core.state = .tracking
         core.cadenceBaselineSPM = 168
@@ -1008,5 +1020,44 @@ struct AdaptivePacingCoreWatchCompanionTests {
         )
         #expect(zeroPaceDisplay.compactFilteredPaceValue == "--:--")
         #expect(zeroPaceDisplay.compactTargetPaceValue == "--:--")
+    }
+
+    @Test("AdaptivePacingConfiguration and AdaptivePacingCore apply cadenceFloorSPM and intent targetCadenceSPM")
+    func testCadenceFloorAndTargetCadenceApplication() {
+        // forWatchCompanion with explicit cadenceFloorSPM overrides default 150
+        let configWithFloor = AdaptivePacingConfiguration.forWatchCompanion(intent: .adaptiveBase, cadenceFloorSPM: 165)
+        #expect(configWithFloor.cadenceFloorSPM == 165)
+
+        // forWatchCompanion without cadenceFloorSPM preserves default 150
+        let configDefault = AdaptivePacingConfiguration.forWatchCompanion(intent: .adaptiveBase)
+        #expect(configDefault.cadenceFloorSPM == 150)
+
+        // AdaptivePacingCore init: when intent has targetCadenceSPM > 0 and config has default floor (150),
+        // floor is promoted to targetCadenceSPM
+        let profile = AthleteCalibrationProfile(maxHR: 185, restingHR: 52, isFallback: false)
+        let intentWithCadence = PacingSessionIntent(
+            targetPaceSecondsPerKm: 300,
+            intent: .steady,
+            validForDay: "2026-11-14",
+            targetCadenceSPM: 172
+        )
+        let corePromoted = AdaptivePacingCore(
+            profile: profile,
+            intent: intentWithCadence,
+            location: .outdoor,
+            configuration: .standard // cadenceFloorSPM == 150
+        )
+        #expect(corePromoted.configuration.cadenceFloorSPM == 172)
+
+        // When config already had custom floor != 150, it is preserved
+        var customConfig = AdaptivePacingConfiguration.standard
+        customConfig.cadenceFloorSPM = 160
+        let corePreserved = AdaptivePacingCore(
+            profile: profile,
+            intent: intentWithCadence,
+            location: .outdoor,
+            configuration: customConfig
+        )
+        #expect(corePreserved.configuration.cadenceFloorSPM == 160)
     }
 }

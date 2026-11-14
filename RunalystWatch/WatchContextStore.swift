@@ -77,7 +77,7 @@ public final class WatchContextStore: NSObject, WCSessionDelegate {
 
     /// Resolves the workout session configuration given today's date, running intent, and optional pace override.
     public func resolveSession(
-        runIntent: WatchRunIntent = .adaptiveBase,
+        runIntent: WatchRunIntent? = nil,
         selectedPace: Int? = nil,
         fallbackAge: Int? = nil
     ) -> WatchResolvedSessionConfig {
@@ -87,7 +87,7 @@ public final class WatchContextStore: NSObject, WCSessionDelegate {
             currentDayString: currentDay,
             selectedTargetPaceSecondsPerKm: selectedPace,
             fallbackAge: fallbackAge
-        ).applying(runIntent: runIntent)
+        ).applying(runIntent: runIntent, selectedPace: selectedPace)
     }
 
     private func todayDayString() -> String {

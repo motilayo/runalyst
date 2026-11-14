@@ -36,14 +36,11 @@ public struct AerobicStrainEvaluation: Sendable, Equatable {
         percentZone4: Double,
         zone2Ceiling: Double,
         isRecoveryPrescription: Bool,
+        recoveryCeiling: Double = 135.0,
         hrCV: Double? = nil
     ) -> AerobicStrainEvaluation {
-        let effectiveCeiling: Double
-        if isRecoveryPrescription {
-            effectiveCeiling = zone2Ceiling > 0 ? min(135.0, zone2Ceiling) : 135.0
-        } else {
-            effectiveCeiling = zone2Ceiling > 0 ? zone2Ceiling : 144.0
-        }
+        let ceiling = isRecoveryPrescription ? recoveryCeiling : zone2Ceiling
+        let effectiveCeiling = ceiling > 0 ? ceiling : (isRecoveryPrescription ? 135.0 : 144.0)
 
         let isOverreach = percentZone4 > 0.15 || (workingAvgHeartRate > (effectiveCeiling + 12.0))
         let isExceeded = (workingAvgHeartRate > effectiveCeiling) || (percentZone4 > 0.15)
@@ -200,7 +197,9 @@ public struct RunTakeawaySummary: Sendable, Equatable {
         prescribedDrillName: String? = nil,
         drillAdherence: DrillAdherenceContext? = nil,
         intervalSummary: IntervalSummaryContext? = nil,
-        cachedInsightHeadline: String? = nil
+        cachedInsightHeadline: String? = nil,
+        calibratedZone2CeilingBPM: Double? = nil,
+        calibratedRecoveryCeilingBPM: Double? = nil
     ) -> RunTakeawaySummary {
         guard workingAvgCadence > 0 || workingAvgHeartRate > 0 else {
             return RunTakeawaySummary(
@@ -262,17 +261,20 @@ public struct RunTakeawaySummary: Sendable, Equatable {
 
         // 2. Cardiovascular Effort & Decoupling
         if workingAvgHeartRate > 0 {
+            let zone2Ceiling = calibratedZone2CeilingBPM ?? 144.0
+            let recoveryCeiling = calibratedRecoveryCeilingBPM ?? 135.0
             let hrCeiling: Int = {
                 if let drill = drillAdherence {
-                    return drill.targetHeartRateZone == 2 ? 144 : 135
+                    return drill.targetHeartRateZone == 2 ? Int(zone2Ceiling.rounded()) : Int(recoveryCeiling.rounded())
                 }
-                return isRecovery ? 135 : 144
+                return isRecovery ? Int(recoveryCeiling.rounded()) : Int(zone2Ceiling.rounded())
             }()
             let strain = AerobicStrainEvaluation.evaluate(
                 workingAvgHeartRate: workingAvgHeartRate,
                 percentZone4: percentZone4,
-                zone2Ceiling: Double(hrCeiling),
-                isRecoveryPrescription: isRecovery
+                zone2Ceiling: zone2Ceiling,
+                isRecoveryPrescription: isRecovery,
+                recoveryCeiling: recoveryCeiling
             )
 
             let hrDetail: String
@@ -390,6 +392,44 @@ public struct RunTakeawaySummary: Sendable, Equatable {
             headline: headline,
             bullets: items.map(\.detail),
             items: items
+        )
+    }
+}
+
+// MARK: - PhysiologicalDiagnosisCore Takeaway Forwarder
+
+extension PhysiologicalDiagnosisCore {
+    public static func evaluate(
+        detectedTypeRaw: String,
+        workingAvgCadence: Double,
+        workingAvgHeartRate: Double,
+        percentZone4: Double,
+        heightAdjustedCadenceFloor: Int,
+        isIndoor: Bool = false,
+        hasCardiacDrift: Bool = false,
+        cardiacDriftMagnitudeBPM: Int = 0,
+        prescribedDrillName: String? = nil,
+        drillAdherence: RunTakeawaySummary.DrillAdherenceContext? = nil,
+        intervalSummary: RunTakeawaySummary.IntervalSummaryContext? = nil,
+        cachedInsightHeadline: String? = nil,
+        calibratedZone2CeilingBPM: Double? = nil,
+        calibratedRecoveryCeilingBPM: Double? = nil
+    ) -> RunTakeawaySummary {
+        RunTakeawaySummary.evaluate(
+            detectedTypeRaw: detectedTypeRaw,
+            workingAvgCadence: workingAvgCadence,
+            workingAvgHeartRate: workingAvgHeartRate,
+            percentZone4: percentZone4,
+            heightAdjustedCadenceFloor: heightAdjustedCadenceFloor,
+            isIndoor: isIndoor,
+            hasCardiacDrift: hasCardiacDrift,
+            cardiacDriftMagnitudeBPM: cardiacDriftMagnitudeBPM,
+            prescribedDrillName: prescribedDrillName,
+            drillAdherence: drillAdherence,
+            intervalSummary: intervalSummary,
+            cachedInsightHeadline: cachedInsightHeadline,
+            calibratedZone2CeilingBPM: calibratedZone2CeilingBPM,
+            calibratedRecoveryCeilingBPM: calibratedRecoveryCeilingBPM
         )
     }
 }

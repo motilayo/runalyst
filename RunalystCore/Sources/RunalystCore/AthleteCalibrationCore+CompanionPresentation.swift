@@ -20,6 +20,9 @@ extension WatchResolvedSessionConfig {
         if hasPrescribedDrill {
             return "PRESCRIBED DRILL"
         }
+        if isUserIntentOverride {
+            return "CUSTOM INTENT"
+        }
         return isPhoneSessionSynced ? "TODAY'S SESSION" : "ADAPTIVE RUN"
     }
 
@@ -27,6 +30,9 @@ extension WatchResolvedSessionConfig {
     public var sessionTitle: String {
         if hasPrescribedDrill {
             return prescribedDrillTitle ?? "Prescribed Drill"
+        }
+        if isUserIntentOverride {
+            return WatchRunIntent.matching(intentKind: intent.intent).title
         }
         switch intent.intent {
         case .recovery:
@@ -83,19 +89,82 @@ extension WatchResolvedSessionConfig {
         targetCadenceFormatted ?? "Adaptive"
     }
 
-    /// Display pill text for the Karvonen (or max-HR percentage fallback) 78% aerobic heart rate ceiling.
+    /// Display pill text for the intent-aware calibrated heart rate ceiling.
     public var aerobicCeilingPillText: String {
-        let cap: Int
-        if let resting = profile.restingHR, resting > 0, profile.maxHR > resting {
-            cap = Int((resting + 0.78 * (profile.maxHR - resting)).rounded())
+        aerobicCeilingPillText(for: intent.intent)
+    }
+
+    /// Formats the calibrated heart rate ceiling for a specific pacing intent.
+    public func aerobicCeilingPillText(for intentKind: PacingIntentKind) -> String {
+        let ceilings = profile.zoneCeilings()
+        let ceiling: Int
+        if hasPrescribedDrill {
+            ceiling = ceilings.zone2BaseBPM
         } else {
-            cap = Int((profile.maxHR * 0.78).rounded())
+            switch intentKind {
+            case .recovery:
+                ceiling = ceilings.zone1RecoveryBPM
+            case .tempo, .progression, .intervals:
+                ceiling = ceilings.zone4TempoBPM
+            case .easyAerobic, .steady:
+                ceiling = ceilings.zone2BaseBPM
+            }
         }
-        return "<\(cap) BPM"
+        return "<\(ceiling) BPM"
     }
 
     /// Primary call-to-action button title for launching the resolved workout session.
     public var primaryCtaTitle: String {
         hasPrescribedDrill ? "Start Drill" : "Start Run"
+    }
+}
+
+// MARK: - Calibrated Zone Ceilings
+
+/// Discrete heart rate zone ceiling boundaries calibrated to an athlete's physiology.
+public struct CalibratedZoneCeilings: Sendable, Equatable {
+    public let zone1RecoveryBPM: Int
+    public let zone2BaseBPM: Int
+    public let zone3SteadyBPM: Int
+    public let zone4TempoBPM: Int
+    public let zone5IntervalBPM: Int
+
+    public init(
+        zone1RecoveryBPM: Int,
+        zone2BaseBPM: Int,
+        zone3SteadyBPM: Int,
+        zone4TempoBPM: Int,
+        zone5IntervalBPM: Int
+    ) {
+        self.zone1RecoveryBPM = zone1RecoveryBPM
+        self.zone2BaseBPM = zone2BaseBPM
+        self.zone3SteadyBPM = zone3SteadyBPM
+        self.zone4TempoBPM = zone4TempoBPM
+        self.zone5IntervalBPM = zone5IntervalBPM
+    }
+}
+
+extension AthleteCalibrationProfile {
+    /// Computes discrete heart rate zone ceilings using Karvonen HRR (when valid resting HR is available)
+    /// or max heart rate percentage fallback.
+    public func zoneCeilings() -> CalibratedZoneCeilings {
+        if let rhr = restingHR, rhr > 30, maxHR > rhr {
+            let hrr = maxHR - rhr
+            return CalibratedZoneCeilings(
+                zone1RecoveryBPM: Int((rhr + 0.70 * hrr).rounded()),
+                zone2BaseBPM: Int((rhr + 0.78 * hrr).rounded()),
+                zone3SteadyBPM: Int((rhr + 0.83 * hrr).rounded()),
+                zone4TempoBPM: Int((rhr + 0.88 * hrr).rounded()),
+                zone5IntervalBPM: Int((rhr + 0.92 * hrr).rounded())
+            )
+        } else {
+            return CalibratedZoneCeilings(
+                zone1RecoveryBPM: Int((maxHR * 0.72).rounded()),
+                zone2BaseBPM: Int((maxHR * 0.78).rounded()),
+                zone3SteadyBPM: Int((maxHR * 0.83).rounded()),
+                zone4TempoBPM: Int((maxHR * 0.90).rounded()),
+                zone5IntervalBPM: Int((maxHR * 0.93).rounded())
+            )
+        }
     }
 }

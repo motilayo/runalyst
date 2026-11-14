@@ -109,13 +109,19 @@ public struct AdaptivePacingConfiguration: Sendable, Equatable {
     public static let standard = AdaptivePacingConfiguration()
 
     /// Watch companion configuration tuned for zero-friction runs with 5-minute calibration lock-in.
-    public static func forWatchCompanion(intent: WatchRunIntent) -> AdaptivePacingConfiguration {
+    public static func forWatchCompanion(
+        intent: WatchRunIntent,
+        cadenceFloorSPM: Int? = nil
+    ) -> AdaptivePacingConfiguration {
         var config = AdaptivePacingConfiguration(
             warmupDurationSeconds: 120.0,
             baselineDurationSeconds: 180.0,
             maxCalibrationDurationSeconds: 420.0,
             refractoryDurationSeconds: 90.0
         )
+        if let cadenceFloorSPM, cadenceFloorSPM > 0 {
+            config.cadenceFloorSPM = cadenceFloorSPM
+        }
         switch intent {
         case .adaptiveBase:
             config.hrCeilingFraction = 0.92
@@ -247,7 +253,11 @@ public struct AdaptivePacingCore: Sendable {
         self.profile = profile
         self.intent = intent
         self.location = location
-        self.configuration = configuration
+        var resolvedConfig = configuration
+        if let targetCadence = intent.targetCadenceSPM, targetCadence > 0, resolvedConfig.cadenceFloorSPM == 150 {
+            resolvedConfig.cadenceFloorSPM = targetCadence
+        }
+        self.configuration = resolvedConfig
 
         self.kalmanHR = .standardHeartRate
         self.kalmanSpeed = .standardSpeed
@@ -256,7 +266,7 @@ public struct AdaptivePacingCore: Sendable {
         self.bdiTracker = BiomechanicalDegradationIndex()
 
         self.state = .calibrating(progress: 0.0)
-        self.calibrationTargetSeconds = configuration.warmupDurationSeconds + configuration.baselineDurationSeconds
+        self.calibrationTargetSeconds = resolvedConfig.warmupDurationSeconds + resolvedConfig.baselineDurationSeconds
         self.adjustmentsEnabled = true
         self.currentTargetPaceSecondsPerKm = intent.targetPaceSecondsPerKm
         self.originalTargetPaceSecondsPerKm = intent.targetPaceSecondsPerKm

@@ -290,7 +290,8 @@ extension DrillExecutionScorecard {
             intervalSummaryTier: intervalSummary?.toCore.tier,
             intervalSummaryVerdict: intervalSummary?.verdict,
             repsTotalCount: displayReps.count,
-            repsMetCount: displayReps.filter(\.isMet).count
+            repsMetCount: displayReps.filter(\.isMet).count,
+            calibratedZone2CeilingBPM: SessionSynthesisEngine.calibratedCeilings(for: runRecord)?.zone2BaseBPM
         )
         let adherenceResult = DrillAdherenceCore.evaluateAdherence(input: adherenceInput)
         let effectiveMetCount = adherenceResult.effectiveMetCount

@@ -13,14 +13,21 @@ public struct StartRunView: View {
 
     @State private var selectedLocation: PacingLocation = WatchContextStore.shared.preferredLocation
     @State private var hasUserManuallySelectedLocation = false
-    @State private var selectedIntent: WatchRunIntent = .adaptiveBase
+    @State private var selectedIntentOverride: WatchRunIntent?
     @State private var selectedPaceOption: WatchTargetPaceOption = .justRun
 
     public init() {}
 
+    private var baseConfig: WatchResolvedSessionConfig {
+        WatchContextStore.shared.resolveSession(
+            runIntent: nil,
+            selectedPace: selectedPaceOption.paceSecondsPerKm
+        )
+    }
+
     private var resolvedConfig: WatchResolvedSessionConfig {
         WatchContextStore.shared.resolveSession(
-            runIntent: selectedIntent,
+            runIntent: selectedIntentOverride,
             selectedPace: selectedPaceOption.paceSecondsPerKm
         )
     }
@@ -35,12 +42,22 @@ public struct StartRunView: View {
 
             ScrollView {
                 VStack(spacing: 8) {
+                    if let startError = workoutManager.lastStartError {
+                        Text(startError)
+                            .font(.system(size: 10, weight: .semibold, design: .rounded))
+                            .foregroundStyle(.red)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 4)
+                            .frame(maxWidth: .infinity)
+                            .background(Color.red.opacity(0.12))
+                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    }
+
                     heroCard
                     startWorkoutCTA
                     locationSelector
-                    if !resolvedConfig.hasPrescribedDrill {
-                        runIntentSelector
-                    }
+                    runIntentSelector
 
                     if resolvedConfig.requiresTargetPacePicker {
                         targetPacePicker
@@ -55,6 +72,10 @@ public struct StartRunView: View {
                 workoutManager.isNavigatingToGauge = true
             }
             if !hasUserManuallySelectedLocation { selectedLocation = WatchContextStore.shared.preferredLocation }
+            if ProcessInfo.processInfo.environment["RUNALYST_PREVIEW_SCREEN"] == "START_CUSTOM_OVERRIDE",
+               selectedIntentOverride == nil {
+                selectedIntentOverride = .pushPerformance
+            }
             if ProcessInfo.processInfo.environment["RUNALYST_PREVIEW_SCREEN"] == nil {
                 WatchContextStore.shared.requestLatestContextIfNeeded()
             }
@@ -150,7 +171,7 @@ public struct StartRunView: View {
                 let targetPace = resolvedConfig.requiresTargetPacePicker ? selectedPaceOption.paceSecondsPerKm : nil
                 await workoutManager.startWorkout(
                     location: selectedLocation,
-                    intent: selectedIntent,
+                    intent: selectedIntentOverride,
                     targetPaceSecondsPerKm: targetPace,
                     viewModel: pacingViewModel
                 )
@@ -201,22 +222,41 @@ public struct StartRunView: View {
                 .padding(.leading, 2)
 
             VStack(spacing: 5) {
+                if baseConfig.isPhoneSessionSynced && baseConfig.defaultRunIntentSelection == nil {
+                    intentOptionRow(
+                        title: baseConfig.sessionTitle,
+                        subtitle: "Scheduled for today",
+                        isSelected: selectedIntentOverride == nil
+                    ) {
+                        selectedIntentOverride = nil
+                    }
+                }
+
                 ForEach(WatchRunIntent.allCases) { intent in
-                    intentRow(intent)
+                    let isSelected = (selectedIntentOverride ?? baseConfig.defaultRunIntentSelection) == intent
+                    intentOptionRow(
+                        title: intent.title,
+                        subtitle: intent.subtitle,
+                        isSelected: isSelected
+                    ) {
+                        selectedIntentOverride = (baseConfig.isPhoneSessionSynced && !baseConfig.hasPrescribedDrill && baseConfig.defaultRunIntentSelection == intent) ? nil : intent
+                    }
                 }
             }
         }
     }
 
-    private func intentRow(_ intent: WatchRunIntent) -> some View {
-        let isSelected = selectedIntent == intent
-        return Button {
-            selectedIntent = intent
-        } label: {
+    private func intentOptionRow(
+        title: String,
+        subtitle: String,
+        isSelected: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
             HStack(spacing: 8) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(intent.title).font(.system(.subheadline, design: .rounded)).fontWeight(.semibold).foregroundStyle(.white)
-                    Text(intent.subtitle).font(.system(size: 10, design: .rounded)).foregroundStyle(.secondary).lineLimit(1)
+                    Text(title).font(.system(.subheadline, design: .rounded)).fontWeight(.semibold).foregroundStyle(.white)
+                    Text(subtitle).font(.system(size: 10, design: .rounded)).foregroundStyle(.secondary).lineLimit(1)
                 }
                 Spacer()
                 if isSelected {
