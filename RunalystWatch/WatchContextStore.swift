@@ -31,6 +31,7 @@ public final class WatchContextStore: NSObject, WCSessionDelegate {
     }
 
     private func activateSession() {
+        guard ProcessInfo.processInfo.environment["RUNALYST_PREVIEW_SCREEN"] == nil else { return }
         if WCSession.isSupported() {
             let session = WCSession.default
             session.delegate = self
@@ -99,6 +100,7 @@ public final class WatchContextStore: NSObject, WCSessionDelegate {
 
     /// Proactively requests the freshest pacing context and calibration profile from iPhone if reachable.
     public func requestLatestContextIfNeeded() {
+        guard ProcessInfo.processInfo.environment["RUNALYST_PREVIEW_SCREEN"] == nil else { return }
         guard WCSession.isSupported() else { return }
         let session = WCSession.default
         guard session.activationState == .activated && session.isReachable else { return }

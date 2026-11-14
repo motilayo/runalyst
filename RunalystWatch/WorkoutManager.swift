@@ -191,7 +191,8 @@ public final class WorkoutManager: NSObject {
 
         let elapsed = builder.elapsedTime
         let totalDistance = builder.statistics(for: HKQuantityType(.distanceWalkingRunning))?.sumQuantity()?.doubleValue(for: .meter())
-        let useMetric = UserDefaults.standard.object(forKey: "useMetricSystem") as? Bool ?? true
+        let useMetric = UserDefaults.standard.object(forKey: "useMetricSystem") as? Bool
+            ?? (Locale.current.measurementSystem == .metric)
 
         let debrief = await telemetryEngine?.buildRunDebrief(
             elapsedSeconds: elapsed,

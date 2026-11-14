@@ -53,6 +53,26 @@ public struct WatchTargetPaceOption: Identifiable, Sendable, Codable, Equatable,
         self.label = label
     }
 
+    /// Returns a unit-aware formatted pace label in metric (`/km`) or imperial (`/mi`), falling back to `label` when unset.
+    ///
+    /// - Parameter useMetric: When `true`, formats in seconds per kilometer; when `false`, converts to seconds per mile.
+    /// - Returns: A formatted string such as `"5:00 /km"`, `"8:03 /mi"`, or `"Just Run"`.
+    public func label(useMetric: Bool) -> String {
+        guard let seconds = paceSecondsPerKm, seconds > 0 else {
+            return label
+        }
+        if useMetric {
+            let minutes = seconds / 60
+            let secs = seconds % 60
+            return String(format: "%d:%02d /km", minutes, secs)
+        } else {
+            let displaySeconds = Int((Double(seconds) * 1.609344).rounded())
+            let minutes = displaySeconds / 60
+            let secs = displaySeconds % 60
+            return String(format: "%d:%02d /mi", minutes, secs)
+        }
+    }
+
     /// Default option where no explicit pace is targeted, adapting around the athlete's natural baseline.
     public static let justRun = WatchTargetPaceOption(
         id: "just-run",
@@ -79,6 +99,7 @@ public struct WatchResolvedSessionConfig: Sendable, Equatable {
     public let intent: PacingSessionIntent
     public let requiresTargetPacePicker: Bool
     public let isIndoorPreferred: Bool
+    public let isPhoneSessionSynced: Bool
 
     public var hasPrescribedDrill: Bool {
         intent.prescribedDrillTitle != nil
@@ -102,12 +123,14 @@ public struct WatchResolvedSessionConfig: Sendable, Equatable {
         profile: AthleteCalibrationProfile,
         intent: PacingSessionIntent,
         requiresTargetPacePicker: Bool? = nil,
-        isIndoorPreferred: Bool = false
+        isIndoorPreferred: Bool = false,
+        isPhoneSessionSynced: Bool = false
     ) {
         self.profile = profile
         self.intent = intent
         self.requiresTargetPacePicker = requiresTargetPacePicker ?? false
         self.isIndoorPreferred = isIndoorPreferred
+        self.isPhoneSessionSynced = isPhoneSessionSynced
     }
 
     /// Derives a session configuration tailored to a user-selected running intent.
@@ -130,7 +153,8 @@ public struct WatchResolvedSessionConfig: Sendable, Equatable {
             profile: profile,
             intent: modifiedIntent,
             requiresTargetPacePicker: false,
-            isIndoorPreferred: isIndoorPreferred
+            isIndoorPreferred: isIndoorPreferred,
+            isPhoneSessionSynced: isPhoneSessionSynced
         )
     }
 }
@@ -201,4 +225,3 @@ public enum WatchVoiceDeliveryTarget: String, Sendable, Equatable {
         }
     }
 }
-

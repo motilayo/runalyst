@@ -228,6 +228,7 @@ public struct PacingDisplayState: Sendable, Equatable {
     public let targetBandUpperNormalized: Double
     public let biometricStatusToken: PacingAccentToken
     public let biometricStatusLabel: String
+    public let totalDistanceMeters: Double?
 
     public init(
         state: PacingState,
@@ -255,7 +256,8 @@ public struct PacingDisplayState: Sendable, Equatable {
         targetBandLowerNormalized: Double = 0.42,
         targetBandUpperNormalized: Double = 0.58,
         biometricStatusToken: PacingAccentToken = .neutral,
-        biometricStatusLabel: String = ""
+        biometricStatusLabel: String = "",
+        totalDistanceMeters: Double? = nil
     ) {
         self.state = state
         self.targetPaceSecondsPerKm = targetPaceSecondsPerKm
@@ -283,6 +285,7 @@ public struct PacingDisplayState: Sendable, Equatable {
         self.targetBandUpperNormalized = targetBandUpperNormalized
         self.biometricStatusToken = biometricStatusToken
         self.biometricStatusLabel = biometricStatusLabel
+        self.totalDistanceMeters = totalDistanceMeters
     }
 }
 
@@ -328,21 +331,78 @@ extension PacingDisplayState {
         }
     }
 
+    // MARK: - Unit-Aware Pace Formatting
+
+    private func formatPaceValue(
+        _ secondsPerKm: Int?,
+        useMetric: Bool,
+        includeUnit: Bool
+    ) -> String {
+        guard let secondsPerKm, secondsPerKm > 0 else { return "--:--" }
+        let displaySeconds: Int = useMetric
+            ? secondsPerKm
+            : Int((Double(secondsPerKm) * 1.609344).rounded())
+        let minutes = displaySeconds / 60
+        let seconds = displaySeconds % 60
+        if includeUnit {
+            let unit = useMetric ? "/km" : "/mi"
+            return String(format: "%d:%02d %@", minutes, seconds, unit)
+        } else {
+            return String(format: "%d:%02d", minutes, seconds)
+        }
+    }
+
+    /// Formats the current filtered pace in metric (`/km`) or imperial (`/mi`).
+    ///
+    /// - Parameter useMetric: When `true`, formats seconds per kilometer; when `false`, converts to seconds per mile.
+    /// - Returns: Pre-formatted pace string such as `"5:02 /km"`, `"8:06 /mi"`, or `"--:--"`.
+    public func filteredPaceFormatted(useMetric: Bool) -> String {
+        formatPaceValue(filteredPaceSecondsPerKm, useMetric: useMetric, includeUnit: true)
+    }
+
+    /// Formats the active target pace in metric (`/km`) or imperial (`/mi`).
+    ///
+    /// - Parameter useMetric: When `true`, formats seconds per kilometer; when `false`, converts to seconds per mile.
+    /// - Returns: Pre-formatted pace string such as `"5:00 /km"`, `"8:03 /mi"`, or `"--:--"`.
+    public func targetPaceFormatted(useMetric: Bool) -> String {
+        formatPaceValue(targetPaceSecondsPerKm, useMetric: useMetric, includeUnit: true)
+    }
+
+    /// Pure compact representation of current filtered pace (e.g. "5:02" or "--:--") in metric or imperial.
+    ///
+    /// - Parameter useMetric: When `true`, formats in metric; when `false`, converts to imperial.
+    /// - Returns: Compact pace string such as `"5:02"` or `"--:--"`.
+    public func compactFilteredPaceValue(useMetric: Bool) -> String {
+        formatPaceValue(filteredPaceSecondsPerKm, useMetric: useMetric, includeUnit: false)
+    }
+
+    /// Pure compact representation of current target pace (e.g. "5:00" or "--:--") in metric or imperial.
+    ///
+    /// - Parameter useMetric: When `true`, formats in metric; when `false`, converts to imperial.
+    /// - Returns: Compact pace string such as `"5:00"` or `"--:--"`.
+    public func compactTargetPaceValue(useMetric: Bool) -> String {
+        formatPaceValue(targetPaceSecondsPerKm, useMetric: useMetric, includeUnit: false)
+    }
+
+    /// Uppercase pace unit suffix (`"/KM"` when metric, `"/MI"` when imperial) for secondary label rendering.
+    public func paceUnitLabel(useMetric: Bool) -> String {
+        useMetric ? "/KM" : "/MI"
+    }
+
     // MARK: - Compact Metrics
 
     private func formatCompactPace(_ seconds: Int?) -> String {
-        guard let seconds, seconds > 0 else { return "--:--" }
-        return String(format: "%d:%02d", seconds / 60, seconds % 60)
+        formatPaceValue(seconds, useMetric: true, includeUnit: false)
     }
 
     /// Pure compact representation of current filtered pace (e.g. "5:02" or "--:--").
     public var compactFilteredPaceValue: String {
-        formatCompactPace(filteredPaceSecondsPerKm)
+        compactFilteredPaceValue(useMetric: true)
     }
 
     /// Pure compact representation of current target pace (e.g. "5:00" or "--:--").
     public var compactTargetPaceValue: String {
-        formatCompactPace(targetPaceSecondsPerKm)
+        compactTargetPaceValue(useMetric: true)
     }
 
     /// Pure compact representation of current filtered heart rate (e.g. "148" or "--").
@@ -353,6 +413,79 @@ extension PacingDisplayState {
     /// Pure compact representation of current filtered cadence (e.g. "172" or "--").
     public var compactCadenceValue: String {
         filteredCadenceSPM.map { "\($0)" } ?? "--"
+    }
+
+    // MARK: - Split Progress & Bezel Geometry
+
+    /// Fraction of current split (kilometer or mile) completed based on distance, or calibration progress.
+    ///
+    /// - Parameter useMetric: When `true`, progress is measured toward 1,000 meters; when `false`, toward 1 mile (1,609.344 meters).
+    /// - Returns: Progress value clamped to `0.0...1.0`.
+    public func splitProgressFraction(useMetric: Bool) -> Double {
+        if let distance = totalDistanceMeters, distance > 0.0 {
+            let unitMeters = useMetric ? 1000.0 : 1609.344
+            let remainder = distance.truncatingRemainder(dividingBy: unitMeters)
+            return min(1.0, max(0.0, remainder / unitMeters))
+        } else if isCalibrating, let cal = calibrationProgress {
+            return min(1.0, max(0.0, cal))
+        } else {
+            return 0.0
+        }
+    }
+
+    /// Computes the clockwise (x, y) coordinates along a rounded-rectangular bezel perimeter.
+    ///
+    /// - Parameters:
+    ///   - progress: Fraction of the lap or interval completed in the range `0.0...1.0`. Starts at 12 o'clock.
+    ///   - width: Total bezel container width.
+    ///   - height: Total bezel container height.
+    ///   - cornerRadius: Corner radius of the rounded bezel outline.
+    ///   - inset: Inset distance from the outer boundary.
+    /// - Returns: Absolute (x, y) coordinates for rendering a progress indicator or bead along the bezel.
+    public static func bezelPerimeterPoint(
+        progress: Double,
+        width: Double,
+        height: Double,
+        cornerRadius: Double = 38.0,
+        inset: Double = 2.5
+    ) -> (x: Double, y: Double) {
+        let clamped = min(1.0, max(0.0, progress))
+        let bounds = BezelBounds(width: width, height: height, cornerRadius: cornerRadius, inset: inset)
+
+        let segments = buildBezelSegments(bounds: bounds)
+        let totalLength = segments.reduce(0.0) { $0 + $1.length }
+        guard totalLength > 0.0 else { return (bounds.midX, bounds.minY) }
+
+        var targetDistance = clamped * totalLength
+        for segment in segments {
+            if targetDistance <= segment.length {
+                let frac = segment.length > 0 ? (targetDistance / segment.length) : 0.0
+                return segment.point(fraction: frac)
+            }
+            targetDistance -= segment.length
+        }
+
+        return segments.last?.point(fraction: 1.0) ?? (bounds.midX, bounds.minY)
+    }
+
+    private static func buildBezelSegments(bounds: BezelBounds) -> [BezelSegment] {
+        let r = bounds.radius
+        let halfTopLen = max(0.0, (bounds.maxX - r) - bounds.midX)
+        let arcLen = 0.5 * .pi * r
+        let sideLen = max(0.0, (bounds.maxY - r) - (bounds.minY + r))
+        let bottomLen = max(0.0, (bounds.maxX - r) - (bounds.minX + r))
+
+        return [
+            .line(x1: bounds.midX, y1: bounds.minY, x2: bounds.maxX - r, y2: bounds.minY, length: halfTopLen),
+            .arc(cx: bounds.maxX - r, cy: bounds.minY + r, r: r, startAngle: -.pi * 0.5, endAngle: 0.0, length: arcLen),
+            .line(x1: bounds.maxX, y1: bounds.minY + r, x2: bounds.maxX, y2: bounds.maxY - r, length: sideLen),
+            .arc(cx: bounds.maxX - r, cy: bounds.maxY - r, r: r, startAngle: 0.0, endAngle: .pi * 0.5, length: arcLen),
+            .line(x1: bounds.maxX - r, y1: bounds.maxY, x2: bounds.minX + r, y2: bounds.maxY, length: bottomLen),
+            .arc(cx: bounds.minX + r, cy: bounds.maxY - r, r: r, startAngle: .pi * 0.5, endAngle: .pi, length: arcLen),
+            .line(x1: bounds.minX, y1: bounds.maxY - r, x2: bounds.minX, y2: bounds.minY + r, length: sideLen),
+            .arc(cx: bounds.minX + r, cy: bounds.minY + r, r: r, startAngle: .pi, endAngle: 1.5 * .pi, length: arcLen),
+            .line(x1: bounds.minX + r, y1: bounds.minY, x2: bounds.midX, y2: bounds.minY, length: halfTopLen)
+        ]
     }
 
     /// Creates an initial ready-to-render display state prior to receiving any telemetry ticks.
@@ -506,9 +639,9 @@ extension AdaptivePacingCore {
             case .tracking:
                 return "Locked In"
             case .surge:
-                return "Surge Zone"
+                return "Surge"
             case .recover:
-                return "Protecting Zone"
+                return "Recover"
             }
         }()
 
@@ -538,7 +671,8 @@ extension AdaptivePacingCore {
             targetBandLowerNormalized: lowerBand,
             targetBandUpperNormalized: upperBand,
             biometricStatusToken: bioToken,
-            biometricStatusLabel: bioLabel
+            biometricStatusLabel: bioLabel,
+            totalDistanceMeters: latestTotalDistanceMeters
         )
     }
 
@@ -555,6 +689,55 @@ extension AdaptivePacingCore {
         case .tooFast: return "Too Fast"
         case .tooSlow: return "Too Slow"
         case .unknown: return "--"
+        }
+    }
+}
+
+// MARK: - Bezel Perimeter Modeling
+
+private struct BezelBounds {
+    let minX: Double
+    let maxX: Double
+    let minY: Double
+    let maxY: Double
+    let midX: Double
+    let radius: Double
+
+    init(width: Double, height: Double, cornerRadius: Double, inset: Double) {
+        let minX = inset
+        let maxX = max(minX, width - inset)
+        let minY = inset
+        let maxY = max(minY, height - inset)
+        let w = maxX - minX
+        let h = maxY - minY
+        self.minX = minX
+        self.maxX = maxX
+        self.minY = minY
+        self.maxY = maxY
+        self.midX = minX + w * 0.5
+        self.radius = max(0.0, min(cornerRadius, min(w, h) * 0.5))
+    }
+}
+
+private enum BezelSegment {
+    case line(x1: Double, y1: Double, x2: Double, y2: Double, length: Double)
+    case arc(cx: Double, cy: Double, r: Double, startAngle: Double, endAngle: Double, length: Double)
+
+    var length: Double {
+        switch self {
+        case .line(_, _, _, _, let len): return len
+        case .arc(_, _, _, _, _, let len): return len
+        }
+    }
+
+    func point(fraction: Double) -> (x: Double, y: Double) {
+        let clamped = min(1.0, max(0.0, fraction))
+        switch self {
+        case .line(let x1, let y1, let x2, let y2, _):
+            return (x1 + clamped * (x2 - x1), y1 + clamped * (y2 - y1))
+        case .arc(let cx, let cy, let r, let startAngle, let endAngle, _):
+            let angle = startAngle + clamped * (endAngle - startAngle)
+            return (cx + r * cos(angle), cy + r * sin(angle))
         }
     }
 }

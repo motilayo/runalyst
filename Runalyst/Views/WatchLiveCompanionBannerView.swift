@@ -181,7 +181,7 @@ struct WatchLiveCompanionBannerView: View {
                     Text("Just Finished on Apple Watch")
                         .font(.caption.bold())
                         .foregroundColor(.secondary)
-                    Text("Coach's Takeaway")
+                    Text("Run Debrief")
                         .font(.headline)
                         .foregroundColor(.primary)
                 }
