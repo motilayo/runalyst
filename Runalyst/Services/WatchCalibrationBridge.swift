@@ -124,7 +124,7 @@ final class WatchCalibrationBridge: NSObject, WCSessionDelegate {
             )
             publish(context: updated)
         } else {
-            let profile = AthleteCalibrationProfile(maxHR: 190.0, isFallback: true)
+            let fallbackAge = { let a = UserDefaults.standard.integer(forKey: "runnerAge"); return a > 0 ? a : nil }()
             var calendar = Calendar(identifier: .gregorian)
             calendar.locale = Locale(identifier: "en_US_POSIX")
             let dayString = AthleteCalibrationCore.formatDayString(date: Date(), calendar: calendar)
@@ -134,7 +134,7 @@ final class WatchCalibrationBridge: NSObject, WCSessionDelegate {
             )
             let context = WatchPacingContext(
                 schemaVersion: WatchPacingContext.currentSchemaVersion,
-                profile: profile,
+                profile: AthleteCalibrationCore.fallbackProfile(age: fallbackAge),
                 intent: intent,
                 isIndoorPreferred: indoorPref,
                 useMetricSystem: metricPref,
@@ -155,26 +155,37 @@ final class WatchCalibrationBridge: NSObject, WCSessionDelegate {
         targetPaceSecondsPerKm: Int? = nil,
         isIndoorPreferred: Bool? = nil
     ) {
-        let buckets = runs.map { run in
-            TelemetryBucket(
-                timestamp: run.date,
-                durationSeconds: run.duration,
-                distanceMeters: run.totalDistanceMeters,
-                paceSecondsPerKm: run.workingAvgPace > 0 ? run.workingAvgPace : run.rawAvgPace,
-                cadenceSPM: run.workingAvgCadence > 0 ? run.workingAvgCadence : run.rawAvgCadence,
-                heartRateBPM: run.workingAvgHeartRate > 0 ? run.workingAvgHeartRate : run.rawAvgHeartRate,
-                groundContactTimeMs: nil,
-                verticalOscillationCm: run.workingAvgVerticalOscillation ?? run.rawAvgVerticalOscillation,
-                strideLengthMeters: run.workingAvgStrideLength ?? run.rawAvgStrideLength,
-                elevationGainMeters: nil,
-                powerWatts: nil
-            )
+        let cachedAge = UserDefaults.standard.integer(forKey: "runnerAge")
+        let effectiveAge = age ?? (cachedAge > 0 ? cachedAge : nil)
+        let cachedRHR = UserDefaults.standard.array(forKey: "cachedRestingHRSamples") as? [Double] ?? []
+        let effectiveRestingHR = restingHRSamples.isEmpty ? cachedRHR : restingHRSamples
+
+        let buckets: [TelemetryBucket] = runs.flatMap { run -> [TelemetryBucket] in
+            let sub = run.subRunCalibrationBuckets()
+            if !sub.isEmpty {
+                return sub
+            }
+            return [
+                TelemetryBucket(
+                    timestamp: run.date,
+                    durationSeconds: run.duration,
+                    distanceMeters: run.totalDistanceMeters,
+                    paceSecondsPerKm: run.workingAvgPace > 0 ? run.workingAvgPace : run.rawAvgPace,
+                    cadenceSPM: run.workingAvgCadence > 0 ? run.workingAvgCadence : run.rawAvgCadence,
+                    heartRateBPM: run.workingAvgHeartRate > 0 ? run.workingAvgHeartRate : run.rawAvgHeartRate,
+                    groundContactTimeMs: nil,
+                    verticalOscillationCm: run.workingAvgVerticalOscillation ?? run.rawAvgVerticalOscillation,
+                    strideLengthMeters: run.workingAvgStrideLength ?? run.rawAvgStrideLength,
+                    elevationGainMeters: nil,
+                    powerWatts: nil
+                )
+            ]
         }
 
         let profile = AthleteCalibrationCore.makeProfile(
             buckets: buckets,
-            restingHRSamples: restingHRSamples,
-            age: age,
+            restingHRSamples: effectiveRestingHR,
+            age: effectiveAge,
             windowEnd: now
         )
 
@@ -200,6 +211,7 @@ final class WatchCalibrationBridge: NSObject, WCSessionDelegate {
         )
 
         publish(context: context)
+        Task { await self.refreshHealthKitCalibrationStatsIfNeeded() }
     }
 
     /// Publishes a structured drill intent directly to Apple Watch for execution in RunalystWatch.
@@ -209,7 +221,8 @@ final class WatchCalibrationBridge: NSObject, WCSessionDelegate {
         now: Date = Date(),
         isIndoorPreferred: Bool? = nil
     ) {
-        let profile = lastPublishedContext?.profile ?? AthleteCalibrationProfile(maxHR: 190.0, isFallback: true)
+        let fallbackAge = { let a = UserDefaults.standard.integer(forKey: "runnerAge"); return a > 0 ? a : nil }()
+        let profile = lastPublishedContext?.profile ?? AthleteCalibrationCore.fallbackProfile(age: fallbackAge)
         var calendar = Calendar(identifier: .gregorian)
         calendar.locale = Locale(identifier: "en_US_POSIX")
         let dayString = AthleteCalibrationCore.formatDayString(date: now, calendar: calendar)
@@ -235,8 +248,6 @@ final class WatchCalibrationBridge: NSObject, WCSessionDelegate {
 
         publish(context: context)
     }
-
-    // MARK: - Watch Workout Handoff
 
     /// Launches the active companion workout on Apple Watch via HealthKit handoff.
     func launchWatchWorkout(isIndoor: Bool? = nil) async {

@@ -48,7 +48,7 @@ public actor TelemetryEngine {
                 return configuration
             }
             if intent.intent != .intervals && intent.prescribedDrillId == nil {
-                return .forWatchCompanion(intent: watchIntent)
+                return .forWatchCompanion(intent: watchIntent, cadenceFloorSPM: intent.targetCadenceSPM)
             }
             return .standard
         }()
@@ -81,7 +81,7 @@ public actor TelemetryEngine {
                 return configuration
             }
             if intent.intent != .intervals && intent.prescribedDrillId == nil {
-                return .forWatchCompanion(intent: watchIntent)
+                return .forWatchCompanion(intent: watchIntent, cadenceFloorSPM: intent.targetCadenceSPM)
             }
             return .standard
         }()

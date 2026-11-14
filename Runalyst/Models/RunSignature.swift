@@ -40,10 +40,12 @@ struct RunSignature: Codable, Sendable, Equatable {
     let isIndoor: Bool
     let needsInclineReview: Bool
     let splits: [RunSplit]
+    let peakHeartRateBPM: Double?
 
     enum CodingKeys: String, CodingKey {
         case classification, confidence, probabilities, anomalies, cadenceFloor
         case phaseSegments, dataSource, isIndoor, needsInclineReview, splits
+        case peakHeartRateBPM
     }
 
     init(
@@ -56,7 +58,8 @@ struct RunSignature: Codable, Sendable, Equatable {
         dataSource: String,
         isIndoor: Bool,
         needsInclineReview: Bool,
-        splits: [RunSplit] = []
+        splits: [RunSplit] = [],
+        peakHeartRateBPM: Double? = nil
     ) {
         self.classification = classification
         self.confidence = confidence
@@ -68,6 +71,7 @@ struct RunSignature: Codable, Sendable, Equatable {
         self.isIndoor = isIndoor
         self.needsInclineReview = needsInclineReview
         self.splits = splits
+        self.peakHeartRateBPM = peakHeartRateBPM
     }
 
     init(from decoder: Decoder) throws {
@@ -82,6 +86,7 @@ struct RunSignature: Codable, Sendable, Equatable {
         isIndoor = try container.decode(Bool.self, forKey: .isIndoor)
         needsInclineReview = try container.decode(Bool.self, forKey: .needsInclineReview)
         splits = (try? container.decode([RunSplit].self, forKey: .splits)) ?? []
+        peakHeartRateBPM = try? container.decodeIfPresent(Double.self, forKey: .peakHeartRateBPM)
     }
 
     /// Formats this signature into a token-efficient compact key-value block for FoundationModels prompts.

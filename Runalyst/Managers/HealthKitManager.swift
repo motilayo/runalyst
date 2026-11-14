@@ -1,5 +1,6 @@
 import Foundation
 import HealthKit
+import RunalystCore
 import SwiftData
 #if canImport(WorkoutKit)
 @preconcurrency import WorkoutKit
@@ -799,6 +800,10 @@ class HealthKitManager: ObservableObject {
         }
         let splits = await engine.calculateSplits(from: trimmed)
         let anomalies: [String] = (cv > 0.12 ? ["High Pace Variability"] : []) + (hrCV > 0.10 ? ["High Cardiac Strain"] : [])
+        let calProfile = AthleteCalibrationCore.makeProfile(
+            buckets: trimmed.map { $0.toTelemetryBucket() },
+            windowEnd: workout.endDate
+        )
         let signature = RunSignature(
             classification: classification,
             confidence: classificationResult?.confidence ?? 0.85,
@@ -809,7 +814,8 @@ class HealthKitManager: ObservableObject {
             dataSource: dataSource,
             isIndoor: effectiveIsIndoor,
             needsInclineReview: classificationResult?.needsInclineReview ?? false,
-            splits: splits
+            splits: splits,
+            peakHeartRateBPM: calProfile.isFallback ? nil : calProfile.maxHR
         )
         let signatureData = try? JSONEncoder().encode(signature)
         let probData = classificationResult.flatMap { try? JSONEncoder().encode($0.probabilities) }

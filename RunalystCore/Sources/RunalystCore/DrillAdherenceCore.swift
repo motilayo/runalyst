@@ -23,6 +23,7 @@ public struct DrillAdherenceInputCore: Sendable, Codable, Equatable {
     public let intervalSummaryVerdict: String?
     public let repsTotalCount: Int
     public let repsMetCount: Int
+    public let calibratedZone2CeilingBPM: Int?
 
     public init(
         drillIdentifier: String,
@@ -44,7 +45,8 @@ public struct DrillAdherenceInputCore: Sendable, Codable, Equatable {
         intervalSummaryTier: DrillAdherenceTierCore? = nil,
         intervalSummaryVerdict: String? = nil,
         repsTotalCount: Int = 0,
-        repsMetCount: Int = 0
+        repsMetCount: Int = 0,
+        calibratedZone2CeilingBPM: Int? = nil
     ) {
         self.drillIdentifier = drillIdentifier
         self.actualCadence = actualCadence
@@ -66,6 +68,7 @@ public struct DrillAdherenceInputCore: Sendable, Codable, Equatable {
         self.intervalSummaryVerdict = intervalSummaryVerdict
         self.repsTotalCount = repsTotalCount
         self.repsMetCount = repsMetCount
+        self.calibratedZone2CeilingBPM = calibratedZone2CeilingBPM
     }
 }
 
@@ -191,7 +194,7 @@ public enum DrillAdherenceCore {
             let effectiveFloor = input.heightAdjustedCadenceFloor
             if zone == 2 {
                 if input.actualHeartRate > 0 {
-                    let zone2Ceiling = 144
+                    let zone2Ceiling = input.calibratedZone2CeilingBPM ?? 144
                     if input.actualHeartRate <= zone2Ceiling && input.actualCadence >= effectiveFloor && input.percentZone4 <= 0.02 {
                         tier = .exceeded
                         tierDescription = "Preserved Zone 2 ceiling with crisp turnover (≥\(effectiveFloor) SPM)."
