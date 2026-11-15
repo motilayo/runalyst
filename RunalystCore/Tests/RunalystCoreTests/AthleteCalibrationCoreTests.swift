@@ -1430,4 +1430,51 @@ struct AthleteCalibrationCoreTests {
         #expect(pushWithDistress.intent.readinessHint == hint)
         #expect(pushWithDistress.requiresTargetPacePicker == false)
     }
+
+    @Test("makeDrillIntent parses cadence ranges as midpoint and single values as exact SPM")
+    func testMakeDrillIntentCadenceParsing() {
+        let rangeIntent = AthleteCalibrationCore.makeDrillIntent(
+            title: "Cadence Pyramids",
+            targetCadence: "167–173 SPM",
+            day: "2026-11-15"
+        )
+        #expect(rangeIntent.targetCadenceSPM == 170)
+
+        let singleIntent = AthleteCalibrationCore.makeDrillIntent(
+            title: "Rhythm Intervals",
+            targetCadence: "174 SPM",
+            day: "2026-11-15"
+        )
+        #expect(singleIntent.targetCadenceSPM == 174)
+    }
+
+    @Test("applying(runIntent: .adaptiveBase, isExplicitOverride: true) overrides synced .recovery to .easyAerobic")
+    func testExplicitAdaptiveBaseOverrideFromRecovery() {
+        let profile = AthleteCalibrationProfile(maxHR: 185.0, restingHR: 52.0, isFallback: false)
+        let recoveryIntent = PacingSessionIntent(
+            targetPaceSecondsPerKm: 360,
+            intent: .recovery,
+            subjectiveDistress: false,
+            validForDay: "2026-11-15"
+        )
+        let syncedRecovery = WatchResolvedSessionConfig(
+            profile: profile,
+            intent: recoveryIntent,
+            isPhoneSessionSynced: true
+        )
+
+        let ceilings = profile.zoneCeilings()
+        #expect(syncedRecovery.sessionTitle == "Easy Recovery")
+        #expect(syncedRecovery.aerobicCeilingPillText == "<\(ceilings.zone1RecoveryBPM) BPM")
+
+        let overridden = syncedRecovery.applying(runIntent: .adaptiveBase, isExplicitOverride: true)
+        #expect(overridden.intent.intent == .easyAerobic)
+        #expect(overridden.isUserIntentOverride == true)
+        #expect(overridden.sessionHeaderBadgeText == "CUSTOM INTENT")
+        #expect(overridden.sessionTitle == "Aerobic Base")
+        #expect(overridden.aerobicCeilingPillText != syncedRecovery.aerobicCeilingPillText)
+        #expect(overridden.aerobicCeilingPillText == "<\(ceilings.zone2BaseBPM) BPM")
+        #expect(overridden.intent.targetPaceSecondsPerKm == nil)
+        #expect(overridden.requiresTargetPacePicker == false)
+    }
 }

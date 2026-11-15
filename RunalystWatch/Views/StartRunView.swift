@@ -25,7 +25,8 @@ public struct StartRunView: View {
 
     private var resolvedConfig: WatchResolvedSessionConfig {
         WatchContextStore.shared.resolveSession(
-            runIntent: selectedIntentOverride
+            runIntent: selectedIntentOverride,
+            isExplicitOverride: selectedIntentOverride != nil
         )
     }
 
@@ -37,27 +38,39 @@ public struct StartRunView: View {
         ZStack {
             Color.black.ignoresSafeArea()
 
-            ScrollView {
-                VStack(spacing: 8) {
-                    if let startError = workoutManager.lastStartError {
-                        Text(startError)
-                            .font(.system(size: 10, weight: .semibold, design: .rounded))
-                            .foregroundStyle(.red)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 4)
-                            .frame(maxWidth: .infinity)
-                            .background(Color.red.opacity(0.12))
-                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    }
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(spacing: 10) {
+                        if let startError = workoutManager.lastStartError {
+                            Text(startError)
+                                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                                .foregroundStyle(.red)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 4)
+                                .frame(maxWidth: .infinity)
+                                .background(Color.red.opacity(0.12))
+                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        }
 
-                    heroCard
-                    startWorkoutCTA
-                    locationSelector
-                    runIntentSelector
+                        heroCard
+                            .id("heroCard")
+                            .containerRelativeFrame(.vertical, alignment: .center)
+
+                        runIntentSelector(scrollProxy: proxy)
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.top, 4)
+                    .padding(.bottom, 12)
                 }
-                .padding(.horizontal, 6)
-                .padding(.bottom, 12)
+                .onChange(of: WatchContextStore.shared.cachedContext) { _, _ in
+                    selectedIntentOverride = nil
+                    hasUserManuallySelectedLocation = false
+                    selectedLocation = WatchContextStore.shared.preferredLocation
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                        proxy.scrollTo("heroCard", anchor: .top)
+                    }
+                }
             }
         }
         .onAppear {
@@ -81,7 +94,7 @@ public struct StartRunView: View {
                 _ = await workoutManager.requestAuthorizationIfNeeded()
             }
         }
-        .navigationDestination(isPresented: Binding(
+        .fullScreenCover(isPresented: Binding(
             get: { workoutManager.isNavigatingToGauge },
             set: { workoutManager.isNavigatingToGauge = $0 }
         )) {
@@ -114,51 +127,66 @@ public struct StartRunView: View {
                 }
             }
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(resolvedConfig.sessionTitle)
-                    .font(.system(size: 15, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.85)
+            HStack(alignment: .center, spacing: 8) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(resolvedConfig.sessionTitle)
+                        .font(.system(size: 17, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.8)
 
-                Text(resolvedConfig.sessionSubtitle)
-                    .font(.system(size: 11, design: .rounded))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
+                    Text(resolvedConfig.sessionSubtitle)
+                        .font(.system(size: 11.5, design: .rounded))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.85)
+                }
+
+                Spacer(minLength: 4)
+
+                startWorkoutPlayButton
             }
+
+            Spacer(minLength: 2)
 
             HStack(spacing: 0) {
-                heroStatColumn(icon: WatchIcon.pace, label: "PACE", value: resolvedConfig.targetPaceFormatted(useMetric: useMetricSystem), iconColor: WatchColor.pace)
-                Divider().frame(height: 18).opacity(0.25)
-                heroStatColumn(icon: WatchIcon.cadence, label: "CADENCE", value: resolvedConfig.targetCadencePillText, iconColor: WatchColor.cadence)
-                Divider().frame(height: 18).opacity(0.25)
-                heroStatColumn(icon: WatchIcon.heartRate, label: "MAX HR", value: resolvedConfig.aerobicCeilingPillText, iconColor: WatchColor.heartRate)
+                heroStatColumn(
+                    icon: WatchIcon.pace,
+                    label: "PACE",
+                    value: resolvedConfig.targetPaceFormatted(useMetric: useMetricSystem),
+                    iconColor: WatchColor.pace
+                )
+                Divider().frame(height: 20).opacity(0.25)
+                heroStatColumn(
+                    icon: WatchIcon.cadence,
+                    label: "CADENCE",
+                    value: resolvedConfig.targetCadencePillText,
+                    iconColor: WatchColor.cadence
+                )
+                Divider().frame(height: 20).opacity(0.25)
+                heroStatColumn(
+                    icon: WatchIcon.heartRate,
+                    label: "MAX HR",
+                    value: resolvedConfig.aerobicCeilingPillText,
+                    iconColor: WatchColor.heartRate
+                )
             }
-            .padding(.vertical, 6)
+            .padding(.vertical, 7)
             .padding(.horizontal, 4)
             .background(Color.white.opacity(0.05))
             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(Color.white.opacity(0.08), lineWidth: 0.5))
-            .padding(.top, 2)
+
+            Spacer(minLength: 2)
+
+            locationSelector
         }
-        .padding(10)
+        .padding(8)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .watchLiquidGlass(accent: heroAccentColor, cornerRadius: 14, isProminent: true)
     }
 
-    private func heroStatColumn(icon: String, label: String, value: String, iconColor: Color) -> some View {
-        VStack(spacing: 2) {
-            HStack(spacing: 2) {
-                Image(systemName: icon).font(.system(size: 7, weight: .bold)).foregroundStyle(iconColor)
-                Text(label).font(.system(size: 8, weight: .bold, design: .rounded)).foregroundStyle(.secondary)
-            }
-            Text(value)
-                .font(.system(size: 11, weight: .bold, design: .rounded))
-                .monospacedDigit().foregroundStyle(.white).lineLimit(1).minimumScaleFactor(0.65)
-        }
-        .frame(maxWidth: .infinity)
-    }
-
-    private var startWorkoutCTA: some View {
+    private var startWorkoutPlayButton: some View {
         Button {
             Task {
                 await workoutManager.startWorkout(
@@ -170,17 +198,33 @@ public struct StartRunView: View {
                 workoutManager.isNavigatingToGauge = true
             }
         } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "play.fill").font(.system(.subheadline, design: .rounded).bold())
-                Text(resolvedConfig.primaryCtaTitle).font(.system(.headline, design: .rounded)).fontWeight(.semibold)
+            ZStack {
+                Circle()
+                    .fill(WatchColor.cadence)
+                    .frame(width: 38, height: 38)
+                Image(systemName: "play.fill")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(.black)
+                    .offset(x: 1)
             }
-            .frame(maxWidth: .infinity, minHeight: 44)
-            .foregroundStyle(.black)
-            .background(WatchColor.cadence)
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .frame(width: 44, height: 44)
+            .contentShape(Circle())
         }
         .buttonStyle(.plain)
-        .padding(.top, 2)
+        .accessibilityLabel(resolvedConfig.primaryCtaTitle)
+    }
+
+    private func heroStatColumn(icon: String, label: String, value: String, iconColor: Color) -> some View {
+        VStack(spacing: 2) {
+            HStack(spacing: 2) {
+                Image(systemName: icon).font(.system(size: 7.5, weight: .bold)).foregroundStyle(iconColor)
+                Text(label).font(.system(size: 8.5, weight: .bold, design: .rounded)).foregroundStyle(.secondary)
+            }
+            Text(value)
+                .font(.system(size: 12.5, weight: .bold, design: .rounded))
+                .monospacedDigit().foregroundStyle(.white).lineLimit(1).minimumScaleFactor(0.65)
+        }
+        .frame(maxWidth: .infinity)
     }
 
     private var locationSelector: some View {
@@ -198,15 +242,19 @@ public struct StartRunView: View {
         } label: {
             HStack(spacing: 4) {
                 Image(systemName: icon).font(.caption2).foregroundStyle(isSelected ? WatchColor.pace : .secondary)
-                Text(title).font(.system(.subheadline, design: .rounded)).fontWeight(.semibold).foregroundStyle(isSelected ? .white : .secondary)
+                Text(title)
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(isSelected ? .white : .secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
             }
-            .frame(maxWidth: .infinity, minHeight: 44)
-            .neutralWatchSurface(isSelected: isSelected)
+            .frame(maxWidth: .infinity, minHeight: 38)
+            .neutralWatchSurface(isSelected: isSelected, cornerRadius: 10)
         }
         .buttonStyle(.plain)
     }
 
-    private var runIntentSelector: some View {
+    private func runIntentSelector(scrollProxy: ScrollViewProxy) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             Text("RUN INTENT")
                 .font(.system(size: 9, weight: .bold, design: .rounded))
@@ -221,6 +269,9 @@ public struct StartRunView: View {
                         isSelected: selectedIntentOverride == nil
                     ) {
                         selectedIntentOverride = nil
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                            scrollProxy.scrollTo("heroCard", anchor: .top)
+                        }
                     }
                 }
 
@@ -232,6 +283,9 @@ public struct StartRunView: View {
                         isSelected: isSelected
                     ) {
                         selectedIntentOverride = (baseConfig.isPhoneSessionSynced && !baseConfig.hasPrescribedDrill && baseConfig.defaultRunIntentSelection == intent) ? nil : intent
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                            scrollProxy.scrollTo("heroCard", anchor: .top)
+                        }
                     }
                 }
             }

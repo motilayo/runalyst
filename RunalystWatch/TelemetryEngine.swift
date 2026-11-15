@@ -35,6 +35,13 @@ public actor TelemetryEngine {
     private var latestElapsedSeconds: TimeInterval = 0.0
     private var latestDistanceMeters: Double?
 
+    private var trackAccumulator = LiveTrackAccumulator()
+    private var lastTrajectoryEmittedSecond: Int = -100
+    private var lastCompletedLapCount: Int = 0
+    private var latestDisplayState: PacingDisplayState?
+    public private(set) var latestTrackSnapshot: LiveTrackSnapshot?
+    public private(set) var latestTrajectorySummary: LiveTrajectorySummary?
+
     public init(
         profile: AthleteCalibrationProfile,
         intent: PacingSessionIntent,
@@ -98,6 +105,12 @@ public actor TelemetryEngine {
         self.lastSplitElapsed = 0.0
         self.latestElapsedSeconds = 0.0
         self.latestDistanceMeters = nil
+        self.trackAccumulator = LiveTrackAccumulator()
+        self.lastTrajectoryEmittedSecond = -100
+        self.lastCompletedLapCount = 0
+        self.latestDisplayState = nil
+        self.latestTrackSnapshot = nil
+        self.latestTrajectorySummary = nil
         self.resetSamples()
         await MainActor.run {
             FeedbackDispatcher.shared.reset()
@@ -110,6 +123,27 @@ public actor TelemetryEngine {
         if paused {
             await MainActor.run {
                 FeedbackDispatcher.shared.pauseTactileTicker()
+            }
+        }
+        if let display = latestDisplayState {
+            let useMetric = UserDefaults.standard.object(forKey: "useMetricSystem") as? Bool
+                ?? (Locale.current.measurementSystem == .metric)
+            let pausedTrackSnapshot = trackAccumulator.makeTrackSnapshot(
+                totalDistanceMeters: cumulativeDistanceMeters,
+                elapsedSeconds: Int(latestElapsedSeconds),
+                cadenceSPM: display.filteredCadenceSPM,
+                targetPaceSecondsPerKm: display.targetPaceSecondsPerKm,
+                isCalibrating: display.isCalibrating,
+                isPaused: paused,
+                statusToken: display.biometricStatusToken,
+                useMetricSystem: useMetric
+            )
+            self.latestTrackSnapshot = pausedTrackSnapshot
+            if let vm = viewModel {
+                await MainActor.run {
+                    vm.isPaused = paused
+                    vm.setTrackSnapshot(pausedTrackSnapshot)
+                }
             }
         }
     }
@@ -249,10 +283,11 @@ public actor TelemetryEngine {
                 sampleTimestamp: gradeFraction.timestamp,
                 currentElapsed: elapsed
             ),
-            totalDistanceMeters: distanceMeters
+            totalDistanceMeters: distanceMeters ?? (cumulativeDistanceMeters > 0 ? cumulativeDistanceMeters : nil)
         )
 
         let result = core.ingest(tick)
+        self.latestDisplayState = result.display
         var finalEvents = result.events
 
         let useMetric = UserDefaults.standard.object(forKey: "useMetricSystem") as? Bool
@@ -274,8 +309,56 @@ public actor TelemetryEngine {
             finalEvents.append(splitEvent)
         }
 
+        let effectiveCadence = result.display.filteredCadenceSPM ?? pedometerCadence.value.map { Int($0) }
+        let effectiveHeartRate = result.display.filteredHeartRateBPM ?? heartRate.value.map { Int($0) }
+        let effectivePace = result.display.filteredPaceSecondsPerKm
+
+        trackAccumulator.recordSample(
+            elapsedSeconds: currentSecond,
+            distanceMeters: cumulativeDistanceMeters,
+            paceSecondsPerKm: effectivePace,
+            heartRateBPM: effectiveHeartRate,
+            cadenceSPM: effectiveCadence,
+            targetPaceSecondsPerKm: result.display.targetPaceSecondsPerKm
+        )
+
+        let trackSnapshot = trackAccumulator.makeTrackSnapshot(
+            totalDistanceMeters: cumulativeDistanceMeters,
+            elapsedSeconds: currentSecond,
+            cadenceSPM: effectiveCadence,
+            targetPaceSecondsPerKm: result.display.targetPaceSecondsPerKm,
+            isCalibrating: result.display.isCalibrating,
+            isPaused: isPaused,
+            statusToken: result.display.biometricStatusToken,
+            useMetricSystem: useMetric
+        )
+        self.latestTrackSnapshot = trackSnapshot
+
+        let currentLapCount = trackAccumulator.completedLapSplits.count
+        let lapJustCompleted = currentLapCount > lastCompletedLapCount
+        let timeSinceTrajectory = currentSecond - lastTrajectoryEmittedSecond
+        let shouldEmitTrajectory = lapJustCompleted || timeSinceTrajectory >= 10 || lastTrajectoryEmittedSecond < 0
+
+        let trajectorySummary: LiveTrajectorySummary?
+        if shouldEmitTrajectory {
+            lastCompletedLapCount = currentLapCount
+            lastTrajectoryEmittedSecond = currentSecond
+            let summary = trackAccumulator.makeTrajectorySummary(
+                targetPaceSecondsPerKm: result.display.targetPaceSecondsPerKm
+            )
+            self.latestTrajectorySummary = summary
+            trajectorySummary = summary
+        } else {
+            trajectorySummary = nil
+        }
+
         if let vm = viewModel {
-            await vm.update(events: finalEvents, display: result.display)
+            await vm.update(
+                events: finalEvents,
+                display: result.display,
+                trackSnapshot: trackSnapshot,
+                trajectorySummary: trajectorySummary
+            )
             await MainActor.run {
                 FeedbackDispatcher.shared.updateTactileCue(result.display.activeTactileCue)
             }
@@ -287,7 +370,7 @@ public actor TelemetryEngine {
         return (events: finalEvents, display: result.display)
     }
 
-    // MARK: - Post-Run Debrief
+    // MARK: - Post-Run Debrief & Track Finalization
 
     /// Builds a deterministic, unit-aware post-run debrief summary from the core engine.
     public func buildRunDebrief(
@@ -302,5 +385,54 @@ public actor TelemetryEngine {
             totalDistanceMeters: finalDistance,
             useMetricSystem: useMetricSystem
         )
+    }
+
+    /// Produces the final trajectory summary upon workout completion.
+    public func finalizeTrajectorySummary() -> LiveTrajectorySummary {
+        let targetPace = latestDisplayState?.targetPaceSecondsPerKm
+        let summary = trackAccumulator.makeTrajectorySummary(targetPaceSecondsPerKm: targetPace)
+        self.latestTrajectorySummary = summary
+        return summary
+    }
+
+    /// Produces the final track snapshot upon workout completion.
+    public func finalizeTrackSnapshot(
+        elapsedSeconds: TimeInterval,
+        totalDistanceMeters: Double?,
+        useMetricSystem: Bool
+    ) -> LiveTrackSnapshot {
+        let finalDistance = totalDistanceMeters ?? latestDistanceMeters ?? cumulativeDistanceMeters
+        let finalElapsed = elapsedSeconds > 0 ? Int(elapsedSeconds) : Int(latestElapsedSeconds)
+        let finalSnapshot = trackAccumulator.makeTrackSnapshot(
+            totalDistanceMeters: finalDistance,
+            elapsedSeconds: finalElapsed,
+            cadenceSPM: latestDisplayState?.filteredCadenceSPM,
+            targetPaceSecondsPerKm: latestDisplayState?.targetPaceSecondsPerKm,
+            isCalibrating: false,
+            isPaused: true,
+            statusToken: latestDisplayState?.biometricStatusToken ?? .neutral,
+            useMetricSystem: useMetricSystem
+        )
+        self.latestTrackSnapshot = finalSnapshot
+        return finalSnapshot
+    }
+
+    /// Creates an initial track snapshot before first tick processing.
+    public func makeInitialTrackSnapshot(
+        targetPaceSecondsPerKm: Int?,
+        useMetricSystem: Bool
+    ) -> LiveTrackSnapshot {
+        let initial = trackAccumulator.makeTrackSnapshot(
+            totalDistanceMeters: 0.0,
+            elapsedSeconds: 0,
+            cadenceSPM: nil,
+            targetPaceSecondsPerKm: targetPaceSecondsPerKm,
+            isCalibrating: true,
+            isPaused: false,
+            statusToken: .calibratingBlue,
+            useMetricSystem: useMetricSystem
+        )
+        self.latestTrackSnapshot = initial
+        return initial
     }
 }

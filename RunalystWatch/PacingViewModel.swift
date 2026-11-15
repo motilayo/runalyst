@@ -14,6 +14,8 @@ public final class PacingViewModel {
     public var latestEvents: [PacingEvent] = []
     public var isPaused: Bool = false
     public var completedDebrief: WatchRunDebrief?
+    public var latestTrackSnapshot: LiveTrackSnapshot?
+    public var latestTrajectorySummary: LiveTrajectorySummary?
 
     public init(targetPaceSecondsPerKm: Int? = nil, adjustmentsEnabled: Bool = true) {
         self.displayState = .initial(
@@ -21,16 +23,37 @@ public final class PacingViewModel {
             adjustmentsEnabled: adjustmentsEnabled
         )
         self.completedDebrief = nil
+        self.latestTrackSnapshot = nil
+        self.latestTrajectorySummary = nil
     }
 
     public func setCompletedDebrief(_ debrief: WatchRunDebrief?) {
         self.completedDebrief = debrief
     }
 
+    public func setTrackSnapshot(_ snapshot: LiveTrackSnapshot?) {
+        self.latestTrackSnapshot = snapshot
+    }
+
+    public func setTrajectorySummary(_ summary: LiveTrajectorySummary?) {
+        self.latestTrajectorySummary = summary
+    }
+
     /// Receives new core output, updates presentation state, and triggers multimodal feedback.
-    public func update(events: [PacingEvent], display: PacingDisplayState) {
+    public func update(
+        events: [PacingEvent],
+        display: PacingDisplayState,
+        trackSnapshot: LiveTrackSnapshot? = nil,
+        trajectorySummary: LiveTrajectorySummary? = nil
+    ) {
         self.latestEvents = events
         self.displayState = display
+        if let trackSnapshot {
+            self.latestTrackSnapshot = trackSnapshot
+        }
+        if let trajectorySummary {
+            self.latestTrajectorySummary = trajectorySummary
+        }
         FeedbackDispatcher.shared.dispatch(events: events)
     }
 
@@ -43,5 +66,7 @@ public final class PacingViewModel {
         self.latestEvents = []
         self.isPaused = false
         self.completedDebrief = nil
+        self.latestTrackSnapshot = nil
+        self.latestTrajectorySummary = nil
     }
 }

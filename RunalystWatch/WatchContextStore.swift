@@ -79,7 +79,8 @@ public final class WatchContextStore: NSObject, WCSessionDelegate {
     public func resolveSession(
         runIntent: WatchRunIntent? = nil,
         selectedPace: Int? = nil,
-        fallbackAge: Int? = nil
+        fallbackAge: Int? = nil,
+        isExplicitOverride: Bool = false
     ) -> WatchResolvedSessionConfig {
         let currentDay = todayDayString()
         return AthleteCalibrationCore.resolveWatchSession(
@@ -87,7 +88,11 @@ public final class WatchContextStore: NSObject, WCSessionDelegate {
             currentDayString: currentDay,
             selectedTargetPaceSecondsPerKm: selectedPace,
             fallbackAge: fallbackAge
-        ).applying(runIntent: runIntent, selectedPace: selectedPace)
+        ).applying(
+            runIntent: runIntent,
+            selectedPace: selectedPace,
+            isExplicitOverride: isExplicitOverride
+        )
     }
 
     private func todayDayString() -> String {

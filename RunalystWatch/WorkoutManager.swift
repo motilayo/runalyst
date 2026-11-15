@@ -20,6 +20,8 @@ public final class WorkoutManager: NSObject {
     private var activeIntent: WatchRunIntent = .adaptiveBase
     private var activePrescribedTitle: String?
     private var lastBroadcastPhase: WatchCompanionPhase?
+    private var lastBroadcastLapNumber: Int?
+    private var lastTrajectoryBroadcastSecond: Int = -100
 
     private let healthStore = HKHealthStore()
     private var session: HKWorkoutSession?
@@ -115,7 +117,8 @@ public final class WorkoutManager: NSObject {
         let resolved = WatchContextStore.shared.resolveSession(
             runIntent: intent,
             selectedPace: targetPaceSecondsPerKm,
-            fallbackAge: athleteAge()
+            fallbackAge: athleteAge(),
+            isExplicitOverride: intent != nil
         )
         let effectiveIntent = intent ?? WatchRunIntent.matching(intentKind: resolved.intent.intent)
         self.activeIntent = effectiveIntent
@@ -155,6 +158,16 @@ public final class WorkoutManager: NSObject {
                 telemetryEngine: engine,
                 startTime: startDate
             )
+
+            let useMetric = UserDefaults.standard.object(forKey: "useMetricSystem") as? Bool
+                ?? (Locale.current.measurementSystem == .metric)
+            let initialTrack = await engine.makeInitialTrackSnapshot(
+                targetPaceSecondsPerKm: targetPaceSecondsPerKm,
+                useMetricSystem: useMetric
+            )
+            viewModel.setTrackSnapshot(initialTrack)
+            self.lastBroadcastLapNumber = 1
+            self.lastTrajectoryBroadcastSecond = -100
 
             startTickLoop(engine: engine, builder: builder)
             self.sessionState = .running
@@ -206,6 +219,8 @@ public final class WorkoutManager: NSObject {
         }
 
         self.sessionState = (recoveredSession.state == .paused) ? .paused : .running
+        self.lastBroadcastLapNumber = 1
+        self.lastTrajectoryBroadcastSecond = -100
         self.isNavigatingToGauge = true
         broadcastLiveSnapshot(forceImmediate: true)
     }
@@ -214,6 +229,7 @@ public final class WorkoutManager: NSObject {
         guard let session, session.state == .running else { return }
         session.pause()
         MotionStreamService.shared.pauseStreaming()
+        pacingViewModel?.isPaused = true
         Task {
             await telemetryEngine?.setPaused(true)
         }
@@ -224,6 +240,7 @@ public final class WorkoutManager: NSObject {
     public func resumeWorkout() {
         guard let session, session.state == .paused, let sessionObj = self.session else { return }
         session.resume()
+        pacingViewModel?.isPaused = false
         if let startDate = sessionObj.startDate, let engine = telemetryEngine {
             MotionStreamService.shared.resumeStreaming(
                 location: currentLocation,
@@ -256,6 +273,18 @@ public final class WorkoutManager: NSObject {
         )
 
         pacingViewModel?.setCompletedDebrief(debrief)
+        pacingViewModel?.isPaused = false
+
+        if let finalTrajectory = await telemetryEngine?.finalizeTrajectorySummary() {
+            pacingViewModel?.setTrajectorySummary(finalTrajectory)
+        }
+        if let finalTrack = await telemetryEngine?.finalizeTrackSnapshot(
+            elapsedSeconds: elapsed,
+            totalDistanceMeters: totalDistance,
+            useMetricSystem: useMetric
+        ) {
+            pacingViewModel?.setTrackSnapshot(finalTrack)
+        }
 
         MotionStreamService.shared.stopStreaming()
         session.end()
@@ -291,6 +320,25 @@ public final class WorkoutManager: NSObject {
     ) {
         guard let displayState = pacingViewModel?.displayState else { return }
         let isPaused = (sessionState == .paused)
+        let useMetric = UserDefaults.standard.object(forKey: "useMetricSystem") as? Bool
+            ?? (Locale.current.measurementSystem == .metric)
+
+        let trackSnapshot = pacingViewModel?.latestTrackSnapshot
+        let currentLap = trackSnapshot?.lapNumber ?? 1
+        let isLapCompletion = lastBroadcastLapNumber.map { currentLap > $0 } ?? false
+        let currentSecond = Int(builder?.elapsedTime ?? 0)
+        let isTenSec = (lastTrajectoryBroadcastSecond < 0) || (currentSecond - lastTrajectoryBroadcastSecond >= 10)
+        let shouldAttachTrajectory = isCompleted || isLapCompletion || isTenSec
+
+        let trajectoryToSend: LiveTrajectorySummary?
+        if shouldAttachTrajectory {
+            trajectoryToSend = pacingViewModel?.latestTrajectorySummary
+            lastTrajectoryBroadcastSecond = currentSecond
+            lastBroadcastLapNumber = currentLap
+        } else {
+            trajectoryToSend = nil
+        }
+
         let snapshot = displayState.makeLiveSnapshot(
             location: activeLocation,
             runIntent: activeIntent,
@@ -298,9 +346,12 @@ public final class WorkoutManager: NSObject {
             isPaused: isPaused,
             isCompleted: isCompleted,
             completedDebrief: completedDebrief,
+            useMetricSystem: useMetric,
+            trackSnapshot: trackSnapshot,
+            trajectorySummary: trajectoryToSend,
             updatedAtEpochSeconds: Date().timeIntervalSince1970
         )
-        let shouldForce = forceImmediate || (snapshot.phase != lastBroadcastPhase)
+        let shouldForce = forceImmediate || (snapshot.phase != lastBroadcastPhase) || isLapCompletion
         WatchContextStore.shared.publishLiveSnapshot(snapshot, forceImmediate: shouldForce)
         lastBroadcastPhase = snapshot.phase
     }
@@ -340,8 +391,10 @@ public final class WorkoutManager: NSObject {
                 guard let self, self.sessionState == .running else { continue }
                 let elapsed = builder.elapsedTime
                 let distanceMeters = builder.statistics(for: HKQuantityType(.distanceWalkingRunning))?.sumQuantity()?.doubleValue(for: .meter())
-                await engine.processTick(at: elapsed, distanceMeters: distanceMeters)
-                self.broadcastLiveSnapshot()
+                let tickResult = await engine.processTick(at: elapsed, distanceMeters: distanceMeters)
+                if tickResult != nil {
+                    self.broadcastLiveSnapshot()
+                }
             }
         }
     }

@@ -9,6 +9,7 @@ struct RunalystApp: App {
 
     init() {
         _ = WatchCalibrationBridge.shared
+        _ = LiveActivityManager.shared
     }
 
     let container: ModelContainer = {

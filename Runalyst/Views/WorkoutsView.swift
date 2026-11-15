@@ -115,6 +115,10 @@ struct WorkoutsView: View {
             .onChange(of: preferredWorkoutIsIndoor) { _, newIndoor in
                 WatchCalibrationBridge.shared.sendPacingContext(isIndoorPreferred: newIndoor)
             }
+            .onChange(of: trainingGoal) { _, _ in
+                DailyTrainingStateStore.shared.invalidate()
+                _ = dailyState
+            }
         }
     }
 

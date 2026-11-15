@@ -43,7 +43,11 @@ final class WatchCalibrationBridge: NSObject, WCSessionDelegate {
         guard WCSession.isSupported() else { return }
         self.isWatchPaired = session.isPaired
         self.isWatchAppInstalled = session.isWatchAppInstalled
+        let reachableChanged = self.isWatchReachable != session.isReachable
         self.isWatchReachable = session.isReachable
+        if reachableChanged {
+            LiveActivityManager.shared.handleReachabilityUpdate(session.isReachable)
+        }
     }
 
     private var defaultMetricPreference: Bool {
@@ -99,7 +103,7 @@ final class WatchCalibrationBridge: NSObject, WCSessionDelegate {
 
         do {
             let data = try JSONEncoder().encode(resolvedContext)
-            try session.updateApplicationContext(["pacingContext": data])
+            try? session.updateApplicationContext(["pacingContext": data])
             if isWatchReachable {
                 session.sendMessage(["pacingContext": data], replyHandler: nil, errorHandler: nil)
             }
@@ -438,6 +442,7 @@ final class WatchCalibrationBridge: NSObject, WCSessionDelegate {
         self.latestCompletedDebrief = nil
         if self.latestWatchSnapshot?.phase == .completed {
             self.latestWatchSnapshot = nil
+            LiveActivityManager.shared.handleSnapshotUpdate(nil, isWatchReachable: self.isWatchReachable)
         }
         self.snapshotStalenessTask?.cancel()
         self.snapshotStalenessTask = nil
@@ -450,6 +455,7 @@ final class WatchCalibrationBridge: NSObject, WCSessionDelegate {
             latestWatchSnapshot = nil
             snapshotStalenessTask?.cancel()
             snapshotStalenessTask = nil
+            LiveActivityManager.shared.cleanUpStaleActivity()
             return true
         }
         return false
@@ -496,6 +502,7 @@ final class WatchCalibrationBridge: NSObject, WCSessionDelegate {
             self.latestCompletedDebrief = debrief
         }
         scheduleStalenessTimer(for: snapshot)
+        LiveActivityManager.shared.handleSnapshotUpdate(snapshot, isWatchReachable: self.isWatchReachable)
     }
 
     // MARK: - WCSessionDelegate

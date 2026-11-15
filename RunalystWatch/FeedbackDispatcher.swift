@@ -294,8 +294,8 @@ public final class FeedbackDispatcher: NSObject, AVSpeechSynthesizerDelegate {
                 to: WCSession.default,
                 text: localizedText,
                 language: languageCode
-            ) {
-                Task { @MainActor [weak self] in
+            ) { [weak self] in
+                Task { @MainActor in
                     self?.speakLocally(localizedText, language: languageCode)
                 }
             }
@@ -325,28 +325,59 @@ public final class FeedbackDispatcher: NSObject, AVSpeechSynthesizerDelegate {
     }
 
     private func speakLocally(_ localizedText: String, language languageCode: String) {
-        let audioSession = AVAudioSession.sharedInstance()
-        do {
-            try audioSession.setCategory(
-                .playback,
-                mode: .spokenAudio,
-                options: [.duckOthers, .interruptSpokenAudioAndMixWithOthers]
-            )
-            try audioSession.setActive(true, options: [])
-        } catch {
-            // Audio session setup failed; safely proceed without crash
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                try await Self.setAudioSessionActive(true)
+            } catch {
+                // Audio session setup failed; safely proceed without crash
+            }
+
+            let utterance = AVSpeechUtterance(string: localizedText)
+            utterance.voice = AVSpeechSynthesisVoice(language: languageCode)
+
+            self.activeUtteranceID = ObjectIdentifier(utterance)
+
+            if self.speechSynthesizer.isSpeaking {
+                self.speechSynthesizer.stopSpeaking(at: .immediate)
+            }
+
+            self.speechSynthesizer.speak(utterance)
         }
+    }
 
-        let utterance = AVSpeechUtterance(string: localizedText)
-        utterance.voice = AVSpeechSynthesisVoice(language: languageCode)
+    nonisolated private static let audioQueue = DispatchQueue(label: "com.runalyst.watch.audio", qos: .userInitiated)
 
-        activeUtteranceID = ObjectIdentifier(utterance)
-
-        if speechSynthesizer.isSpeaking {
-            speechSynthesizer.stopSpeaking(at: .immediate)
+    nonisolated private static func setAudioSessionActive(
+        _ active: Bool,
+        options: AVAudioSession.SetActiveOptions = []
+    ) async throws {
+        try await withCheckedThrowingContinuation { continuation in
+            audioQueue.async {
+                do {
+                    let audioSession = AVAudioSession.sharedInstance()
+                    if active {
+                        try audioSession.setCategory(
+                            .playback,
+                            mode: .spokenAudio,
+                            options: [.duckOthers, .interruptSpokenAudioAndMixWithOthers]
+                        )
+                    }
+                    try audioSession.setActive(active, options: options)
+                    continuation.resume()
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
         }
+    }
 
-        speechSynthesizer.speak(utterance)
+    private func handleSpeechCompletion(for utteranceID: ObjectIdentifier) {
+        guard activeUtteranceID == utteranceID else { return }
+        activeUtteranceID = nil
+        Task {
+            try? await Self.setAudioSessionActive(false, options: .notifyOthersOnDeactivation)
+        }
     }
 
     // MARK: - AVSpeechSynthesizerDelegate
@@ -357,9 +388,7 @@ public final class FeedbackDispatcher: NSObject, AVSpeechSynthesizerDelegate {
     ) {
         let utteranceID = ObjectIdentifier(utterance)
         Task { @MainActor [weak self] in
-            guard let self, self.activeUtteranceID == utteranceID else { return }
-            self.activeUtteranceID = nil
-            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+            self?.handleSpeechCompletion(for: utteranceID)
         }
     }
 
@@ -369,9 +398,7 @@ public final class FeedbackDispatcher: NSObject, AVSpeechSynthesizerDelegate {
     ) {
         let utteranceID = ObjectIdentifier(utterance)
         Task { @MainActor [weak self] in
-            guard let self, self.activeUtteranceID == utteranceID else { return }
-            self.activeUtteranceID = nil
-            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+            self?.handleSpeechCompletion(for: utteranceID)
         }
     }
 }
