@@ -67,35 +67,20 @@ public struct PacingEventFeedbackSpec: Sendable, Equatable {
         case .calibrationComplete(let target, _):
             let paceStr: String
             if useMetricSystem {
-                let mins = target / 60
-                let secs = target % 60
-                paceStr = String(format: "%d:%02d", mins, secs)
+                paceStr = AdaptivePacingCore.formatMinutesSeconds(target)
             } else {
                 let targetMile = Int((Double(target) * 1.609344).rounded())
-                let mins = targetMile / 60
-                let secs = targetMile % 60
-                paceStr = String(format: "%d:%02d", mins, secs)
+                paceStr = AdaptivePacingCore.formatMinutesSeconds(targetMile)
             }
             self.init(
                 haptic: .success,
                 voiceCueText: "Target \(paceStr).",
                 accentToken: .electricBlue
             )
-        case .surge(_, let newTarget):
-            let paceStr: String
-            if useMetricSystem {
-                let mins = newTarget / 60
-                let secs = newTarget % 60
-                paceStr = String(format: "%d:%02d", mins, secs)
-            } else {
-                let targetMile = Int((Double(newTarget) * 1.609344).rounded())
-                let mins = targetMile / 60
-                let secs = targetMile % 60
-                paceStr = String(format: "%d:%02d", mins, secs)
-            }
+        case .surge:
             self.init(
                 haptic: .ascendingDoublePulse,
-                voiceCueText: "Surge \(paceStr).",
+                voiceCueText: nil,
                 accentToken: .surgeTeal
             )
         case .surgeLockedIn:
@@ -107,24 +92,13 @@ public struct PacingEventFeedbackSpec: Sendable, Equatable {
         case .formCheck:
             self.init(
                 haptic: .threeQuickLightTaps,
-                voiceCueText: "Quick steps.",
+                voiceCueText: nil,
                 accentToken: .recoverAmber
             )
-        case .recover(_, let newTarget, _):
-            let paceStr: String
-            if useMetricSystem {
-                let mins = newTarget / 60
-                let secs = newTarget % 60
-                paceStr = String(format: "%d:%02d", mins, secs)
-            } else {
-                let targetMile = Int((Double(newTarget) * 1.609344).rounded())
-                let mins = targetMile / 60
-                let secs = targetMile % 60
-                paceStr = String(format: "%d:%02d", mins, secs)
-            }
+        case .recover:
             self.init(
                 haptic: .descendingDoublePulse,
-                voiceCueText: "Ease to \(paceStr).",
+                voiceCueText: nil,
                 accentToken: .recoverAmber
             )
         case .backOnTarget:
@@ -138,13 +112,13 @@ public struct PacingEventFeedbackSpec: Sendable, Equatable {
             case .tooSlow:
                 self.init(
                     haptic: .directionUp,
-                    voiceCueText: "Pick up pace.",
+                    voiceCueText: nil,
                     accentToken: .surgeBlue
                 )
             case .tooFast:
                 self.init(
                     haptic: .directionDown,
-                    voiceCueText: "Ease pace.",
+                    voiceCueText: nil,
                     accentToken: .recoverOrange
                 )
             case .onTarget, .unknown:
@@ -157,18 +131,33 @@ public struct PacingEventFeedbackSpec: Sendable, Equatable {
         case .cadenceDrift:
             self.init(
                 haptic: .retry,
-                voiceCueText: "Cadence up.",
+                voiceCueText: nil,
                 accentToken: .vibrantGreen
             )
         case .splitMilestone(let index, let pace):
-            let mins = pace / 60
-            let secs = pace % 60
-            let paceText = String(format: "%d:%02d", mins, secs)
+            let paceText = AdaptivePacingCore.formatMinutesSeconds(pace)
             let unitStr = useMetricSystem ? "Kilometer" : "Mile"
             self.init(
                 haptic: .success,
                 voiceCueText: "\(unitStr) \(index), \(paceText).",
                 accentToken: .electricBlue
+            )
+        case .adaptiveBlockChanged(let blockState):
+            let accent: PacingAccentToken
+            switch blockState.kind {
+            case .cadenceReset, .cooldownFloor:
+                accent = .vibrantGreen
+            case .thresholdSurge:
+                accent = .surgeTeal
+            case .effortEase:
+                accent = .recoverAmber
+            case .none:
+                accent = .neutral
+            }
+            self.init(
+                haptic: .none,
+                voiceCueText: nil,
+                accentToken: accent
             )
         }
     }
@@ -228,6 +217,13 @@ public struct PacingDisplayState: Sendable, Equatable {
     public let targetBandUpperNormalized: Double
     public let biometricStatusToken: PacingAccentToken
     public let biometricStatusLabel: String
+    public let activeBlockBadge: String?
+    public let activeBlockRemainingFormatted: String?
+    public let activeTactileCue: ActiveTactileCue?
+
+    public var tactileNudgeStatusLabel: String? {
+        activeTactileCue?.stepLabel
+    }
 
     public init(
         state: PacingState,
@@ -255,7 +251,10 @@ public struct PacingDisplayState: Sendable, Equatable {
         targetBandLowerNormalized: Double = 0.42,
         targetBandUpperNormalized: Double = 0.58,
         biometricStatusToken: PacingAccentToken = .neutral,
-        biometricStatusLabel: String = ""
+        biometricStatusLabel: String = "",
+        activeBlockBadge: String? = nil,
+        activeBlockRemainingFormatted: String? = nil,
+        activeTactileCue: ActiveTactileCue? = nil
     ) {
         self.state = state
         self.targetPaceSecondsPerKm = targetPaceSecondsPerKm
@@ -283,6 +282,9 @@ public struct PacingDisplayState: Sendable, Equatable {
         self.targetBandUpperNormalized = targetBandUpperNormalized
         self.biometricStatusToken = biometricStatusToken
         self.biometricStatusLabel = biometricStatusLabel
+        self.activeBlockBadge = activeBlockBadge
+        self.activeBlockRemainingFormatted = activeBlockRemainingFormatted
+        self.activeTactileCue = activeTactileCue
     }
 }
 
@@ -306,9 +308,7 @@ extension PacingDisplayState {
     /// Formatted refractory countdown string (e.g. "1:30", or empty if not in refractory).
     public var refractoryCountdownFormatted: String {
         guard refractorySecondsRemaining > 0 else { return "" }
-        let minutes = refractorySecondsRemaining / 60
-        let seconds = refractorySecondsRemaining % 60
-        return String(format: "%d:%02d", minutes, seconds)
+        return AdaptivePacingCore.formatMinutesSeconds(refractorySecondsRemaining)
     }
 
     /// Active presentation accent token bound to the current pacing state and causal reason.
@@ -336,9 +336,7 @@ extension PacingDisplayState {
     ) -> PacingDisplayState {
         let targetFormatted: String = {
             guard let seconds = targetPaceSecondsPerKm, seconds > 0 else { return "--:--" }
-            let mins = seconds / 60
-            let secs = seconds % 60
-            return String(format: "%d:%02d /km", mins, secs)
+            return "\(AdaptivePacingCore.formatMinutesSeconds(seconds)) /km"
         }()
 
         let targetCadFormatted = targetCadenceSPM.map { "\($0) SPM" } ?? "--"
@@ -377,9 +375,14 @@ extension PacingDisplayState {
 // MARK: - AdaptivePacingCore Display State Builder Extension
 
 extension AdaptivePacingCore {
-    internal func buildDisplayState(speedEstimate: Double?, hrEstimate: Double?) -> PacingDisplayState {
+    internal func buildDisplayState(
+        speedEstimate: Double?,
+        hrEstimate: Double?,
+        shortSpeedMean: Double?,
+        resolvedCadenceSPM: Int?
+    ) -> PacingDisplayState {
         let filteredPace: Int? = {
-            if let shortSpeed = ringBuffer.shortWindowStats(for: .filteredSpeed)?.mean, shortSpeed > 0 {
+            if let shortSpeed = shortSpeedMean, shortSpeed > 0 {
                 return Int((1000.0 / shortSpeed).rounded())
             }
             if let current = speedEstimate, current > 0 {
@@ -388,15 +391,7 @@ extension AdaptivePacingCore {
             return nil
         }()
 
-        let filteredCadence: Int? = {
-            if let shortCadence = ringBuffer.shortWindowStats(for: .cadence)?.mean, shortCadence > 0 {
-                return Int(shortCadence.rounded())
-            }
-            if let current = ringBuffer.latestTick?.cadenceSPM, current > 0 {
-                return Int(current.rounded())
-            }
-            return nil
-        }()
+        let filteredCadence: Int? = resolvedCadenceSPM
 
         let filteredHR: Int? = hrEstimate.map { Int($0.rounded()) }
         let deviation = evaluateDeviation(target: currentTargetPaceSecondsPerKm, current: filteredPace)
@@ -427,13 +422,19 @@ extension AdaptivePacingCore {
         }()
 
         let elapsedSecs = ringBuffer.latestTick?.elapsedSeconds ?? 0.0
-        let totalElapsedSeconds = Int(elapsedSecs.rounded())
+        let totalElapsedSeconds = max(0, Int(elapsedSecs.rounded()))
         let elapsedMinutes = totalElapsedSeconds / 60
         let elapsedRemainingSeconds = totalElapsedSeconds % 60
         let elapsedHours = elapsedMinutes / 60
-        let elapsedTimeFormatted = (elapsedHours > 0)
-            ? String(format: "%d:%02d:%02d", elapsedHours, elapsedMinutes % 60, elapsedRemainingSeconds)
-            : String(format: "%d:%02d", elapsedMinutes, elapsedRemainingSeconds)
+        let secsStr = elapsedRemainingSeconds < 10 ? "0\(elapsedRemainingSeconds)" : "\(elapsedRemainingSeconds)"
+        let elapsedTimeFormatted: String
+        if elapsedHours > 0 {
+            let minsRem = elapsedMinutes % 60
+            let minsStr = minsRem < 10 ? "0\(minsRem)" : "\(minsRem)"
+            elapsedTimeFormatted = "\(elapsedHours):\(minsStr):\(secsStr)"
+        } else {
+            elapsedTimeFormatted = "\(elapsedMinutes):\(secsStr)"
+        }
 
         let gaugePosition: Double = {
             guard let target = currentTargetPaceSecondsPerKm, target > 0,
@@ -464,7 +465,16 @@ extension AdaptivePacingCore {
             case .calibrating:
                 return .calibratingBlue
             case .tracking:
-                return .electricBlue
+                switch activeBlock.kind {
+                case .cadenceReset, .cooldownFloor:
+                    return .vibrantGreen
+                case .thresholdSurge:
+                    return .surgeTeal
+                case .effortEase:
+                    return .recoverAmber
+                case .none:
+                    return .electricBlue
+                }
             case .surge:
                 return .surgeTeal
             case .recover:
@@ -477,7 +487,18 @@ extension AdaptivePacingCore {
             case .calibrating:
                 return "Calibrating"
             case .tracking:
-                return "Locked In"
+                switch activeBlock.kind {
+                case .cadenceReset:
+                    return "Cadence Reset"
+                case .thresholdSurge:
+                    return "Threshold Block"
+                case .cooldownFloor:
+                    return "Cooldown Floor"
+                case .effortEase:
+                    return "Protecting Zone"
+                case .none:
+                    return "Locked In"
+                }
             case .surge:
                 return "Surge Zone"
             case .recover:
@@ -511,15 +532,16 @@ extension AdaptivePacingCore {
             targetBandLowerNormalized: lowerBand,
             targetBandUpperNormalized: upperBand,
             biometricStatusToken: bioToken,
-            biometricStatusLabel: bioLabel
+            biometricStatusLabel: bioLabel,
+            activeBlockBadge: activeBlockBadgeTitle,
+            activeBlockRemainingFormatted: activeBlock.remainingFormatted,
+            activeTactileCue: metronomeRamp.activeCue
         )
     }
 
     private func formatPace(secondsPerKm: Int?) -> String {
         guard let seconds = secondsPerKm, seconds > 0 else { return "--:--" }
-        let mins = seconds / 60
-        let secs = seconds % 60
-        return String(format: "%d:%02d /km", mins, secs)
+        return "\(AdaptivePacingCore.formatMinutesSeconds(seconds)) /km"
     }
 
     private func deviationTitle(for deviation: PaceDeviation) -> String {

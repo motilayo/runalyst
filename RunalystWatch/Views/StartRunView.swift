@@ -14,14 +14,12 @@ public struct StartRunView: View {
     @State private var selectedLocation: PacingLocation = WatchContextStore.shared.preferredLocation
     @State private var hasUserManuallySelectedLocation = false
     @State private var selectedIntent: WatchRunIntent = .adaptiveBase
-    @State private var selectedPaceOption: WatchTargetPaceOption = .justRun
 
     public init() {}
 
     private var resolvedConfig: WatchResolvedSessionConfig {
         WatchContextStore.shared.resolveSession(
-            runIntent: selectedIntent,
-            selectedPace: selectedPaceOption.paceSecondsPerKm
+            runIntent: selectedIntent
         )
     }
 
@@ -95,31 +93,13 @@ public struct StartRunView: View {
                         }
                     }
 
-                    // Target Pace Picker (shown only when required by prescription)
-                    if resolvedConfig.requiresTargetPacePicker {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Target Pace")
-                                .font(.system(.caption2, design: .rounded))
-                                .foregroundStyle(.secondary)
-
-                            Picker("Target Pace", selection: $selectedPaceOption) {
-                                ForEach(WatchTargetPaceOption.allOptions) { option in
-                                    Text(option.label).tag(option)
-                                }
-                            }
-                            .pickerStyle(.wheel)
-                            .frame(height: 60)
-                        }
-                    }
-
                     // Start Button (minimum 44x44pt hit target)
                     Button {
                         Task {
-                            let targetPace = resolvedConfig.requiresTargetPacePicker ? selectedPaceOption.paceSecondsPerKm : nil
                             await workoutManager.startWorkout(
                                 location: selectedLocation,
                                 intent: selectedIntent,
-                                targetPaceSecondsPerKm: targetPace,
+                                targetPaceSecondsPerKm: resolvedConfig.intent.targetPaceSecondsPerKm,
                                 viewModel: pacingViewModel
                             )
                             workoutManager.isNavigatingToGauge = true

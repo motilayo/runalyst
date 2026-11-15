@@ -46,7 +46,10 @@ struct WatchCompanionStateTests {
         filteredCadence: String = "172 SPM",
         elapsedTime: String = "18:45",
         deviationTitle: String = "On Target",
-        calibrationProgress: Double? = nil
+        calibrationProgress: Double? = nil,
+        activeBlockBadge: String? = nil,
+        activeBlockRemainingFormatted: String? = nil,
+        activeTactileCue: ActiveTactileCue? = nil
     ) -> PacingDisplayState {
         PacingDisplayState(
             state: state,
@@ -74,7 +77,10 @@ struct WatchCompanionStateTests {
             targetBandLowerNormalized: 0.44,
             targetBandUpperNormalized: 0.56,
             biometricStatusToken: .vibrantGreen,
-            biometricStatusLabel: "Biometrics Nominal"
+            biometricStatusLabel: "Biometrics Nominal",
+            activeBlockBadge: activeBlockBadge,
+            activeBlockRemainingFormatted: activeBlockRemainingFormatted,
+            activeTactileCue: activeTactileCue
         )
     }
 
@@ -386,6 +392,48 @@ struct WatchCompanionStateTests {
         #expect(decoded.intentAndLocationSubtitle == "Adaptive Base • Outdoor")
         #expect(decoded.completedDebrief?.formInsightBullet == sampleDebrief.formInsightBullet)
         #expect(decoded.updatedAtEpochSeconds == 1731420000.0)
+    }
+
+    @Test("WatchLiveRunSnapshot: forwards activeBlockBadge, activeBlockRemainingFormatted, and activeTactileCue from PacingDisplayState")
+    func testLiveSnapshotForwardsActiveBlockBadgeRemainingAndTactileCue() throws {
+        let tactileCue = ActiveTactileCue(
+            mode: .cadenceMetronome,
+            targetBPM: 164,
+            pulseIntervalSeconds: 60.0 / 164.0,
+            remainingSeconds: 20,
+            stepLabel: "Step 1: 164 SPM"
+        )
+        let display = makeDisplayState(
+            state: .tracking,
+            activeBlockBadge: "CADENCE 158->164 • 2:45",
+            activeBlockRemainingFormatted: "2:45",
+            activeTactileCue: tactileCue
+        )
+
+        let snapshot = WatchLiveRunSnapshot.from(
+            displayState: display,
+            location: .indoor,
+            runIntent: .adaptiveBase,
+            isPaused: false,
+            isCompleted: false,
+            updatedAtEpochSeconds: 1731420100.0
+        )
+
+        #expect(snapshot.activeBlockBadge == "CADENCE 158->164 • 2:45")
+        #expect(snapshot.activeBlockRemainingFormatted == "2:45")
+        #expect(snapshot.activeTactileCue == tactileCue)
+
+        // Codable round-trip preserves active block badge, remaining formatted, and activeTactileCue
+        let encoder = JSONEncoder()
+        let data = try encoder.encode(snapshot)
+        let decoded = try JSONDecoder().decode(WatchLiveRunSnapshot.self, from: data)
+
+        #expect(decoded == snapshot)
+        #expect(decoded.activeBlockBadge == "CADENCE 158->164 • 2:45")
+        #expect(decoded.activeBlockRemainingFormatted == "2:45")
+        #expect(decoded.activeTactileCue?.mode == .cadenceMetronome)
+        #expect(decoded.activeTactileCue?.targetBPM == 164)
+        #expect(decoded.activeTactileCue?.stepLabel == "Step 1: 164 SPM")
     }
 
     @Test("WatchLiveRunSnapshot.idle produces correct non-active defaults")

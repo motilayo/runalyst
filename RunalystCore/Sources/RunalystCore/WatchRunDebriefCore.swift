@@ -112,7 +112,13 @@ extension AdaptivePacingCore {
 
         // 1. Adaptations bullet
         let adaptationsBullet: String
-        if surgeCount == 0 && recoveryAdjustmentCount == 0 {
+        let hasAdaptiveActivity = surgeCount > 0
+            || recoveryAdjustmentCount > 0
+            || cadenceResetCount > 0
+            || thresholdBlockCount > 0
+            || effortEaseCount > 0
+            || blockBackoffCount > 0
+        if !hasAdaptiveActivity {
             adaptationsBullet = "Held steady baseline pacing throughout."
         } else {
             var parts: [String] = []
@@ -132,6 +138,30 @@ extension AdaptivePacingCore {
                     ? "1 recovery adjustment"
                     : "\(recoveryAdjustmentCount) recovery adjustments"
                 parts.append(recNoun)
+            }
+            if cadenceResetCount > 0 {
+                let blockNoun = (cadenceResetCount == 1)
+                    ? "1 cadence reset block"
+                    : "\(cadenceResetCount) cadence reset blocks"
+                parts.append(blockNoun)
+            }
+            if thresholdBlockCount > 0 {
+                let blockNoun = (thresholdBlockCount == 1)
+                    ? "1 threshold block"
+                    : "\(thresholdBlockCount) threshold blocks"
+                parts.append(blockNoun)
+            }
+            if effortEaseCount > 0 {
+                let blockNoun = (effortEaseCount == 1)
+                    ? "1 effort-ease block"
+                    : "\(effortEaseCount) effort-ease blocks"
+                parts.append(blockNoun)
+            }
+            if blockBackoffCount > 0 {
+                let backoffNoun = (blockBackoffCount == 1)
+                    ? "1 block backoff"
+                    : "\(blockBackoffCount) block backoffs"
+                parts.append(backoffNoun)
             }
             adaptationsBullet = parts.joined(separator: ", ") + "."
         }
@@ -153,8 +183,8 @@ extension AdaptivePacingCore {
                 ? Int((totalCadenceSum / Double(cadenceSampleCount)).rounded())
                 : (currentTargetCadenceSPM ?? 170))
 
-        if let solidDist = solidCadenceUntilDistanceMeters,
-           (useMetricSystem ? solidDist >= 1000.0 : solidDist >= 1609.344) {
+        let minSolidDist = useMetricSystem ? 1000.0 : 1609.344
+        if let solidDist = solidCadenceUntilDistanceMeters, solidDist >= minSolidDist {
             if useMetricSystem {
                 let km = max(1, Int((solidDist / 1000.0).rounded()))
                 formInsightBullet = "Cadence stayed rock-solid at \(cadenceValue) spm until kilometer \(km)."

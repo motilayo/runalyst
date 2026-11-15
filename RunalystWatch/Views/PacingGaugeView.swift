@@ -226,7 +226,16 @@ public struct PacingGaugeView: View {
         VStack(spacing: 4) {
             // 1. Top pill row
             HStack {
-                if !displayState.biometricStatusLabel.isEmpty {
+                if let blockBadge = displayState.activeBlockBadge, !blockBadge.isEmpty {
+                    Text(blockBadge)
+                        .font(.system(.caption2, design: .rounded))
+                        .fontWeight(.semibold)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(auraColor(for: activeAuraToken).opacity(0.2))
+                        .foregroundStyle(auraColor(for: activeAuraToken))
+                        .clipShape(Capsule())
+                } else if !displayState.biometricStatusLabel.isEmpty {
                     Text(displayState.biometricStatusLabel)
                         .font(.system(.caption2, design: .rounded))
                         .fontWeight(.semibold)
@@ -244,7 +253,16 @@ public struct PacingGaugeView: View {
 
                 Spacer()
 
-                if !displayState.refractoryCountdownFormatted.isEmpty {
+                if let blockRemaining = displayState.activeBlockRemainingFormatted, !blockRemaining.isEmpty {
+                    Text(blockRemaining)
+                        .font(.system(.caption2, design: .rounded))
+                        .monospacedDigit()
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.white.opacity(0.12))
+                        .foregroundStyle(.secondary)
+                        .clipShape(Capsule())
+                } else if !displayState.refractoryCountdownFormatted.isEmpty {
                     Text(displayState.refractoryCountdownFormatted)
                         .font(.system(.caption2, design: .rounded))
                         .monospacedDigit()

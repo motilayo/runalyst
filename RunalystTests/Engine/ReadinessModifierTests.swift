@@ -128,9 +128,9 @@ final class ReadinessModifierTests: XCTestCase {
         for day in [8, 10, 12, 15, 17, 19, 22, 24, 26] {
             runs.append(makeRun(daysAgo: Double(day), distanceKm: 10.0, durationMinutes: 60.0, percentZone4: 0.15, now: now))
         }
-        // Acute 7 days: volume drops by 35% (only 2 easy runs, 8 km total, 0% Zone 4)
-        runs.append(makeRun(daysAgo: 4, distanceKm: 4.0, durationMinutes: 25.0, percentZone4: 0.0, type: "Easy Run", now: now))
-        runs.append(makeRun(daysAgo: 2, distanceKm: 4.0, durationMinutes: 25.0, percentZone4: 0.0, type: "Easy Run", now: now))
+        // Acute 7 days: volume drops significantly (2 easy runs, 8 km total, latest run yesterday, 0% Zone 4)
+        runs.append(makeRun(daysAgo: 3, distanceKm: 4.0, durationMinutes: 25.0, percentZone4: 0.0, type: "Easy Run", now: now))
+        runs.append(makeRun(daysAgo: 1, distanceKm: 4.0, durationMinutes: 25.0, percentZone4: 0.0, type: "Easy Run", now: now))
 
         let assessment = ReadinessEvaluator.assess(runs: runs, now: now)
         XCTAssertEqual(assessment.state, .deload)
@@ -159,6 +159,29 @@ final class ReadinessModifierTests: XCTestCase {
         XCTAssertEqual(drill.intervalSpec.recoverySeconds, 90)
         XCTAssertEqual(drill.defaultWorkString, "3 x 20 sec strides")
         XCTAssertEqual(drill.defaultRecoveryString, "90 sec walk recovery")
+    }
+
+    func testDeloadSuppression_WhenRestGapFollowsHealthyPriorWeek_EvaluatesProductive() {
+        let now = Date()
+        var runs: [ReadinessRunSnapshot] = []
+        // Trailing 3 weeks: ~20 km/week
+        for day in [12, 15, 18, 21, 24, 27] {
+            runs.append(makeRun(daysAgo: Double(day), distanceKm: 10.0, durationMinutes: 60.0, percentZone4: 0.10, now: now))
+        }
+        // Healthy runs 8 and 9 days ago (part of trailing 10-day window, but prior to 7-day acute window)
+        runs.append(makeRun(daysAgo: 9, distanceKm: 10.0, durationMinutes: 60.0, percentZone4: 0.10, now: now))
+        runs.append(makeRun(daysAgo: 8, distanceKm: 10.0, durationMinutes: 60.0, percentZone4: 0.10, now: now))
+
+        // Acute 7 days: only 1 light run 4 days ago (4 km, 0% Zone 4), then 4 days of rest/walking
+        runs.append(makeRun(daysAgo: 4, distanceKm: 4.0, durationMinutes: 25.0, percentZone4: 0.0, type: "Easy Run", now: now))
+
+        let assessment = ReadinessEvaluator.assess(runs: runs, now: now)
+        // Acute drop is > 25%, but rest gap is preceded by healthy 10-day mileage (>= 80% baseline)
+        XCTAssertEqual(assessment.state, .productive)
+        XCTAssertFalse(assessment.triggers.contains(where: {
+            if case .mileageDeload = $0 { return true }
+            return false
+        }))
     }
 
     func testContinuousDrillsExemption() {

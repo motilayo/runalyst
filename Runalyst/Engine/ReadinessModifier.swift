@@ -245,7 +245,13 @@ enum ReadinessEvaluator {
                 : 0
             let intensityControlled = weightedZ4 <= deloadMaxZone4Fraction
                 && !acuteRuns.contains(where: \.isHardSession)
-            if intensityControlled {
+            if intensityControlled && BanisterReadinessCore.isTrueDeloadVolumeDrop(
+                sessions: workloadSessions,
+                trailingWeeklyMeters: trailingWeeklyMeters,
+                now: now,
+                calendar: calendar,
+                dropThreshold: deloadDropThreshold
+            ) {
                 return ReadinessAssessment(
                     state: .deload,
                     triggers: [.mileageDeload(dropFraction: drop)],

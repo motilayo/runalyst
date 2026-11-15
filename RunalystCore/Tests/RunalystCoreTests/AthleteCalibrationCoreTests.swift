@@ -363,5 +363,119 @@ struct AthleteCalibrationCoreTests {
         #expect(resolved.durationFormatted == "10 Min")
         #expect(resolved.requiresTargetPacePicker == false)
     }
-}
 
+    // MARK: - WatchReadinessHint & Intent Preservation Tests
+
+    @Test("WatchReadinessHint: initializes with defaults and round-trips Codable cleanly")
+    func testWatchReadinessHintCodable() throws {
+        let hint = WatchReadinessHint(
+            daysSinceLastRun: 3,
+            recentWalkMeters48h: 6200.0,
+            hadRecentCadenceFade: true,
+            hadRecentBounce: false,
+            calibratedCadenceFloorSPM: 160,
+            isClearedForQuality: true
+        )
+
+        let encoder = JSONEncoder()
+        let data = try encoder.encode(hint)
+
+        let decoder = JSONDecoder()
+        let decoded = try decoder.decode(WatchReadinessHint.self, from: data)
+
+        #expect(decoded == hint)
+        #expect(decoded.daysSinceLastRun == 3)
+        #expect(decoded.recentWalkMeters48h == 6200.0)
+        #expect(decoded.hadRecentCadenceFade == true)
+        #expect(decoded.hadRecentBounce == false)
+        #expect(decoded.calibratedCadenceFloorSPM == 160)
+        #expect(decoded.isClearedForQuality == true)
+    }
+
+    @Test("PacingSessionIntent: decodes legacy JSON missing readinessHint gracefully")
+    func testLegacyPacingSessionIntentDecoding() throws {
+        let legacyJSON = """
+        {
+            "targetPaceSecondsPerKm": 300,
+            "intent": "tempo",
+            "subjectiveDistress": false,
+            "validForDay": "2026-11-14"
+        }
+        """
+
+        let decoder = JSONDecoder()
+        let decoded = try decoder.decode(PacingSessionIntent.self, from: Data(legacyJSON.utf8))
+
+        #expect(decoded.intent == .tempo)
+        #expect(decoded.targetPaceSecondsPerKm == 300)
+        #expect(decoded.validForDay == "2026-11-14")
+        #expect(decoded.readinessHint == nil)
+    }
+
+    @Test("AthleteCalibrationCore.makeIntent preserves readinessHint")
+    func testMakeIntentPreservesReadinessHint() {
+        let hint = WatchReadinessHint(daysSinceLastRun: 2, isClearedForQuality: true)
+        let intent = AthleteCalibrationCore.makeIntent(
+            spec: nil,
+            subjectiveDistress: false,
+            day: "2026-11-14",
+            targetPaceSecondsPerKm: 310,
+            readinessHint: hint
+        )
+
+        #expect(intent.readinessHint == hint)
+        #expect(intent.targetPaceSecondsPerKm == 310)
+        #expect(intent.intent == .steady)
+    }
+
+    @Test("resolveWatchSession and applying(runIntent:) preserve intent and readiness hint")
+    func testApplyingRunIntentPreservesAdaptiveBaseAndReadinessHint() {
+        let hint = WatchReadinessHint(daysSinceLastRun: 2, calibratedCadenceFloorSPM: 158, isClearedForQuality: true)
+        let profile = AthleteCalibrationProfile(maxHR: 185.0, restingHR: 52.0, isFallback: false)
+        let intent = PacingSessionIntent(
+            targetPaceSecondsPerKm: 290,
+            intent: .tempo,
+            subjectiveDistress: false,
+            validForDay: "2026-11-14",
+            readinessHint: hint
+        )
+        let context = WatchPacingContext(profile: profile, intent: intent)
+
+        let resolved = AthleteCalibrationCore.resolveWatchSession(cachedContext: context, currentDayString: "2026-11-14")
+        #expect(resolved.intent.intent == .tempo)
+        #expect(resolved.intent.readinessHint == hint)
+
+        // 1. .adaptiveBase preserves synthesized intent (.tempo) and readinessHint
+        let adaptiveBaseResolved = resolved.applying(runIntent: .adaptiveBase)
+        #expect(adaptiveBaseResolved.intent.intent == .tempo)
+        #expect(adaptiveBaseResolved.intent.readinessHint == hint)
+        #expect(adaptiveBaseResolved.requiresTargetPacePicker == false)
+
+        // 2. .recovery forces .recovery while preserving readinessHint
+        let recoveryResolved = resolved.applying(runIntent: .recovery)
+        #expect(recoveryResolved.intent.intent == .recovery)
+        #expect(recoveryResolved.intent.readinessHint == hint)
+        #expect(recoveryResolved.requiresTargetPacePicker == false)
+
+        // 3. .pushPerformance sets .tempo when subjectiveDistress is false
+        let pushResolved = resolved.applying(runIntent: .pushPerformance)
+        #expect(pushResolved.intent.intent == .tempo)
+        #expect(pushResolved.intent.readinessHint == hint)
+        #expect(pushResolved.requiresTargetPacePicker == false)
+
+        // 4. .pushPerformance respects subjectiveDistress override to .recovery
+        let distressIntent = PacingSessionIntent(
+            targetPaceSecondsPerKm: 320,
+            intent: .recovery,
+            subjectiveDistress: true,
+            validForDay: "2026-11-14",
+            readinessHint: hint
+        )
+        let distressContext = WatchPacingContext(profile: profile, intent: distressIntent)
+        let distressResolved = AthleteCalibrationCore.resolveWatchSession(cachedContext: distressContext, currentDayString: "2026-11-14")
+        let pushWithDistress = distressResolved.applying(runIntent: .pushPerformance)
+        #expect(pushWithDistress.intent.intent == .recovery)
+        #expect(pushWithDistress.intent.readinessHint == hint)
+        #expect(pushWithDistress.requiresTargetPacePicker == false)
+    }
+}

@@ -4,14 +4,84 @@ import Foundation
 
 extension AdaptivePacingCore {
 
+    /// Advances the tactile entrainer by 1 second and syncs quiet checkpoint cooldowns.
+    internal mutating func tickMetronomeRamp(hrEstimate: Double?, currentCadenceSPM: Int?) {
+        let wasActive = (metronomeRamp.activeCue != nil)
+        if !wasActive {
+            if metronomeRamp.cooldownRemainingSeconds > 0 {
+                _ = metronomeRamp.tick(currentSPM: currentCadenceSPM, isEffortOnTarget: false)
+            }
+            return
+        }
+        let isEffortOnTarget = evaluateEffortOnTargetForEntrainer(hrEstimate: hrEstimate)
+        let updatedCue = metronomeRamp.tick(
+            currentSPM: currentCadenceSPM,
+            isEffortOnTarget: isEffortOnTarget
+        )
+
+        if wasActive && updatedCue == nil {
+            let rampCooldown = Int(metronomeRamp.cooldownRemainingSeconds)
+            if configuration.cadenceDriftCooldownSeconds >= 240.0 {
+                cadenceDriftCooldownRemainingSeconds = max(cadenceDriftCooldownRemainingSeconds, rampCooldown)
+            }
+            if configuration.paceDriftCooldownSeconds >= 240.0 {
+                paceDriftCooldownRemainingSeconds = max(paceDriftCooldownRemainingSeconds, rampCooldown)
+            }
+        }
+    }
+
+    private func evaluateEffortOnTargetForEntrainer(hrEstimate: Double?) -> Bool {
+        guard let cue = metronomeRamp.activeCue else { return false }
+        let ceilingBPM: Double = (intent.intent == .recovery || intent.subjectiveDistress)
+            ? 0.78 * profile.maxHR
+            : configuration.hrCeilingFraction * profile.maxHR
+
+        switch cue.mode {
+        case .effortDown:
+            let hrSafe = hrEstimate.map { $0 < ceilingBPM } ?? false
+            return hrSafe && paceDriftDeviation != .tooFast
+        case .effortUp:
+            if activeBlock.kind == .thresholdSurge,
+               let speed = ringBuffer.latestTick?.speedMetersPerSecond,
+               let baseSpeed = blockRuntime.baselineSpeedMPS,
+               baseSpeed > 0 {
+                return speed >= baseSpeed * 1.015
+            }
+            return paceDriftDeviation == .onTarget || paceDriftDeviation == .tooFast
+        case .cadenceMetronome:
+            return false
+        }
+    }
+
+    private func isIndoorEffortAndCadenceHealthy(resolvedCadenceSPM: Int?) -> Bool {
+        let ceilingBPM: Double = (intent.intent == .recovery || intent.subjectiveDistress)
+            ? 0.78 * profile.maxHR
+            : configuration.hrCeilingFraction * profile.maxHR
+        guard let hr = kalmanHR.currentEstimate ?? ringBuffer.latestTick?.heartRateBPM,
+              hr < ceilingBPM else {
+            return false
+        }
+        guard let cadence = resolvedCadenceSPM,
+              cadence >= configuration.cadenceFloorSPM else {
+            return false
+        }
+        if let targetCadence = currentTargetCadenceSPM {
+            return Double(cadence) >= Double(targetCadence) - configuration.cadenceDriftThresholdSPM
+        }
+        return true
+    }
+
     /// Evaluates RECOVER and SURGE triggers on the 10 s evaluation cycle.
-    internal mutating func evaluateAdjustmentTriggers(filteredHR: Double?) -> PacingEvent? {
+    internal mutating func evaluateAdjustmentTriggers(
+        filteredHR: Double?,
+        resolvedCadenceSPM: Int?
+    ) -> PacingEvent? {
         guard refractorySecondsRemaining == 0 else {
             return nil
         }
 
         // 1. Protection Mandate: Evaluate RECOVER first (never gated by intent or fallback profile)
-        if let recoverEvent = evaluateRecover(filteredHR: filteredHR) {
+        if let recoverEvent = evaluateRecover(filteredHR: filteredHR, resolvedCadenceSPM: resolvedCadenceSPM) {
             return recoverEvent
         }
 
@@ -24,16 +94,16 @@ extension AdaptivePacingCore {
     }
 
     /// Evaluates the 30 s short-window filtered pace to confirm alignment with adjusted target.
-    internal mutating func evaluateBackOnTarget() -> PacingEvent? {
+    internal mutating func evaluateBackOnTarget(shortSpeedMean: Double?) -> PacingEvent? {
         guard pendingBackOnTarget, let target = currentTargetPaceSecondsPerKm else {
             return nil
         }
 
-        guard let speedStats = ringBuffer.shortWindowStats(for: .filteredSpeed), speedStats.mean > 0 else {
+        guard let speedMean = shortSpeedMean, speedMean > 0 else {
             return nil
         }
 
-        let filteredPace = Int((1000.0 / speedStats.mean).rounded())
+        let filteredPace = Int((1000.0 / speedMean).rounded())
         let tolerance = max(
             configuration.backOnTargetMinToleranceSecondsPerKm,
             Int((Double(target) * configuration.backOnTargetToleranceFraction).rounded())
@@ -49,14 +119,14 @@ extension AdaptivePacingCore {
     }
 
     /// Evaluates whether filtered pace has entered .onTarget for a pending surge target pace.
-    internal mutating func evaluateSurgeLockIn() -> PacingEvent? {
+    internal mutating func evaluateSurgeLockIn(shortSpeedMean: Double?) -> PacingEvent? {
         guard let target = awaitingSurgeLockInTargetSecondsPerKm else {
             return nil
         }
 
         let filteredPace: Int? = {
-            if let speedStats = ringBuffer.shortWindowStats(for: .filteredSpeed), speedStats.mean > 0 {
-                return Int((1000.0 / speedStats.mean).rounded())
+            if let speedMean = shortSpeedMean, speedMean > 0 {
+                return Int((1000.0 / speedMean).rounded())
             }
             if let latestSpeed = ringBuffer.latestTick?.speedMetersPerSecond, latestSpeed > 0 {
                 return Int((1000.0 / latestSpeed).rounded())
@@ -78,14 +148,24 @@ extension AdaptivePacingCore {
     /// Emits a `.paceDrift` event when the runner continuously deviates from target pace for >= 12 seconds,
     /// followed by a 30-second refractory cooldown period. This alert is non-destructive and does NOT mutate
     /// `currentTargetPaceSecondsPerKm` or `originalTargetPaceSecondsPerKm`.
-    internal mutating func evaluatePaceDriftAlert() -> PacingEvent? {
+    internal mutating func evaluatePaceDriftAlert(
+        shortSpeedMean: Double?,
+        resolvedCadenceSPM: Int?
+    ) -> PacingEvent? {
         // 1. Tick down cooldown if active
         paceDriftCooldownRemainingSeconds = max(0, paceDriftCooldownRemainingSeconds - 1)
 
+        // Indoor reliability: suppress outdoor-offset pace drift nudges when HR and IMU cadence are healthy
+        if location == .indoor, isIndoorEffortAndCadenceHealthy(resolvedCadenceSPM: resolvedCadenceSPM) {
+            paceDriftContinuousSeconds = 0.0
+            paceDriftDeviation = .onTarget
+            return nil
+        }
+
         // 2. Resolve short-window filtered pace
         let filteredPace: Int? = {
-            if let speedStats = ringBuffer.shortWindowStats(for: .filteredSpeed), speedStats.mean > 0 {
-                return Int((1000.0 / speedStats.mean).rounded())
+            if let speedMean = shortSpeedMean, speedMean > 0 {
+                return Int((1000.0 / speedMean).rounded())
             }
             if let latestSpeed = ringBuffer.latestTick?.speedMetersPerSecond, latestSpeed > 0 {
                 return Int((1000.0 / latestSpeed).rounded())
@@ -111,6 +191,11 @@ extension AdaptivePacingCore {
                 let target = currentTargetPaceSecondsPerKm ?? 0
                 let pace = filteredPace ?? 0
                 let delta = abs(pace - target)
+                if currentDeviation == .tooFast {
+                    _ = metronomeRamp.startEffortBurst(mode: .effortDown)
+                } else {
+                    _ = metronomeRamp.startEffortBurst(mode: .effortUp)
+                }
                 return .paceDrift(deviation: currentDeviation, deltaSecondsPerKm: delta)
             }
 
@@ -131,22 +216,12 @@ extension AdaptivePacingCore {
     /// Emits a `.cadenceDrift` event when the runner continuously runs below target cadence by >= 6 SPM
     /// (or below the absolute 150 SPM floor) for >= 12 seconds, followed by a 30-second refractory cooldown period.
     /// Non-destructive: does NOT mutate target paces or triggers.
-    internal mutating func evaluateCadenceDriftAlert() -> PacingEvent? {
+    internal mutating func evaluateCadenceDriftAlert(resolvedCadenceSPM: Int?) -> PacingEvent? {
         // 1. Decrement cooldown if active
         cadenceDriftCooldownRemainingSeconds = max(0, cadenceDriftCooldownRemainingSeconds - 1)
 
         // 2. Check short-window cadence stats
-        let resolvedCadence: Int? = {
-            if let shortCadence = ringBuffer.shortWindowStats(for: .cadence), shortCadence.mean > 0 {
-                return Int(shortCadence.mean.rounded())
-            }
-            if let latestCadence = ringBuffer.latestTick?.cadenceSPM, latestCadence > 0 {
-                return Int(latestCadence.rounded())
-            }
-            return nil
-        }()
-
-        guard let currentCadence = resolvedCadence, let targetCadence = currentTargetCadenceSPM else {
+        guard let currentCadence = resolvedCadenceSPM, let targetCadence = currentTargetCadenceSPM else {
             cadenceDriftContinuousSeconds = 0.0
             return nil
         }
@@ -169,6 +244,7 @@ extension AdaptivePacingCore {
                 cadenceDriftCooldownRemainingSeconds = Int(configuration.cadenceDriftCooldownSeconds)
                 cadenceDriftContinuousSeconds = 0.0
                 let delta = max(0, targetCadence - currentCadence)
+                _ = metronomeRamp.startCadenceBurst(currentSPM: currentCadence, goalSPM: targetCadence)
                 return .cadenceDrift(
                     currentCadenceSPM: currentCadence,
                     targetCadenceSPM: targetCadence,
@@ -189,7 +265,10 @@ extension AdaptivePacingCore {
 
     // MARK: - Private Trigger Implementations
 
-    private mutating func evaluateRecover(filteredHR: Double?) -> PacingEvent? {
+    private mutating func evaluateRecover(
+        filteredHR: Double?,
+        resolvedCadenceSPM: Int?
+    ) -> PacingEvent? {
         let deltaEF = efficiencyTracker.deltaEF(
             from: ringBuffer,
             gradeGuardFraction: configuration.gradeGuardFraction,
@@ -226,15 +305,9 @@ extension AdaptivePacingCore {
         if activeReasons.isEmpty {
             // First-tier non-destructive form check nudge on first degradation without dial-back
             if consecutiveFormBreakdowns == 1 {
-                let currentCadence: Int = {
-                    if let shortCadence = ringBuffer.shortWindowStats(for: .cadence), shortCadence.mean > 0 {
-                        return Int(shortCadence.mean.rounded())
-                    }
-                    if let latest = ringBuffer.latestTick?.cadenceSPM, latest > 0 {
-                        return Int(latest.rounded())
-                    }
-                    return currentTargetCadenceSPM ?? 160
-                }()
+                let currentCadence = resolvedCadenceSPM ?? currentTargetCadenceSPM ?? 160
+                let goalSPM = currentTargetCadenceSPM ?? max(configuration.cadenceFloorSPM, currentCadence + 3)
+                _ = metronomeRamp.startCadenceBurst(currentSPM: currentCadence, goalSPM: goalSPM)
                 return .formCheck(currentCadenceSPM: currentCadence, targetCadenceSPM: currentTargetCadenceSPM)
             }
             return nil
@@ -286,6 +359,7 @@ extension AdaptivePacingCore {
         hrCeilingExceededContinuousSeconds = 0.0
 
         recoveryAdjustmentCount += 1
+        _ = metronomeRamp.startEffortBurst(mode: .effortDown, bypassCooldown: true)
 
         return .recover(deltaSecondsPerKm: stepDelta, newTargetSecondsPerKm: newTarget, reason: reason)
     }
@@ -367,6 +441,7 @@ extension AdaptivePacingCore {
 
         surgeCount += 1
         peakSurgeDeltaSecondsPerKm = max(peakSurgeDeltaSecondsPerKm, stepDelta)
+        _ = metronomeRamp.startEffortBurst(mode: .effortUp, bypassCooldown: true)
 
         return .surge(deltaSecondsPerKm: -stepDelta, newTargetSecondsPerKm: newTarget)
     }

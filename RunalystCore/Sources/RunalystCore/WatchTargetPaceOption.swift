@@ -115,16 +115,36 @@ public struct WatchResolvedSessionConfig: Sendable, Equatable {
     /// Prescribed drills take precedence and remain intact; non-drill sessions adopt
     /// the intent's pacing category and clear the target pace picker requirement.
     public func applying(runIntent: WatchRunIntent) -> WatchResolvedSessionConfig {
-        guard !hasPrescribedDrill else { return self }
+        guard !hasPrescribedDrill else {
+            return WatchResolvedSessionConfig(
+                profile: profile,
+                intent: intent,
+                requiresTargetPacePicker: false,
+                isIndoorPreferred: isIndoorPreferred
+            )
+        }
+
+        let resolvedPacingIntent: PacingIntentKind = {
+            switch runIntent {
+            case .adaptiveBase:
+                return intent.intent
+            case .recovery:
+                return .recovery
+            case .pushPerformance:
+                return intent.subjectiveDistress ? .recovery : .tempo
+            }
+        }()
+
         let modifiedIntent = PacingSessionIntent(
             targetPaceSecondsPerKm: intent.targetPaceSecondsPerKm,
-            intent: runIntent.pacingIntentKind,
+            intent: resolvedPacingIntent,
             subjectiveDistress: intent.subjectiveDistress,
             validForDay: intent.validForDay,
             prescribedDrillTitle: intent.prescribedDrillTitle,
             prescribedDrillId: intent.prescribedDrillId,
             targetCadenceSPM: intent.targetCadenceSPM,
-            prescribedDurationMinutes: intent.prescribedDurationMinutes
+            prescribedDurationMinutes: intent.prescribedDurationMinutes,
+            readinessHint: intent.readinessHint
         )
         return WatchResolvedSessionConfig(
             profile: profile,
@@ -201,4 +221,3 @@ public enum WatchVoiceDeliveryTarget: String, Sendable, Equatable {
         }
     }
 }
-

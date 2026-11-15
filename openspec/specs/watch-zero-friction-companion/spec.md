@@ -4,38 +4,33 @@
 TBD - created by archiving change watch-zero-friction-companion. Update Purpose after archive.
 ## Requirements
 ### Requirement: Zero-Friction Watch Start Screen & Run Intent
-The watchOS start experience SHALL let the runner select **Outdoor** or **Indoor** and choose a single high-level run intent (**Adaptive Base**, **Push / Performance**, or **Recovery**) defaulting to **Adaptive Base**, without requiring target pace, interval, or timer programming.
+The watchOS start experience SHALL let the runner select **Outdoor** or **Indoor** and choose a single high-level run intent (**Adaptive Base**, **Push / Performance**, or **Recovery**) defaulting to **Adaptive Base**, without presenting redundant manual pace wheels or `"Just Run"` ambiguity.
 
-#### Scenario: Adaptive Base default launch
-- **GIVEN** the runner opens Runalyst on Apple Watch with no overriding scheduled interval prescription
-- **WHEN** `StartRunView` appears
-- **THEN** location defaults to the synced preference (**Outdoor** or **Indoor**), intent defaults to **Adaptive Base** ("Balanced aerobic run"), manual target-pace wheel selection is omitted for zero-friction start, and tapping **Start Run** initiates live calibration with `targetPaceSecondsPerKm: nil` and `watchVoiceCuesEnabled` defaulting to `true`.
+#### Scenario: Adaptive Base preserves iPhone readiness intent
+- **WHEN** `StartRunView` launches with a fresh same-day `WatchPacingContext` synthesized from iPhone (e.g., `.tempo` for a cleared 10K threshold session) and the runner leaves **Adaptive Base** selected
+- **THEN** `WatchResolvedSessionConfig.applying(runIntent: .adaptiveBase)` MUST preserve `cachedContext.intent.intent` and `WatchReadinessHint` instead of overwriting `.tempo` to `.steady`
+- **AND** `StartRunView` MUST NOT render a `"Just Run"` or manual `WatchTargetPaceOption` wheel picker.
+
+#### Scenario: iPhone "Start on Watch" handoff preserves target pace
+- **WHEN** iPhone launches the Watch companion via `launchWatchWorkout` and `RunalystWatchAppDelegate.handle(_:)` resolves the session
+- **THEN** it MUST pass `resolved.intent.targetPaceSecondsPerKm` directly to `WorkoutManager.startWorkout(...)` without gating on the retired `requiresTargetPacePicker` flag.
 
 #### Scenario: Intent policies in Core
-- **GIVEN** `AdaptivePacingConfiguration.forWatchCompanion(intent:)` is initialized
 - **WHEN** `intent` is `.recovery`
-- **THEN** upward `.surge` transitions MUST be strictly suppressed and HR ceiling protection triggers earlier (threshold fraction <= 0.80 maxHR)
+- **THEN** `applying(runIntent: .recovery)` MUST force `.recovery`, suppress all upward `.surge` and `.thresholdSurge` blocks, and enforce the conservative HR ceiling (`<= 0.80` maxHR)
 - **WHEN** `intent` is `.pushPerformance`
-- **THEN** upward `.surge` evaluations use a permissive ceiling (e.g., HR < 0.88 maxHR, top 40% efficiency quantile) while still honoring the 90s refractory cooldown and aerobic safety caps
-- **WHEN** `intent` is `.adaptiveBase`
-- **THEN** upward `.surge` and downward `.recover` protection use balanced aerobic thresholds (e.g., surge HR < 0.82 maxHR, recovery ceiling 0.92 maxHR).
+- **THEN** `applying(runIntent: .pushPerformance)` sets `.tempo` (unless `subjectiveDistress == true`, which retains `.recovery`) and enables permissive surge ceilings (`HR < 0.88` maxHR) while honoring aerobic safety caps.
 
 ---
 
 ### Requirement: 5-Minute Calibration Phase & Blue Edge Aura
-The adaptive engine SHALL calibrate quietly for minutes 0 through 5 (300 seconds) while rendering a calm blue edge aura and announcing calibration start and lock-in over ducked audio.
+The adaptive engine SHALL calibrate quietly for minutes 0 through 5 (300 seconds) while rendering a calm blue edge aura and observing early-run HR, pace, and cadence readiness without vocalized block announcements.
 
-#### Scenario: Calibration start audio cue
-- **GIVEN** a watch companion session begins in `.calibrating`
-- **WHEN** the first telemetry tick is ingested
-- **THEN** `AdaptivePacingCore` emits `.calibrationStarted` exactly once with `voiceCueText: "Find a comfortable rhythm. Reading your baseline."`, `haptic: .none`, and `accentToken: .calibratingBlue`
-- **AND** during elapsed seconds [0, 300), zero pace drift, cadence drift, form check, surge, or recover nagging events SHALL be emitted.
-
-#### Scenario: Calibration lock-in at 5 minutes
-- **GIVEN** sufficient sensor coverage over the calibration baseline window
-- **WHEN** elapsed time reaches 300 seconds (5:00)
-- **THEN** `AdaptivePacingCore` locks the baseline pace and cadence floor, transitions to `.tracking`, and emits `.calibrationComplete` with `.success` haptic and voice cue `"Baseline locked. Target pace: <pace> per <kilometer/mile>. Let's roll."`
-- **AND** `PacingDisplayState.accentToken` transitions to steady neutral `.electricBlue`.
+#### Scenario: Calibration start and silent lock-in
+- **WHEN** a watch companion session begins in `.calibrating`
+- **THEN** `AdaptivePacingCore` emits `.calibrationStarted` with `accentToken: .calibratingBlue` and suppresses drift nagging during elapsed seconds `[0, 300)`
+- **WHEN** elapsed time reaches `300` seconds (5:00) with sufficient sensor coverage
+- **THEN** `AdaptivePacingCore` locks the baseline pace and cadence floor (capped by `calibratedCadenceFloorSPM` or `>= 150 SPM`), transitions to `.tracking`, and evaluates whether an initial adaptive block (`cadenceReset` or `thresholdSurge`) should immediately open visually on `PacingGaugeView`.
 
 ---
 
@@ -64,18 +59,23 @@ When high efficiency reserves trigger a surge, the Watch SHALL play two ascendin
 ---
 
 ### Requirement: Two-Step Form Check & Cardiac Drift Recovery Protection
-Biomechanical breakdown SHALL trigger a non-destructive Form Check before any pace dial-back; sustained cardiac or efficiency drift triggers a Recovery adjustment with warm amber visuals and descending double-tap haptic.
+Biomechanical degradation and sustained cardiac/efficiency drift SHALL trigger visual display updates and short-burst tactile interventions on a `4–5 minute` checkpoint budget rather than continuous `30-second` nagging.
+
+#### Scenario: Quiet checkpoint budget replaces 30s nagging
+- **WHEN** a `cadenceDrift` or `paceDrift` correction burst completes or backs off without lock-in after `20.0` seconds
+- **THEN** `AdaptivePacingCore` MUST suppress repeat `cadenceDrift` and `paceDrift` alerts for at least `240` seconds (`4` minutes), unless an explicit phase transition occurs
+- **AND** `PacingEventFeedbackSpec` for `.paceDrift`, `.cadenceDrift`, `.formCheck`, `.surge`, `.recover`, and `.adaptiveBlockChanged` MUST set `voiceCueText: nil` so Watch runs rely on visual display updates and tactile cues without vocalized coaching chatter.
 
 #### Scenario: Non-destructive Form Check nudge
 - **GIVEN** the runner is post-calibration (`state != .calibrating`) and either Biomechanical Degradation Index triggers (GCT delta > +7% AND cadence drop > 4.0 SPM) or sustained cadence drift occurs below target cadence floor
 - **WHEN** cooldown allows
-- **THEN** `AdaptivePacingCore` emits `.formCheck` (or updated `.cadenceDrift`) with `haptic: .threeQuickLightTaps` and voice cue `"Form check. Quick, light steps—bring your cadence up."`
+- **THEN** `AdaptivePacingCore` emits `.formCheck` (or updated `.cadenceDrift`) with `haptic: .threeQuickLightTaps` and visual/tactile cueing (`voiceCueText: nil`)
 - **AND** `currentTargetPaceSecondsPerKm` MUST NOT be slowed down solely by the first Form Check.
 
 #### Scenario: Recovery adjustment on cardiac drift
 - **GIVEN** efficiency drift (`deltaEF <= recoverEfficiencyDriftThreshold`) or sustained HR ceiling persists after form check / in tracking
 - **WHEN** a `.recover` trigger fires (refractory == 0)
-- **THEN** `AdaptivePacingCore` dials target pace slower (capped by step limit and cumulative 12% ceiling), emits `.recover` with `haptic: .descendingDoublePulse`, `accentToken: .recoverAmber`, and voice cue `"Cardiac drift detected. Dialing target back to <pace> to protect your aerobic zone."`.
+- **THEN** `AdaptivePacingCore` dials target pace slower (capped by step limit and cumulative 12% ceiling), emits `.recover` with `haptic: .descendingDoublePulse`, `accentToken: .recoverAmber`, and visual/tactile alert (`voiceCueText: nil`).
 
 ---
 

@@ -75,7 +75,7 @@ public actor TelemetryEngine {
         location: PacingLocation,
         configuration: AdaptivePacingConfiguration? = nil,
         watchIntent: WatchRunIntent = .adaptiveBase
-    ) {
+    ) async {
         let resolvedConfig: AdaptivePacingConfiguration = {
             if let configuration {
                 return configuration
@@ -99,11 +99,28 @@ public actor TelemetryEngine {
         self.latestElapsedSeconds = 0.0
         self.latestDistanceMeters = nil
         self.resetSamples()
+        await MainActor.run {
+            FeedbackDispatcher.shared.reset()
+        }
     }
 
-    /// Sets the paused state. When paused, tick emissions are frozen.
-    public func setPaused(_ paused: Bool) {
+    /// Sets the paused state. When paused, tick emissions are frozen and the tactile ticker is silenced.
+    public func setPaused(_ paused: Bool) async {
         self.isPaused = paused
+        if paused {
+            await MainActor.run {
+                FeedbackDispatcher.shared.pauseTactileTicker()
+            }
+        }
+    }
+
+    /// Stops the active session, halts tick emission, and cancels the tactile ticker.
+    public func stopSession() async {
+        self.isPaused = true
+        self.resetSamples()
+        await MainActor.run {
+            FeedbackDispatcher.shared.stopTactileTicker()
+        }
     }
 
     /// Clears cached metric samples.
@@ -252,6 +269,13 @@ public actor TelemetryEngine {
 
         if let vm = viewModel {
             await vm.update(events: finalEvents, display: result.display)
+            await MainActor.run {
+                FeedbackDispatcher.shared.updateTactileCue(result.display.activeTactileCue)
+            }
+        } else {
+            await MainActor.run {
+                FeedbackDispatcher.shared.dispatch(events: finalEvents, display: result.display)
+            }
         }
         return (events: finalEvents, display: result.display)
     }

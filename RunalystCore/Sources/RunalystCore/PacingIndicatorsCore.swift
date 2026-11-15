@@ -65,16 +65,26 @@ public struct EfficiencyDriftTracker: Sendable {
         from ringBuffer: TelemetryRingBuffer,
         minCoverage: Double = 0.80
     ) -> (ef: Double, source: EFSource)? {
-        guard let hrStats = ringBuffer.longWindowStats(for: .filteredHeartRate),
-              hrStats.coverage >= minCoverage,
-              hrStats.mean > 0 else {
+        guard let efMeans = ringBuffer.longWindowEFMeans(includeSpeed: location == .outdoor) else {
+            return nil
+        }
+        return currentEF(from: efMeans, minCoverage: minCoverage)
+    }
+
+    internal func currentEF(
+        from efMeans: TelemetryRingBuffer.WindowEFMeans,
+        minCoverage: Double = 0.80
+    ) -> (ef: Double, source: EFSource)? {
+        guard efMeans.hrCoverage >= minCoverage,
+              let hrMean = efMeans.hrMean,
+              hrMean > 0 else {
             return nil
         }
 
         // Prefer power when coverage >= 80%
-        if let powerStats = ringBuffer.longWindowStats(for: .power),
-           powerStats.coverage >= minCoverage {
-            return (ef: powerStats.mean / hrStats.mean, source: .power)
+        if efMeans.powerCoverage >= minCoverage,
+           let powerMean = efMeans.powerMean {
+            return (ef: powerMean / hrMean, source: .power)
         }
 
         // Fall back to speed only when outdoor
@@ -82,9 +92,9 @@ public struct EfficiencyDriftTracker: Sendable {
             return nil
         }
 
-        if let speedStats = ringBuffer.longWindowStats(for: .filteredSpeed),
-           speedStats.coverage >= minCoverage {
-            return (ef: speedStats.mean / hrStats.mean, source: .speed)
+        if efMeans.speedCoverage >= minCoverage,
+           let speedMean = efMeans.speedMean {
+            return (ef: speedMean / hrMean, source: .speed)
         }
 
         return nil
@@ -102,11 +112,31 @@ public struct EfficiencyDriftTracker: Sendable {
         gradeGuardFraction: Double = 0.015,
         minCoverage: Double = 0.80
     ) -> Double? {
-        guard let ef0, let efSource, ef0 > 0 else {
+        guard let ef0, efSource != nil, ef0 > 0 else {
+            return nil
+        }
+        guard let efMeans = ringBuffer.longWindowEFMeans(includeSpeed: location == .outdoor) else {
+            return nil
+        }
+        return deltaEF(
+            from: ringBuffer,
+            efMeans: efMeans,
+            gradeGuardFraction: gradeGuardFraction,
+            minCoverage: minCoverage
+        )
+    }
+
+    internal func deltaEF(
+        from ringBuffer: TelemetryRingBuffer,
+        efMeans: TelemetryRingBuffer.WindowEFMeans,
+        gradeGuardFraction: Double = 0.015,
+        minCoverage: Double = 0.80
+    ) -> Double? {
+        guard let ef0, efSource != nil, ef0 > 0 else {
             return nil
         }
 
-        guard let (current, source) = currentEF(from: ringBuffer, minCoverage: minCoverage) else {
+        guard let (current, source) = currentEF(from: efMeans, minCoverage: minCoverage) else {
             return nil
         }
 

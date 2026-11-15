@@ -68,7 +68,7 @@ struct AdaptivePacingCadenceTests {
 
     // MARK: - Cadence Drift Triggering & Cooldown
 
-    @Test("Cadence drift alert: 12s continuous debounce triggers alert and 30s cooldown suppresses duplicates")
+    @Test("Cadence drift alert: 12s continuous debounce triggers alert and 240s checkpoint cooldown suppresses duplicates")
     func testCadenceDriftDebounceAndCooldown() {
         var core = AdaptivePacingCore(profile: standardProfile, intent: standardIntent, location: .outdoor)
         for tick in PacingSessionFixtures.makeSteadyEasyRun(durationSeconds: 600, cadence: 168.0) {
@@ -133,8 +133,8 @@ struct AdaptivePacingCadenceTests {
         }
         #expect(driftEvents.count == 1, "12th consecutive second must trigger exactly one cadence drift alert")
 
-        // 4. Next 25 ticks continue at 155 SPM. Cooldown is 30s -> suppressed
-        for _ in 1...25 {
+        // 4. Next 255 ticks continue at 155 SPM (20s burst + 235s cooldown) -> suppressed
+        for _ in 1...255 {
             let tick = TelemetryTick(
                 elapsedSeconds: TimeInterval(currentTick),
                 heartRateBPM: 145.0,
@@ -149,9 +149,9 @@ struct AdaptivePacingCadenceTests {
                 }
             }
         }
-        #expect(driftEvents.count == 1, "Cadence drift alert must be suppressed during 30s cooldown")
+        #expect(driftEvents.count == 1, "Cadence drift alert must be suppressed during 240s post-burst cooldown")
 
-        // 5. Next 5 ticks complete the 30s cooldown, then tick 31 fires second alert
+        // 5. Next 5 ticks complete the 240s cooldown, then tick 261 fires second alert
         for _ in 1...5 {
             let tick = TelemetryTick(
                 elapsedSeconds: TimeInterval(currentTick),
@@ -167,7 +167,7 @@ struct AdaptivePacingCadenceTests {
                 }
             }
         }
-        #expect(driftEvents.count == 2, "After 30s cooldown, next tick fires second cadence drift alert")
+        #expect(driftEvents.count == 2, "After 240s cooldown, next tick fires second cadence drift alert")
     }
 
     @Test("Cadence drift alert: momentary drop resets debounce accumulator")
@@ -300,7 +300,7 @@ struct AdaptivePacingCadenceTests {
         let cadenceEvent = PacingEvent.cadenceDrift(currentCadenceSPM: 158, targetCadenceSPM: 168, deltaSPM: 10)
         let cadenceSpec = cadenceEvent.feedbackSpec
         #expect(cadenceSpec.haptic == .retry)
-        #expect(cadenceSpec.voiceCueText == "Cadence up.")
+        #expect(cadenceSpec.voiceCueText == nil)
         #expect(cadenceSpec.accentToken == .vibrantGreen)
 
         let splitEvent = PacingEvent.splitMilestone(splitIndex: 5, splitPaceSecondsPerKm: 285)
