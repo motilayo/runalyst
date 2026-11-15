@@ -154,9 +154,15 @@ extension AdaptivePacingCore {
 
         // 1. Adaptations bullet
         let adaptationsBullet: String
-        if (elapsedSeconds < 60 || isCalibrating) && surgeCount == 0 && recoveryAdjustmentCount == 0 {
+        let hasAdaptiveActivity = surgeCount > 0
+            || recoveryAdjustmentCount > 0
+            || cadenceResetCount > 0
+            || thresholdBlockCount > 0
+            || effortEaseCount > 0
+            || blockBackoffCount > 0
+        if (elapsedSeconds < 60 || isCalibrating) && !hasAdaptiveActivity {
             adaptationsBullet = "Ended before baseline pacing lock."
-        } else if surgeCount == 0 && recoveryAdjustmentCount == 0 {
+        } else if !hasAdaptiveActivity {
             adaptationsBullet = "Held steady baseline pacing throughout."
         } else {
             var parts: [String] = []
@@ -176,6 +182,30 @@ extension AdaptivePacingCore {
                     ? "1 recovery adjustment"
                     : "\(recoveryAdjustmentCount) recovery adjustments"
                 parts.append(recNoun)
+            }
+            if cadenceResetCount > 0 {
+                let blockNoun = (cadenceResetCount == 1)
+                    ? "1 cadence reset block"
+                    : "\(cadenceResetCount) cadence reset blocks"
+                parts.append(blockNoun)
+            }
+            if thresholdBlockCount > 0 {
+                let blockNoun = (thresholdBlockCount == 1)
+                    ? "1 threshold block"
+                    : "\(thresholdBlockCount) threshold blocks"
+                parts.append(blockNoun)
+            }
+            if effortEaseCount > 0 {
+                let blockNoun = (effortEaseCount == 1)
+                    ? "1 effort-ease block"
+                    : "\(effortEaseCount) effort-ease blocks"
+                parts.append(blockNoun)
+            }
+            if blockBackoffCount > 0 {
+                let backoffNoun = (blockBackoffCount == 1)
+                    ? "1 block backoff"
+                    : "\(blockBackoffCount) block backoffs"
+                parts.append(backoffNoun)
             }
             adaptationsBullet = parts.joined(separator: ", ") + "."
         }

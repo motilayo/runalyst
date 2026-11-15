@@ -374,4 +374,43 @@ final class HealthKitManagerTests: XCTestCase {
         XCTAssertTrue(record.framboiseTags.contains("userLinkedDrill"))
         XCTAssertTrue(record.framboiseTags.contains("prescribedDrill"))
     }
+
+    func testFetchRecentWalkingDistanceMeters_WhenHealthDataUnavailable_ReturnsZero() async {
+        sut = HealthKitManager(healthStore: mockStore, isHealthDataAvailable: { false })
+        let distance = await sut.fetchRecentWalkingDistanceMeters(windowHours: 48)
+        XCTAssertEqual(distance, 0.0)
+    }
+
+    func testFetchRecentWalkingDistanceMeters_WhenDenied_ReturnsZero() async {
+        sut = HealthKitManager(healthStore: mockStore, isHealthDataAvailable: { true })
+        mockStore.authorizationStatusToReturn = .sharingDenied
+        let distance = await sut.fetchRecentWalkingDistanceMeters(windowHours: 48)
+        XCTAssertEqual(distance, 0.0)
+    }
+
+    func testFetchRecentWalkingDistanceMeters_WhenWorkoutsExist_SumsDistanceMeters() async {
+        sut = HealthKitManager(healthStore: mockStore, isHealthDataAvailable: { true })
+        mockStore.authorizationStatusToReturn = .sharingAuthorized
+        let walk1 = HKWorkout(
+            activityType: .walking,
+            start: Date().addingTimeInterval(-3600),
+            end: Date(),
+            duration: 3600,
+            totalEnergyBurned: nil,
+            totalDistance: HKQuantity(unit: .meter(), doubleValue: 3200),
+            metadata: nil
+        )
+        let walk2 = HKWorkout(
+            activityType: .walking,
+            start: Date().addingTimeInterval(-7200),
+            end: Date().addingTimeInterval(-3600),
+            duration: 3600,
+            totalEnergyBurned: nil,
+            totalDistance: HKQuantity(unit: .meter(), doubleValue: 2800),
+            metadata: nil
+        )
+        sut.walkingWorkoutsFetcher = { _ in [walk1, walk2] }
+        let distance = await sut.fetchRecentWalkingDistanceMeters(windowHours: 48)
+        XCTAssertEqual(distance, 6000.0)
+    }
 }

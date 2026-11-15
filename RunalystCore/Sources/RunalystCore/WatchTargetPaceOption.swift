@@ -160,18 +160,51 @@ public struct WatchResolvedSessionConfig: Sendable, Equatable {
 
     /// Derives a session configuration tailored to a user-selected running intent and optional selected pace.
     ///
-    /// When `runIntent` is `nil`, the configuration is returned unchanged.
-    /// When the intent matches the current non-drill intent, existing fields are preserved without override.
-    /// When the user chooses a different intent or overrides a prescribed drill, the drill fields are cleared,
-    /// target pace is reset to `selectedPace` (or `nil` for synced sessions/drills), the pace picker is enabled,
-    /// and `isUserIntentOverride` is marked if the session was synced.
+    /// When `runIntent` is `nil` or `.adaptiveBase`, prescribed drills, iPhone pacing intent, target cadence,
+    /// duration, and readiness hints are preserved with `requiresTargetPacePicker` forced to `false`.
+    /// When `.recovery` or `.pushPerformance` overrides a differing intent or drill, drill fields and stale
+    /// synced paces are cleared (respecting `subjectiveDistress`), `requiresTargetPacePicker` stays `false`,
+    /// and `isUserIntentOverride` is marked when the session was synced from iPhone.
     public func applying(runIntent: WatchRunIntent?, selectedPace: Int? = nil) -> WatchResolvedSessionConfig {
-        guard let runIntent else { return self }
-        if !hasPrescribedDrill && intent.intent == runIntent.pacingIntentKind {
+        guard let runIntent, runIntent != .adaptiveBase else {
+            let effectivePace = selectedPace ?? intent.targetPaceSecondsPerKm
+            let preservedIntent = PacingSessionIntent(
+                targetPaceSecondsPerKm: effectivePace,
+                intent: intent.intent,
+                subjectiveDistress: intent.subjectiveDistress,
+                validForDay: intent.validForDay,
+                prescribedDrillTitle: intent.prescribedDrillTitle,
+                prescribedDrillId: intent.prescribedDrillId,
+                targetCadenceSPM: intent.targetCadenceSPM,
+                prescribedDurationMinutes: intent.prescribedDurationMinutes,
+                readinessHint: intent.readinessHint
+            )
+            return WatchResolvedSessionConfig(
+                profile: profile,
+                intent: preservedIntent,
+                requiresTargetPacePicker: false,
+                isIndoorPreferred: isIndoorPreferred,
+                isPhoneSessionSynced: isPhoneSessionSynced,
+                isUserIntentOverride: false
+            )
+        }
+
+        let resolvedPacingIntent: PacingIntentKind = {
+            switch runIntent {
+            case .adaptiveBase:
+                return intent.intent
+            case .recovery:
+                return .recovery
+            case .pushPerformance:
+                return intent.subjectiveDistress ? .recovery : .tempo
+            }
+        }()
+
+        if !hasPrescribedDrill && intent.intent == resolvedPacingIntent && selectedPace == nil && !intent.subjectiveDistress {
             return WatchResolvedSessionConfig(
                 profile: profile,
                 intent: intent,
-                requiresTargetPacePicker: requiresTargetPacePicker,
+                requiresTargetPacePicker: false,
                 isIndoorPreferred: isIndoorPreferred,
                 isPhoneSessionSynced: isPhoneSessionSynced,
                 isUserIntentOverride: false
@@ -181,19 +214,20 @@ public struct WatchResolvedSessionConfig: Sendable, Equatable {
         let effectivePace = selectedPace ?? (isPhoneSessionSynced || hasPrescribedDrill ? nil : intent.targetPaceSecondsPerKm)
         let updatedIntent = PacingSessionIntent(
             targetPaceSecondsPerKm: effectivePace,
-            intent: runIntent.pacingIntentKind,
+            intent: resolvedPacingIntent,
             subjectiveDistress: intent.subjectiveDistress,
             validForDay: intent.validForDay,
             prescribedDrillTitle: nil,
             prescribedDrillId: nil,
             targetCadenceSPM: nil,
-            prescribedDurationMinutes: nil
+            prescribedDurationMinutes: nil,
+            readinessHint: intent.readinessHint
         )
 
         return WatchResolvedSessionConfig(
             profile: profile,
             intent: updatedIntent,
-            requiresTargetPacePicker: true,
+            requiresTargetPacePicker: false,
             isIndoorPreferred: isIndoorPreferred,
             isPhoneSessionSynced: isPhoneSessionSynced,
             isUserIntentOverride: isPhoneSessionSynced

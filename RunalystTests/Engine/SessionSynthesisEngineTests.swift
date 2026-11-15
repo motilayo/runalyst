@@ -1,5 +1,6 @@
 import XCTest
 import SwiftData
+import RunalystCore
 @testable import Runalyst
 
 final class SessionSynthesisEngineTests: XCTestCase {
@@ -1401,6 +1402,186 @@ final class SessionSynthesisEngineTests: XCTestCase {
             XCTAssertEqual(twoDaysLaterPlanned.minutesLow, expected.minutesLow)
             XCTAssertEqual(twoDaysLaterPlanned.minutesHigh, expected.minutesHigh)
         }
+    }
+
+    // MARK: - Watch Readiness Hint & Calibration Bridge Tests
+
+    @MainActor
+    func testBuildWatchReadinessHint_WithRecentRun_PopulatesAllMetrics() {
+        let calendar = Calendar.current
+        let now = Date()
+        guard let threeDaysAgo = calendar.date(byAdding: .day, value: -3, to: now) else {
+            XCTFail("Failed to construct date")
+            return
+        }
+
+        let run = makeRun(
+            date: threeDaysAgo,
+            workingAvgCadence: 162.0,
+            workingAvgHeartRate: 142.0,
+            workingAvgVerticalOscillation: 8.5
+        )
+
+        let hint = SessionSynthesisEngine.buildWatchReadinessHint(
+            runRecords: [run],
+            userHeightCm: 175.0,
+            recentWalkMeters48h: 5200.0,
+            subjectiveDistress: false,
+            now: now
+        )
+
+        XCTAssertEqual(hint.daysSinceLastRun, 3)
+        XCTAssertEqual(hint.recentWalkMeters48h, 5200.0)
+        XCTAssertFalse(hint.hadRecentCadenceFade)
+        XCTAssertFalse(hint.hadRecentBounce)
+        XCTAssertEqual(hint.calibratedCadenceFloorSPM, 150)
+        XCTAssertTrue(hint.isClearedForQuality)
+    }
+
+    @MainActor
+    func testBuildWatchReadinessHint_WithCadenceFadeAndExcessiveBounce() {
+        let calendar = Calendar.current
+        let now = Date()
+        guard let yesterday = calendar.date(byAdding: .day, value: -1, to: now) else {
+            XCTFail("Failed to construct date")
+            return
+        }
+
+        let run = makeRun(
+            date: yesterday,
+            workingAvgCadence: 142.0,
+            workingAvgHeartRate: 155.0,
+            framboiseTags: [FramboiseReadinessTag.cadenceFade],
+            workingAvgVerticalOscillation: 11.5
+        )
+
+        let hint = SessionSynthesisEngine.buildWatchReadinessHint(
+            runRecords: [run],
+            userHeightCm: 175.0,
+            now: now
+        )
+
+        XCTAssertEqual(hint.daysSinceLastRun, 1)
+        XCTAssertNil(hint.recentWalkMeters48h)
+        XCTAssertTrue(hint.hadRecentCadenceFade)
+        XCTAssertTrue(hint.hadRecentBounce)
+        XCTAssertEqual(hint.calibratedCadenceFloorSPM, 150)
+    }
+
+    @MainActor
+    func testBuildWatchReadinessHint_WithSubjectiveDistress_BlocksQuality() {
+        let now = Date()
+        let hint = SessionSynthesisEngine.buildWatchReadinessHint(
+            runRecords: [],
+            userHeightCm: 180.0,
+            subjectiveDistress: true,
+            now: now
+        )
+
+        XCTAssertNil(hint.daysSinceLastRun)
+        XCTAssertFalse(hint.isClearedForQuality)
+        XCTAssertEqual(hint.calibratedCadenceFloorSPM, 146)
+    }
+
+    @MainActor
+    func testEvaluateDailyState_PublishesWatchReadinessHintToBridge() {
+        let calendar = Calendar.current
+        let now = Date()
+        guard let twoDaysAgo = calendar.date(byAdding: .day, value: -2, to: now) else {
+            XCTFail("Failed to construct date")
+            return
+        }
+
+        let run = makeRun(
+            date: twoDaysAgo,
+            workingAvgCadence: 160.0,
+            workingAvgHeartRate: 140.0,
+            workingAvgVerticalOscillation: 8.0
+        )
+
+        _ = SessionSynthesisEngine.evaluateDailyState(
+            runRecords: [run],
+            activeGoal: "5K",
+            experienceLevel: "Intermediate",
+            useMetric: true,
+            userHeightCm: 175.0,
+            now: now
+        )
+
+        guard let context = WatchCalibrationBridge.shared.lastPublishedContext else {
+            XCTFail("Expected lastPublishedContext on WatchCalibrationBridge")
+            return
+        }
+
+        guard let hint = context.intent.readinessHint else {
+            XCTFail("Expected readinessHint on published PacingSessionIntent")
+            return
+        }
+
+        XCTAssertEqual(hint.daysSinceLastRun, 2)
+        XCTAssertFalse(hint.hadRecentCadenceFade)
+        XCTAssertFalse(hint.hadRecentBounce)
+        XCTAssertEqual(hint.calibratedCadenceFloorSPM, 150)
+        XCTAssertTrue(hint.isClearedForQuality)
+    }
+
+    @MainActor
+    func testWatchCalibrationBridge_UpdateRecentWalkingMeters_UpdatesPublishedContext() {
+        let now = Date()
+        let bridge = WatchCalibrationBridge.shared
+        bridge.publishContext(
+            runs: [],
+            now: now
+        )
+
+        XCTAssertNotNil(bridge.lastPublishedContext)
+        XCTAssertNil(bridge.lastPublishedContext?.intent.readinessHint?.recentWalkMeters48h)
+
+        bridge.updateRecentWalkingMeters(4500.0)
+
+        XCTAssertEqual(bridge.lastPublishedContext?.intent.readinessHint?.recentWalkMeters48h, 4500.0)
+    }
+
+    @MainActor
+    func testWatchCalibrationBridge_PublishDrillIntent_PreservesReadinessHint() {
+        let now = Date()
+        let bridge = WatchCalibrationBridge.shared
+        let hint = WatchReadinessHint(
+            daysSinceLastRun: 4,
+            recentWalkMeters48h: 6000.0,
+            hadRecentCadenceFade: false,
+            hadRecentBounce: true,
+            calibratedCadenceFloorSPM: 152,
+            isClearedForQuality: true
+        )
+
+        let dto = DrillPrescriptionDTO(
+            title: "Cadence Pyramids",
+            preRunDrillId: "cadencePyramids",
+            purpose: "Neuromuscular coordination",
+            targetCadence: "160 SPM",
+            previousCadence: 152,
+            durationMinutes: 10,
+            isIndoor: false
+        )
+
+        bridge.publishDrillIntent(
+            dto: dto,
+            subjectiveDistress: false,
+            now: now,
+            readinessHint: hint
+        )
+
+        guard let context = bridge.lastPublishedContext else {
+            XCTFail("Expected lastPublishedContext on WatchCalibrationBridge")
+            return
+        }
+
+        XCTAssertEqual(context.intent.intent, .intervals)
+        XCTAssertEqual(context.intent.prescribedDrillTitle, "Cadence Pyramids")
+        XCTAssertEqual(context.intent.readinessHint, hint)
+        XCTAssertEqual(context.intent.readinessHint?.daysSinceLastRun, 4)
+        XCTAssertEqual(context.intent.readinessHint?.recentWalkMeters48h, 6000.0)
     }
 
     @MainActor

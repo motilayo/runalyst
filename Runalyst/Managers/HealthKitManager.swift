@@ -33,6 +33,7 @@ class HealthKitManager: ObservableObject {
     var onWorkoutsUpdated: (@Sendable () async -> Void)?
     var workoutFetcher: ((UUID) async throws -> HKWorkout?)?
     var runRecordExtractor: ((HKWorkout, FramboiseEngine, [RunBaselineData]) async throws -> RunRecordDTO)?
+    var walkingWorkoutsFetcher: ((Int) async throws -> [HKWorkout])?
     private var observerQuery: HKObserverQuery?
     private var hasVerifiedAuthorizationThisLaunch = false
 
@@ -182,6 +183,58 @@ class HealthKitManager: ObservableObject {
                 continuation.resume(returning: filteredWorkouts)
             }
             healthStore?.execute(query)
+        }
+    }
+
+    /// Queries recent walking workouts within the past `windowHours` (default 48h) and returns the sum of distances in meters.
+    /// Strictly read-only; never creates `RunRecord` rows. Returns `0.0` if HealthKit is unavailable or denied.
+    func fetchRecentWalkingDistanceMeters(windowHours: Int = 48) async -> Double {
+        guard isHealthDataAvailable(), let store = healthStore else {
+            return 0.0
+        }
+
+        let workoutStatus = store.authorizationStatus(for: HKObjectType.workoutType())
+        if workoutStatus == .sharingDenied {
+            return 0.0
+        }
+
+        if let walkingWorkoutsFetcher = walkingWorkoutsFetcher {
+            do {
+                let workouts = try await walkingWorkoutsFetcher(windowHours)
+                return workouts.reduce(0.0) { sum, workout in
+                    sum + (workout.totalDistance?.doubleValue(for: .meter()) ?? 0.0)
+                }
+            } catch {
+                return 0.0
+            }
+        }
+
+        let now = Date()
+        let calendar = Calendar.current
+        let startDate = calendar.date(byAdding: .hour, value: -windowHours, to: now)
+            ?? now.addingTimeInterval(-Double(windowHours) * 3600)
+        let walkingPredicate = HKQuery.predicateForWorkouts(with: .walking)
+        let datePredicate = HKQuery.predicateForSamples(withStart: startDate, end: now, options: .strictStartDate)
+        let predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [walkingPredicate, datePredicate])
+
+        return await withCheckedContinuation { continuation in
+            let query = HKSampleQuery(
+                sampleType: .workoutType(),
+                predicate: predicate,
+                limit: HKObjectQueryNoLimit,
+                sortDescriptors: nil
+            ) { _, samples, error in
+                guard error == nil, let workouts = samples as? [HKWorkout] else {
+                    continuation.resume(returning: 0.0)
+                    return
+                }
+
+                let totalMeters = workouts.reduce(0.0) { sum, workout in
+                    sum + (workout.totalDistance?.doubleValue(for: .meter()) ?? 0.0)
+                }
+                continuation.resume(returning: totalMeters)
+            }
+            store.execute(query)
         }
     }
 

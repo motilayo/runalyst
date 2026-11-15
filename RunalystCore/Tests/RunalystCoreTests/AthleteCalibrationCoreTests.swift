@@ -445,7 +445,7 @@ struct AthleteCalibrationCoreTests {
         #expect(freshApplied.isUserIntentOverride == true)
         #expect(freshApplied.intent.intent == .tempo)
         #expect(freshApplied.intent.targetPaceSecondsPerKm == nil)
-        #expect(freshApplied.requiresTargetPacePicker == true)
+        #expect(freshApplied.requiresTargetPacePicker == false)
     }
 
     @Test("WatchResolvedSessionConfig: applying(runIntent:) handles nil, matching intent, custom override, and drill override")
@@ -476,21 +476,21 @@ struct AthleteCalibrationCoreTests {
         #expect(matchingApplied.sessionHeaderBadgeText == "TODAY'S SESSION")
         #expect(matchingApplied.sessionTitle == "Aerobic Base")
 
-        // 4. applying different intent (.pushPerformance -> .tempo) clears locked pace and keeps picker enabled
+        // 4. applying different intent (.pushPerformance -> .tempo) clears locked pace and retires pace picker
         let overridden = syncedSession.applying(runIntent: .pushPerformance)
         #expect(overridden.isUserIntentOverride == true)
         #expect(overridden.sessionHeaderBadgeText == "CUSTOM INTENT")
         #expect(overridden.sessionTitle == "Push / Performance")
         #expect(overridden.intent.intent == .tempo)
         #expect(overridden.intent.targetPaceSecondsPerKm == nil)
-        #expect(overridden.requiresTargetPacePicker == true)
+        #expect(overridden.requiresTargetPacePicker == false)
 
-        // 4b. applying different intent with explicit selectedPace sets target pace and keeps picker enabled
+        // 4b. applying different intent with explicit selectedPace sets target pace with pace picker retired
         let overriddenWithPace = syncedSession.applying(runIntent: .pushPerformance, selectedPace: 285)
         #expect(overriddenWithPace.isUserIntentOverride == true)
         #expect(overriddenWithPace.intent.intent == .tempo)
         #expect(overriddenWithPace.intent.targetPaceSecondsPerKm == 285)
-        #expect(overriddenWithPace.requiresTargetPacePicker == true)
+        #expect(overriddenWithPace.requiresTargetPacePicker == false)
 
         // 5. applying different intent (.recovery)
         let recoveryOverridden = syncedSession.applying(runIntent: .recovery)
@@ -499,7 +499,7 @@ struct AthleteCalibrationCoreTests {
         #expect(recoveryOverridden.sessionTitle == "Recovery")
         #expect(recoveryOverridden.intent.intent == .recovery)
         #expect(recoveryOverridden.intent.targetPaceSecondsPerKm == nil)
-        #expect(recoveryOverridden.requiresTargetPacePicker == true)
+        #expect(recoveryOverridden.requiresTargetPacePicker == false)
 
         // 6. Prescribed drill default selection is nil
         let drillIntent = AthleteCalibrationCore.makeDrillIntent(
@@ -519,31 +519,40 @@ struct AthleteCalibrationCoreTests {
         #expect(drillConfig.sessionHeaderBadgeText == "PRESCRIBED DRILL")
         #expect(drillConfig.sessionTitle == "Rhythm Intervals")
 
-        // 7. applying(runIntent: nil) on drill preserves drill
+        // 7. applying(runIntent: nil) and .adaptiveBase on drill preserve drill
         let drillPreserved = drillConfig.applying(runIntent: nil)
         #expect(drillPreserved.hasPrescribedDrill == true)
         #expect(drillPreserved.isUserIntentOverride == false)
         #expect(drillPreserved.sessionHeaderBadgeText == "PRESCRIBED DRILL")
         #expect(drillPreserved.sessionTitle == "Rhythm Intervals")
+        #expect(drillPreserved.requiresTargetPacePicker == false)
 
-        // 8. Overriding drill clears drill fields and sets CUSTOM INTENT
-        let drillOverridden = drillConfig.applying(runIntent: .adaptiveBase)
+        let drillAdaptiveBase = drillConfig.applying(runIntent: .adaptiveBase)
+        #expect(drillAdaptiveBase.hasPrescribedDrill == true)
+        #expect(drillAdaptiveBase.isUserIntentOverride == false)
+        #expect(drillAdaptiveBase.sessionHeaderBadgeText == "PRESCRIBED DRILL")
+        #expect(drillAdaptiveBase.sessionTitle == "Rhythm Intervals")
+        #expect(drillAdaptiveBase.intent.targetCadenceSPM == 174)
+        #expect(drillAdaptiveBase.requiresTargetPacePicker == false)
+
+        // 8. Overriding drill with .pushPerformance or .recovery clears drill fields and sets CUSTOM INTENT
+        let drillOverridden = drillConfig.applying(runIntent: .pushPerformance)
         #expect(drillOverridden.hasPrescribedDrill == false)
         #expect(drillOverridden.isUserIntentOverride == true)
         #expect(drillOverridden.sessionHeaderBadgeText == "CUSTOM INTENT")
-        #expect(drillOverridden.sessionTitle == "Aerobic Base")
-        #expect(drillOverridden.intent.intent == .steady)
+        #expect(drillOverridden.sessionTitle == "Push / Performance")
+        #expect(drillOverridden.intent.intent == .tempo)
         #expect(drillOverridden.intent.prescribedDrillTitle == nil)
         #expect(drillOverridden.intent.targetCadenceSPM == nil)
         #expect(drillOverridden.intent.targetPaceSecondsPerKm == nil)
-        #expect(drillOverridden.requiresTargetPacePicker == true)
+        #expect(drillOverridden.requiresTargetPacePicker == false)
 
-        // 8b. Overriding drill with explicit selectedPace sets target pace and keeps picker enabled
-        let drillOverriddenWithPace = drillConfig.applying(runIntent: .adaptiveBase, selectedPace: 285)
+        // 8b. Overriding drill with explicit selectedPace sets target pace with pace picker retired
+        let drillOverriddenWithPace = drillConfig.applying(runIntent: .pushPerformance, selectedPace: 285)
         #expect(drillOverriddenWithPace.hasPrescribedDrill == false)
         #expect(drillOverriddenWithPace.isUserIntentOverride == true)
         #expect(drillOverriddenWithPace.intent.targetPaceSecondsPerKm == 285)
-        #expect(drillOverriddenWithPace.requiresTargetPacePicker == true)
+        #expect(drillOverriddenWithPace.requiresTargetPacePicker == false)
 
         // 9. Standalone unsynced session override does NOT flag isUserIntentOverride (it was not synced)
         let standaloneSession = WatchResolvedSessionConfig(
@@ -556,7 +565,7 @@ struct AthleteCalibrationCoreTests {
         #expect(standaloneOverridden.sessionHeaderBadgeText == "ADAPTIVE RUN")
         #expect(standaloneOverridden.sessionTitle == "Tempo & Performance")
         #expect(standaloneOverridden.intent.targetPaceSecondsPerKm == 300)
-        #expect(standaloneOverridden.requiresTargetPacePicker == true)
+        #expect(standaloneOverridden.requiresTargetPacePicker == false)
     }
 
     @Test("WatchResolvedSessionConfig.defaultRunIntentSelection handles synced, drill, and standalone unsynced intents")
@@ -1305,5 +1314,120 @@ struct AthleteCalibrationCoreTests {
         )
         // 138 <= 140 -> does not exceed 140 BPM ceiling
         #expect(!takeawayCalibrated.bullets.contains { $0.contains("drifting above your") })
+    }
+
+    // MARK: - WatchReadinessHint & Intent Preservation Tests
+
+    @Test("WatchReadinessHint: initializes with defaults and round-trips Codable cleanly")
+    func testWatchReadinessHintCodable() throws {
+        let hint = WatchReadinessHint(
+            daysSinceLastRun: 3,
+            recentWalkMeters48h: 6200.0,
+            hadRecentCadenceFade: true,
+            hadRecentBounce: false,
+            calibratedCadenceFloorSPM: 160,
+            isClearedForQuality: true
+        )
+
+        let encoder = JSONEncoder()
+        let data = try encoder.encode(hint)
+
+        let decoder = JSONDecoder()
+        let decoded = try decoder.decode(WatchReadinessHint.self, from: data)
+
+        #expect(decoded == hint)
+        #expect(decoded.daysSinceLastRun == 3)
+        #expect(decoded.recentWalkMeters48h == 6200.0)
+        #expect(decoded.hadRecentCadenceFade == true)
+        #expect(decoded.hadRecentBounce == false)
+        #expect(decoded.calibratedCadenceFloorSPM == 160)
+        #expect(decoded.isClearedForQuality == true)
+    }
+
+    @Test("PacingSessionIntent: decodes legacy JSON missing readinessHint gracefully")
+    func testLegacyPacingSessionIntentDecoding() throws {
+        let legacyJSON = """
+        {
+            "targetPaceSecondsPerKm": 300,
+            "intent": "tempo",
+            "subjectiveDistress": false,
+            "validForDay": "2026-11-14"
+        }
+        """
+
+        let decoder = JSONDecoder()
+        let decoded = try decoder.decode(PacingSessionIntent.self, from: Data(legacyJSON.utf8))
+
+        #expect(decoded.intent == .tempo)
+        #expect(decoded.targetPaceSecondsPerKm == 300)
+        #expect(decoded.validForDay == "2026-11-14")
+        #expect(decoded.readinessHint == nil)
+    }
+
+    @Test("AthleteCalibrationCore.makeIntent preserves readinessHint")
+    func testMakeIntentPreservesReadinessHint() {
+        let hint = WatchReadinessHint(daysSinceLastRun: 2, isClearedForQuality: true)
+        let intent = AthleteCalibrationCore.makeIntent(
+            spec: nil,
+            subjectiveDistress: false,
+            day: "2026-11-14",
+            targetPaceSecondsPerKm: 310,
+            readinessHint: hint
+        )
+
+        #expect(intent.readinessHint == hint)
+        #expect(intent.targetPaceSecondsPerKm == 310)
+        #expect(intent.intent == .steady)
+    }
+
+    @Test("resolveWatchSession and applying(runIntent:) preserve intent and readiness hint")
+    func testApplyingRunIntentPreservesAdaptiveBaseAndReadinessHint() {
+        let hint = WatchReadinessHint(daysSinceLastRun: 2, calibratedCadenceFloorSPM: 158, isClearedForQuality: true)
+        let profile = AthleteCalibrationProfile(maxHR: 185.0, restingHR: 52.0, isFallback: false)
+        let intent = PacingSessionIntent(
+            targetPaceSecondsPerKm: 290,
+            intent: .tempo,
+            subjectiveDistress: false,
+            validForDay: "2026-11-14",
+            readinessHint: hint
+        )
+        let context = WatchPacingContext(profile: profile, intent: intent)
+
+        let resolved = AthleteCalibrationCore.resolveWatchSession(cachedContext: context, currentDayString: "2026-11-14")
+        #expect(resolved.intent.intent == .tempo)
+        #expect(resolved.intent.readinessHint == hint)
+
+        // 1. .adaptiveBase preserves synthesized intent (.tempo) and readinessHint
+        let adaptiveBaseResolved = resolved.applying(runIntent: .adaptiveBase)
+        #expect(adaptiveBaseResolved.intent.intent == .tempo)
+        #expect(adaptiveBaseResolved.intent.readinessHint == hint)
+        #expect(adaptiveBaseResolved.requiresTargetPacePicker == false)
+
+        // 2. .recovery forces .recovery while preserving readinessHint
+        let recoveryResolved = resolved.applying(runIntent: .recovery)
+        #expect(recoveryResolved.intent.intent == .recovery)
+        #expect(recoveryResolved.intent.readinessHint == hint)
+        #expect(recoveryResolved.requiresTargetPacePicker == false)
+
+        // 3. .pushPerformance sets .tempo when subjectiveDistress is false
+        let pushResolved = resolved.applying(runIntent: .pushPerformance)
+        #expect(pushResolved.intent.intent == .tempo)
+        #expect(pushResolved.intent.readinessHint == hint)
+        #expect(pushResolved.requiresTargetPacePicker == false)
+
+        // 4. .pushPerformance respects subjectiveDistress override to .recovery
+        let distressIntent = PacingSessionIntent(
+            targetPaceSecondsPerKm: 320,
+            intent: .recovery,
+            subjectiveDistress: true,
+            validForDay: "2026-11-14",
+            readinessHint: hint
+        )
+        let distressContext = WatchPacingContext(profile: profile, intent: distressIntent)
+        let distressResolved = AthleteCalibrationCore.resolveWatchSession(cachedContext: distressContext, currentDayString: "2026-11-14")
+        let pushWithDistress = distressResolved.applying(runIntent: .pushPerformance)
+        #expect(pushWithDistress.intent.intent == .recovery)
+        #expect(pushWithDistress.intent.readinessHint == hint)
+        #expect(pushWithDistress.requiresTargetPacePicker == false)
     }
 }

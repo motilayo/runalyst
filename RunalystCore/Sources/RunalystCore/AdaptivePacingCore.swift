@@ -67,9 +67,9 @@ public struct AdaptivePacingConfiguration: Sendable, Equatable {
         backOnTargetMinToleranceSecondsPerKm: Int = 5,
         backOnTargetToleranceFraction: Double = 0.02,
         paceDriftDebounceDurationSeconds: TimeInterval = 12.0,
-        paceDriftCooldownSeconds: TimeInterval = 30.0,
+        paceDriftCooldownSeconds: TimeInterval = 240.0,
         cadenceDriftDebounceDurationSeconds: TimeInterval = 12.0,
-        cadenceDriftCooldownSeconds: TimeInterval = 30.0,
+        cadenceDriftCooldownSeconds: TimeInterval = 240.0,
         cadenceDriftThresholdSPM: Double = 6.0,
         cadenceFloorSPM: Int = 150
     ) {
@@ -172,6 +172,7 @@ public enum PacingEvent: Sendable, Equatable {
     case paceDrift(deviation: PaceDeviation, deltaSecondsPerKm: Int)
     case cadenceDrift(currentCadenceSPM: Int, targetCadenceSPM: Int, deltaSPM: Int)
     case splitMilestone(splitIndex: Int, splitPaceSecondsPerKm: Int)
+    case adaptiveBlockChanged(AdaptiveBlockState)
 }
 
 /// Real-time deviation category of current pace against target.
@@ -197,6 +198,13 @@ public struct AdaptivePacingCore: Sendable {
     internal var ringBuffer: TelemetryRingBuffer
     internal var efficiencyTracker: EfficiencyDriftTracker
     internal var bdiTracker: BiomechanicalDegradationIndex
+    public internal(set) var metronomeRamp: SteppedMetronomeRamp
+
+    // Adaptive Micro-Blocks & Backoff State
+    public internal(set) var activeBlock: AdaptiveBlockState
+    public internal(set) var blockBackoffTracker: AdaptiveBlockBackoffTracker
+    internal var blockRuntime: AdaptiveBlockRuntimeContext
+    public internal(set) var calibratedIndoorBaselineSpeedMPS: Double?
 
     // State machine dynamics
     internal var state: PacingState
@@ -231,6 +239,10 @@ public struct AdaptivePacingCore: Sendable {
     public internal(set) var surgeCount: Int = 0
     public internal(set) var peakSurgeDeltaSecondsPerKm: Int = 0
     public internal(set) var recoveryAdjustmentCount: Int = 0
+    public internal(set) var cadenceResetCount: Int = 0
+    public internal(set) var thresholdBlockCount: Int = 0
+    public internal(set) var effortEaseCount: Int = 0
+    public internal(set) var blockBackoffCount: Int = 0
     public internal(set) var firstDriftElapsedSeconds: TimeInterval?
     public internal(set) var cadenceBaselineSPM: Int?
     public internal(set) var solidCadenceUntilDistanceMeters: Double?
@@ -260,10 +272,15 @@ public struct AdaptivePacingCore: Sendable {
         self.configuration = resolvedConfig
 
         self.kalmanHR = .standardHeartRate
-        self.kalmanSpeed = .standardSpeed
+        self.kalmanSpeed = (location == .indoor) ? .indoorSpeed : .standardSpeed
         self.ringBuffer = TelemetryRingBuffer(capacity: TelemetryRingBuffer.defaultCapacity)
         self.efficiencyTracker = EfficiencyDriftTracker(location: location)
         self.bdiTracker = BiomechanicalDegradationIndex()
+        self.metronomeRamp = SteppedMetronomeRamp()
+        self.activeBlock = .none
+        self.blockBackoffTracker = AdaptiveBlockBackoffTracker()
+        self.blockRuntime = AdaptiveBlockRuntimeContext()
+        self.calibratedIndoorBaselineSpeedMPS = nil
 
         self.state = .calibrating(progress: 0.0)
         self.calibrationTargetSeconds = resolvedConfig.warmupDurationSeconds + resolvedConfig.baselineDurationSeconds
@@ -289,6 +306,10 @@ public struct AdaptivePacingCore: Sendable {
         self.surgeCount = 0
         self.peakSurgeDeltaSecondsPerKm = 0
         self.recoveryAdjustmentCount = 0
+        self.cadenceResetCount = 0
+        self.thresholdBlockCount = 0
+        self.effortEaseCount = 0
+        self.blockBackoffCount = 0
         self.firstDriftElapsedSeconds = nil
         self.cadenceBaselineSPM = nil
         self.solidCadenceUntilDistanceMeters = nil
@@ -306,10 +327,15 @@ public struct AdaptivePacingCore: Sendable {
     /// Resets runtime state for a new session or calibration restart.
     public mutating func reset() {
         self.kalmanHR = .standardHeartRate
-        self.kalmanSpeed = .standardSpeed
+        self.kalmanSpeed = (location == .indoor) ? .indoorSpeed : .standardSpeed
         self.ringBuffer = TelemetryRingBuffer(capacity: TelemetryRingBuffer.defaultCapacity)
         self.efficiencyTracker = EfficiencyDriftTracker(location: location)
         self.bdiTracker = BiomechanicalDegradationIndex()
+        self.metronomeRamp = SteppedMetronomeRamp()
+        self.activeBlock = .none
+        self.blockBackoffTracker = AdaptiveBlockBackoffTracker()
+        self.blockRuntime = AdaptiveBlockRuntimeContext()
+        self.calibratedIndoorBaselineSpeedMPS = nil
 
         self.state = .calibrating(progress: 0.0)
         self.calibrationTargetSeconds = configuration.warmupDurationSeconds + configuration.baselineDurationSeconds
@@ -335,6 +361,10 @@ public struct AdaptivePacingCore: Sendable {
         self.surgeCount = 0
         self.peakSurgeDeltaSecondsPerKm = 0
         self.recoveryAdjustmentCount = 0
+        self.cadenceResetCount = 0
+        self.thresholdBlockCount = 0
+        self.effortEaseCount = 0
+        self.blockBackoffCount = 0
         self.firstDriftElapsedSeconds = nil
         self.cadenceBaselineSPM = nil
         self.solidCadenceUntilDistanceMeters = nil
@@ -358,9 +388,12 @@ public struct AdaptivePacingCore: Sendable {
             latestTotalDistanceMeters = dist
         }
 
-        // 1. Condition sensor inputs via Kalman filters
+        // 1. Condition sensor inputs via Kalman filters (indoor clamps +/- 25% speed outliers)
         let hrResult = kalmanHR.step(tick.heartRateBPM)
-        let speedResult = kalmanSpeed.step(tick.speedMetersPerSecond)
+        let conditionedInputSpeed: Double? = (location == .indoor)
+            ? ringBuffer.clampedIndoorSpeed(tick.speedMetersPerSecond)
+            : tick.speedMetersPerSecond
+        let speedResult = kalmanSpeed.step(conditionedInputSpeed)
 
         // Rolling sums for average metrics
         if let speed = speedResult.estimate, speed > 0.5 {
@@ -411,17 +444,33 @@ public struct AdaptivePacingCore: Sendable {
             hrCeilingExceededContinuousSeconds = 0.0
         }
 
+        let shortWindowMeans = ringBuffer.shortWindowSpeedAndCadenceMeans()
+        let resolvedCadenceSPM = Self.resolveCadenceSPM(
+            shortCadenceMean: shortWindowMeans.cadenceMean,
+            latestTickCadenceSPM: conditioned.cadenceSPM
+        )
+
         // 4. State-specific processing
         switch state {
         case .calibrating:
             handleCalibration(tick: tick, speedEstimate: speedResult.estimate, emittedEvents: &emittedEvents)
 
         case .tracking, .surge, .recover:
-            handleTracking(hrEstimate: hrResult.estimate, emittedEvents: &emittedEvents)
+            handleTracking(
+                hrEstimate: hrResult.estimate,
+                shortSpeedMean: shortWindowMeans.speedMean,
+                resolvedCadenceSPM: resolvedCadenceSPM,
+                emittedEvents: &emittedEvents
+            )
         }
 
         // 5. Build hollow display state
-        let display = buildDisplayState(speedEstimate: speedResult.estimate, hrEstimate: hrResult.estimate)
+        let display = buildDisplayState(
+            speedEstimate: speedResult.estimate,
+            hrEstimate: hrResult.estimate,
+            shortSpeedMean: shortWindowMeans.speedMean,
+            resolvedCadenceSPM: resolvedCadenceSPM
+        )
         return (events: emittedEvents, display: display)
     }
 
@@ -465,21 +514,35 @@ public struct AdaptivePacingCore: Sendable {
                     minCoverage: configuration.minCoverageFraction
                 )
 
+                let observedPace = Int((1000.0 / speedStats.mean).rounded())
                 let target: Int
-                if let explicitTarget = intent.targetPaceSecondsPerKm {
+                if location == .indoor {
+                    calibratedIndoorBaselineSpeedMPS = speedStats.mean
+                    target = observedPace
+                } else if let explicitTarget = intent.targetPaceSecondsPerKm {
                     target = explicitTarget
                 } else {
-                    target = Int((1000.0 / speedStats.mean).rounded())
+                    target = observedPace
                 }
 
-                if let explicitCadence = intent.targetCadenceSPM {
-                    currentTargetCadenceSPM = explicitCadence
-                } else if let cadenceStats = ringBuffer.stats(
+                let effectiveFloor = max(
+                    configuration.cadenceFloorSPM,
+                    intent.readinessHint?.calibratedCadenceFloorSPM ?? configuration.cadenceFloorSPM
+                )
+                var observedCadenceForBlocks: Int?
+                if let cadenceStats = ringBuffer.stats(
                     for: .cadence,
                     in: baselineInterval,
                     minCoverage: configuration.minCoverageFraction
                 ), cadenceStats.mean > 0 {
-                    currentTargetCadenceSPM = max(configuration.cadenceFloorSPM, Int(cadenceStats.mean.rounded()))
+                    observedCadenceForBlocks = Int(cadenceStats.mean.rounded())
+                    if let explicitCadence = intent.targetCadenceSPM {
+                        currentTargetCadenceSPM = explicitCadence
+                    } else {
+                        currentTargetCadenceSPM = max(effectiveFloor, Int(cadenceStats.mean.rounded()))
+                    }
+                } else if let explicitCadence = intent.targetCadenceSPM {
+                    currentTargetCadenceSPM = explicitCadence
                 }
 
                 originalTargetPaceSecondsPerKm = target
@@ -497,6 +560,12 @@ public struct AdaptivePacingCore: Sendable {
                     originalTargetSecondsPerKm: target,
                     adjustmentsEnabled: adjustmentsEnabled
                 ))
+
+                evaluateBlocksAtCalibrationComplete(
+                    observedCadenceSPM: observedCadenceForBlocks,
+                    hrEstimate: hrStats.mean,
+                    emittedEvents: &emittedEvents
+                )
             } else if calibrationTargetSeconds + configuration.calibrationExtensionStepSeconds <= configuration.maxCalibrationDurationSeconds {
                 // Extend calibration by 60 s
                 calibrationTargetSeconds += configuration.calibrationExtensionStepSeconds
@@ -526,25 +595,30 @@ public struct AdaptivePacingCore: Sendable {
 
     private mutating func handleTracking(
         hrEstimate: Double?,
+        shortSpeedMean: Double?,
+        resolvedCadenceSPM: Int?,
         emittedEvents: inout [PacingEvent]
     ) {
         // Back-on-target check evaluated on every tick
-        if let backEvent = evaluateBackOnTarget() {
+        if let backEvent = evaluateBackOnTarget(shortSpeedMean: shortSpeedMean) {
             emittedEvents.append(backEvent)
         }
 
         // Surge lock-in check evaluated on every tick
-        if let lockInEvent = evaluateSurgeLockIn() {
+        if let lockInEvent = evaluateSurgeLockIn(shortSpeedMean: shortSpeedMean) {
             emittedEvents.append(lockInEvent)
         }
 
         // Real-time pace drift alert evaluated on every tick
-        if let driftEvent = evaluatePaceDriftAlert() {
+        if let driftEvent = evaluatePaceDriftAlert(
+            shortSpeedMean: shortSpeedMean,
+            resolvedCadenceSPM: resolvedCadenceSPM
+        ) {
             emittedEvents.append(driftEvent)
         }
 
         // Real-time cadence drift alert evaluated on every tick
-        if let cadenceEvent = evaluateCadenceDriftAlert() {
+        if let cadenceEvent = evaluateCadenceDriftAlert(resolvedCadenceSPM: resolvedCadenceSPM) {
             emittedEvents.append(cadenceEvent)
         }
 
@@ -552,13 +626,45 @@ public struct AdaptivePacingCore: Sendable {
         guard let latestTick = ringBuffer.latestTick else { return }
         if adjustmentsEnabled && (latestTick.elapsedSeconds - lastEvaluationElapsedSeconds >= configuration.evaluationIntervalSeconds) {
             lastEvaluationElapsedSeconds = latestTick.elapsedSeconds
-            if let adjustmentEvent = evaluateAdjustmentTriggers(filteredHR: hrEstimate) {
+            if let adjustmentEvent = evaluateAdjustmentTriggers(
+                filteredHR: hrEstimate,
+                resolvedCadenceSPM: resolvedCadenceSPM
+            ) {
                 emittedEvents.append(adjustmentEvent)
             }
         }
+
+        // Per-tick adaptive micro-block orchestration and tactile entrainer advancement
+        evaluateSessionBlocks(
+            hrEstimate: hrEstimate,
+            currentCadenceSPM: resolvedCadenceSPM,
+            emittedEvents: &emittedEvents
+        )
+        tickMetronomeRamp(hrEstimate: hrEstimate, currentCadenceSPM: resolvedCadenceSPM)
     }
 
-    // MARK: - Deviation Evaluation
+    // MARK: - Deviation & Formatting Helpers
+
+    internal static func resolveCadenceSPM(
+        shortCadenceMean: Double?,
+        latestTickCadenceSPM: Double?
+    ) -> Int? {
+        if let shortCadenceMean, shortCadenceMean > 0 {
+            return Int(shortCadenceMean.rounded())
+        }
+        if let latestTickCadenceSPM, latestTickCadenceSPM > 0 {
+            return Int(latestTickCadenceSPM.rounded())
+        }
+        return nil
+    }
+
+    internal static func formatMinutesSeconds(_ totalSeconds: Int) -> String {
+        let clamped = max(0, totalSeconds)
+        let mins = clamped / 60
+        let secs = clamped % 60
+        let secsStr = secs < 10 ? "0\(secs)" : "\(secs)"
+        return "\(mins):\(secsStr)"
+    }
 
     internal func evaluateDeviation(target: Int?, current: Int?) -> PaceDeviation {
         guard let target, let current else { return .unknown }

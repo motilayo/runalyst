@@ -36,6 +36,67 @@ public enum PacingIntentKind: String, Sendable, Codable {
     case intervals
 }
 
+/// Pre-run readiness and biomechanical limiter context derived on iPhone and published to Apple Watch.
+public struct WatchReadinessHint: Sendable, Codable, Equatable {
+    /// Days elapsed since the last recorded running workout.
+    public let daysSinceLastRun: Int?
+    /// Non-running walking distance in meters accumulated over the trailing 48 hours.
+    public let recentWalkMeters48h: Double?
+    /// Whether recent runs exhibited late-run cadence fade (> 5 SPM).
+    public let hadRecentCadenceFade: Bool
+    /// Whether recent runs exhibited high vertical oscillation / bounding (> 10 cm).
+    public let hadRecentBounce: Bool
+    /// Calibrated minimum cadence floor in SPM, if established.
+    public let calibratedCadenceFloorSPM: Int?
+    /// Whether athlete readiness metrics clear the runner for quality / tempo work.
+    public let isClearedForQuality: Bool
+
+    public init(
+        daysSinceLastRun: Int? = nil,
+        recentWalkMeters48h: Double? = nil,
+        hadRecentCadenceFade: Bool = false,
+        hadRecentBounce: Bool = false,
+        calibratedCadenceFloorSPM: Int? = nil,
+        isClearedForQuality: Bool = true
+    ) {
+        self.daysSinceLastRun = daysSinceLastRun
+        self.recentWalkMeters48h = recentWalkMeters48h
+        self.hadRecentCadenceFade = hadRecentCadenceFade
+        self.hadRecentBounce = hadRecentBounce
+        self.calibratedCadenceFloorSPM = calibratedCadenceFloorSPM
+        self.isClearedForQuality = isClearedForQuality
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case daysSinceLastRun
+        case recentWalkMeters48h
+        case hadRecentCadenceFade
+        case hadRecentBounce
+        case calibratedCadenceFloorSPM
+        case isClearedForQuality
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.daysSinceLastRun = try container.decodeIfPresent(Int.self, forKey: .daysSinceLastRun)
+        self.recentWalkMeters48h = try container.decodeIfPresent(Double.self, forKey: .recentWalkMeters48h)
+        self.hadRecentCadenceFade = try container.decodeIfPresent(Bool.self, forKey: .hadRecentCadenceFade) ?? false
+        self.hadRecentBounce = try container.decodeIfPresent(Bool.self, forKey: .hadRecentBounce) ?? false
+        self.calibratedCadenceFloorSPM = try container.decodeIfPresent(Int.self, forKey: .calibratedCadenceFloorSPM)
+        self.isClearedForQuality = try container.decodeIfPresent(Bool.self, forKey: .isClearedForQuality) ?? true
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(daysSinceLastRun, forKey: .daysSinceLastRun)
+        try container.encodeIfPresent(recentWalkMeters48h, forKey: .recentWalkMeters48h)
+        try container.encode(hadRecentCadenceFade, forKey: .hadRecentCadenceFade)
+        try container.encode(hadRecentBounce, forKey: .hadRecentBounce)
+        try container.encodeIfPresent(calibratedCadenceFloorSPM, forKey: .calibratedCadenceFloorSPM)
+        try container.encode(isClearedForQuality, forKey: .isClearedForQuality)
+    }
+}
+
 /// The runner's training intent and target pace for a specific calendar day.
 public struct PacingSessionIntent: Sendable, Codable, Equatable {
     /// Prescribed target pace in seconds per kilometer (e.g. 300 for 5:00 /km), or `nil` for "Just Run".
@@ -54,6 +115,8 @@ public struct PacingSessionIntent: Sendable, Codable, Equatable {
     public let targetCadenceSPM: Int?
     /// Optional prescribed drill duration in minutes.
     public let prescribedDurationMinutes: Int?
+    /// Optional readiness and limiter hint forwarded from iPhone.
+    public let readinessHint: WatchReadinessHint?
 
     public init(
         targetPaceSecondsPerKm: Int? = nil,
@@ -63,7 +126,8 @@ public struct PacingSessionIntent: Sendable, Codable, Equatable {
         prescribedDrillTitle: String? = nil,
         prescribedDrillId: String? = nil,
         targetCadenceSPM: Int? = nil,
-        prescribedDurationMinutes: Int? = nil
+        prescribedDurationMinutes: Int? = nil,
+        readinessHint: WatchReadinessHint? = nil
     ) {
         self.targetPaceSecondsPerKm = targetPaceSecondsPerKm
         self.intent = intent
@@ -73,6 +137,45 @@ public struct PacingSessionIntent: Sendable, Codable, Equatable {
         self.prescribedDrillId = prescribedDrillId
         self.targetCadenceSPM = targetCadenceSPM
         self.prescribedDurationMinutes = prescribedDurationMinutes
+        self.readinessHint = readinessHint
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case targetPaceSecondsPerKm
+        case intent
+        case subjectiveDistress
+        case validForDay
+        case prescribedDrillTitle
+        case prescribedDrillId
+        case targetCadenceSPM
+        case prescribedDurationMinutes
+        case readinessHint
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.targetPaceSecondsPerKm = try container.decodeIfPresent(Int.self, forKey: .targetPaceSecondsPerKm)
+        self.intent = try container.decode(PacingIntentKind.self, forKey: .intent)
+        self.subjectiveDistress = try container.decodeIfPresent(Bool.self, forKey: .subjectiveDistress) ?? false
+        self.validForDay = try container.decode(String.self, forKey: .validForDay)
+        self.prescribedDrillTitle = try container.decodeIfPresent(String.self, forKey: .prescribedDrillTitle)
+        self.prescribedDrillId = try container.decodeIfPresent(String.self, forKey: .prescribedDrillId)
+        self.targetCadenceSPM = try container.decodeIfPresent(Int.self, forKey: .targetCadenceSPM)
+        self.prescribedDurationMinutes = try container.decodeIfPresent(Int.self, forKey: .prescribedDurationMinutes)
+        self.readinessHint = try container.decodeIfPresent(WatchReadinessHint.self, forKey: .readinessHint)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(targetPaceSecondsPerKm, forKey: .targetPaceSecondsPerKm)
+        try container.encode(intent, forKey: .intent)
+        try container.encode(subjectiveDistress, forKey: .subjectiveDistress)
+        try container.encode(validForDay, forKey: .validForDay)
+        try container.encodeIfPresent(prescribedDrillTitle, forKey: .prescribedDrillTitle)
+        try container.encodeIfPresent(prescribedDrillId, forKey: .prescribedDrillId)
+        try container.encodeIfPresent(targetCadenceSPM, forKey: .targetCadenceSPM)
+        try container.encodeIfPresent(prescribedDurationMinutes, forKey: .prescribedDurationMinutes)
+        try container.encodeIfPresent(readinessHint, forKey: .readinessHint)
     }
 }
 
@@ -204,7 +307,8 @@ public enum AthleteCalibrationCore {
         spec: PlannedSessionSpec?,
         subjectiveDistress: Bool = false,
         day: String,
-        targetPaceSecondsPerKm: Int? = nil
+        targetPaceSecondsPerKm: Int? = nil,
+        readinessHint: WatchReadinessHint? = nil
     ) -> PacingSessionIntent {
         let (targetCadenceSPM, prescribedDurationMinutes): (Int?, Int?) = {
             guard let spec, spec.kind != "rest" else {
@@ -223,7 +327,8 @@ public enum AthleteCalibrationCore {
                 subjectiveDistress: true,
                 validForDay: day,
                 targetCadenceSPM: targetCadenceSPM,
-                prescribedDurationMinutes: prescribedDurationMinutes
+                prescribedDurationMinutes: prescribedDurationMinutes,
+                readinessHint: readinessHint
             )
         }
 
@@ -234,7 +339,8 @@ public enum AthleteCalibrationCore {
                 subjectiveDistress: false,
                 validForDay: day,
                 targetCadenceSPM: nil,
-                prescribedDurationMinutes: nil
+                prescribedDurationMinutes: nil,
+                readinessHint: readinessHint
             )
         }
 
@@ -272,7 +378,8 @@ public enum AthleteCalibrationCore {
             subjectiveDistress: false,
             validForDay: day,
             targetCadenceSPM: targetCadenceSPM,
-            prescribedDurationMinutes: prescribedDurationMinutes
+            prescribedDurationMinutes: prescribedDurationMinutes,
+            readinessHint: readinessHint
         )
     }
 
@@ -281,13 +388,15 @@ public enum AthleteCalibrationCore {
         for spec: PlannedSessionSpec?,
         subjectiveDistress: Bool = false,
         day: String,
-        targetPaceSecondsPerKm: Int? = nil
+        targetPaceSecondsPerKm: Int? = nil,
+        readinessHint: WatchReadinessHint? = nil
     ) -> PacingSessionIntent {
         makeIntent(
             spec: spec,
             subjectiveDistress: subjectiveDistress,
             day: day,
-            targetPaceSecondsPerKm: targetPaceSecondsPerKm
+            targetPaceSecondsPerKm: targetPaceSecondsPerKm,
+            readinessHint: readinessHint
         )
     }
 
@@ -298,7 +407,8 @@ public enum AthleteCalibrationCore {
         targetCadence: String? = nil,
         durationMinutes: Int? = nil,
         day: String,
-        subjectiveDistress: Bool = false
+        subjectiveDistress: Bool = false,
+        readinessHint: WatchReadinessHint? = nil
     ) -> PacingSessionIntent {
         let cadenceSPM: Int? = {
             guard let targetCadence else { return nil }
@@ -314,7 +424,8 @@ public enum AthleteCalibrationCore {
             prescribedDrillTitle: title,
             prescribedDrillId: drillId,
             targetCadenceSPM: cadenceSPM,
-            prescribedDurationMinutes: durationMinutes
+            prescribedDurationMinutes: durationMinutes,
+            readinessHint: readinessHint
         )
     }
 
@@ -370,7 +481,8 @@ public enum AthleteCalibrationCore {
                 targetPaceSecondsPerKm: selectedTargetPaceSecondsPerKm,
                 intent: .steady,
                 subjectiveDistress: false,
-                validForDay: currentDayString
+                validForDay: currentDayString,
+                readinessHint: nil
             )
             return WatchResolvedSessionConfig(
                 profile: fallbackProfile,
@@ -392,7 +504,8 @@ public enum AthleteCalibrationCore {
                 prescribedDrillTitle: cachedContext.intent.prescribedDrillTitle,
                 prescribedDrillId: cachedContext.intent.prescribedDrillId,
                 targetCadenceSPM: cachedContext.intent.targetCadenceSPM,
-                prescribedDurationMinutes: cachedContext.intent.prescribedDurationMinutes
+                prescribedDurationMinutes: cachedContext.intent.prescribedDurationMinutes,
+                readinessHint: cachedContext.intent.readinessHint
             )
             let needsPicker = cachedContext.intent.prescribedDrillTitle == nil && cachedContext.intent.targetPaceSecondsPerKm == nil
             return WatchResolvedSessionConfig(
@@ -408,7 +521,8 @@ public enum AthleteCalibrationCore {
                 targetPaceSecondsPerKm: selectedTargetPaceSecondsPerKm,
                 intent: .steady,
                 subjectiveDistress: false,
-                validForDay: currentDayString
+                validForDay: currentDayString,
+                readinessHint: nil
             )
             return WatchResolvedSessionConfig(
                 profile: cachedContext.profile,

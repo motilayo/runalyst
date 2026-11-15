@@ -262,3 +262,12 @@ extension WatchContextStore {
         }
     }
 }
+
+// MARK: - WatchResolvedSessionConfig Extension
+
+extension WatchResolvedSessionConfig {
+    /// Convenience property mirroring `isIndoorPreferred`.
+    public var isIndoor: Bool {
+        isIndoorPreferred
+    }
+}

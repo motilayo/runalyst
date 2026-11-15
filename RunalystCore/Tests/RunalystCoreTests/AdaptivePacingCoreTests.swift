@@ -267,19 +267,19 @@ struct AdaptivePacingCoreTests {
         let surge = PacingEvent.surge(deltaSecondsPerKm: 5, newTargetSecondsPerKm: 295)
         let surgeSpec = surge.feedbackSpec
         #expect(surgeSpec.haptic == .ascendingDoublePulse)
-        #expect(surgeSpec.voiceCueText == "Surge 4:55.")
+        #expect(surgeSpec.voiceCueText == nil)
         #expect(surgeSpec.accentToken == .surgeTeal)
 
         let recoverForm = PacingEvent.recover(deltaSecondsPerKm: 9, newTargetSecondsPerKm: 309, reason: .formBreakdown)
         let formSpec = recoverForm.feedbackSpec
         #expect(formSpec.haptic == .descendingDoublePulse)
-        #expect(formSpec.voiceCueText == "Ease to 5:09.")
+        #expect(formSpec.voiceCueText == nil)
         #expect(formSpec.accentToken == .recoverAmber)
 
         let recoverHR = PacingEvent.recover(deltaSecondsPerKm: 10, newTargetSecondsPerKm: 310, reason: .heartRateCeiling)
         let hrSpec = recoverHR.feedbackSpec
         #expect(hrSpec.haptic == .descendingDoublePulse)
-        #expect(hrSpec.voiceCueText == "Ease to 5:10.")
+        #expect(hrSpec.voiceCueText == nil)
         #expect(hrSpec.accentToken == .recoverAmber)
 
         let backOnTarget = PacingEvent.backOnTarget
@@ -345,7 +345,7 @@ struct AdaptivePacingCoreTests {
 
     // MARK: - Pace Drift Alert Tests
 
-    @Test("Pace drift alert: triggers after 12 consecutive seconds of .tooSlow and enforces 30s cooldown")
+    @Test("Pace drift alert: triggers after 12 consecutive seconds of .tooSlow and enforces 240s checkpoint cooldown")
     func testPaceDriftAlertDebounceAndCooldown() {
         var core = AdaptivePacingCore(profile: standardProfile, intent: standardIntent, location: .outdoor)
         // Warm up and calibrate through 600s at target pace 5:00/km (3.333 m/s)
@@ -406,8 +406,8 @@ struct AdaptivePacingCoreTests {
         }
         #expect(driftEvents.count == 1, "12th consecutive second in .tooSlow must emit exactly one .paceDrift alert")
 
-        // 4. Next 25 ticks continue in .tooSlow. Cooldown is 30s, so alerts must be suppressed
-        for _ in 1...25 {
+        // 4. Next 255 ticks continue in .tooSlow (20s burst + 235s cooldown) -> suppressed
+        for _ in 1...255 {
             let tick = TelemetryTick(
                 elapsedSeconds: TimeInterval(currentTick),
                 heartRateBPM: 145.0,
@@ -421,9 +421,9 @@ struct AdaptivePacingCoreTests {
                 }
             }
         }
-        #expect(driftEvents.count == 1, "Alert must be suppressed during 30s cooldown interval")
+        #expect(driftEvents.count == 1, "Alert must be suppressed during 240s post-burst cooldown interval")
 
-        // 5. Remaining 5 ticks of cooldown (completing 30s cooldown) + next tick fires second alert
+        // 5. Remaining 5 ticks of cooldown + next tick fires second alert
         for _ in 1...5 {
             let tick = TelemetryTick(
                 elapsedSeconds: TimeInterval(currentTick),
@@ -438,7 +438,7 @@ struct AdaptivePacingCoreTests {
                 }
             }
         }
-        #expect(driftEvents.count == 2, "After 30s cooldown expires with continuous .tooSlow, a second alert must fire")
+        #expect(driftEvents.count == 2, "After 240s cooldown expires with continuous .tooSlow, a second alert must fire")
     }
 
     @Test("Pace drift alert: momentary fluctuation under 12 seconds resets without alert")
@@ -490,18 +490,18 @@ struct AdaptivePacingCoreTests {
         #expect(core.currentTargetPaceSecondsPerKm == originalTarget)
     }
 
-    @Test("Pace drift feedbackSpec maps .tooSlow and .tooFast to directional haptics and voice cues")
+    @Test("Pace drift feedbackSpec maps .tooSlow and .tooFast to directional haptics with nil voice cues")
     func testPaceDriftFeedbackSpec() {
         let slowEvent = PacingEvent.paceDrift(deviation: .tooSlow, deltaSecondsPerKm: 15)
         let slowSpec = slowEvent.feedbackSpec
         #expect(slowSpec.haptic == .directionUp)
-        #expect(slowSpec.voiceCueText == "Pick up pace.")
+        #expect(slowSpec.voiceCueText == nil)
         #expect(slowSpec.accentToken == .surgeBlue)
 
         let fastEvent = PacingEvent.paceDrift(deviation: .tooFast, deltaSecondsPerKm: 12)
         let fastSpec = fastEvent.feedbackSpec
         #expect(fastSpec.haptic == .directionDown)
-        #expect(fastSpec.voiceCueText == "Ease pace.")
+        #expect(fastSpec.voiceCueText == nil)
         #expect(fastSpec.accentToken == .recoverOrange)
 
         let onTargetEvent = PacingEvent.paceDrift(deviation: .onTarget, deltaSecondsPerKm: 0)
@@ -511,4 +511,3 @@ struct AdaptivePacingCoreTests {
         #expect(onTargetSpec.accentToken == .neutral)
     }
 }
-

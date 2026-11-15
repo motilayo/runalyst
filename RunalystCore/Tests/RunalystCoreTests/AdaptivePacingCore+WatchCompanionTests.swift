@@ -321,10 +321,10 @@ struct AdaptivePacingCoreWatchCompanionTests {
         let metricSurgeSpec = surge.feedbackSpec(useMetricSystem: true)
         #expect(metricSurgeSpec.haptic == .ascendingDoublePulse)
         #expect(metricSurgeSpec.accentToken == .surgeTeal)
-        #expect(metricSurgeSpec.voiceCueText == "Surge 4:50.")
+        #expect(metricSurgeSpec.voiceCueText == nil)
 
         let imperialSurgeSpec = surge.feedbackSpec(useMetricSystem: false)
-        #expect(imperialSurgeSpec.voiceCueText == "Surge 7:47.")
+        #expect(imperialSurgeSpec.voiceCueText == nil)
 
         #expect(core.awaitingSurgeLockInTargetSecondsPerKm == 290)
         #expect(core.refractorySecondsRemaining == 90)
@@ -406,7 +406,7 @@ struct AdaptivePacingCoreWatchCompanionTests {
         let spec = fc.feedbackSpec(useMetricSystem: true)
         #expect(spec.haptic == .threeQuickLightTaps)
         #expect(spec.accentToken == .recoverAmber)
-        #expect(spec.voiceCueText == "Quick steps.")
+        #expect(spec.voiceCueText == nil)
 
         // Non-destructive: target pace MUST NOT be slowed by first form check
         #expect(core.currentTargetPaceSecondsPerKm == 300)
@@ -452,10 +452,10 @@ struct AdaptivePacingCoreWatchCompanionTests {
         let metricSpec = rec.feedbackSpec(useMetricSystem: true)
         #expect(metricSpec.haptic == .descendingDoublePulse)
         #expect(metricSpec.accentToken == .recoverAmber)
-        #expect(metricSpec.voiceCueText == "Ease to 5:09.")
+        #expect(metricSpec.voiceCueText == nil)
 
         let imperialSpec = rec.feedbackSpec(useMetricSystem: false)
-        #expect(imperialSpec.voiceCueText == "Ease to 8:17.")
+        #expect(imperialSpec.voiceCueText == nil)
     }
 
     @Test("Fatigue Catch: sustained cardiac drift triggers recover with descending double-pulse")
@@ -962,7 +962,492 @@ struct AdaptivePacingCoreWatchCompanionTests {
         )
     }
 
-    // MARK: - 7. PacingDisplayState Compact Metric Properties
+    // MARK: - 7. Task 4.2 Comprehensive Scenario Tests
+
+    @Test("Scenario (a): 4-day-off Monday 10K treadmill session opens cadenceReset -> thresholdSurge -> cooldownFloor silently with debrief and live snapshot")
+    func testMondayTreadmillSessionCadenceResetThresholdSurgeCooldownFloor() {
+        let readinessHint = WatchReadinessHint(
+            daysSinceLastRun: 4,
+            recentWalkMeters48h: 12000.0,
+            hadRecentCadenceFade: false,
+            hadRecentBounce: false,
+            calibratedCadenceFloorSPM: 165,
+            isClearedForQuality: true
+        )
+        let intent = PacingSessionIntent(
+            targetPaceSecondsPerKm: 300,
+            intent: .steady,
+            subjectiveDistress: false,
+            validForDay: "2026-11-16",
+            targetCadenceSPM: 165,
+            readinessHint: readinessHint
+        )
+        let config = AdaptivePacingConfiguration.forWatchCompanion(intent: .adaptiveBase)
+        var core = AdaptivePacingCore(
+            profile: standardProfile,
+            intent: intent,
+            location: .indoor,
+            configuration: config
+        )
+
+        var allEmittedEvents: [PacingEvent] = []
+        var latestSnapshot: WatchLiveRunSnapshot?
+
+        // Phase 1: Minutes 0-5 (300 seconds) Calibration.
+        // Stiff cadence at 158 SPM (< 165 floor), comfortable aerobic HR at 135 BPM, steady power 190 W (< topQuartile 1.45).
+        for second in 1...300 {
+            let tick = makeTick(
+                second: second,
+                hr: 135.0,
+                speed: 3.333,
+                power: 190.0,
+                cadence: 158.0
+            )
+            let result = core.ingest(tick, totalDistanceMeters: Double(second) * 3.333)
+            allEmittedEvents.append(contentsOf: result.events)
+
+            if second == 300 {
+                // Calibration complete: verify cadenceReset block opened
+                let blockEvent = result.events.first {
+                    if case .adaptiveBlockChanged(let block) = $0, block.kind == .cadenceReset { return true }
+                    return false
+                }
+                #expect(blockEvent != nil, "Cadence reset block must open at calibration completion")
+                #expect(core.activeBlock.kind == .cadenceReset)
+                #expect(core.activeBlock.remainingSeconds == 180)
+                #expect(core.cadenceResetCount == 1)
+                #expect(result.display.activeBlockBadge?.contains("CADENCE 158->164") == true)
+                #expect(result.display.activeBlockRemainingFormatted == "3:00")
+                #expect(result.display.activeTactileCue?.mode == .cadenceMetronome)
+
+                // Verify WatchLiveRunSnapshot forwards activeBlockBadge, activeBlockRemainingFormatted, and activeTactileCue
+                let snapshot = result.display.makeLiveSnapshot(
+                    location: .indoor,
+                    runIntent: .adaptiveBase,
+                    updatedAtEpochSeconds: Double(second)
+                )
+                #expect(snapshot.activeBlockBadge == result.display.activeBlockBadge)
+                #expect(snapshot.activeBlockRemainingFormatted == result.display.activeBlockRemainingFormatted)
+                #expect(snapshot.activeTactileCue == result.display.activeTactileCue)
+                latestSnapshot = snapshot
+            }
+        }
+        #expect(latestSnapshot != nil)
+
+        // Phase 2: Cadence Reset running for 179 seconds (seconds 301 to 479).
+        // Runner engages with block target (164 SPM), HR nominal at 135 BPM, power 190 W.
+        for second in 301...479 {
+            let tick = makeTick(
+                second: second,
+                hr: 135.0,
+                speed: 3.333,
+                power: 190.0,
+                cadence: 164.0
+            )
+            let result = core.ingest(tick, totalDistanceMeters: Double(second) * 3.333)
+            allEmittedEvents.append(contentsOf: result.events)
+        }
+
+        // Tick 480: Cadence reset block finishes (remaining reaches 0) -> activeBlock dissolves to .none,
+        // and 60s post-reset cooldown begins.
+        let tick480 = makeTick(
+            second: 480,
+            hr: 135.0,
+            speed: 3.333,
+            power: 190.0,
+            cadence: 164.0
+        )
+        let result480 = core.ingest(tick480, totalDistanceMeters: 480.0 * 3.333)
+        allEmittedEvents.append(contentsOf: result480.events)
+        #expect(core.activeBlock.kind == .none)
+
+        // Phase 3: Post-cadence reset cooldown (59 seconds, seconds 481 to 539).
+        // Cadence settles at 166 SPM (>= 165 floor), HR 135 BPM, power 190 W.
+        for second in 481...539 {
+            let tick = makeTick(
+                second: second,
+                hr: 135.0,
+                speed: 3.333,
+                power: 190.0,
+                cadence: 166.0
+            )
+            let result = core.ingest(tick, totalDistanceMeters: Double(second) * 3.333)
+            allEmittedEvents.append(contentsOf: result.events)
+        }
+
+        // Phase 4: Tick 540 cooldown expires (60 ticks elapsed) -> thresholdSurge block opens!
+        // Runner is warm, legs unlocked (cadence 166 >= floor), HR 135 BPM (< 0.82 * maxHR), cleared for quality.
+        let tick540 = makeTick(
+            second: 540,
+            hr: 135.0,
+            speed: 3.333,
+            power: 190.0,
+            cadence: 166.0
+        )
+        let result540 = core.ingest(tick540, totalDistanceMeters: 540.0 * 3.333)
+        allEmittedEvents.append(contentsOf: result540.events)
+
+        let thresholdBlockEvent = result540.events.first {
+            if case .adaptiveBlockChanged(let block) = $0, block.kind == .thresholdSurge { return true }
+            return false
+        }
+        #expect(thresholdBlockEvent != nil, "Threshold surge block must open after post-reset cooldown")
+        #expect(core.activeBlock.kind == .thresholdSurge)
+        #expect(core.activeBlock.remainingSeconds == 240)
+        #expect(core.thresholdBlockCount == 1)
+        #expect(result540.display.activeBlockBadge?.contains("THRESHOLD") == true)
+        #expect(result540.display.activeBlockRemainingFormatted == "4:00")
+        #expect(result540.display.activeTactileCue?.mode == .effortUp)
+
+        // Phase 5: Threshold surge running for 239 seconds (seconds 541 to 779).
+        // Runner pushes into surge: speed = 3.5 m/s, power = 230 W, HR = 145 BPM (< 0.88 * maxHR).
+        for second in 541...779 {
+            let tick = makeTick(
+                second: second,
+                hr: 145.0,
+                speed: 3.5,
+                power: 230.0,
+                cadence: 170.0
+            )
+            let result = core.ingest(tick, totalDistanceMeters: Double(second) * 3.5)
+            allEmittedEvents.append(contentsOf: result.events)
+        }
+
+        // At tick 780 (240th second of threshold block), transition to cooldownFloor automatically occurs
+        let tick780 = makeTick(
+            second: 780,
+            hr: 145.0,
+            speed: 3.5,
+            power: 230.0,
+            cadence: 170.0
+        )
+        let result780 = core.ingest(tick780, totalDistanceMeters: 780.0 * 3.5)
+        allEmittedEvents.append(contentsOf: result780.events)
+
+        #expect(core.activeBlock.kind == .cooldownFloor)
+        #expect(core.activeBlock.remainingSeconds == 120)
+        #expect(result780.display.activeBlockRemainingFormatted == "2:00")
+        #expect(core.activeBlockBadgeTitle?.contains("COOLDOWN") == true)
+
+        // Phase 6: Cooldown floor running for 119 seconds (seconds 781 to 899).
+        // Runner floats back down to steady effort: speed = 3.333 m/s, HR = 135 BPM, cadence = 165 SPM.
+        for second in 781...899 {
+            let tick = makeTick(
+                second: second,
+                hr: 135.0,
+                speed: 3.333,
+                power: 190.0,
+                cadence: 165.0
+            )
+            let result = core.ingest(tick, totalDistanceMeters: Double(second) * 3.333)
+            allEmittedEvents.append(contentsOf: result.events)
+        }
+
+        // Tick 900: Cooldown floor completes (remaining reaches 0) -> activeBlock dissolves to .none
+        let tick900 = makeTick(
+            second: 900,
+            hr: 135.0,
+            speed: 3.333,
+            power: 190.0,
+            cadence: 165.0
+        )
+        let result900 = core.ingest(tick900, totalDistanceMeters: 900.0 * 3.333)
+        allEmittedEvents.append(contentsOf: result900.events)
+        #expect(core.activeBlock.kind == .none)
+
+        // Phase 7: Verify Silent Voice Cue Policy across all drift, form, block, surge, and recover cues
+        for event in allEmittedEvents {
+            let spec = event.feedbackSpec(useMetricSystem: true)
+            switch event {
+            case .adaptiveBlockChanged, .surge, .surgeLockedIn, .recover, .formCheck, .paceDrift, .cadenceDrift:
+                #expect(spec.voiceCueText == nil, "Event \(event) must have voiceCueText == nil")
+            default:
+                break
+            }
+        }
+
+        // Phase 8: Verify Post-Run Debrief surfaces executed blocks in adaptationsBullet
+        let debrief = core.buildRunDebrief(
+            elapsedSeconds: 901.0,
+            totalDistanceMeters: 3000.0,
+            useMetricSystem: true
+        )
+        #expect(debrief.adaptationsBullet.contains("1 cadence reset block"))
+        #expect(debrief.adaptationsBullet.contains("1 threshold block"))
+        #expect(!debrief.adaptationsBullet.contains("Held steady baseline pacing throughout."))
+    }
+
+    @Test("Scenario (b): .adaptiveBase preserves iPhone .tempo intent vs Watch .recovery blocking surges and triggering .effortEase")
+    func testAdaptiveBasePreservesTempoVsRecoveryBlocksSurgesAndTriggersEffortEase() {
+        let hint = WatchReadinessHint(
+            daysSinceLastRun: 1,
+            recentWalkMeters48h: 6000.0,
+            hadRecentCadenceFade: false,
+            hadRecentBounce: false,
+            calibratedCadenceFloorSPM: 168,
+            isClearedForQuality: true
+        )
+        let iphoneIntent = PacingSessionIntent(
+            targetPaceSecondsPerKm: 270,
+            intent: .tempo,
+            subjectiveDistress: false,
+            validForDay: "2026-11-16",
+            readinessHint: hint
+        )
+        let sessionConfig = WatchResolvedSessionConfig(
+            profile: standardProfile,
+            intent: iphoneIntent,
+            requiresTargetPacePicker: true
+        )
+
+        // 1. .adaptiveBase preserves iPhone .tempo intent & readinessHint and retires pace picker
+        let resolvedBase = sessionConfig.applying(runIntent: .adaptiveBase)
+        #expect(resolvedBase.intent.intent == .tempo)
+        #expect(resolvedBase.intent.readinessHint == hint)
+        #expect(resolvedBase.requiresTargetPacePicker == false)
+
+        // 2. Watch .recovery enforces .recovery intent and clears target pace picker
+        let resolvedRecovery = sessionConfig.applying(runIntent: .recovery)
+        #expect(resolvedRecovery.intent.intent == .recovery)
+        #expect(resolvedRecovery.requiresTargetPacePicker == false)
+
+        // 3. Running with .recovery blocks all surges even under high power/HR reserves
+        let recoveryConfig = AdaptivePacingConfiguration.forWatchCompanion(intent: .recovery)
+        var recoveryCore = AdaptivePacingCore(
+            profile: standardProfile,
+            intent: resolvedRecovery.intent,
+            location: .outdoor,
+            configuration: recoveryConfig
+        )
+
+        // 300s calibration at low HR (125 BPM) and high power (250 W)
+        let calTicks = PacingSessionFixtures.makeSteadyEasyRun(
+            durationSeconds: 300,
+            targetPaceSecPerKm: 300,
+            heartRate: 125.0,
+            power: 250.0
+        )
+        for tick in calTicks { _ = recoveryCore.ingest(tick) }
+
+        // Post-calibration: confirm surges and threshold blocks are strictly blocked
+        for s in 301...360 {
+            let tick = makeTick(second: s, hr: 125.0, power: 250.0)
+            let result = recoveryCore.ingest(tick)
+            let hasSurge = result.events.contains {
+                if case .surge = $0 { return true }
+                if case .adaptiveBlockChanged(let b) = $0, b.kind == .thresholdSurge { return true }
+                return false
+            }
+            #expect(!hasSurge, "Surges must never fire during recovery intent")
+        }
+        #expect(recoveryCore.surgeCount == 0)
+        #expect(recoveryCore.thresholdBlockCount == 0)
+
+        // 4. When sustained HR >= 0.78 * maxHR (0.78 * 190.0 = 148.2 BPM) for >= 20 seconds, .effortEase triggers
+        var effortEaseTriggered = false
+        for s in 361...405 {
+            let tick = makeTick(second: s, hr: 155.0, power: 200.0)
+            let result = recoveryCore.ingest(tick)
+            for event in result.events {
+                if case .adaptiveBlockChanged(let block) = event, block.kind == .effortEase {
+                    effortEaseTriggered = true
+                    #expect(block.remainingSeconds == 120)
+                    #expect(block.displayBadgeText.contains("EASE EFFORT"))
+                    let spec = event.feedbackSpec(useMetricSystem: true)
+                    #expect(spec.voiceCueText == nil)
+                    #expect(spec.accentToken == .recoverAmber)
+                }
+            }
+            if effortEaseTriggered { break }
+        }
+        #expect(effortEaseTriggered, "Effort ease block must trigger when sustained HR >= 0.78 * maxHR for >= 20s")
+        #expect(recoveryCore.effortEaseCount == 1)
+    }
+
+    @Test("Scenario (c): Physiological mid-block abort -> effortEase + 480s lockout, 60s behavioral non-adoption dissolve + 300s -> 600s backoff, and 2-backoff per-run cap")
+    func testBlockAbortsNonAdoptionAndSessionCap() {
+        var tracker = AdaptiveBlockBackoffTracker()
+
+        #expect(tracker.backoffCount == 0)
+        #expect(tracker.canProposeUpwardBlock == true)
+        #expect(tracker.isUpwardBlocksExhausted == false)
+
+        // 1. Physiological mid-block abort -> records abort, sets 480s lockout
+        tracker.recordPhysiologicalAbort()
+        #expect(tracker.backoffCount == 1)
+        #expect(tracker.upwardLockoutRemainingSeconds == 480.0)
+        #expect(tracker.canProposeUpwardBlock == false)
+        #expect(tracker.isUpwardBlocksExhausted == false)
+
+        // Fast-forward 480 seconds
+        for _ in 0..<480 {
+            tracker.tick()
+        }
+        #expect(tracker.upwardLockoutRemainingSeconds == 0.0)
+        #expect(tracker.canProposeUpwardBlock == true)
+
+        // 2. Behavioral non-adoption dissolve after 60s -> doubles cooldown (300s -> 600s), sets 600s lockout
+        tracker.recordBehavioralNonAdoption()
+        #expect(tracker.backoffCount == 2)
+        #expect(tracker.currentProposalCooldownSeconds == 600.0)
+        #expect(tracker.upwardLockoutRemainingSeconds == 600.0)
+
+        // 3. Per-run cap: backoffCount reached 2, so upward blocks are permanently exhausted
+        #expect(tracker.isUpwardBlocksExhausted == true)
+        #expect(tracker.canProposeUpwardBlock == false)
+
+        // Even after ticking down the 600s lockout to 0, upward proposals remain permanently blocked
+        for _ in 0..<600 {
+            tracker.tick()
+        }
+        #expect(tracker.upwardLockoutRemainingSeconds == 0.0)
+        #expect(tracker.canProposeUpwardBlock == false, "Can propose upward block must remain false once session cap is hit")
+
+        // Live engine verification with watch companion calibration (300s lock-in):
+        let intent = PacingSessionIntent(
+            targetPaceSecondsPerKm: 300,
+            intent: .tempo,
+            subjectiveDistress: false,
+            validForDay: "2026-11-16"
+        )
+        let config = AdaptivePacingConfiguration.forWatchCompanion(intent: .pushPerformance)
+        var core = AdaptivePacingCore(
+            profile: standardProfile,
+            intent: intent,
+            location: .indoor,
+            configuration: config
+        )
+
+        // 300s calibration at 145 BPM, 190 W
+        for s in 1...300 {
+            _ = core.ingest(makeTick(second: s, hr: 145.0, speed: 3.333, power: 190.0, cadence: 168.0))
+        }
+
+        // At tick 300, tempo run opens thresholdSurge block!
+        #expect(core.activeBlock.kind == .thresholdSurge)
+
+        // Inject physiological spike mid-block: HR breaches 0.88 * maxHR (0.88 * 190 = 167.2 BPM, say 180 BPM)
+        var abortEventEmitted = false
+        var abortTick = 301
+        for s in 301...325 {
+            let result = core.ingest(makeTick(second: s, hr: 180.0, speed: 3.333, power: 190.0, cadence: 168.0))
+            for event in result.events {
+                if case .adaptiveBlockChanged(let b) = event, b.kind == .effortEase {
+                    abortEventEmitted = true
+                    abortTick = s
+                }
+            }
+            if abortEventEmitted { break }
+        }
+
+        #expect(abortEventEmitted)
+        #expect(core.activeBlock.kind == .effortEase)
+        #expect(core.blockBackoffCount == 1)
+        #expect(core.blockBackoffTracker.canProposeUpwardBlock == false)
+        #expect(core.blockBackoffTracker.upwardLockoutRemainingSeconds >= 475.0)
+
+        // Fast-forward lockout: effortEase clears after 120s, and at endLockoutTick lockout reaches 0 and opens thresholdSurge
+        let endLockoutTick = abortTick + Int(core.blockBackoffTracker.upwardLockoutRemainingSeconds)
+        for s in (abortTick + 1)...endLockoutTick {
+            _ = core.ingest(makeTick(second: s, hr: 140.0, speed: 3.333, power: 190.0, cadence: 168.0))
+        }
+        #expect(core.activeBlock.kind == .thresholdSurge, "New threshold block proposes once lockout elapses")
+
+        // Behavioral non-adoption: runner stays strictly at baseline (speed: 3.333, power: 190, HR: 140) for 60 seconds
+        var dissolveEmitted = false
+        for s in (endLockoutTick + 1)...(endLockoutTick + 65) {
+            let res = core.ingest(makeTick(second: s, hr: 140.0, speed: 3.333, power: 190.0, cadence: 168.0))
+            for event in res.events {
+                if case .adaptiveBlockChanged(let b) = event, b.kind == .none {
+                    dissolveEmitted = true
+                }
+            }
+            if dissolveEmitted { break }
+        }
+
+        #expect(dissolveEmitted, "Ignored block must dissolve silently after 60s of non-adoption")
+        #expect(core.activeBlock.kind == .none)
+        #expect(core.blockBackoffCount == 2)
+        #expect(core.blockBackoffTracker.isUpwardBlocksExhausted == true)
+        #expect(core.blockBackoffTracker.canProposeUpwardBlock == false)
+
+        // Debrief confirms 2 block backoffs
+        let debrief = core.buildRunDebrief(elapsedSeconds: Double(endLockoutTick + 65), totalDistanceMeters: 3000.0)
+        #expect(debrief.adaptationsBullet.contains("2 block backoffs"))
+    }
+
+    @Test("Scenario (d): .indoor +/-25% outlier speed clamping around 30s median & suppression of false outdoor-offset pace drift when HR & cadence are on-target")
+    func testIndoorSpeedOutlierClampingAndFalsePaceDriftSuppression() {
+        let intent = PacingSessionIntent(
+            targetPaceSecondsPerKm: 300,
+            intent: .steady,
+            subjectiveDistress: false,
+            validForDay: "2026-11-16",
+            targetCadenceSPM: 170
+        )
+        let config = AdaptivePacingConfiguration.forWatchCompanion(intent: .adaptiveBase)
+        var core = AdaptivePacingCore(
+            profile: standardProfile,
+            intent: intent,
+            location: .indoor,
+            configuration: config
+        )
+
+        // Part 1: Feed 30 seconds of steady treadmill speed at 3.0 m/s (5:33 /km)
+        for s in 1...30 {
+            _ = core.ingest(makeTick(second: s, hr: 140.0, speed: 3.0, power: 200.0, cadence: 168.0))
+        }
+
+        let medianSpeed = core.ringBuffer.medianSpeed(windowSeconds: 30.0)
+        #expect(medianSpeed != nil)
+        if let median = medianSpeed {
+            #expect(abs(median - 3.0) < 0.05)
+        }
+
+        // Test clamping of high spike (e.g. 5.0 m/s = +66% jump)
+        let clampedHigh = core.ringBuffer.clampedIndoorSpeed(5.0, windowSeconds: 30.0, toleranceFraction: 0.25)
+        #expect(clampedHigh != nil)
+        if let high = clampedHigh {
+            #expect(abs(high - 3.75) < 0.05, "5.0 m/s must be clamped to 3.0 * 1.25 = 3.75 m/s")
+        }
+
+        // Test clamping of low drop (e.g. 1.0 m/s = -66% drop)
+        let clampedLow = core.ringBuffer.clampedIndoorSpeed(1.0, windowSeconds: 30.0, toleranceFraction: 0.25)
+        #expect(clampedLow != nil)
+        if let low = clampedLow {
+            #expect(abs(low - 2.25) < 0.05, "1.0 m/s must be clamped to 3.0 * 0.75 = 2.25 m/s")
+        }
+
+        // Ingest the 5.0 m/s sample and confirm ringBuffer tick was clamped before Kalman step
+        _ = core.ingest(makeTick(second: 31, hr: 140.0, speed: 5.0, power: 200.0, cadence: 168.0))
+        let conditionedSpeed = core.ringBuffer.latestTick?.speedMetersPerSecond
+        #expect(conditionedSpeed != nil)
+        if let cond = conditionedSpeed {
+            #expect(cond < 4.0, "Conditioned indoor speed must be conditioned from clamped 3.75 m/s, never 5.0 m/s")
+        }
+
+        // Part 2: False outdoor-offset pace drift suppression.
+        // Runner continues calibration and reaches tracking at second 300.
+        for s in 32...300 {
+            _ = core.ingest(makeTick(second: s, hr: 140.0, speed: 2.94, power: 200.0, cadence: 170.0))
+        }
+
+        // Now tracking: outdoor target is 300 s/km (5:00 /km), but uncalibrated wrist speed reads 2.94 m/s (340 s/km).
+        // This is a 40 s/km (13%) offset. In outdoor GPS mode, this would trigger .paceDrift(tooSlow).
+        // But on treadmill, HR (140 BPM < 174.8 ceiling) and IMU cadence (170 SPM >= 150 floor) are healthy.
+        for s in 301...330 {
+            let res = core.ingest(makeTick(second: s, hr: 140.0, speed: 2.94, power: 200.0, cadence: 170.0))
+            let paceDriftEvent = res.events.first {
+                if case .paceDrift = $0 { return true }
+                return false
+            }
+            #expect(paceDriftEvent == nil, "Indoor pace drift alerts must be suppressed when HR and cadence are healthy")
+            #expect(core.paceDriftDeviation == .onTarget)
+            #expect(core.paceDriftContinuousSeconds == 0.0)
+        }
+    }
+
+    // MARK: - 8. PacingDisplayState Compact Metric Properties
 
     @Test("PacingDisplayState: compact metrics format populated values and nil placeholders correctly")
     func testPacingDisplayStateCompactMetrics() {

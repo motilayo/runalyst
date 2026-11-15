@@ -269,4 +269,168 @@ struct LiveMetronomeCoreTests {
         )
         #expect(aliasPostWindowDrift == true)
     }
+
+    // MARK: - SteppedMetronomeRamp Tests
+
+    @Test("Gradual stepped ramp initializes at +3 SPM, holds for 10s, and steps up to goal")
+    func testGradualSteppedCadenceRamp() {
+        var ramp = SteppedMetronomeRamp()
+        let initialCue = ramp.startCadenceBurst(currentSPM: 154, goalSPM: 160)
+
+        #expect(initialCue != nil)
+        #expect(initialCue?.mode == .cadenceMetronome)
+        #expect(initialCue?.targetBPM == 157)
+        #expect(initialCue?.remainingSeconds == 20)
+        #expect(initialCue?.stepLabel == "157 -> 160 SPM")
+        #expect(ramp.steppedTargetSPM == 157)
+        #expect(ramp.goalTargetSPM == 160)
+        #expect(ramp.cooldownRemainingSeconds == 0)
+
+        // Hold 157 SPM (within 157 +/- 2) for 9 continuous seconds without reaching goal (160)
+        for second in 1...9 {
+            let tickCue = ramp.tick(currentSPM: 157, isEffortOnTarget: false)
+            #expect(tickCue != nil)
+            #expect(ramp.steppedTargetSPM == 157)
+            #expect(tickCue?.targetBPM == 157)
+            #expect(tickCue?.remainingSeconds == 20 - second)
+            #expect(ramp.stepHeldSeconds == Double(second))
+        }
+
+        // On the 10th second, step threshold (10.0s) is fulfilled and steps up to 160 SPM
+        let steppedCue = ramp.tick(currentSPM: 157, isEffortOnTarget: false)
+        #expect(steppedCue != nil)
+        #expect(steppedCue?.targetBPM == 160)
+        #expect(steppedCue?.stepLabel == "160 SPM")
+        #expect(steppedCue?.remainingSeconds == 10)
+        #expect(ramp.steppedTargetSPM == 160)
+        #expect(ramp.goalTargetSPM == 160)
+        #expect(ramp.stepHeldSeconds == 0)
+    }
+
+    @Test("Early lock-in silences haptics and starts 240s cooldown after 5s continuous lock")
+    func testEarlyLockInSilence() {
+        var ramp = SteppedMetronomeRamp()
+        ramp.startCadenceBurst(currentSPM: 159, goalSPM: 160)
+
+        #expect(ramp.activeCue != nil)
+        #expect(ramp.steppedTargetSPM == 160)
+        #expect(ramp.goalTargetSPM == 160)
+
+        // Maintain 160 +/- 2 SPM for 4 seconds
+        for second in 1...4 {
+            let tickCue = ramp.tick(currentSPM: 160, isEffortOnTarget: false)
+            #expect(tickCue != nil)
+            #expect(ramp.lockedSeconds == Double(second))
+            #expect(ramp.activeCue != nil)
+        }
+
+        // 5th continuous second in lock zone triggers early exit before 20s burst expires
+        let lockExitCue = ramp.tick(currentSPM: 160, isEffortOnTarget: false)
+        #expect(lockExitCue == nil)
+        #expect(ramp.activeCue == nil)
+        #expect(ramp.cooldownRemainingSeconds == 240.0)
+        #expect(ramp.burstElapsedSeconds == 0) // silenceBurst resets elapsed counters
+    }
+
+    @Test("20-second timeout without lock silences haptics and enforces 240s cooldown")
+    func testTimeoutBackOffEnforcesCooldown() {
+        var ramp = SteppedMetronomeRamp()
+        ramp.startCadenceBurst(currentSPM: 150, goalSPM: 170)
+
+        #expect(ramp.activeCue != nil)
+
+        // Run for 19 seconds staying at 145 SPM (outside tolerance of stepped 153 and goal 170)
+        for second in 1...19 {
+            let tickCue = ramp.tick(currentSPM: 145, isEffortOnTarget: false)
+            #expect(tickCue != nil)
+            #expect(tickCue?.remainingSeconds == 20 - second)
+            #expect(ramp.cooldownRemainingSeconds == 0)
+        }
+
+        // 20th second triggers burst timeout back-off
+        let timeoutCue = ramp.tick(currentSPM: 145, isEffortOnTarget: false)
+        #expect(timeoutCue == nil)
+        #expect(ramp.activeCue == nil)
+        #expect(ramp.cooldownRemainingSeconds == 240.0)
+
+        // Attempting to start burst without bypass during cooldown is rejected
+        let rejectedBurst = ramp.startCadenceBurst(currentSPM: 154, goalSPM: 160, bypassCooldown: false)
+        #expect(rejectedBurst == nil)
+        #expect(ramp.activeCue == nil)
+
+        // Advance 10 seconds of cooldown
+        for _ in 1...10 {
+            ramp.tick(currentSPM: 160, isEffortOnTarget: false)
+        }
+        #expect(ramp.cooldownRemainingSeconds == 230.0)
+        #expect(ramp.startCadenceBurst(currentSPM: 154, goalSPM: 160, bypassCooldown: false) == nil)
+    }
+
+    @Test("Anticipatory bypass arms fresh burst even during active cooldown")
+    func testAnticipatoryPhaseBypassArmsFreshBurstDuringCooldown() {
+        var ramp = SteppedMetronomeRamp()
+        ramp.startCadenceBurst(currentSPM: 150, goalSPM: 160)
+
+        // Force into cooldown
+        ramp.silenceBurst(startCooldown: true)
+        #expect(ramp.cooldownRemainingSeconds == 240.0)
+        #expect(ramp.activeCue == nil)
+
+        // Standard burst ignored
+        #expect(ramp.startCadenceBurst(currentSPM: 154, goalSPM: 160, bypassCooldown: false) == nil)
+
+        // Anticipatory phase transition bypasses cooldown
+        let armedCue = ramp.startCadenceBurst(currentSPM: 154, goalSPM: 160, bypassCooldown: true)
+        #expect(armedCue != nil)
+        #expect(armedCue?.mode == .cadenceMetronome)
+        #expect(armedCue?.targetBPM == 157)
+        #expect(ramp.activeCue != nil)
+        #expect(ramp.cooldownRemainingSeconds == 0)
+        #expect(ramp.steppedTargetSPM == 157)
+        #expect(ramp.goalTargetSPM == 160)
+    }
+
+    @Test("Effort down burst emits descending pulse without lowering metronome BPM")
+    func testEffortDownSemanticsNeverLowersMetronomeBPM() {
+        var ramp = SteppedMetronomeRamp()
+        let effortCue = ramp.startEffortBurst(mode: .effortDown)
+
+        #expect(effortCue != nil)
+        #expect(effortCue?.mode == .effortDown)
+        #expect(effortCue?.targetBPM == nil) // Never lowers metronome BPM below cadence
+        #expect(effortCue?.pulseIntervalSeconds == 3.5)
+        #expect(effortCue?.remainingSeconds == 20)
+        #expect(effortCue?.stepLabel == "Ease Effort")
+        #expect(ramp.steppedTargetSPM == nil)
+        #expect(ramp.goalTargetSPM == nil)
+
+        // Invalid mode rejected
+        #expect(ramp.startEffortBurst(mode: .cadenceMetronome) == nil)
+
+        // Ticking without effort on target decrements remainingSeconds
+        let tick1 = ramp.tick(currentSPM: 168, isEffortOnTarget: false)
+        #expect(tick1 != nil)
+        #expect(tick1?.targetBPM == nil)
+        #expect(tick1?.remainingSeconds == 19)
+        #expect(ramp.lockedSeconds == 0)
+
+        // 5 consecutive seconds with isEffortOnTarget == true triggers early exit
+        for second in 1...4 {
+            let effortTick = ramp.tick(currentSPM: 168, isEffortOnTarget: true)
+            #expect(effortTick != nil)
+            #expect(ramp.lockedSeconds == Double(second))
+        }
+
+        let earlyExitCue = ramp.tick(currentSPM: 168, isEffortOnTarget: true)
+        #expect(earlyExitCue == nil)
+        #expect(ramp.activeCue == nil)
+        #expect(ramp.cooldownRemainingSeconds == 240.0)
+
+        // Effort up burst emits "Lift Effort"
+        let effortUpCue = ramp.startEffortBurst(mode: .effortUp, bypassCooldown: true)
+        #expect(effortUpCue != nil)
+        #expect(effortUpCue?.mode == .effortUp)
+        #expect(effortUpCue?.targetBPM == nil)
+        #expect(effortUpCue?.stepLabel == "Lift Effort")
+    }
 }

@@ -162,6 +162,35 @@ struct RunalystWatchApp: App {
                     biometricStatusLabel: "Recover",
                     totalDistanceMeters: 820.0
                 )
+            case "GAUGE_BLOCK":
+                vm.displayState = PacingDisplayState(
+                    state: .tracking,
+                    targetPaceSecondsPerKm: 300,
+                    filteredPaceSecondsPerKm: 298,
+                    filteredHeartRateBPM: 148,
+                    deviation: .onTarget,
+                    refractorySecondsRemaining: 0,
+                    lastReason: nil,
+                    adjustmentsEnabled: true,
+                    targetPaceFormatted: "5:00 /km",
+                    filteredPaceFormatted: "4:58 /km",
+                    filteredHeartRateFormatted: "148 bpm",
+                    deviationTitle: "ON TARGET",
+                    calibrationProgress: 1.0,
+                    calibrationProgressFormatted: "100%",
+                    refractoryProgress: 0.0,
+                    filteredCadenceSPM: 160,
+                    filteredCadenceFormatted: "160 SPM",
+                    isCalibrating: false,
+                    elapsedTimeFormatted: "06:30",
+                    paceGaugeNormalizedPosition: 0.52,
+                    targetBandLowerNormalized: 0.42,
+                    targetBandUpperNormalized: 0.58,
+                    biometricStatusToken: .vibrantGreen,
+                    biometricStatusLabel: "Cadence Reset",
+                    activeBlockBadge: "CADENCE 158->162",
+                    activeBlockRemainingFormatted: "2:45"
+                )
             case "SUMMARY_DEBRIEF":
                 break
             default:
@@ -222,9 +251,9 @@ final class RunalystWatchAppDelegate: NSObject, WKApplicationDelegate {
             guard WorkoutManager.shared.sessionState != .running && WorkoutManager.shared.sessionState != .paused else { return }
             WorkoutManager.shared.isNavigatingToGauge = true
 
-            let location: PacingLocation = (workoutConfiguration.locationType == .indoor) ? .indoor : .outdoor
             let resolved = WatchContextStore.shared.resolveSession()
-            let targetPace = resolved.requiresTargetPacePicker ? resolved.intent.targetPaceSecondsPerKm : nil
+            let location: PacingLocation = (workoutConfiguration.locationType == .indoor || resolved.isIndoor) ? .indoor : .outdoor
+            let targetPace = resolved.intent.targetPaceSecondsPerKm
 
             await WorkoutManager.shared.startWorkout(
                 location: location,

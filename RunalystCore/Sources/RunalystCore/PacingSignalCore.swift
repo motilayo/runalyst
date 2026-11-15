@@ -103,6 +103,13 @@ public struct KalmanFilter1D: Sendable {
         validRange: 0.0...12.0
     )
 
+    /// Indoor treadmill running speed parameters: Q=0.01, R=0.64, range 0...12 m/s.
+    public static let indoorSpeed = KalmanFilter1D(
+        processNoise: 0.01,
+        measurementNoise: 0.64,
+        validRange: 0.0...12.0
+    )
+
     /// Current filter estimate, if seeded.
     public var currentEstimate: Double? {
         estimate
@@ -286,12 +293,14 @@ public struct TelemetryRingBuffer: Sendable {
         guard expectedTicks > 0 else { return nil }
 
         let windowEnd = latest.elapsedSeconds
-        var validValues: [Double] = []
-        validValues.reserveCapacity(expectedTicks)
+        var validCount = 0
+        var mean = 0.0
+        var m2 = 0.0
 
         var inspectedTicks = 0
+        var idx = writeIndex - 1
+        if idx < 0 { idx += capacity }
         while inspectedTicks < currentCount {
-            let idx = (writeIndex - 1 - inspectedTicks + capacity * 2) % capacity
             guard let tick = storage[idx] else { break }
 
             let delta = windowEnd - tick.elapsedSeconds
@@ -300,28 +309,30 @@ public struct TelemetryRingBuffer: Sendable {
             }
 
             if let value = extractValue(for: metric, from: tick) {
-                validValues.append(value)
+                validCount += 1
+                let diff = value - mean
+                mean += diff / Double(validCount)
+                m2 += diff * (value - mean)
             }
 
             inspectedTicks += 1
+            idx -= 1
+            if idx < 0 { idx = capacity - 1 }
         }
 
-        let coverage = Double(validValues.count) / Double(expectedTicks)
-        guard coverage >= minCoverage, !validValues.isEmpty else {
+        let coverage = Double(validCount) / Double(expectedTicks)
+        guard coverage >= minCoverage, validCount > 0 else {
             return nil
         }
 
-        let countDbl = Double(validValues.count)
-        let mean = validValues.reduce(0.0, +) / countDbl
-        let sumSquaredDiff = validValues.reduce(0.0) { $0 + ($1 - mean) * ($1 - mean) }
-        let variance = validValues.count > 1 ? sumSquaredDiff / Double(validValues.count - 1) : 0.0
+        let variance = validCount > 1 ? m2 / Double(validCount - 1) : 0.0
         let stdDev = sqrt(max(0.0, variance))
 
         return RollingWindowStats(
             mean: mean,
             standardDeviation: stdDev,
             coverage: coverage,
-            sampleCount: validValues.count
+            sampleCount: validCount
         )
     }
 
@@ -335,6 +346,167 @@ public struct TelemetryRingBuffer: Sendable {
         stats(for: metric, windowSeconds: 180.0)
     }
 
+    /// Single-pass 30-second rolling means for filtered speed and cadence without heap allocation.
+    internal func shortWindowSpeedAndCadenceMeans(
+        minCoverage: Double = 0.80
+    ) -> (speedMean: Double?, cadenceMean: Double?) {
+        guard let latest = latestTick else { return (nil, nil) }
+        let windowSeconds = 30.0
+        let expectedTicks = 30.0
+        let windowEnd = latest.elapsedSeconds
+
+        var speedSum = 0.0
+        var speedCount = 0
+        var cadenceSum = 0.0
+        var cadenceCount = 0
+
+        var inspectedTicks = 0
+        var idx = writeIndex - 1
+        if idx < 0 { idx += capacity }
+        while inspectedTicks < currentCount {
+            guard let tick = storage[idx] else { break }
+            if (windowEnd - tick.elapsedSeconds) >= windowSeconds {
+                break
+            }
+            if tick.isSpeedValid, let speed = tick.speedMetersPerSecond {
+                speedSum += speed
+                speedCount += 1
+            }
+            if let cadence = tick.cadenceSPM {
+                cadenceSum += cadence
+                cadenceCount += 1
+            }
+            inspectedTicks += 1
+            idx -= 1
+            if idx < 0 { idx = capacity - 1 }
+        }
+
+        let speedMean: Double? = (speedCount > 0 && Double(speedCount) / expectedTicks >= minCoverage)
+            ? speedSum / Double(speedCount)
+            : nil
+        let cadenceMean: Double? = (cadenceCount > 0 && Double(cadenceCount) / expectedTicks >= minCoverage)
+            ? cadenceSum / Double(cadenceCount)
+            : nil
+        return (speedMean, cadenceMean)
+    }
+
+    /// Single-pass summary of trailing 180-second Efficiency Factor inputs.
+    internal struct WindowEFMeans: Sendable {
+        let hrMean: Double?
+        let hrCoverage: Double
+        let powerMean: Double?
+        let powerCoverage: Double
+        let speedMean: Double?
+        let speedCoverage: Double
+    }
+
+    /// Single-pass rolling means and coverages for HR, power, and optional speed without heap allocation.
+    internal func longWindowEFMeans(
+        windowSeconds: TimeInterval = 180.0,
+        includeSpeed: Bool
+    ) -> WindowEFMeans? {
+        guard let latest = latestTick else { return nil }
+        let expectedTicks = Int(windowSeconds.rounded())
+        guard expectedTicks > 0 else { return nil }
+        let expectedDbl = Double(expectedTicks)
+        let windowEnd = latest.elapsedSeconds
+
+        var hrSum = 0.0
+        var hrCount = 0
+        var powerSum = 0.0
+        var powerCount = 0
+        var speedSum = 0.0
+        var speedCount = 0
+
+        var inspectedTicks = 0
+        var idx = writeIndex - 1
+        if idx < 0 { idx += capacity }
+        while inspectedTicks < currentCount {
+            guard let tick = storage[idx] else { break }
+            if (windowEnd - tick.elapsedSeconds) >= windowSeconds {
+                break
+            }
+            if tick.isHeartRateValid, let hr = tick.heartRateBPM {
+                hrSum += hr
+                hrCount += 1
+            }
+            if let power = tick.powerWatts {
+                powerSum += power
+                powerCount += 1
+            }
+            if includeSpeed, tick.isSpeedValid, let speed = tick.speedMetersPerSecond {
+                speedSum += speed
+                speedCount += 1
+            }
+            inspectedTicks += 1
+            idx -= 1
+            if idx < 0 { idx = capacity - 1 }
+        }
+
+        return WindowEFMeans(
+            hrMean: hrCount > 0 ? hrSum / Double(hrCount) : nil,
+            hrCoverage: Double(hrCount) / expectedDbl,
+            powerMean: powerCount > 0 ? powerSum / Double(powerCount) : nil,
+            powerCoverage: Double(powerCount) / expectedDbl,
+            speedMean: speedCount > 0 ? speedSum / Double(speedCount) : nil,
+            speedCoverage: Double(speedCount) / expectedDbl
+        )
+    }
+
+    /// Returns the median valid positive speed (m/s) over the trailing `windowSeconds`.
+    public func medianSpeed(
+        windowSeconds: TimeInterval = 30.0,
+        minSamples: Int = 1
+    ) -> Double? {
+        guard let latest = latestTick, windowSeconds > 0 else { return nil }
+        let windowEnd = latest.elapsedSeconds
+        var validSpeeds: [Double] = []
+        validSpeeds.reserveCapacity(Int(windowSeconds.rounded()))
+
+        var inspectedTicks = 0
+        while inspectedTicks < currentCount {
+            let idx = (writeIndex - 1 - inspectedTicks + capacity * 2) % capacity
+            guard let tick = storage[idx] else { break }
+            if (windowEnd - tick.elapsedSeconds) >= windowSeconds {
+                break
+            }
+            if tick.isSpeedValid, let speed = tick.speedMetersPerSecond, speed > 0 {
+                validSpeeds.append(speed)
+            }
+            inspectedTicks += 1
+        }
+
+        guard validSpeeds.count >= max(1, minSamples), !validSpeeds.isEmpty else {
+            return nil
+        }
+
+        let sorted = validSpeeds.sorted()
+        let mid = sorted.count / 2
+        if sorted.count % 2 == 1 {
+            return sorted[mid]
+        }
+        return (sorted[mid - 1] + sorted[mid]) / 2.0
+    }
+
+    /// Clamps an instantaneous indoor treadmill speed within `+/- toleranceFraction` of the trailing median.
+    public func clampedIndoorSpeed(
+        _ rawSpeed: Double?,
+        windowSeconds: TimeInterval = 30.0,
+        toleranceFraction: Double = 0.25,
+        minSamples: Int = 3
+    ) -> Double? {
+        guard let rawSpeed, KalmanFilter1D.indoorSpeed.validRange.contains(rawSpeed) else {
+            return rawSpeed
+        }
+        guard let median = medianSpeed(windowSeconds: windowSeconds, minSamples: minSamples),
+              median > 0 else {
+            return rawSpeed
+        }
+        let lowerBound = median * (1.0 - toleranceFraction)
+        let upperBound = median * (1.0 + toleranceFraction)
+        return min(upperBound, max(lowerBound, rawSpeed))
+    }
+
     /// Computes statistics over a historical elapsed time interval (e.g. 300...600 s calibration window).
     public func stats(
         for metric: PacingMetric,
@@ -342,8 +514,9 @@ public struct TelemetryRingBuffer: Sendable {
         minCoverage: Double = 0.80
     ) -> RollingWindowStats? {
         let expectedTicks = max(1, Int((interval.upperBound - interval.lowerBound).rounded()))
-        var validValues: [Double] = []
-        validValues.reserveCapacity(expectedTicks)
+        var validCount = 0
+        var mean = 0.0
+        var m2 = 0.0
 
         for i in 0..<currentCount {
             let idx = (writeIndex - currentCount + i + capacity * 2) % capacity
@@ -351,26 +524,26 @@ public struct TelemetryRingBuffer: Sendable {
             guard interval.contains(tick.elapsedSeconds) else { continue }
 
             if let value = extractValue(for: metric, from: tick) {
-                validValues.append(value)
+                validCount += 1
+                let diff = value - mean
+                mean += diff / Double(validCount)
+                m2 += diff * (value - mean)
             }
         }
 
-        let coverage = Double(validValues.count) / Double(expectedTicks)
-        guard coverage >= minCoverage, !validValues.isEmpty else {
+        let coverage = Double(validCount) / Double(expectedTicks)
+        guard coverage >= minCoverage, validCount > 0 else {
             return nil
         }
 
-        let countDbl = Double(validValues.count)
-        let mean = validValues.reduce(0.0, +) / countDbl
-        let sumSquaredDiff = validValues.reduce(0.0) { $0 + ($1 - mean) * ($1 - mean) }
-        let variance = validValues.count > 1 ? sumSquaredDiff / Double(validValues.count - 1) : 0.0
+        let variance = validCount > 1 ? m2 / Double(validCount - 1) : 0.0
         let stdDev = sqrt(max(0.0, variance))
 
         return RollingWindowStats(
             mean: mean,
             standardDeviation: stdDev,
             coverage: coverage,
-            sampleCount: validValues.count
+            sampleCount: validCount
         )
     }
 
@@ -429,4 +602,3 @@ public enum TelemetryStalenessPolicy {
         return altitudeDeltaMeters / distanceDeltaMeters
     }
 }
-

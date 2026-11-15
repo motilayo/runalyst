@@ -14,21 +14,18 @@ public struct StartRunView: View {
     @State private var selectedLocation: PacingLocation = WatchContextStore.shared.preferredLocation
     @State private var hasUserManuallySelectedLocation = false
     @State private var selectedIntentOverride: WatchRunIntent?
-    @State private var selectedPaceOption: WatchTargetPaceOption = .justRun
 
     public init() {}
 
     private var baseConfig: WatchResolvedSessionConfig {
         WatchContextStore.shared.resolveSession(
-            runIntent: nil,
-            selectedPace: selectedPaceOption.paceSecondsPerKm
+            runIntent: nil
         )
     }
 
     private var resolvedConfig: WatchResolvedSessionConfig {
         WatchContextStore.shared.resolveSession(
-            runIntent: selectedIntentOverride,
-            selectedPace: selectedPaceOption.paceSecondsPerKm
+            runIntent: selectedIntentOverride
         )
     }
 
@@ -58,10 +55,6 @@ public struct StartRunView: View {
                     startWorkoutCTA
                     locationSelector
                     runIntentSelector
-
-                    if resolvedConfig.requiresTargetPacePicker {
-                        targetPacePicker
-                    }
                 }
                 .padding(.horizontal, 6)
                 .padding(.bottom, 12)
@@ -168,11 +161,10 @@ public struct StartRunView: View {
     private var startWorkoutCTA: some View {
         Button {
             Task {
-                let targetPace = resolvedConfig.requiresTargetPacePicker ? selectedPaceOption.paceSecondsPerKm : nil
                 await workoutManager.startWorkout(
                     location: selectedLocation,
                     intent: selectedIntentOverride,
-                    targetPaceSecondsPerKm: targetPace,
+                    targetPaceSecondsPerKm: resolvedConfig.intent.targetPaceSecondsPerKm,
                     viewModel: pacingViewModel
                 )
                 workoutManager.isNavigatingToGauge = true
@@ -269,24 +261,6 @@ public struct StartRunView: View {
             .neutralWatchSurface(isSelected: isSelected)
         }
         .buttonStyle(.plain)
-    }
-
-    private var targetPacePicker: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("TARGET PACE OVERRIDE")
-                .font(.system(size: 9, weight: .bold, design: .rounded))
-                .foregroundStyle(.secondary)
-                .padding(.leading, 2)
-
-            Picker("Target Pace", selection: $selectedPaceOption) {
-                ForEach(WatchTargetPaceOption.allOptions) { option in
-                    Text(option.label(useMetric: useMetricSystem)).tag(option)
-                }
-            }
-            .pickerStyle(.wheel)
-            .frame(height: 60)
-            .neutralWatchSurface(isSelected: false)
-        }
     }
 }
 

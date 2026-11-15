@@ -142,7 +142,23 @@ public struct PacingGaugeView: View {
     private var flowHeroCard: some View {
         VStack(alignment: .leading, spacing: 6) {
             heroHeaderRow {
-                if !displayState.refractoryCountdownFormatted.isEmpty {
+                if let blockRemaining = displayState.activeBlockRemainingFormatted, !blockRemaining.isEmpty {
+                    HStack(spacing: 4) {
+                        Text(blockRemaining)
+                            .font(.system(size: 9, weight: .bold, design: .rounded))
+                            .monospacedDigit()
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.white.opacity(0.12))
+                            .foregroundStyle(.secondary)
+                            .clipShape(Capsule())
+
+                        Text(displayState.elapsedTimeFormatted)
+                            .font(.system(size: 10, weight: .bold, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                    }
+                } else if !displayState.refractoryCountdownFormatted.isEmpty {
                     HStack(spacing: 4) {
                         Text(displayState.refractoryCountdownFormatted)
                             .font(.system(size: 9, weight: .bold, design: .rounded))
@@ -299,12 +315,20 @@ public struct PacingGaugeView: View {
                     .foregroundStyle(stateColor)
             }
 
-            let statusTitle = displayState.biometricStatusLabel.isEmpty
-                ? displayState.stateTitle
-                : displayState.biometricStatusLabel
+            let statusTitle: String = {
+                if let badge = displayState.activeBlockBadge, !badge.isEmpty {
+                    return badge
+                } else if !displayState.biometricStatusLabel.isEmpty {
+                    return displayState.biometricStatusLabel
+                } else {
+                    return displayState.stateTitle
+                }
+            }()
             Text(statusTitle.uppercased())
                 .font(.system(size: 9, weight: .bold, design: .rounded))
                 .foregroundStyle(stateColor)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
 
             Spacer()
 

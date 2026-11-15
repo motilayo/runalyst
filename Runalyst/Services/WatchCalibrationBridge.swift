@@ -23,6 +23,7 @@ final class WatchCalibrationBridge: NSObject, WCSessionDelegate {
 
     @ObservationIgnored private var pendingContext: WatchPacingContext?
     @ObservationIgnored public private(set) var lastPublishedContext: WatchPacingContext?
+    @ObservationIgnored private var latestRecentWalkMeters48h: Double?
     @ObservationIgnored private var snapshotStalenessTask: Task<Void, Never>?
 
     override private init() {
@@ -78,6 +79,7 @@ final class WatchCalibrationBridge: NSObject, WCSessionDelegate {
         let session = WCSession.default
 
         refreshSessionState(session)
+        self.lastPublishedContext = resolvedContext
 
         guard session.activationState == .activated else {
             self.pendingContext = resolvedContext
@@ -153,7 +155,8 @@ final class WatchCalibrationBridge: NSObject, WCSessionDelegate {
         subjectiveDistress: Bool = false,
         now: Date = Date(),
         targetPaceSecondsPerKm: Int? = nil,
-        isIndoorPreferred: Bool? = nil
+        isIndoorPreferred: Bool? = nil,
+        readinessHint: WatchReadinessHint? = nil
     ) {
         let cachedAge = UserDefaults.standard.integer(forKey: "runnerAge")
         let effectiveAge = age ?? (cachedAge > 0 ? cachedAge : nil)
@@ -193,11 +196,40 @@ final class WatchCalibrationBridge: NSObject, WCSessionDelegate {
         calendar.locale = Locale(identifier: "en_US_POSIX")
         let dayString = AthleteCalibrationCore.formatDayString(date: now, calendar: calendar)
 
+        let userHeight: Double = {
+            let stored = UserDefaults.standard.double(forKey: "userHeightCm")
+            return stored > 0 ? stored : 175.0
+        }()
+
+        let resolvedReadinessHint: WatchReadinessHint = {
+            if let hint = readinessHint {
+                if hint.recentWalkMeters48h == nil, let cachedWalk = latestRecentWalkMeters48h {
+                    return WatchReadinessHint(
+                        daysSinceLastRun: hint.daysSinceLastRun,
+                        recentWalkMeters48h: cachedWalk,
+                        hadRecentCadenceFade: hint.hadRecentCadenceFade,
+                        hadRecentBounce: hint.hadRecentBounce,
+                        calibratedCadenceFloorSPM: hint.calibratedCadenceFloorSPM,
+                        isClearedForQuality: hint.isClearedForQuality
+                    )
+                }
+                return hint
+            }
+            return SessionSynthesisEngine.buildWatchReadinessHint(
+                runRecords: runs,
+                userHeightCm: userHeight,
+                recentWalkMeters48h: latestRecentWalkMeters48h,
+                subjectiveDistress: subjectiveDistress,
+                now: now
+            )
+        }()
+
         let intent = AthleteCalibrationCore.makeIntent(
             spec: spec,
             subjectiveDistress: subjectiveDistress,
             day: dayString,
-            targetPaceSecondsPerKm: targetPaceSecondsPerKm
+            targetPaceSecondsPerKm: targetPaceSecondsPerKm,
+            readinessHint: resolvedReadinessHint
         )
 
         let indoorPref = isIndoorPreferred ?? UserDefaults.standard.bool(forKey: "preferredWorkoutIsIndoor")
@@ -211,7 +243,109 @@ final class WatchCalibrationBridge: NSObject, WCSessionDelegate {
         )
 
         publish(context: context)
+
+        // When async context allows, query 48h walking distance read-only from HealthKitManager and update
+        if resolvedReadinessHint.recentWalkMeters48h == nil {
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                let walkMeters = await HealthKitManager.shared.fetchRecentWalkingDistanceMeters(windowHours: 48)
+                guard walkMeters > 0 else { return }
+                self.latestRecentWalkMeters48h = walkMeters
+                self.updateRecentWalkingMeters(walkMeters)
+            }
+        }
         Task { await self.refreshHealthKitCalibrationStatsIfNeeded() }
+    }
+
+    /// Asynchronously derives athlete calibration and session intent, fetching 48-hour walking load before publishing to Apple Watch.
+    func publishContextWithWalkingLoad(
+        runs: [RunRecord],
+        restingHRSamples: [Double] = [],
+        age: Int? = nil,
+        spec: PlannedSessionSpec? = nil,
+        subjectiveDistress: Bool = false,
+        now: Date = Date(),
+        targetPaceSecondsPerKm: Int? = nil,
+        isIndoorPreferred: Bool? = nil,
+        readinessHint: WatchReadinessHint? = nil
+    ) async {
+        let walkMeters: Double? = if let existing = readinessHint?.recentWalkMeters48h {
+            existing
+        } else {
+            await {
+                let meters = await HealthKitManager.shared.fetchRecentWalkingDistanceMeters(windowHours: 48)
+                return meters > 0 ? meters : nil
+            }()
+        }
+        if let walkMeters {
+            self.latestRecentWalkMeters48h = walkMeters
+        }
+        let userHeight: Double = {
+            let stored = UserDefaults.standard.double(forKey: "userHeightCm")
+            return stored > 0 ? stored : 175.0
+        }()
+        let hintToPublish = readinessHint.map { hint in
+            WatchReadinessHint(
+                daysSinceLastRun: hint.daysSinceLastRun,
+                recentWalkMeters48h: walkMeters ?? hint.recentWalkMeters48h,
+                hadRecentCadenceFade: hint.hadRecentCadenceFade,
+                hadRecentBounce: hint.hadRecentBounce,
+                calibratedCadenceFloorSPM: hint.calibratedCadenceFloorSPM,
+                isClearedForQuality: hint.isClearedForQuality
+            )
+        } ?? SessionSynthesisEngine.buildWatchReadinessHint(
+            runRecords: runs,
+            userHeightCm: userHeight,
+            recentWalkMeters48h: walkMeters,
+            subjectiveDistress: subjectiveDistress,
+            now: now
+        )
+        publishContext(
+            runs: runs,
+            restingHRSamples: restingHRSamples,
+            age: age,
+            spec: spec,
+            subjectiveDistress: subjectiveDistress,
+            now: now,
+            targetPaceSecondsPerKm: targetPaceSecondsPerKm,
+            isIndoorPreferred: isIndoorPreferred,
+            readinessHint: hintToPublish
+        )
+    }
+
+    /// Updates the published context with fresh walking load when received asynchronously.
+    func updateRecentWalkingMeters(_ meters: Double) {
+        guard let current = lastPublishedContext else { return }
+        let currentHint = current.intent.readinessHint
+        guard currentHint?.recentWalkMeters48h != meters else { return }
+        let updatedHint = WatchReadinessHint(
+            daysSinceLastRun: currentHint?.daysSinceLastRun,
+            recentWalkMeters48h: meters,
+            hadRecentCadenceFade: currentHint?.hadRecentCadenceFade ?? false,
+            hadRecentBounce: currentHint?.hadRecentBounce ?? false,
+            calibratedCadenceFloorSPM: currentHint?.calibratedCadenceFloorSPM,
+            isClearedForQuality: currentHint?.isClearedForQuality ?? true
+        )
+        let updatedIntent = PacingSessionIntent(
+            targetPaceSecondsPerKm: current.intent.targetPaceSecondsPerKm,
+            intent: current.intent.intent,
+            subjectiveDistress: current.intent.subjectiveDistress,
+            validForDay: current.intent.validForDay,
+            prescribedDrillTitle: current.intent.prescribedDrillTitle,
+            prescribedDrillId: current.intent.prescribedDrillId,
+            targetCadenceSPM: current.intent.targetCadenceSPM,
+            prescribedDurationMinutes: current.intent.prescribedDurationMinutes,
+            readinessHint: updatedHint
+        )
+        let updatedContext = WatchPacingContext(
+            schemaVersion: current.schemaVersion,
+            profile: current.profile,
+            intent: updatedIntent,
+            isIndoorPreferred: current.isIndoorPreferred,
+            useMetricSystem: current.useMetricSystem,
+            watchVoiceCuesEnabled: current.watchVoiceCuesEnabled
+        )
+        publish(context: updatedContext)
     }
 
     /// Publishes a structured drill intent directly to Apple Watch for execution in RunalystWatch.
@@ -219,7 +353,8 @@ final class WatchCalibrationBridge: NSObject, WCSessionDelegate {
         dto: DrillPrescriptionDTO,
         subjectiveDistress: Bool = false,
         now: Date = Date(),
-        isIndoorPreferred: Bool? = nil
+        isIndoorPreferred: Bool? = nil,
+        readinessHint: WatchReadinessHint? = nil
     ) {
         let fallbackAge = { let a = UserDefaults.standard.integer(forKey: "runnerAge"); return a > 0 ? a : nil }()
         let profile = lastPublishedContext?.profile ?? AthleteCalibrationCore.fallbackProfile(age: fallbackAge)
@@ -227,13 +362,15 @@ final class WatchCalibrationBridge: NSObject, WCSessionDelegate {
         calendar.locale = Locale(identifier: "en_US_POSIX")
         let dayString = AthleteCalibrationCore.formatDayString(date: now, calendar: calendar)
 
+        let effectiveHint = readinessHint ?? lastPublishedContext?.intent.readinessHint
         let intent = AthleteCalibrationCore.makeDrillIntent(
             title: dto.title,
             drillId: dto.preRunDrillId,
             targetCadence: dto.targetCadence,
             durationMinutes: dto.durationMinutes,
             day: dayString,
-            subjectiveDistress: subjectiveDistress
+            subjectiveDistress: subjectiveDistress,
+            readinessHint: effectiveHint
         )
 
         let indoorPref = isIndoorPreferred ?? dto.isIndoor ?? UserDefaults.standard.bool(forKey: "preferredWorkoutIsIndoor")

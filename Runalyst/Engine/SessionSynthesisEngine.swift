@@ -442,13 +442,101 @@ enum SessionSynthesisEngine {
         }()
 
         let spec = resolvedState.activeSession.toPlannedSessionSpec()
+        let readinessHint = buildWatchReadinessHint(
+            runRecords: runRecords,
+            userHeightCm: userHeightCm,
+            now: now
+        )
         WatchCalibrationBridge.shared.publishContext(
             runs: runRecords,
             spec: spec,
-            now: now
+            now: now,
+            readinessHint: readinessHint
         )
 
         return resolvedState
+    }
+
+    // MARK: - Watch Readiness Hint Derivation
+
+    /// Builds a deterministic `WatchReadinessHint` conveying days-since-last-run, walking volume, and biomechanical limiters to Apple Watch.
+    @MainActor
+    public static func buildWatchReadinessHint(
+        runRecords: [RunRecord],
+        userHeightCm: Double = 175.0,
+        recentWalkMeters48h: Double? = nil,
+        subjectiveDistress: Bool = false,
+        now: Date = Date()
+    ) -> WatchReadinessHint {
+        let pastRuns = runRecords
+            .filter { !$0.isDeleted && $0.date <= now }
+            .sorted { $0.date > $1.date }
+
+        let daysSinceLastRun: Int? = pastRuns.first.map { latest in
+            let calendar = Calendar.current
+            let startOfNow = calendar.startOfDay(for: now)
+            let startOfLatest = calendar.startOfDay(for: latest.date)
+            let calendarDays = calendar.dateComponents([.day], from: startOfLatest, to: startOfNow).day ?? 0
+            let timeDays = Int(now.timeIntervalSince(latest.date) / 86400.0)
+            return max(0, max(calendarDays, timeDays))
+        }
+
+        let calibratedFloor = SessionSynthesisCore.heightAdjustedCadenceFloor(heightCm: userHeightCm)
+        let recentRun = pastRuns.first
+
+        let limiters = SessionSynthesisCore.detectRecentLimiters(
+            verticalRatio: recentRun?.verticalRatio,
+            verticalOscillationCm: recentRun?.workingAvgVerticalOscillation ?? recentRun?.rawAvgVerticalOscillation,
+            cadenceSPM: recentRun?.workingAvgCadence ?? 0.0,
+            cadenceFloor: calibratedFloor,
+            hasCadenceFadeTag: recentRun?.framboiseTags.contains(FramboiseReadinessTag.cadenceFade) ?? false
+                || recentRun?.tags.contains(where: {
+                    $0.localizedCaseInsensitiveContains("cadencefade")
+                        || $0 == FramboiseReadinessTag.cadenceFade
+                }) ?? false,
+            cadenceSlope: recentRun?.cadenceSlope,
+            splitCadences: recentRun?.splits.map(\.avgCadence) ?? []
+        )
+
+        let readiness = ReadinessEvaluator.assess(runRecords: runRecords, now: now)
+        let hadCardiacDrift = readiness.triggers.contains(.cardiacDrift)
+            || (recentRun?.tags.contains(where: {
+                $0.localizedCaseInsensitiveContains("cardiacdrift")
+                    || $0.localizedCaseInsensitiveContains("fatiguedrift")
+                    || $0 == "Cardiac Drift"
+            }) ?? false)
+
+        let isClearedForQuality = !subjectiveDistress
+            && readiness.state == .productive
+            && !hadCardiacDrift
+
+        return WatchReadinessHint(
+            daysSinceLastRun: daysSinceLastRun,
+            recentWalkMeters48h: recentWalkMeters48h,
+            hadRecentCadenceFade: limiters.hadCadenceFade,
+            hadRecentBounce: limiters.hadExcessiveBounce,
+            calibratedCadenceFloorSPM: calibratedFloor,
+            isClearedForQuality: isClearedForQuality
+        )
+    }
+
+    /// Asynchronously builds a `WatchReadinessHint` by querying trailing 48-hour walking distance from `HealthKitManager`.
+    @MainActor
+    public static func buildWatchReadinessHint(
+        runRecords: [RunRecord],
+        userHeightCm: Double = 175.0,
+        subjectiveDistress: Bool = false,
+        now: Date = Date()
+    ) async -> WatchReadinessHint {
+        let walkMeters = await HealthKitManager.shared.fetchRecentWalkingDistanceMeters(windowHours: 48)
+        let recentWalk = walkMeters > 0 ? walkMeters : nil
+        return buildWatchReadinessHint(
+            runRecords: runRecords,
+            userHeightCm: userHeightCm,
+            recentWalkMeters48h: recentWalk,
+            subjectiveDistress: subjectiveDistress,
+            now: now
+        )
     }
 
     // MARK: - Pre-Run Synthesis

@@ -108,6 +108,12 @@ public struct WatchLiveRunSnapshot: Sendable, Codable, Equatable {
     public let calibrationProgress: Double?
     /// Post-run 3-bullet takeaway summary populated upon session completion.
     public let completedDebrief: WatchRunDebrief?
+    /// Active adaptive micro-block visual badge (e.g. "CADENCE 158->162"), or `nil` when inactive.
+    public let activeBlockBadge: String?
+    /// Pre-formatted remaining countdown for the active micro-block (e.g. "2:45"), or `nil`.
+    public let activeBlockRemainingFormatted: String?
+    /// Active short-burst tactile cue snapshot driving watchOS haptics, or `nil` when silent.
+    public let activeTactileCue: ActiveTactileCue?
     /// Epoch timestamp (in seconds) when this snapshot was captured on Apple Watch.
     public let updatedAtEpochSeconds: TimeInterval
 
@@ -131,6 +137,9 @@ public struct WatchLiveRunSnapshot: Sendable, Codable, Equatable {
         targetBandUpperNormalized: Double,
         calibrationProgress: Double? = nil,
         completedDebrief: WatchRunDebrief? = nil,
+        activeBlockBadge: String? = nil,
+        activeBlockRemainingFormatted: String? = nil,
+        activeTactileCue: ActiveTactileCue? = nil,
         updatedAtEpochSeconds: TimeInterval
     ) {
         self.schemaVersion = schemaVersion
@@ -152,6 +161,9 @@ public struct WatchLiveRunSnapshot: Sendable, Codable, Equatable {
         self.targetBandUpperNormalized = targetBandUpperNormalized
         self.calibrationProgress = calibrationProgress
         self.completedDebrief = completedDebrief
+        self.activeBlockBadge = activeBlockBadge
+        self.activeBlockRemainingFormatted = activeBlockRemainingFormatted
+        self.activeTactileCue = activeTactileCue
         self.updatedAtEpochSeconds = updatedAtEpochSeconds
     }
 
@@ -263,6 +275,9 @@ public struct WatchLiveRunSnapshot: Sendable, Codable, Equatable {
             targetBandUpperNormalized: displayState.targetBandUpperNormalized,
             calibrationProgress: displayState.calibrationProgress,
             completedDebrief: completedDebrief,
+            activeBlockBadge: displayState.activeBlockBadge,
+            activeBlockRemainingFormatted: displayState.activeBlockRemainingFormatted,
+            activeTactileCue: displayState.activeTactileCue,
             updatedAtEpochSeconds: updatedAtEpochSeconds
         )
     }
@@ -293,6 +308,9 @@ public struct WatchLiveRunSnapshot: Sendable, Codable, Equatable {
             targetBandUpperNormalized: 0.58,
             calibrationProgress: nil,
             completedDebrief: nil,
+            activeBlockBadge: nil,
+            activeBlockRemainingFormatted: nil,
+            activeTactileCue: nil,
             updatedAtEpochSeconds: updatedAtEpochSeconds
         )
     }
