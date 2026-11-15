@@ -443,6 +443,7 @@ struct DashboardView: View {
         .onChange(of: trainingGoal) {
             checkAndFetchInsight()
             DailyTrainingStateStore.shared.invalidate()
+            _ = currentDailyTrainingState
         }
         .onChange(of: minimumRunDistance) {
             lastBaselineChangeTimestamp = Date().timeIntervalSince1970

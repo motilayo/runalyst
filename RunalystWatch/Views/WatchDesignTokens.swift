@@ -1,4 +1,15 @@
+import RunalystCore
 import SwiftUI
+
+// MARK: - Shared Color Extension
+
+extension Color {
+    /// Canonical biometric color initialized directly from `LiveTrackCore.paletteRGB(for:)`.
+    public init(token: PacingAccentToken) {
+        let rgb = LiveTrackCore.paletteRGB(for: token)
+        self.init(red: rgb.red, green: rgb.green, blue: rgb.blue)
+    }
+}
 
 // MARK: - Watch Design Tokens & Color Palette
 

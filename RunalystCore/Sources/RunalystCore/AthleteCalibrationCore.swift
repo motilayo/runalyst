@@ -412,8 +412,14 @@ public enum AthleteCalibrationCore {
     ) -> PacingSessionIntent {
         let cadenceSPM: Int? = {
             guard let targetCadence else { return nil }
-            let digits = targetCadence.components(separatedBy: CharacterSet.decimalDigits.inverted).joined()
-            return Int(digits)
+            let numbers = targetCadence
+                .components(separatedBy: CharacterSet.decimalDigits.inverted)
+                .filter { !$0.isEmpty }
+                .compactMap { Int($0) }
+            if numbers.count >= 2 {
+                return (numbers[0] + numbers[1]) / 2
+            }
+            return numbers.first
         }()
 
         return PacingSessionIntent(

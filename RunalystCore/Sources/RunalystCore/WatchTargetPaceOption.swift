@@ -160,13 +160,19 @@ public struct WatchResolvedSessionConfig: Sendable, Equatable {
 
     /// Derives a session configuration tailored to a user-selected running intent and optional selected pace.
     ///
-    /// When `runIntent` is `nil` or `.adaptiveBase`, prescribed drills, iPhone pacing intent, target cadence,
-    /// duration, and readiness hints are preserved with `requiresTargetPacePicker` forced to `false`.
-    /// When `.recovery` or `.pushPerformance` overrides a differing intent or drill, drill fields and stale
-    /// synced paces are cleared (respecting `subjectiveDistress`), `requiresTargetPacePicker` stays `false`,
-    /// and `isUserIntentOverride` is marked when the session was synced from iPhone.
-    public func applying(runIntent: WatchRunIntent?, selectedPace: Int? = nil) -> WatchResolvedSessionConfig {
-        guard let runIntent, runIntent != .adaptiveBase else {
+    /// When `runIntent` is `nil`, or `.adaptiveBase` without `isExplicitOverride`, prescribed drills, iPhone
+    /// pacing intent, target cadence, duration, and readiness hints are preserved with `requiresTargetPacePicker`
+    /// forced to `false`.
+    /// When `isExplicitOverride` is `true` for `.adaptiveBase`, or when `.recovery` or `.pushPerformance`
+    /// overrides a differing intent or drill, drill fields and stale synced paces are cleared (respecting
+    /// `subjectiveDistress`), `requiresTargetPacePicker` stays `false`, and `isUserIntentOverride` is marked
+    /// when the session was synced from iPhone.
+    public func applying(
+        runIntent: WatchRunIntent?,
+        selectedPace: Int? = nil,
+        isExplicitOverride: Bool = false
+    ) -> WatchResolvedSessionConfig {
+        guard let runIntent, (runIntent != .adaptiveBase || isExplicitOverride) else {
             let effectivePace = selectedPace ?? intent.targetPaceSecondsPerKm
             let preservedIntent = PacingSessionIntent(
                 targetPaceSecondsPerKm: effectivePace,
@@ -192,6 +198,9 @@ public struct WatchResolvedSessionConfig: Sendable, Equatable {
         let resolvedPacingIntent: PacingIntentKind = {
             switch runIntent {
             case .adaptiveBase:
+                if isExplicitOverride {
+                    return intent.subjectiveDistress ? .recovery : .easyAerobic
+                }
                 return intent.intent
             case .recovery:
                 return .recovery

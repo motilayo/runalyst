@@ -4,6 +4,7 @@ included:
   - Runalyst
   - RunalystTests
   - RunalystWatch
+  - RunalystWidgets
 
 excluded:
   - DerivedData

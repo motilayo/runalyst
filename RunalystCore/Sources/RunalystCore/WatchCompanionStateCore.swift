@@ -116,6 +116,10 @@ public struct WatchLiveRunSnapshot: Sendable, Codable, Equatable {
     public let activeTactileCue: ActiveTactileCue?
     /// Epoch timestamp (in seconds) when this snapshot was captured on Apple Watch.
     public let updatedAtEpochSeconds: TimeInterval
+    /// Deterministic 400m track lap kinematics snapshot, or `nil` when omitted.
+    public let trackSnapshot: LiveTrackSnapshot?
+    /// Bounded 8-minute rolling trajectory summary, or `nil` when omitted.
+    public let trajectorySummary: LiveTrajectorySummary?
 
     public init(
         schemaVersion: Int = WatchLiveRunSnapshot.currentSchemaVersion,
@@ -140,7 +144,9 @@ public struct WatchLiveRunSnapshot: Sendable, Codable, Equatable {
         activeBlockBadge: String? = nil,
         activeBlockRemainingFormatted: String? = nil,
         activeTactileCue: ActiveTactileCue? = nil,
-        updatedAtEpochSeconds: TimeInterval
+        updatedAtEpochSeconds: TimeInterval,
+        trackSnapshot: LiveTrackSnapshot? = nil,
+        trajectorySummary: LiveTrajectorySummary? = nil
     ) {
         self.schemaVersion = schemaVersion
         self.phase = phase
@@ -165,6 +171,8 @@ public struct WatchLiveRunSnapshot: Sendable, Codable, Equatable {
         self.activeBlockRemainingFormatted = activeBlockRemainingFormatted
         self.activeTactileCue = activeTactileCue
         self.updatedAtEpochSeconds = updatedAtEpochSeconds
+        self.trackSnapshot = trackSnapshot
+        self.trajectorySummary = trajectorySummary
     }
 
     /// Whether this snapshot schema version is supported by the compiled runtime.
@@ -224,6 +232,9 @@ public struct WatchLiveRunSnapshot: Sendable, Codable, Equatable {
         isPaused: Bool = false,
         isCompleted: Bool = false,
         completedDebrief: WatchRunDebrief? = nil,
+        useMetricSystem: Bool = true,
+        trackSnapshot: LiveTrackSnapshot? = nil,
+        trajectorySummary: LiveTrajectorySummary? = nil,
         updatedAtEpochSeconds: TimeInterval
     ) -> WatchLiveRunSnapshot {
         let phase: WatchCompanionPhase = {
@@ -264,8 +275,8 @@ public struct WatchLiveRunSnapshot: Sendable, Codable, Equatable {
             stateTitle: stateTitle,
             biometricStatusLabel: displayState.biometricStatusLabel,
             biometricStatusToken: displayState.biometricStatusToken,
-            filteredPaceFormatted: displayState.filteredPaceFormatted,
-            targetPaceFormatted: displayState.targetPaceFormatted,
+            filteredPaceFormatted: displayState.filteredPaceFormatted(useMetric: useMetricSystem),
+            targetPaceFormatted: displayState.targetPaceFormatted(useMetric: useMetricSystem),
             filteredHeartRateFormatted: displayState.filteredHeartRateFormatted,
             filteredCadenceFormatted: displayState.filteredCadenceFormatted,
             elapsedTimeFormatted: displayState.elapsedTimeFormatted,
@@ -278,7 +289,9 @@ public struct WatchLiveRunSnapshot: Sendable, Codable, Equatable {
             activeBlockBadge: displayState.activeBlockBadge,
             activeBlockRemainingFormatted: displayState.activeBlockRemainingFormatted,
             activeTactileCue: displayState.activeTactileCue,
-            updatedAtEpochSeconds: updatedAtEpochSeconds
+            updatedAtEpochSeconds: updatedAtEpochSeconds,
+            trackSnapshot: trackSnapshot,
+            trajectorySummary: trajectorySummary
         )
     }
 
@@ -311,7 +324,9 @@ public struct WatchLiveRunSnapshot: Sendable, Codable, Equatable {
             activeBlockBadge: nil,
             activeBlockRemainingFormatted: nil,
             activeTactileCue: nil,
-            updatedAtEpochSeconds: updatedAtEpochSeconds
+            updatedAtEpochSeconds: updatedAtEpochSeconds,
+            trackSnapshot: nil,
+            trajectorySummary: nil
         )
     }
 }
@@ -327,6 +342,9 @@ extension PacingDisplayState {
         isPaused: Bool = false,
         isCompleted: Bool = false,
         completedDebrief: WatchRunDebrief? = nil,
+        useMetricSystem: Bool = true,
+        trackSnapshot: LiveTrackSnapshot? = nil,
+        trajectorySummary: LiveTrajectorySummary? = nil,
         updatedAtEpochSeconds: TimeInterval
     ) -> WatchLiveRunSnapshot {
         WatchLiveRunSnapshot.from(
@@ -337,6 +355,9 @@ extension PacingDisplayState {
             isPaused: isPaused,
             isCompleted: isCompleted,
             completedDebrief: completedDebrief,
+            useMetricSystem: useMetricSystem,
+            trackSnapshot: trackSnapshot,
+            trajectorySummary: trajectorySummary,
             updatedAtEpochSeconds: updatedAtEpochSeconds
         )
     }

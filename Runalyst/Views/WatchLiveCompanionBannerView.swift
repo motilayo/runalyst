@@ -1,15 +1,19 @@
-import SwiftUI
 import RunalystCore
+import SwiftUI
 
 /// Hollow view rendering real-time companion workout telemetry and post-run debrief from Apple Watch.
 ///
 /// Adheres strictly to the Hollow Foundry doctrine:
 /// - Zero biomechanical thresholds, math, or duration calculations.
 /// - Pure read-only renderer over `WatchLiveRunSnapshot` and `WatchRunDebrief`.
+/// - Cross-device adaptive layout: 3-column side-by-side on iPad (`.regular`), swipeable TabView on iPhone (`.compact`).
 /// - Sweaty Hands UX: >= 44pt hit targets, monospaced digits, and SF Pro Rounded fonts.
 struct WatchLiveCompanionBannerView: View {
     let bridge: WatchCalibrationBridge
     let onSyncRequested: () -> Void
+
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @State private var selectedPage: LiveActivityDisplayMode = .track
 
     var body: some View {
         if let snapshot = bridge.latestWatchSnapshot, snapshot.isActiveWorkout {
@@ -30,7 +34,7 @@ struct WatchLiveCompanionBannerView: View {
             HStack(alignment: .center, spacing: 10) {
                 Image(systemName: "applewatch")
                     .font(.title3)
-                    .foregroundColor(snapshot.phase == .paused ? .orange : RunalystColor.pace)
+                    .foregroundColor(snapshot.phase == .paused ? .orange : Color(token: .electricBlue))
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(snapshot.headerTitle)
@@ -58,7 +62,7 @@ struct WatchLiveCompanionBannerView: View {
             if !snapshot.biometricStatusLabel.isEmpty {
                 HStack(spacing: 6) {
                     Circle()
-                        .fill(snapshot.biometricStatusToken.color)
+                        .fill(Color(token: snapshot.biometricStatusToken))
                         .frame(width: 8, height: 8)
                     Text(snapshot.biometricStatusLabel)
                         .font(.caption.weight(.medium))
@@ -72,18 +76,29 @@ struct WatchLiveCompanionBannerView: View {
                 }
             }
 
-            // Target Pace Normalized Bar Gauge
-            paceGaugeBar(snapshot: snapshot)
+            // Cross-Device Adaptive Layout: iPad 3-Column vs iPhone Swipe Pager
+            if horizontalSizeClass == .regular {
+                HStack(alignment: .top, spacing: 12) {
+                    CompanionTrackPageView(snapshot: snapshot)
+                        .frame(maxWidth: .infinity)
+                        .padding(10)
+                        .background(Color(UIColor.tertiarySystemFill).opacity(0.35))
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
-            // Live Metrics Row: Pace, Target, HR, Cadence
-            HStack {
-                metricTile(label: "Pace", value: snapshot.filteredPaceFormatted, color: RunalystColor.pace)
-                Spacer()
-                metricTile(label: "Target", value: snapshot.targetPaceFormatted, color: .secondary)
-                Spacer()
-                metricTile(label: "Heart Rate", value: snapshot.filteredHeartRateFormatted, color: RunalystColor.heartRate)
-                Spacer()
-                metricTile(label: "Cadence", value: snapshot.filteredCadenceFormatted, color: RunalystColor.cadence)
+                    CompanionMetricsPageView(snapshot: snapshot)
+                        .frame(maxWidth: .infinity)
+                        .padding(10)
+                        .background(Color(UIColor.tertiarySystemFill).opacity(0.35))
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                    CompanionChartPageView(snapshot: snapshot)
+                        .frame(maxWidth: .infinity)
+                        .padding(10)
+                        .background(Color(UIColor.tertiarySystemFill).opacity(0.35))
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+            } else {
+                swipePager(snapshot: snapshot)
             }
 
             // Sweaty Hands Remote Control Actions
@@ -134,36 +149,44 @@ struct WatchLiveCompanionBannerView: View {
         .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
     }
 
-    // MARK: - Pace Gauge Normalized Bar
+    // MARK: - iPhone Swipe Pager & Indicator
 
     @ViewBuilder
-    private func paceGaugeBar(snapshot: WatchLiveRunSnapshot) -> some View {
-        GeometryReader { geometry in
-            let width = geometry.size.width
-            let lower = min(max(snapshot.targetBandLowerNormalized, 0.0), 1.0)
-            let upper = min(max(snapshot.targetBandUpperNormalized, lower), 1.0)
-            let needle = min(max(snapshot.paceGaugeNormalizedPosition, 0.0), 1.0)
+    private func swipePager(snapshot: WatchLiveRunSnapshot) -> some View {
+        VStack(spacing: 8) {
+            TabView(selection: $selectedPage) {
+                CompanionTrackPageView(snapshot: snapshot)
+                    .tag(LiveActivityDisplayMode.track)
 
-            ZStack(alignment: .leading) {
-                Capsule()
-                    .fill(Color(UIColor.tertiarySystemFill))
-                    .frame(height: 8)
+                CompanionMetricsPageView(snapshot: snapshot)
+                    .tag(LiveActivityDisplayMode.metrics)
 
-                // Target Pace Zone Band
-                Capsule()
-                    .fill(RunalystColor.cadence.opacity(0.45))
-                    .frame(width: max(4, (upper - lower) * width), height: 8)
-                    .offset(x: lower * width)
+                CompanionChartPageView(snapshot: snapshot)
+                    .tag(LiveActivityDisplayMode.chart)
+            }
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            .frame(height: 185)
 
-                // Current Pace Needle Marker
+            pageIndicator
+        }
+    }
+
+    private var pageIndicator: some View {
+        HStack(spacing: 6) {
+            ForEach(LiveActivityDisplayMode.allCases, id: \.self) { mode in
                 Circle()
-                    .fill(RunalystColor.pace)
-                    .frame(width: 14, height: 14)
-                    .overlay(Circle().stroke(Color.white, lineWidth: 2))
-                    .offset(x: max(0, min(width - 14, needle * width - 7)))
+                    .fill(selectedPage == mode ? Color.primary : Color.secondary.opacity(0.35))
+                    .frame(width: 6, height: 6)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            selectedPage = mode
+                        }
+                    }
             }
         }
-        .frame(height: 14)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Page \(selectedPage.title)")
     }
 
     // MARK: - Completed Debrief Card
@@ -175,7 +198,7 @@ struct WatchLiveCompanionBannerView: View {
             HStack(spacing: 10) {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.title3)
-                    .foregroundColor(RunalystColor.cadence)
+                    .foregroundColor(Color(token: .vibrantGreen))
 
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Just Finished on Apple Watch")
@@ -187,17 +210,29 @@ struct WatchLiveCompanionBannerView: View {
                 }
 
                 Spacer()
+
+                Button {
+                    bridge.dismissCompletedDebrief()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 44, height: 44, alignment: .trailing)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Dismiss Run Debrief")
             }
 
             // Summary Strip: Elapsed, Distance, Avg Pace, Avg HR
             HStack {
-                metricTile(label: "Time", value: debrief.elapsedFormatted, color: .primary)
+                metricTile(label: "Time", value: debbriefMetricTime(debrief), color: .primary)
                 Spacer()
                 metricTile(label: "Distance", value: debrief.distanceFormatted, color: .primary)
                 Spacer()
-                metricTile(label: "Avg Pace", value: debrief.averagePaceFormatted, color: RunalystColor.pace)
+                metricTile(label: "Avg Pace", value: debrief.averagePaceFormatted, color: Color(token: .electricBlue))
                 Spacer()
-                metricTile(label: "Avg HR", value: debrief.averageHeartRateFormatted, color: RunalystColor.heartRate)
+                metricTile(label: "Avg HR", value: debrief.averageHeartRateFormatted, color: Color(token: .neonPink))
             }
             .padding(.vertical, 4)
 
@@ -205,33 +240,24 @@ struct WatchLiveCompanionBannerView: View {
 
             // 3 Takeaway Bullets
             VStack(alignment: .leading, spacing: 8) {
-                takeawayRow(icon: "waveform.path.ecg", title: "Adaptations", text: debrief.adaptationsBullet, color: RunalystColor.pace)
-                takeawayRow(icon: "heart.fill", title: "Efficiency", text: debrief.efficiencyScoreBullet, color: RunalystColor.heartRate)
-                takeawayRow(icon: "metronome.fill", title: "Form Insight", text: debrief.formInsightBullet, color: RunalystColor.cadence)
-            }
-
-            // Action Buttons: Dismiss & Sync Run
-            HStack(spacing: 12) {
-                Button {
-                    bridge.dismissCompletedDebrief()
-                } label: {
-                    Text("Dismiss")
-                        .font(.subheadline.weight(.medium))
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                }
-                .buttonStyle(.bordered)
-                .tint(.secondary)
-
-                Button {
-                    onSyncRequested()
-                    bridge.dismissCompletedDebrief()
-                } label: {
-                    Label("Sync Run", systemImage: "arrow.triangle.2.circlepath")
-                        .font(.subheadline.weight(.semibold))
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(RunalystColor.pace)
+                takeawayRow(
+                    icon: "waveform.path.ecg",
+                    title: "Adaptations",
+                    text: debrief.adaptationsBullet,
+                    color: Color(token: .electricBlue)
+                )
+                takeawayRow(
+                    icon: "heart.fill",
+                    title: "Efficiency",
+                    text: debrief.efficiencyScoreBullet,
+                    color: Color(token: .neonPink)
+                )
+                takeawayRow(
+                    icon: "metronome.fill",
+                    title: "Form Insight",
+                    text: debrief.formInsightBullet,
+                    color: Color(token: .vibrantGreen)
+                )
             }
         }
         .padding(16)
@@ -242,9 +268,16 @@ struct WatchLiveCompanionBannerView: View {
                 .stroke(Color.primary.opacity(0.08), lineWidth: 1)
         )
         .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
+        .task(id: debrief) {
+            onSyncRequested()
+        }
     }
 
     // MARK: - Reusable Tile Helpers
+
+    private func debbriefMetricTime(_ debrief: WatchRunDebrief) -> String {
+        debrief.elapsedFormatted
+    }
 
     private func metricTile(label: String, value: String, color: Color) -> some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -273,27 +306,6 @@ struct WatchLiveCompanionBannerView: View {
                     .foregroundColor(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-        }
-    }
-}
-
-// MARK: - PacingAccentToken Color Mapping
-
-private extension PacingAccentToken {
-    var color: Color {
-        switch self {
-        case .electricBlue, .surgeBlue, .calibratingBlue:
-            return RunalystColor.pace
-        case .neonPink:
-            return RunalystColor.heartRate
-        case .vibrantGreen:
-            return RunalystColor.cadence
-        case .recoverOrange, .recoverAmber:
-            return RunalystColor.warning
-        case .surgeTeal:
-            return Color.teal
-        case .neutral:
-            return Color.secondary
         }
     }
 }
