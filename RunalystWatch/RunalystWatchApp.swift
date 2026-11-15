@@ -22,18 +22,29 @@ struct RunalystWatchApp: App {
         let vm = PacingViewModel.shared
         if let preview {
             switch preview {
-            case "START_PRESCRIBED_DRILL":
+            case "START_PRESCRIBED_DRILL", "START_SYNCED_SESSION", "START_CUSTOM_OVERRIDE":
                 let mockProfile = AthleteCalibrationProfile(maxHR: 185.0, restingHR: 52.0, powerToHRTopQuartile: 1.85, isFallback: false)
                 var calendar = Calendar(identifier: .gregorian)
                 calendar.locale = Locale(identifier: "en_US_POSIX")
                 let today = AthleteCalibrationCore.formatDayString(date: Date(), calendar: calendar)
-                let mockIntent = AthleteCalibrationCore.makeDrillIntent(
-                    title: "Cadence Pyramids",
-                    drillId: "cadencePyramids",
-                    targetCadence: "165 SPM",
-                    durationMinutes: 10,
-                    day: today
-                )
+                let mockIntent: PacingSessionIntent
+                if preview == "START_PRESCRIBED_DRILL" {
+                    mockIntent = AthleteCalibrationCore.makeDrillIntent(
+                        title: "Cadence Pyramids",
+                        drillId: "cadencePyramids",
+                        targetCadence: "165 SPM",
+                        durationMinutes: 10,
+                        day: today
+                    )
+                } else {
+                    UserDefaults.standard.set(true, forKey: "useMetricSystem")
+                    mockIntent = PacingSessionIntent(
+                        targetPaceSecondsPerKm: 315,
+                        intent: .steady,
+                        subjectiveDistress: false,
+                        validForDay: today
+                    )
+                }
                 let context = WatchPacingContext(profile: mockProfile, intent: mockIntent)
                 if let data = try? JSONEncoder().encode(context) {
                     UserDefaults.standard.set(data, forKey: "cachedWatchPacingContext")
@@ -92,7 +103,8 @@ struct RunalystWatchApp: App {
                     targetBandLowerNormalized: 0.42,
                     targetBandUpperNormalized: 0.58,
                     biometricStatusToken: .electricBlue,
-                    biometricStatusLabel: "Locked In"
+                    biometricStatusLabel: "Locked In",
+                    totalDistanceMeters: 620.0
                 )
             case "GAUGE_SURGE":
                 vm.displayState = PacingDisplayState(
@@ -119,7 +131,8 @@ struct RunalystWatchApp: App {
                     targetBandLowerNormalized: 0.42,
                     targetBandUpperNormalized: 0.58,
                     biometricStatusToken: .surgeTeal,
-                    biometricStatusLabel: "Surge Zone"
+                    biometricStatusLabel: "Surge",
+                    totalDistanceMeters: 340.0
                 )
             case "GAUGE_RECOVER":
                 vm.displayState = PacingDisplayState(
@@ -146,7 +159,8 @@ struct RunalystWatchApp: App {
                     targetBandLowerNormalized: 0.42,
                     targetBandUpperNormalized: 0.58,
                     biometricStatusToken: .recoverAmber,
-                    biometricStatusLabel: "Protecting Zone"
+                    biometricStatusLabel: "Recover",
+                    totalDistanceMeters: 820.0
                 )
             case "GAUGE_BLOCK":
                 vm.displayState = PacingDisplayState(
@@ -198,12 +212,12 @@ struct RunalystWatchApp: App {
                         RunSummaryView(
                             debrief: WatchRunDebrief(
                                 adaptationsBullet: "2 surges (+10s/km peak), 1 recovery adjustment.",
-                                efficiencyScoreBullet: "Held baseline efficiency for 28 minutes before cardiac drift.",
-                                formInsightBullet: "Cadence stayed rock-solid at 172 spm across the run.",
+                                efficiencyScoreBullet: "Stayed in live aerobic band for 28 minutes before recovery shift.",
+                                formInsightBullet: "Held steady 172 SPM turnover across the run.",
                                 elapsedFormatted: "32:45",
                                 distanceFormatted: "6.20 km",
                                 averagePaceFormatted: "5:17 /km",
-                                averageHeartRateFormatted: "152 bpm",
+                                averageHeartRateFormatted: "152 BPM",
                                 averageCadenceFormatted: "172 SPM"
                             ),
                             onDone: {}
@@ -226,19 +240,24 @@ struct RunalystWatchApp: App {
 // MARK: - Watch Application Delegate
 
 final class RunalystWatchAppDelegate: NSObject, WKApplicationDelegate {
+    func handleActiveWorkoutRecovery() {
+        Task { @MainActor in
+            await WorkoutManager.shared.recoverActiveWorkoutIfNeeded(viewModel: PacingViewModel.shared)
+        }
+    }
+
     func handle(_ workoutConfiguration: HKWorkoutConfiguration) {
         Task { @MainActor in
+            guard WorkoutManager.shared.sessionState != .running && WorkoutManager.shared.sessionState != .paused else { return }
+            WorkoutManager.shared.isNavigatingToGauge = true
+
             let resolved = WatchContextStore.shared.resolveSession()
             let location: PacingLocation = (workoutConfiguration.locationType == .indoor || resolved.isIndoor) ? .indoor : .outdoor
-            let intent: WatchRunIntent = .adaptiveBase
             let targetPace = resolved.intent.targetPaceSecondsPerKm
-
-            WorkoutManager.shared.isNavigatingToGauge = true
-            guard WorkoutManager.shared.sessionState != .running else { return }
 
             await WorkoutManager.shared.startWorkout(
                 location: location,
-                intent: intent,
+                intent: nil,
                 targetPaceSecondsPerKm: targetPace,
                 viewModel: PacingViewModel.shared
             )

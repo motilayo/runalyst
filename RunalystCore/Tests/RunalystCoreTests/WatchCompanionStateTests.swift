@@ -178,7 +178,7 @@ struct WatchCompanionStateTests {
         #expect(snapshot.phase == WatchCompanionPhase.calibrating)
         #expect(snapshot.isActiveWorkout == true)
         #expect(snapshot.stateTitle == "Calibrating")
-        #expect(snapshot.headerTitle == "Adaptive Base")
+        #expect(snapshot.headerTitle == "Aerobic Base")
         #expect(snapshot.calibrationProgress == 0.45)
         #expect(snapshot.completedDebrief == nil)
     }
@@ -198,7 +198,7 @@ struct WatchCompanionStateTests {
         #expect(snapshot.phase == .running)
         #expect(snapshot.isActiveWorkout == true)
         #expect(snapshot.stateTitle == "Adaptive Pacing")
-        #expect(snapshot.headerTitle == "Adaptive Base")
+        #expect(snapshot.headerTitle == "Aerobic Base")
 
         let monitorDisplay = makeDisplayState(state: .tracking, adjustmentsEnabled: false)
         let monitorSnapshot = WatchLiveRunSnapshot.from(
@@ -282,7 +282,7 @@ struct WatchCompanionStateTests {
         #expect(snapshot.phase == .completed)
         #expect(snapshot.isActiveWorkout == false)
         #expect(snapshot.stateTitle == "Completed")
-        #expect(snapshot.headerTitle == "Coach's Takeaway")
+        #expect(snapshot.headerTitle == "Run Debrief")
 
         let debrief = snapshot.completedDebrief
         #expect(debrief != nil)
@@ -321,7 +321,7 @@ struct WatchCompanionStateTests {
         )
         #expect(pausedSnapshot.headerTitle == "Apple Watch Paused")
 
-        // Completed run -> surfaces Coach's Takeaway
+        // Completed run -> surfaces Run Debrief
         let completedSnapshot = WatchLiveRunSnapshot.from(
             displayState: display,
             location: .outdoor,
@@ -332,7 +332,7 @@ struct WatchCompanionStateTests {
             completedDebrief: sampleDebrief,
             updatedAtEpochSeconds: 12.0
         )
-        #expect(completedSnapshot.headerTitle == "Coach's Takeaway")
+        #expect(completedSnapshot.headerTitle == "Run Debrief")
     }
 
     @Test("PacingDisplayState makeLiveSnapshot extension matches static factory output")
@@ -388,8 +388,8 @@ struct WatchCompanionStateTests {
         #expect(decoded.location == .outdoor)
         #expect(decoded.runIntent == .adaptiveBase)
         #expect(decoded.prescribedDrillTitle == "Cadence Pyramids")
-        #expect(decoded.headerTitle == "Coach's Takeaway")
-        #expect(decoded.intentAndLocationSubtitle == "Adaptive Base • Outdoor")
+        #expect(decoded.headerTitle == "Run Debrief")
+        #expect(decoded.intentAndLocationSubtitle == "Aerobic Base • Outdoor")
         #expect(decoded.completedDebrief?.formInsightBullet == sampleDebrief.formInsightBullet)
         #expect(decoded.updatedAtEpochSeconds == 1731420000.0)
     }
@@ -458,8 +458,8 @@ struct WatchCompanionStateTests {
     @Test("intentAndLocationSubtitle formats intent and environment across all variations")
     func testIntentAndLocationSubtitleFormatting() {
         let cases: [(WatchRunIntent, PacingLocation, String)] = [
-            (.adaptiveBase, .outdoor, "Adaptive Base • Outdoor"),
-            (.adaptiveBase, .indoor, "Adaptive Base • Indoor"),
+            (.adaptiveBase, .outdoor, "Aerobic Base • Outdoor"),
+            (.adaptiveBase, .indoor, "Aerobic Base • Indoor"),
             (.pushPerformance, .outdoor, "Push / Performance • Outdoor"),
             (.pushPerformance, .indoor, "Push / Performance • Indoor"),
             (.recovery, .outdoor, "Recovery • Outdoor"),
@@ -504,5 +504,51 @@ struct WatchCompanionStateTests {
             let decoded = try decoder.decode(WatchRemoteCommand.self, from: data)
             #expect(decoded == command)
         }
+    }
+
+    // MARK: - 5. WatchLiveRunSnapshot Freshness & Staleness
+
+    @Test("WatchLiveRunSnapshot: isStale detects stale telemetry for active runs and expires paused or completed runs after 4 hours")
+    func testWatchLiveRunSnapshotStaleness() {
+        let activeSnapshot = WatchLiveRunSnapshot.from(
+            displayState: makeDisplayState(state: .tracking),
+            location: .outdoor,
+            runIntent: .adaptiveBase,
+            updatedAtEpochSeconds: 1000.0
+        )
+        #expect(activeSnapshot.phase == .running)
+        #expect(activeSnapshot.isPaused == false)
+        #expect(activeSnapshot.isStale(at: 1040.0) == false)
+        #expect(activeSnapshot.isStale(at: 1045.0) == false)
+        #expect(activeSnapshot.isStale(at: 1046.0) == true)
+        #expect(activeSnapshot.isStale(at: 1015.0, maxAgeSeconds: 10.0) == true)
+
+        let pausedSnapshot = WatchLiveRunSnapshot.from(
+            displayState: makeDisplayState(state: .tracking),
+            location: .outdoor,
+            runIntent: .adaptiveBase,
+            isPaused: true,
+            updatedAtEpochSeconds: 1000.0
+        )
+        #expect(pausedSnapshot.phase == .paused)
+        #expect(pausedSnapshot.isPaused == true)
+        #expect(pausedSnapshot.isStale(at: 2000.0) == false)
+        #expect(pausedSnapshot.isStale(at: 15_400.0) == false)
+        #expect(pausedSnapshot.isStale(at: 15_401.0) == true)
+        #expect(pausedSnapshot.isStale(at: 16_000.0) == true)
+
+        let completedSnapshot = WatchLiveRunSnapshot.from(
+            displayState: makeDisplayState(state: .tracking),
+            location: .outdoor,
+            runIntent: .adaptiveBase,
+            isCompleted: true,
+            updatedAtEpochSeconds: 1000.0
+        )
+        #expect(completedSnapshot.phase == .completed)
+        #expect(completedSnapshot.isPaused == false)
+        #expect(completedSnapshot.isStale(at: 2000.0) == false)
+        #expect(completedSnapshot.isStale(at: 15_400.0) == false)
+        #expect(completedSnapshot.isStale(at: 15_401.0) == true)
+        #expect(completedSnapshot.isStale(at: 16_000.0) == true)
     }
 }

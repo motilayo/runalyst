@@ -113,7 +113,8 @@ public final class FeedbackDispatcher: NSObject, AVSpeechSynthesizerDelegate {
     private func dispatchDiscreteEvents(_ events: [PacingEvent]) {
         guard !events.isEmpty else { return }
 
-        let useMetric = UserDefaults.standard.object(forKey: "useMetricSystem") as? Bool ?? true
+        let useMetric = UserDefaults.standard.object(forKey: "useMetricSystem") as? Bool
+            ?? (Locale.current.measurementSystem == .metric)
         let voiceCuesEnabled = UserDefaults.standard.object(forKey: "watchVoiceCuesEnabled") as? Bool ?? true
 
         for event in events {

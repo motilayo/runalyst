@@ -53,6 +53,26 @@ public struct WatchTargetPaceOption: Identifiable, Sendable, Codable, Equatable,
         self.label = label
     }
 
+    /// Returns a unit-aware formatted pace label in metric (`/km`) or imperial (`/mi`), falling back to `label` when unset.
+    ///
+    /// - Parameter useMetric: When `true`, formats in seconds per kilometer; when `false`, converts to seconds per mile.
+    /// - Returns: A formatted string such as `"5:00 /km"`, `"8:03 /mi"`, or `"Just Run"`.
+    public func label(useMetric: Bool) -> String {
+        guard let seconds = paceSecondsPerKm, seconds > 0 else {
+            return label
+        }
+        if useMetric {
+            let minutes = seconds / 60
+            let secs = seconds % 60
+            return String(format: "%d:%02d /km", minutes, secs)
+        } else {
+            let displaySeconds = Int((Double(seconds) * 1.609344).rounded())
+            let minutes = displaySeconds / 60
+            let secs = displaySeconds % 60
+            return String(format: "%d:%02d /mi", minutes, secs)
+        }
+    }
+
     /// Default option where no explicit pace is targeted, adapting around the athlete's natural baseline.
     public static let justRun = WatchTargetPaceOption(
         id: "just-run",
@@ -79,6 +99,8 @@ public struct WatchResolvedSessionConfig: Sendable, Equatable {
     public let intent: PacingSessionIntent
     public let requiresTargetPacePicker: Bool
     public let isIndoorPreferred: Bool
+    public let isPhoneSessionSynced: Bool
+    public let isUserIntentOverride: Bool
 
     public var hasPrescribedDrill: Bool {
         intent.prescribedDrillTitle != nil
@@ -98,29 +120,72 @@ public struct WatchResolvedSessionConfig: Sendable, Equatable {
         return "\(mins) Min"
     }
 
+    /// Default selection for the watch intent picker. Returns `nil` when a prescribed drill is active.
+    /// When synced with iPhone, returns a default selection only when the synced intent maps 1:1
+    /// to a watch intent (`.steady` -> `.adaptiveBase`, `.tempo` -> `.pushPerformance`, `.recovery` -> `.recovery`),
+    /// and returns `nil` for composite intents (`.easyAerobic`, `.progression`, `.intervals`).
+    /// For unsynced standalone runs, maps via `WatchRunIntent.matching(intentKind:)`.
+    public var defaultRunIntentSelection: WatchRunIntent? {
+        guard !hasPrescribedDrill else { return nil }
+        if isPhoneSessionSynced {
+            switch intent.intent {
+            case .steady:
+                return .adaptiveBase
+            case .tempo:
+                return .pushPerformance
+            case .recovery:
+                return .recovery
+            case .easyAerobic, .progression, .intervals:
+                return nil
+            }
+        }
+        return WatchRunIntent.matching(intentKind: intent.intent)
+    }
+
     public init(
         profile: AthleteCalibrationProfile,
         intent: PacingSessionIntent,
         requiresTargetPacePicker: Bool? = nil,
-        isIndoorPreferred: Bool = false
+        isIndoorPreferred: Bool = false,
+        isPhoneSessionSynced: Bool = false,
+        isUserIntentOverride: Bool = false
     ) {
         self.profile = profile
         self.intent = intent
         self.requiresTargetPacePicker = requiresTargetPacePicker ?? false
         self.isIndoorPreferred = isIndoorPreferred
+        self.isPhoneSessionSynced = isPhoneSessionSynced
+        self.isUserIntentOverride = isUserIntentOverride
     }
 
-    /// Derives a session configuration tailored to a user-selected running intent.
+    /// Derives a session configuration tailored to a user-selected running intent and optional selected pace.
     ///
-    /// Prescribed drills take precedence and remain intact; non-drill sessions adopt
-    /// the intent's pacing category and clear the target pace picker requirement.
-    public func applying(runIntent: WatchRunIntent) -> WatchResolvedSessionConfig {
-        guard !hasPrescribedDrill else {
+    /// When `runIntent` is `nil` or `.adaptiveBase`, prescribed drills, iPhone pacing intent, target cadence,
+    /// duration, and readiness hints are preserved with `requiresTargetPacePicker` forced to `false`.
+    /// When `.recovery` or `.pushPerformance` overrides a differing intent or drill, drill fields and stale
+    /// synced paces are cleared (respecting `subjectiveDistress`), `requiresTargetPacePicker` stays `false`,
+    /// and `isUserIntentOverride` is marked when the session was synced from iPhone.
+    public func applying(runIntent: WatchRunIntent?, selectedPace: Int? = nil) -> WatchResolvedSessionConfig {
+        guard let runIntent, runIntent != .adaptiveBase else {
+            let effectivePace = selectedPace ?? intent.targetPaceSecondsPerKm
+            let preservedIntent = PacingSessionIntent(
+                targetPaceSecondsPerKm: effectivePace,
+                intent: intent.intent,
+                subjectiveDistress: intent.subjectiveDistress,
+                validForDay: intent.validForDay,
+                prescribedDrillTitle: intent.prescribedDrillTitle,
+                prescribedDrillId: intent.prescribedDrillId,
+                targetCadenceSPM: intent.targetCadenceSPM,
+                prescribedDurationMinutes: intent.prescribedDurationMinutes,
+                readinessHint: intent.readinessHint
+            )
             return WatchResolvedSessionConfig(
                 profile: profile,
-                intent: intent,
+                intent: preservedIntent,
                 requiresTargetPacePicker: false,
-                isIndoorPreferred: isIndoorPreferred
+                isIndoorPreferred: isIndoorPreferred,
+                isPhoneSessionSynced: isPhoneSessionSynced,
+                isUserIntentOverride: false
             )
         }
 
@@ -135,22 +200,37 @@ public struct WatchResolvedSessionConfig: Sendable, Equatable {
             }
         }()
 
-        let modifiedIntent = PacingSessionIntent(
-            targetPaceSecondsPerKm: intent.targetPaceSecondsPerKm,
+        if !hasPrescribedDrill && intent.intent == resolvedPacingIntent && selectedPace == nil && !intent.subjectiveDistress {
+            return WatchResolvedSessionConfig(
+                profile: profile,
+                intent: intent,
+                requiresTargetPacePicker: false,
+                isIndoorPreferred: isIndoorPreferred,
+                isPhoneSessionSynced: isPhoneSessionSynced,
+                isUserIntentOverride: false
+            )
+        }
+
+        let effectivePace = selectedPace ?? (isPhoneSessionSynced || hasPrescribedDrill ? nil : intent.targetPaceSecondsPerKm)
+        let updatedIntent = PacingSessionIntent(
+            targetPaceSecondsPerKm: effectivePace,
             intent: resolvedPacingIntent,
             subjectiveDistress: intent.subjectiveDistress,
             validForDay: intent.validForDay,
-            prescribedDrillTitle: intent.prescribedDrillTitle,
-            prescribedDrillId: intent.prescribedDrillId,
-            targetCadenceSPM: intent.targetCadenceSPM,
-            prescribedDurationMinutes: intent.prescribedDurationMinutes,
+            prescribedDrillTitle: nil,
+            prescribedDrillId: nil,
+            targetCadenceSPM: nil,
+            prescribedDurationMinutes: nil,
             readinessHint: intent.readinessHint
         )
+
         return WatchResolvedSessionConfig(
             profile: profile,
-            intent: modifiedIntent,
+            intent: updatedIntent,
             requiresTargetPacePicker: false,
-            isIndoorPreferred: isIndoorPreferred
+            isIndoorPreferred: isIndoorPreferred,
+            isPhoneSessionSynced: isPhoneSessionSynced,
+            isUserIntentOverride: isPhoneSessionSynced
         )
     }
 }
@@ -168,11 +248,23 @@ public enum WatchRunIntent: String, Sendable, Codable, CaseIterable, Identifiabl
     public var title: String {
         switch self {
         case .adaptiveBase:
-            return "Adaptive Base"
+            return "Aerobic Base"
         case .pushPerformance:
             return "Push / Performance"
         case .recovery:
             return "Recovery"
+        }
+    }
+
+    /// Maps a fine-grained physiological intent kind into the 3 discrete high-level watch intents.
+    public static func matching(intentKind: PacingIntentKind) -> WatchRunIntent {
+        switch intentKind {
+        case .recovery:
+            return .recovery
+        case .tempo, .progression, .intervals:
+            return .pushPerformance
+        case .steady, .easyAerobic:
+            return .adaptiveBase
         }
     }
 

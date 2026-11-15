@@ -69,6 +69,18 @@ struct AdaptivePacingCoreWatchCompanionTests {
         #expect(recoveryConfig.hrCeilingFraction == 0.78)
         #expect(recoveryConfig.hrCeilingDurationSeconds == 20.0)
         #expect(recoveryConfig.recoverEfficiencyDriftThreshold == -0.04)
+
+        // Title and matching
+        #expect(WatchRunIntent.adaptiveBase.title == "Aerobic Base")
+        #expect(WatchRunIntent.pushPerformance.title == "Push / Performance")
+        #expect(WatchRunIntent.recovery.title == "Recovery")
+
+        #expect(WatchRunIntent.matching(intentKind: .recovery) == .recovery)
+        #expect(WatchRunIntent.matching(intentKind: .tempo) == .pushPerformance)
+        #expect(WatchRunIntent.matching(intentKind: .progression) == .pushPerformance)
+        #expect(WatchRunIntent.matching(intentKind: .intervals) == .pushPerformance)
+        #expect(WatchRunIntent.matching(intentKind: .steady) == .adaptiveBase)
+        #expect(WatchRunIntent.matching(intentKind: .easyAerobic) == .adaptiveBase)
     }
 
     @Test("WatchRunIntent.recovery: suppresses surge and triggers recover at conservative HR ceiling")
@@ -523,8 +535,8 @@ struct AdaptivePacingCoreWatchCompanionTests {
             useMetricSystem: true
         )
         #expect(metricDebrief.adaptationsBullet == "Held steady baseline pacing throughout.")
-        #expect(metricDebrief.efficiencyScoreBullet == "Held baseline efficiency for all 30 minutes.")
-        #expect(metricDebrief.formInsightBullet == "Cadence stayed rock-solid at 168 spm across the run.")
+        #expect(metricDebrief.efficiencyScoreBullet == "Stayed in live aerobic band for all 30 minutes.")
+        #expect(metricDebrief.formInsightBullet == "Held steady 168 SPM turnover across the run.")
         #expect(metricDebrief.elapsedFormatted == "30:00")
         #expect(metricDebrief.distanceFormatted == "6.00 km")
         #expect(metricDebrief.averagePaceFormatted == "5:00 /km")
@@ -572,8 +584,8 @@ struct AdaptivePacingCoreWatchCompanionTests {
             useMetricSystem: true
         )
         #expect(metric.adaptationsBullet == "2 surges (+6s/km peak), 1 recovery adjustment.")
-        #expect(metric.efficiencyScoreBullet == "Held baseline efficiency for 20 minutes before cardiac drift.")
-        #expect(metric.formInsightBullet == "Cadence stayed rock-solid at 168 spm until kilometer 4.")
+        #expect(metric.efficiencyScoreBullet == "Stayed in live aerobic band for 20 minutes before recovery shift.")
+        #expect(metric.formInsightBullet == "Held steady 168 SPM turnover until kilometer 4.")
         #expect(metric.distanceFormatted == "6.00 km")
         #expect(metric.averagePaceFormatted == "5:00 /km")
         #expect(metric.averageHeartRateFormatted == "152 BPM")
@@ -587,9 +599,9 @@ struct AdaptivePacingCoreWatchCompanionTests {
         )
         // 6 s/km * 1.609344 = 9.65 -> 10 s/mi
         #expect(imperial.adaptationsBullet == "2 surges (+10s/mi peak), 1 recovery adjustment.")
-        #expect(imperial.efficiencyScoreBullet == "Held baseline efficiency for 20 minutes before cardiac drift.")
+        #expect(imperial.efficiencyScoreBullet == "Stayed in live aerobic band for 20 minutes before recovery shift.")
         // 4000 m / 1609.344 = 2.485 -> 2 mi
-        #expect(imperial.formInsightBullet == "Cadence stayed rock-solid at 168 spm until mile 2.")
+        #expect(imperial.formInsightBullet == "Held steady 168 SPM turnover until mile 2.")
         #expect(imperial.distanceFormatted == "3.73 mi")
         #expect(imperial.averagePaceFormatted == "8:03 /mi")
     }
@@ -640,6 +652,104 @@ struct AdaptivePacingCoreWatchCompanionTests {
             useMetricSystem: true
         )
         #expect(emptyDebrief.averagePaceFormatted == "--:--")
+    }
+
+    @Test("WatchRunDebrief: 5-second 0.00 km run with 1 SPM noise filters out noise and debriefs accurately")
+    func testWatchRunDebriefShortRunNoiseCadence() {
+        var core = AdaptivePacingCore(
+            profile: standardProfile,
+            intent: standardIntent,
+            location: .outdoor,
+            configuration: .forWatchCompanion(intent: .adaptiveBase)
+        )
+
+        // 5 seconds standing still with pedometer noise (1 SPM, 0 m/s speed)
+        for s in 1...5 {
+            let tick = TelemetryTick(
+                elapsedSeconds: TimeInterval(s),
+                heartRateBPM: 78.0,
+                speedMetersPerSecond: 0.0,
+                cadenceSPM: 1.0
+            )
+            _ = core.ingest(tick, totalDistanceMeters: 0.0)
+        }
+
+        #expect(core.cadenceSampleCount == 0, "1 SPM noise must not be accumulated as valid running cadence")
+
+        let debrief = core.buildRunDebrief(
+            elapsedSeconds: 5.0,
+            totalDistanceMeters: 0.0,
+            useMetricSystem: true
+        )
+
+        #expect(debrief.adaptationsBullet == "Ended before baseline pacing lock.")
+        #expect(debrief.efficiencyScoreBullet == "Ended before baseline calibration completed.")
+        #expect(debrief.formInsightBullet == "Insufficient cadence data recorded.")
+        #expect(debrief.elapsedFormatted == "0:05")
+        #expect(debrief.distanceFormatted == "0.00 km")
+        #expect(debrief.averagePaceFormatted == "--:--")
+        #expect(debrief.averageCadenceFormatted == "--")
+    }
+
+    @Test("WatchRunDebrief: sub-10m tiny distance or excessive pace duration returns dashed pace without spike")
+    func testWatchRunDebriefTinyDistancePaceSpikeGuard() {
+        let core = AdaptivePacingCore(
+            profile: standardProfile,
+            intent: standardIntent,
+            location: .outdoor,
+            configuration: .forWatchCompanion(intent: .adaptiveBase)
+        )
+
+        // 1. Sub-10m tiny distance (0.5m in 5s) without pace samples -> "--:--"
+        let sub10mDebrief = core.buildRunDebrief(
+            elapsedSeconds: 5.0,
+            totalDistanceMeters: 0.5,
+            useMetricSystem: true
+        )
+        #expect(sub10mDebrief.averagePaceFormatted == "--:--")
+
+        // 2. Sub-10m with elapsed < 5s -> "--:--"
+        let shortElapsedDebrief = core.buildRunDebrief(
+            elapsedSeconds: 4.0,
+            totalDistanceMeters: 0.5,
+            useMetricSystem: true
+        )
+        #expect(shortElapsedDebrief.averagePaceFormatted == "--:--")
+
+        // 3. Distance >= 10m but computed secPerKm > 1800.0 (30:00 /km) -> "--:--"
+        // e.g. 10m in 20s = 20 / 0.01 = 2000 s/km > 1800 s/km
+        let extremeSlowDebrief = core.buildRunDebrief(
+            elapsedSeconds: 20.0,
+            totalDistanceMeters: 10.0,
+            useMetricSystem: true
+        )
+        #expect(extremeSlowDebrief.averagePaceFormatted == "--:--")
+
+        // 4. Valid running distance and pace (100m in 30s = 300 s/km -> 5:00 /km)
+        let validDebrief = core.buildRunDebrief(
+            elapsedSeconds: 30.0,
+            totalDistanceMeters: 100.0,
+            useMetricSystem: true
+        )
+        #expect(validDebrief.averagePaceFormatted == "5:00 /km")
+    }
+
+    @Test("WatchRunDebrief: 1-minute drift onset uses singular minute grammar")
+    func testWatchRunDebriefOneMinuteDriftGrammar() {
+        var core = AdaptivePacingCore(
+            profile: standardProfile,
+            intent: standardIntent,
+            location: .outdoor,
+            configuration: .forWatchCompanion(intent: .adaptiveBase)
+        )
+        core.firstDriftElapsedSeconds = 60.0 // Exactly 1 minute
+
+        let debrief = core.buildRunDebrief(
+            elapsedSeconds: 300.0,
+            totalDistanceMeters: 1000.0,
+            useMetricSystem: true
+        )
+        #expect(debrief.efficiencyScoreBullet == "Stayed in live aerobic band for 1 minute before recovery shift.")
     }
 
     @Test("WatchRunDebrief: warmup at low cadence followed by solid cadence produces across the run insight")
@@ -697,7 +807,7 @@ struct AdaptivePacingCoreWatchCompanionTests {
             useMetricSystem: true
         )
         // Must NOT emit "until kilometer 1." — must report across the run
-        #expect(debrief.formInsightBullet == "Cadence stayed rock-solid at 150 spm across the run.")
+        #expect(debrief.formInsightBullet == "Held steady 150 SPM turnover across the run.")
     }
 
     @Test("WatchRunDebrief: solid cadence drop after establishment records distance only after debounce")
@@ -712,7 +822,7 @@ struct AdaptivePacingCoreWatchCompanionTests {
                 targetCadenceSPM: 168
             ),
             location: .outdoor,
-            configuration: .forWatchCompanion(intent: .adaptiveBase)
+            configuration: .forWatchCompanion(intent: .adaptiveBase, cadenceFloorSPM: 140)
         )
         core.state = .tracking
         core.cadenceBaselineSPM = 168
@@ -783,7 +893,7 @@ struct AdaptivePacingCoreWatchCompanionTests {
             totalDistanceMeters: 5000.0,
             useMetricSystem: true
         )
-        #expect(debrief.formInsightBullet == "Cadence stayed rock-solid at 168 spm until kilometer 4.")
+        #expect(debrief.formInsightBullet == "Held steady 168 SPM turnover until kilometer 4.")
     }
 
     @Test("WatchRunDebrief: sub-1km solid cadence distance falls back to across the run")
@@ -799,22 +909,22 @@ struct AdaptivePacingCoreWatchCompanionTests {
         // Metric: < 1000m falls back to "across the run"
         core.solidCadenceUntilDistanceMeters = 850.0
         let metric = core.buildRunDebrief(elapsedSeconds: 600, totalDistanceMeters: 2000.0, useMetricSystem: true)
-        #expect(metric.formInsightBullet == "Cadence stayed rock-solid at 168 spm across the run.")
+        #expect(metric.formInsightBullet == "Held steady 168 SPM turnover across the run.")
 
         // Metric: >= 1000m emits "until kilometer"
         core.solidCadenceUntilDistanceMeters = 1000.0
         let metricAt1Km = core.buildRunDebrief(elapsedSeconds: 600, totalDistanceMeters: 2000.0, useMetricSystem: true)
-        #expect(metricAt1Km.formInsightBullet == "Cadence stayed rock-solid at 168 spm until kilometer 1.")
+        #expect(metricAt1Km.formInsightBullet == "Held steady 168 SPM turnover until kilometer 1.")
 
         // Imperial: < 1609.344m falls back to "across the run"
         core.solidCadenceUntilDistanceMeters = 1500.0
         let imperialSubMile = core.buildRunDebrief(elapsedSeconds: 600, totalDistanceMeters: 2000.0, useMetricSystem: false)
-        #expect(imperialSubMile.formInsightBullet == "Cadence stayed rock-solid at 168 spm across the run.")
+        #expect(imperialSubMile.formInsightBullet == "Held steady 168 SPM turnover across the run.")
 
         // Imperial: >= 1609.344m emits "until mile"
         core.solidCadenceUntilDistanceMeters = 1610.0
         let imperialAt1Mile = core.buildRunDebrief(elapsedSeconds: 600, totalDistanceMeters: 2000.0, useMetricSystem: false)
-        #expect(imperialAt1Mile.formInsightBullet == "Cadence stayed rock-solid at 168 spm until mile 1.")
+        #expect(imperialAt1Mile.formInsightBullet == "Held steady 168 SPM turnover until mile 1.")
     }
 
     // MARK: - 6. Watch Voice Delivery Target Resolution
@@ -1335,5 +1445,104 @@ struct AdaptivePacingCoreWatchCompanionTests {
             #expect(core.paceDriftDeviation == .onTarget)
             #expect(core.paceDriftContinuousSeconds == 0.0)
         }
+    }
+
+    // MARK: - 8. PacingDisplayState Compact Metric Properties
+
+    @Test("PacingDisplayState: compact metrics format populated values and nil placeholders correctly")
+    func testPacingDisplayStateCompactMetrics() {
+        // 1. Initial / Unpopulated state
+        let initialDisplay = PacingDisplayState.initial()
+        #expect(initialDisplay.compactFilteredPaceValue == "--:--")
+        #expect(initialDisplay.compactTargetPaceValue == "--:--")
+        #expect(initialDisplay.compactHeartRateValue == "--")
+        #expect(initialDisplay.compactCadenceValue == "--")
+
+        // 2. Populated display state
+        let populatedDisplay = PacingDisplayState(
+            state: .tracking,
+            targetPaceSecondsPerKm: 300,
+            filteredPaceSecondsPerKm: 302,
+            filteredHeartRateBPM: 148,
+            deviation: .onTarget,
+            refractorySecondsRemaining: 0,
+            lastReason: nil,
+            adjustmentsEnabled: true,
+            targetPaceFormatted: "5:00 /km",
+            filteredPaceFormatted: "5:02 /km",
+            filteredHeartRateFormatted: "148 BPM",
+            deviationTitle: "On Pace",
+            calibrationProgress: nil,
+            calibrationProgressFormatted: "100%",
+            refractoryProgress: 0.0,
+            filteredCadenceSPM: 172,
+            filteredCadenceFormatted: "172 SPM"
+        )
+        #expect(populatedDisplay.compactFilteredPaceValue == "5:02")
+        #expect(populatedDisplay.compactTargetPaceValue == "5:00")
+        #expect(populatedDisplay.compactHeartRateValue == "148")
+        #expect(populatedDisplay.compactCadenceValue == "172")
+
+        // 3. Negative / Zero pace edge cases fallback to "--:--"
+        let zeroPaceDisplay = PacingDisplayState(
+            state: .tracking,
+            targetPaceSecondsPerKm: 0,
+            filteredPaceSecondsPerKm: -10,
+            filteredHeartRateBPM: nil,
+            deviation: .unknown,
+            refractorySecondsRemaining: 0,
+            lastReason: nil,
+            adjustmentsEnabled: true,
+            targetPaceFormatted: "--:--",
+            filteredPaceFormatted: "--:--",
+            filteredHeartRateFormatted: "--",
+            deviationTitle: "--",
+            calibrationProgress: nil,
+            calibrationProgressFormatted: "--",
+            refractoryProgress: 0.0,
+            filteredCadenceSPM: nil,
+            filteredCadenceFormatted: "--"
+        )
+        #expect(zeroPaceDisplay.compactFilteredPaceValue == "--:--")
+        #expect(zeroPaceDisplay.compactTargetPaceValue == "--:--")
+    }
+
+    @Test("AdaptivePacingConfiguration and AdaptivePacingCore apply cadenceFloorSPM and intent targetCadenceSPM")
+    func testCadenceFloorAndTargetCadenceApplication() {
+        // forWatchCompanion with explicit cadenceFloorSPM overrides default 150
+        let configWithFloor = AdaptivePacingConfiguration.forWatchCompanion(intent: .adaptiveBase, cadenceFloorSPM: 165)
+        #expect(configWithFloor.cadenceFloorSPM == 165)
+
+        // forWatchCompanion without cadenceFloorSPM preserves default 150
+        let configDefault = AdaptivePacingConfiguration.forWatchCompanion(intent: .adaptiveBase)
+        #expect(configDefault.cadenceFloorSPM == 150)
+
+        // AdaptivePacingCore init: when intent has targetCadenceSPM > 0 and config has default floor (150),
+        // floor is promoted to targetCadenceSPM
+        let profile = AthleteCalibrationProfile(maxHR: 185, restingHR: 52, isFallback: false)
+        let intentWithCadence = PacingSessionIntent(
+            targetPaceSecondsPerKm: 300,
+            intent: .steady,
+            validForDay: "2026-11-14",
+            targetCadenceSPM: 172
+        )
+        let corePromoted = AdaptivePacingCore(
+            profile: profile,
+            intent: intentWithCadence,
+            location: .outdoor,
+            configuration: .standard // cadenceFloorSPM == 150
+        )
+        #expect(corePromoted.configuration.cadenceFloorSPM == 172)
+
+        // When config already had custom floor != 150, it is preserved
+        var customConfig = AdaptivePacingConfiguration.standard
+        customConfig.cadenceFloorSPM = 160
+        let corePreserved = AdaptivePacingCore(
+            profile: profile,
+            intent: intentWithCadence,
+            location: .outdoor,
+            configuration: customConfig
+        )
+        #expect(corePreserved.configuration.cadenceFloorSPM == 160)
     }
 }

@@ -177,10 +177,29 @@ public struct WatchLiveRunSnapshot: Sendable, Codable, Equatable {
         phase.isActiveWorkout
     }
 
-    /// High-level presentation header title (Coach's Takeaway on completion, paused notice, prescribed drill if present, or run intent).
+    /// Whether the watch workout is currently in a paused state.
+    public var isPaused: Bool {
+        phase == .paused
+    }
+
+    /// Determines whether the snapshot telemetry has become stale based on elapsed seconds.
+    /// Active sessions expire after `maxAgeSeconds` (default 45s), while paused or completed
+    /// sessions expire after `maxPausedOrCompletedAgeSeconds` (default 4 hours / 14,400s).
+    public func isStale(
+        at nowEpochSeconds: TimeInterval,
+        maxAgeSeconds: TimeInterval = 45.0,
+        maxPausedOrCompletedAgeSeconds: TimeInterval = 14_400.0
+    ) -> Bool {
+        if phase == .completed || isPaused {
+            return (nowEpochSeconds - updatedAtEpochSeconds) > maxPausedOrCompletedAgeSeconds
+        }
+        return (nowEpochSeconds - updatedAtEpochSeconds) > maxAgeSeconds
+    }
+
+    /// High-level presentation header title (Run Debrief on completion, paused notice, prescribed drill if present, or run intent).
     public var headerTitle: String {
         if phase == .completed {
-            return "Coach's Takeaway"
+            return "Run Debrief"
         }
         if phase == .paused {
             return "Apple Watch Paused"

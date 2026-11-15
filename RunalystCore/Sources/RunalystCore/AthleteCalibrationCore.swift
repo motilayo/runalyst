@@ -310,6 +310,15 @@ public enum AthleteCalibrationCore {
         targetPaceSecondsPerKm: Int? = nil,
         readinessHint: WatchReadinessHint? = nil
     ) -> PacingSessionIntent {
+        let (targetCadenceSPM, prescribedDurationMinutes): (Int?, Int?) = {
+            guard let spec, spec.kind != "rest" else {
+                return (nil, nil)
+            }
+            let cadence = (spec.cadenceFloor ?? 0) > 0 ? spec.cadenceFloor : nil
+            let duration = spec.minutesHigh > 0 ? spec.minutesHigh : (spec.minutesLow > 0 ? spec.minutesLow : nil)
+            return (cadence, duration)
+        }()
+
         // Protection Mandate: Subjective distress forces recovery intent and overrides race goals
         if subjectiveDistress {
             return PacingSessionIntent(
@@ -317,6 +326,8 @@ public enum AthleteCalibrationCore {
                 intent: .recovery,
                 subjectiveDistress: true,
                 validForDay: day,
+                targetCadenceSPM: targetCadenceSPM,
+                prescribedDurationMinutes: prescribedDurationMinutes,
                 readinessHint: readinessHint
             )
         }
@@ -327,6 +338,8 @@ public enum AthleteCalibrationCore {
                 intent: .steady,
                 subjectiveDistress: false,
                 validForDay: day,
+                targetCadenceSPM: nil,
+                prescribedDurationMinutes: nil,
                 readinessHint: readinessHint
             )
         }
@@ -364,6 +377,8 @@ public enum AthleteCalibrationCore {
             intent: resolvedIntent,
             subjectiveDistress: false,
             validForDay: day,
+            targetCadenceSPM: targetCadenceSPM,
+            prescribedDurationMinutes: prescribedDurationMinutes,
             readinessHint: readinessHint
         )
     }
@@ -473,7 +488,8 @@ public enum AthleteCalibrationCore {
                 profile: fallbackProfile,
                 intent: intent,
                 requiresTargetPacePicker: true,
-                isIndoorPreferred: false
+                isIndoorPreferred: false,
+                isPhoneSessionSynced: false
             )
         }
 
@@ -496,7 +512,8 @@ public enum AthleteCalibrationCore {
                 profile: cachedContext.profile,
                 intent: resolvedIntent,
                 requiresTargetPacePicker: needsPicker,
-                isIndoorPreferred: cachedContext.isIndoorPreferred ?? false
+                isIndoorPreferred: cachedContext.isIndoorPreferred ?? false,
+                isPhoneSessionSynced: true
             )
         } else {
             // Case 3: Stale intent from prior day -> Reuse profile, reset to steady intent + require picker
@@ -511,7 +528,8 @@ public enum AthleteCalibrationCore {
                 profile: cachedContext.profile,
                 intent: intent,
                 requiresTargetPacePicker: true,
-                isIndoorPreferred: cachedContext.isIndoorPreferred ?? false
+                isIndoorPreferred: cachedContext.isIndoorPreferred ?? false,
+                isPhoneSessionSynced: false
             )
         }
     }

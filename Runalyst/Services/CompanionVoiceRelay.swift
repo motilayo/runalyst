@@ -92,8 +92,12 @@ public final class CompanionVoiceRelay: NSObject, AVSpeechSynthesizerDelegate {
     }
 
     private func handleUtteranceCompleted(_ utteranceID: ObjectIdentifier) {
-        guard utteranceID == activeUtteranceID else { return }
+        guard utteranceID == activeUtteranceID && !speechSynthesizer.isSpeaking else { return }
         activeUtteranceID = nil
+        deactivateAudioSession()
+    }
+
+    private func deactivateAudioSession() {
         try? audioSession.setActive(false, options: .notifyOthersOnDeactivation)
     }
 }

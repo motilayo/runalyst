@@ -24,6 +24,7 @@
 		554433221100FFEEDDCCBBAA /* Runalyst/Views/AnimatedLoadingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABBCCDDEEFF001122334455 /* Runalyst/Views/AnimatedLoadingView.swift */; };
 		5D7B48CB920BAD17B8EE71E3 /* PersonalizedRunClassifier.mlmodel in Sources */ = {isa = PBXBuildFile; fileRef = E5504BAE8BEC385BDD7F07D0 /* PersonalizedRunClassifier.mlmodel */; };
 		695AB71B15A216F6DE67C683 /* HealthKitManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A819A236B82055B19BD745F /* HealthKitManagerTests.swift */; };
+		WCB20002D4E5F60718293A02 /* WatchCalibrationBridgeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = WCB20001D4E5F60718293A01 /* WatchCalibrationBridgeTests.swift */; };
 		6C236D97ED440DE5060AD662 /* LiveCoachEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8F28AB98675AE6C20EB792B /* LiveCoachEngineTests.swift */; };
 		71A1B2C3D4E5F60718293A41 /* Runalyst/Views/ProgressionChartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72A1B2C3D4E5F60718293A42 /* Runalyst/Views/ProgressionChartView.swift */; };
 		73A1B2C3D4E5F60718293A43 /* Runalyst/Views/LifetimeMilestonesCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74A1B2C3D4E5F60718293A44 /* Runalyst/Views/LifetimeMilestonesCard.swift */; };
@@ -162,9 +163,11 @@
 		W1110018D4E5F60718293A18 /* Views/StartRunView.swift in Sources */ = {isa = PBXBuildFile; fileRef = W1110008D4E5F60718293A08 /* Views/StartRunView.swift */; };
 		W1110019D4E5F60718293A19 /* Views/PacingGaugeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = W1110009D4E5F60718293A09 /* Views/PacingGaugeView.swift */; };
 		W111001BD4E5F60718293A1B /* Views/RunSummaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = W111000DD4E5F60718293A0D /* Views/RunSummaryView.swift */; };
+		W111001CD4E5F60718293A1C /* Views/WatchDesignTokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = W111000ED4E5F60718293A0E /* Views/WatchDesignTokens.swift */; };
 		W111001AD4E5F60718293A1A /* RunalystCore in Frameworks */ = {isa = PBXBuildFile; productRef = D4E5F60718293A0100000002 /* RunalystCore */; };
 		W1110023D4E5F60718293A23 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = W111000CD4E5F60718293A0C /* Assets.xcassets */; };
 		WCB10002D4E5F60718293A02 /* Runalyst/Services/WatchCalibrationBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = WCB10001D4E5F60718293A01 /* Runalyst/Services/WatchCalibrationBridge.swift */; };
+		WCB10008D4E5F60718293A08 /* Runalyst/Services/WatchCalibrationBridge+HealthKit.swift in Sources */ = {isa = PBXBuildFile; fileRef = WCB10007D4E5F60718293A07 /* Runalyst/Services/WatchCalibrationBridge+HealthKit.swift */; };
 		WCB10004D4E5F60718293A04 /* Runalyst/Services/CompanionVoiceRelay.swift in Sources */ = {isa = PBXBuildFile; fileRef = WCB10003D4E5F60718293A03 /* Runalyst/Services/CompanionVoiceRelay.swift */; };
 		Z2X3C4V5B6N7M8L9K0J1H2G3 /* Runalyst/Views/RunDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = Q1W2E3R4T5Y6U7I8O9P0A1S2 /* Runalyst/Views/RunDetailView.swift */; };
 		W1110061D4E5F60718293A61 /* RunalystWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = W1110000D4E5F60718293A00 /* RunalystWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -202,6 +205,7 @@
 		5DBD50C2872490EFC601C63C /* WorkoutPlanTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutPlanTests.swift; sourceTree = "<group>"; };
 		63293A7BDA8025D61EF9A34C /* HealthKitManagerSeedingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthKitManagerSeedingTests.swift; sourceTree = "<group>"; };
 		6A819A236B82055B19BD745F /* HealthKitManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthKitManagerTests.swift; sourceTree = "<group>"; };
+		WCB20001D4E5F60718293A01 /* WatchCalibrationBridgeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchCalibrationBridgeTests.swift; sourceTree = "<group>"; };
 		72A1B2C3D4E5F60718293A42 /* Runalyst/Views/ProgressionChartView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/ProgressionChartView.swift; sourceTree = SOURCE_ROOT; };
 		74A1B2C3D4E5F60718293A44 /* Runalyst/Views/LifetimeMilestonesCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/LifetimeMilestonesCard.swift; sourceTree = SOURCE_ROOT; };
 		768372D4E377479C83BEA700 /* Runalyst/Views/SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Views/SettingsView.swift; sourceTree = SOURCE_ROOT; };
@@ -345,10 +349,12 @@
 		W1110008D4E5F60718293A08 /* Views/StartRunView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/StartRunView.swift; sourceTree = "<group>"; };
 		W1110009D4E5F60718293A09 /* Views/PacingGaugeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/PacingGaugeView.swift; sourceTree = "<group>"; };
 		W111000DD4E5F60718293A0D /* Views/RunSummaryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/RunSummaryView.swift; sourceTree = "<group>"; };
+		W111000ED4E5F60718293A0E /* Views/WatchDesignTokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/WatchDesignTokens.swift; sourceTree = "<group>"; };
 		W111000AD4E5F60718293A0A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		W111000BD4E5F60718293A0B /* RunalystWatch.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = RunalystWatch.entitlements; sourceTree = "<group>"; };
 		W111000CD4E5F60718293A0C /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		WCB10001D4E5F60718293A01 /* Runalyst/Services/WatchCalibrationBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Services/WatchCalibrationBridge.swift; sourceTree = SOURCE_ROOT; };
+		WCB10007D4E5F60718293A07 /* Runalyst/Services/WatchCalibrationBridge+HealthKit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Runalyst/Services/WatchCalibrationBridge+HealthKit.swift"; sourceTree = SOURCE_ROOT; };
 		WCB10003D4E5F60718293A03 /* Runalyst/Services/CompanionVoiceRelay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/Services/CompanionVoiceRelay.swift; sourceTree = SOURCE_ROOT; };
 		Z1X2C3V4B5N6M7L8K9J0H1G2 /* Runalyst/CoachingEngine/CoachingEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runalyst/CoachingEngine/CoachingEngine.swift; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
@@ -470,6 +476,7 @@
 			children = (
 				6A819A236B82055B19BD745F /* HealthKitManagerTests.swift */,
 				63293A7BDA8025D61EF9A34C /* HealthKitManagerSeedingTests.swift */,
+				WCB20001D4E5F60718293A01 /* WatchCalibrationBridgeTests.swift */,
 			);
 			path = Managers;
 			sourceTree = "<group>";
@@ -560,6 +567,7 @@
 				A1110097D4E5F60718293A97 /* Runalyst/Intents/RunalystShortcuts.swift */,
 				A1110098D4E5F60718293A98 /* Runalyst/Views/Components/ChartAudioGraphDescriptors.swift */,
 				WCB10001D4E5F60718293A01 /* Runalyst/Services/WatchCalibrationBridge.swift */,
+				WCB10007D4E5F60718293A07 /* Runalyst/Services/WatchCalibrationBridge+HealthKit.swift */,
 				WCB10003D4E5F60718293A03 /* Runalyst/Services/CompanionVoiceRelay.swift */,
 				A2220098D4E5F60718293A98 /* Runalyst/Views/Components/MilestoneAwardDetailSheet.swift */,
 				A1110022D4E5F60718293A22 /* Runalyst/Views/StatBox.swift */,
@@ -663,6 +671,7 @@
 				W1110008D4E5F60718293A08 /* Views/StartRunView.swift */,
 				W1110009D4E5F60718293A09 /* Views/PacingGaugeView.swift */,
 				W111000DD4E5F60718293A0D /* Views/RunSummaryView.swift */,
+				W111000ED4E5F60718293A0E /* Views/WatchDesignTokens.swift */,
 				W111000AD4E5F60718293A0A /* Info.plist */,
 				W111000BD4E5F60718293A0B /* RunalystWatch.entitlements */,
 				W111000CD4E5F60718293A0C /* Assets.xcassets */,
@@ -825,6 +834,7 @@
 				B1110097D4E5F60718293A97 /* Runalyst/Intents/RunalystShortcuts.swift in Sources */,
 				B1110098D4E5F60718293A98 /* Runalyst/Views/Components/ChartAudioGraphDescriptors.swift in Sources */,
 				WCB10002D4E5F60718293A02 /* Runalyst/Services/WatchCalibrationBridge.swift in Sources */,
+				WCB10008D4E5F60718293A08 /* Runalyst/Services/WatchCalibrationBridge+HealthKit.swift in Sources */,
 				WCB10004D4E5F60718293A04 /* Runalyst/Services/CompanionVoiceRelay.swift in Sources */,
 				554433221100FFEEDDCCBBAA /* Runalyst/Views/AnimatedLoadingView.swift in Sources */,
 				E1A2B3C4D5E6F708192A3B4C /* Runalyst/Views/WorkoutPhaseTimelineView.swift in Sources */,
@@ -926,6 +936,7 @@
 				19251A19596B5C46911A31D7 /* WorkoutPlanTests.swift in Sources */,
 				F3A3B3C3D3E3F30313233344 /* DrillReadoutTests.swift in Sources */,
 				695AB71B15A216F6DE67C683 /* HealthKitManagerTests.swift in Sources */,
+				WCB20002D4E5F60718293A02 /* WatchCalibrationBridgeTests.swift in Sources */,
 				912022DFB3EE8B3DA99DDB78 /* HealthKitManagerSeedingTests.swift in Sources */,
 				BCCC58D89E55F0E512F2AA77 /* FramboiseEngineTests.swift in Sources */,
 				BB1100019E55F0E512345678 /* ContinuousMillAssayTests.swift in Sources */,
@@ -972,6 +983,7 @@
 				W1110018D4E5F60718293A18 /* Views/StartRunView.swift in Sources */,
 				W1110019D4E5F60718293A19 /* Views/PacingGaugeView.swift in Sources */,
 				W111001BD4E5F60718293A1B /* Views/RunSummaryView.swift in Sources */,
+				W111001CD4E5F60718293A1C /* Views/WatchDesignTokens.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -109,13 +109,19 @@ public struct AdaptivePacingConfiguration: Sendable, Equatable {
     public static let standard = AdaptivePacingConfiguration()
 
     /// Watch companion configuration tuned for zero-friction runs with 5-minute calibration lock-in.
-    public static func forWatchCompanion(intent: WatchRunIntent) -> AdaptivePacingConfiguration {
+    public static func forWatchCompanion(
+        intent: WatchRunIntent,
+        cadenceFloorSPM: Int? = nil
+    ) -> AdaptivePacingConfiguration {
         var config = AdaptivePacingConfiguration(
             warmupDurationSeconds: 120.0,
             baselineDurationSeconds: 180.0,
             maxCalibrationDurationSeconds: 420.0,
             refractoryDurationSeconds: 90.0
         )
+        if let cadenceFloorSPM, cadenceFloorSPM > 0 {
+            config.cadenceFloorSPM = cadenceFloorSPM
+        }
         switch intent {
         case .adaptiveBase:
             config.hrCeilingFraction = 0.92
@@ -202,6 +208,11 @@ public struct AdaptivePacingCore: Sendable {
 
     // State machine dynamics
     internal var state: PacingState
+    public var currentState: PacingState { state }
+    public var isCalibrating: Bool {
+        if case .calibrating = state { return true }
+        return false
+    }
     internal var calibrationTargetSeconds: TimeInterval
     internal var adjustmentsEnabled: Bool
     internal var currentTargetPaceSecondsPerKm: Int?
@@ -254,7 +265,11 @@ public struct AdaptivePacingCore: Sendable {
         self.profile = profile
         self.intent = intent
         self.location = location
-        self.configuration = configuration
+        var resolvedConfig = configuration
+        if let targetCadence = intent.targetCadenceSPM, targetCadence > 0, resolvedConfig.cadenceFloorSPM == 150 {
+            resolvedConfig.cadenceFloorSPM = targetCadence
+        }
+        self.configuration = resolvedConfig
 
         self.kalmanHR = .standardHeartRate
         self.kalmanSpeed = (location == .indoor) ? .indoorSpeed : .standardSpeed
@@ -268,7 +283,7 @@ public struct AdaptivePacingCore: Sendable {
         self.calibratedIndoorBaselineSpeedMPS = nil
 
         self.state = .calibrating(progress: 0.0)
-        self.calibrationTargetSeconds = configuration.warmupDurationSeconds + configuration.baselineDurationSeconds
+        self.calibrationTargetSeconds = resolvedConfig.warmupDurationSeconds + resolvedConfig.baselineDurationSeconds
         self.adjustmentsEnabled = true
         self.currentTargetPaceSecondsPerKm = intent.targetPaceSecondsPerKm
         self.originalTargetPaceSecondsPerKm = intent.targetPaceSecondsPerKm
@@ -390,7 +405,7 @@ public struct AdaptivePacingCore: Sendable {
             totalHRSum += hr
             hrSampleCount += 1
         }
-        if let cadence = tick.effectiveCadenceSPM, cadence > 0 {
+        if let cadence = tick.effectiveCadenceSPM, cadence >= 80 {
             totalCadenceSum += cadence
             cadenceSampleCount += 1
         }
