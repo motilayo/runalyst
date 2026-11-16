@@ -132,7 +132,7 @@ public struct CycleLiveActivityViewIntent: LiveActivityIntent {
 /// Interactive AppIntent toggling remote Pause / Resume commands to Apple Watch.
 public struct ToggleWatchWorkoutPauseIntent: LiveActivityIntent {
     public static let title: LocalizedStringResource = "Toggle Watch Workout Pause"
-    public static let description = IntentDescription("Toggles pause or resume for active workout on Apple Watch.")
+    public static let description = IntentDescription("Toggles pause or resume for the active watch workout.")
     public static let isDiscoverable: Bool = false
 
     public init() {}
